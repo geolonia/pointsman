@@ -3,6 +3,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { createApp, type Deps } from '../../src/app';
+import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { depsFor } from '../../src/index';
 import { ModelError, type ModelAdapter, type ModelResponse } from '../../src/models/adapter';
 import { MockAdapter } from '../../src/models/mock';
@@ -14,14 +15,19 @@ import * as contract from '../../generated/openapi-validators.mjs';
 const profiles = bundled as Profile[];
 const store = new MemoryProfileStore(profiles);
 const body = JSON.stringify({ state: 'Deploy has had no event for 40 minutes.' });
+const TOKEN = newToken();
+const tokens = new MemoryTokenStore(new Map([
+  [await hashToken(TOKEN), { client: 'test', profiles: ['*'], created_at: '2026-10-06T00:00:00Z' }],
+]));
+const headers = { authorization: `Bearer ${TOKEN}` };
 
 function appWith(adapter: ModelAdapter | null) {
-  const deps: Deps = { store, adapterFor: () => adapter };
+  const deps: Deps = { store, tokens, adapterFor: () => adapter };
   return createApp(() => deps);
 }
 
 function decide(app: ReturnType<typeof createApp>) {
-  return app.request('/v1/decide/deploy-progress', { method: 'POST', body }, env);
+  return app.request('/v1/decide/deploy-progress', { method: 'POST', body, headers }, env);
 }
 
 /** Adapter that edits the mock's answer before returning it. */
@@ -88,17 +94,18 @@ describe('model failures', () => {
 
 describe('configuration', () => {
   it.each([
-    ['unknown PROFILE_SOURCE', { PROFILE_SOURCE: 'files', MODEL_MODE: 'mock' }],
-    ['missing PROFILE_SOURCE', { MODEL_MODE: 'mock' }],
-    ['kv without a PROFILES binding', { PROFILE_SOURCE: 'kv', MODEL_MODE: 'mock' }],
+    ['unknown PROFILE_SOURCE', { PROFILE_SOURCE: 'files', MODEL_MODE: 'mock', TOKENS: env.TOKENS }],
+    ['missing PROFILE_SOURCE', { MODEL_MODE: 'mock', TOKENS: env.TOKENS }],
+    ['kv without a PROFILES binding', { PROFILE_SOURCE: 'kv', MODEL_MODE: 'mock', TOKENS: env.TOKENS }],
+    ['a missing TOKENS binding', { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock' }],
   ])('answers 500 for %s', async (_, vars) => {
     const app = createApp(() => depsFor(vars));
-    const res = await app.request('/v1/profiles', {}, env);
+    const res = await app.request('/v1/profiles', { headers }, env);
     await expectError(res, 500, 'internal_error');
   });
 
   it('serves no model outside mock mode', async () => {
-    const app = createApp(() => depsFor({ PROFILE_SOURCE: 'bundled' }));
+    const app = createApp(() => ({ ...depsFor({ PROFILE_SOURCE: 'bundled', TOKENS: env.TOKENS }), tokens }));
     await expectError(await decide(app), 500, 'internal_error');
   });
 });

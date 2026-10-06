@@ -25,6 +25,7 @@ Described in [openapi.yaml](openapi.yaml).
 
 ```sh
 curl -s localhost:8787/v1/decide/issue-triage \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"state": {"issue": {"title": "Login page is blank", "body": "Since this morning."}}}'
 ```
@@ -46,6 +47,22 @@ curl -s localhost:8787/v1/decide/issue-triage \
 
 In every answer, `p` is the probability of `value`. For yes/no questions,
 `yes` is the probability of yes.
+
+## API tokens
+
+Every request needs `Authorization: Bearer <token>`. Each client gets its own
+token, which can be limited to some profiles. Only a SHA-256 hash of each token
+is stored (KV namespace `TOKENS`); the token is shown once when it is created.
+
+```sh
+node scripts/tokens.mjs create --client github-triage --profiles issue-triage --local
+node scripts/tokens.mjs list --local
+node scripts/tokens.mjs revoke --hash <hash from list> --local
+```
+
+Use `--remote` (and `--config <your wrangler config>`) for a deployed Worker.
+After a revoke, KV can take up to about 60 seconds to stop the token
+everywhere.
 
 ## Development
 

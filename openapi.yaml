@@ -8,12 +8,17 @@ info:
     the answers into an action.
 
     In every answer, `p` is the probability of `value`.
+
+    Every request needs an API token: `Authorization: Bearer <token>`. A token
+    can be limited to some profiles.
   license:
     name: MIT
     identifier: MIT
 servers:
   - url: http://localhost:8787
     description: Local development (wrangler dev)
+security:
+  - bearer: []
 paths:
   /v1/decide/{profile}:
     post:
@@ -44,16 +49,22 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Decision' }
         '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The token may not use this profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '502': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
   /v1/profiles:
     get:
       operationId: listProfiles
-      summary: List profiles and their versions
+      summary: List the profiles this token may use, with their versions
       responses:
         '200':
-          description: All profiles
+          description: The profiles this token may use (all profiles for a token with scope *)
           content:
             application/json:
               schema:
@@ -64,9 +75,23 @@ paths:
                   profiles:
                     type: array
                     items: { $ref: '#/components/schemas/ProfileSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/Error' }
 components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: Per-client API token (`pm_` + 43 characters).
   responses:
+    Unauthorized:
+      description: Missing, malformed, unknown or revoked token.
+      headers:
+        WWW-Authenticate:
+          schema: { type: string, const: Bearer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     Error:
       description: Error
       content:
@@ -184,5 +209,5 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, profile_not_found, not_found, model_error, internal_error]
+              enum: [invalid_request, unauthorized, forbidden, profile_not_found, not_found, model_error, internal_error]
             message: { type: string }
