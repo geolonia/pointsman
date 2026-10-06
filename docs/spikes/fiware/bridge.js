@@ -5,8 +5,9 @@
 // the profile configured for the entity type, with the entity as the raw
 // payload (the profile's input paths read the normalized entity), and writes
 // the result back as one Property on the entity. The subscription watches
-// only the input attributes, but brokers may still notify on the bridge's own
-// write, so an input hash guards against loops (see inputHash).
+// only the input attributes. The write uses the single-attribute update, which
+// no tested broker turns into a notification, and an input hash guards
+// against loops with any other broker (see inputHash).
 
 const ROUTES = {
   // entity type -> profile, the attributes it reads, and the attribute the
@@ -84,15 +85,19 @@ async function handle(entity, route, env) {
     property[`${name}Probability`] = { type: 'Property', value: a.p };
   }
 
-  const patch = await fetch(`${env.BROKER_URL}/ngsi-ld/v1/entities/${encodeURIComponent(entity.id)}/attrs`, {
+  // Update just this attribute (PATCH .../attrs/{name}). Orion-LD notifies
+  // subscriptions on the multi-attribute PATCH .../attrs even when only
+  // unwatched attributes change, which loops through the bridge (#41); the
+  // single-attribute update does not. The first time, the attribute does not
+  // exist yet (404), so it is appended with POST .../attrs.
+  const attrs = `${env.BROKER_URL}/ngsi-ld/v1/entities/${encodeURIComponent(entity.id)}/attrs`;
+  let write = await fetch(`${attrs}/${encodeURIComponent(route.attribute)}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ [route.attribute]: property }),
+    body: JSON.stringify(property),
   });
-  // PATCH /attrs only updates attributes that exist; POST /attrs appends.
-  let write = patch;
-  if (patch.status === 207 || patch.status === 404) {
-    write = await fetch(`${env.BROKER_URL}/ngsi-ld/v1/entities/${encodeURIComponent(entity.id)}/attrs`, {
+  if (write.status === 404) {
+    write = await fetch(attrs, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ [route.attribute]: property }),

@@ -112,16 +112,48 @@ One Property, named by the bridge configuration (here `triage`):
 
 The bridge writes to the entity it was notified about. The subscription
 watches only `name` and `description`, so the write should not notify again.
-In this Orion-LD build it did: most `PATCH` or `POST` writes to other
-attributes still sent a notification. A single update of the description
-produced 440 decisions in a few seconds before the subscription was deleted.
+In Orion-LD it did, and a single update of the description produced 440
+decisions in a few seconds before the subscription was deleted.
 
-The bridge now guards itself: it stores a hash of the input attributes
+The bridge guards itself: it stores a hash of the input attributes
 (`inputHash`) with the result, and ignores a notification whose inputs have
 that hash. With the guard: create → 1 decision, update → 1 more, then quiet.
-Any bridge, for any broker, should have such a guard; `watchedAttributes`
-alone is not enough. (Whether this is an Orion-LD bug should be checked
-against other brokers, GeonicDB included, before reporting it.)
+
+### Which brokers notify on unwatched writes (#41)
+
+Checked on 2026-10-07 with [fiware/probe.mjs](fiware/probe.mjs): a
+subscription with `watchedAttributes: ["name"]`, then one write at a time,
+counting the notifications for each (0 is correct for every write except the
+last, which changes the watched attribute).
+
+| Write to an unwatched attribute | Orion-LD 1.9.0, 1.12.0, post-1.12.0 (2026-09-25) | Scorpio 6.0.2 | Stellio 2.38.0 | GeonicDB 0.20.0 |
+|---|---|---|---|---|
+| `PATCH …/attrs` (update attributes) | **1** | 0 | 0 | 0 |
+| `PATCH …/attrs` with sub-properties | **1** | 0 | 0 | 0 |
+| `PATCH …/attrs`, same value again | **1** | 0 | 0 | 0 |
+| `PATCH …/attrs/{name}` (one attribute) | 0 | 0 | 0 | 0 |
+| `PATCH …/attrs/{name}` with sub-properties | 0 | 0 | 0 | 0 |
+| `POST …/attrs` (append) | 0 | 0 | 0 | 0 |
+| Control: `PATCH …/attrs` of the watched `name` | 1 | 1 | 1 | 1 |
+
+- **Only Orion-LD differs, and only for `PATCH …/attrs`.** All three Orion-LD
+  versions notify for every update through that endpoint, whichever attributes
+  it touches, even when nothing changes. The single-attribute update and the
+  append behave correctly.
+- **The specification** (ETSI GS CIM 009, clause 5.8.6, as the ETSI test suite
+  cites it in 046_04): without `timeInterval`, a notification "shall be sent
+  whenever there is a change in the watched Attributes". The suite's 046_22
+  tests check the opposite case through `notificationTrigger`; Orion-LD and
+  Scorpio fail those because they do not support that newer member (the
+  subscription is refused with 501 or 400), not because of this behaviour, so
+  the suite does not cover it for them.
+- **The bridge now writes with `PATCH …/attrs/{name}`** (and `POST …/attrs`
+  the first time, when the attribute does not exist yet), which no tested
+  broker turns into a notification. The input hash stays as the guard for
+  brokers not tested here.
+- **Upstream:** not reported to Orion-LD (decided 2026-10-07): the bridge
+  avoids the problem by writing one attribute at a time. No existing Orion-LD
+  issue covers it; the probe and the table above reproduce it if needed.
 
 Pointsman's decision log has a state hash too (`state_hash`), but the bridge
 cannot use it without an extra call, so the hash on the entity is simpler.
@@ -146,8 +178,9 @@ above should follow whatever #16 decides.
 - Build the bridge as its own small Worker (or a route in the Pointsman
   Worker later), configured per entity type; profiles read the entity
   directly.
-- Always guard against loops with an input hash; never rely on
-  `watchedAttributes` alone.
+- Write the result with the single-attribute update
+  (`PATCH …/attrs/{name}`), and still guard against loops with an input hash;
+  `watchedAttributes` alone is not enough with Orion-LD.
 - Authenticate notifications with a shared secret header; the bridge holds a
   Pointsman API token limited to its profiles.
 - Write one Property with the action as value and one level of
