@@ -1,0 +1,10 @@
+# expect: /title: must have required property 'ja'
+id: missing-ja
+version: 1
+title: { en: Test }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+policy:
+  default: review

@@ -1,0 +1,13 @@
+# expect: /questions/0/criteria: must be array
+id: criteria-map
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - name: team
+    type: choice
+    instructions: Which team?
+    criteria: { a: First, b: Second }
+policy:
+  default: review

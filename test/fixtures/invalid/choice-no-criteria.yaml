@@ -1,0 +1,10 @@
+# expect: /questions/0: must have required property 'criteria'
+id: choice-no-criteria
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: team, type: choice, instructions: Which team? }
+policy:
+  default: review

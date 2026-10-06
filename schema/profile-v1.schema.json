@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/geolonia/pointsman/main/schema/profile-v1.schema.json",
+  "title": "Pointsman decision profile (v1)",
+  "description": "A named, versioned set of typed questions plus a policy. Question types follow the decision model APIs (Clef, Jev): noul, choice, score. See docs/profile-format.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "title", "description", "model", "questions", "policy"],
+  "properties": {
+    "id": {
+      "description": "Stable profile id, used in the URL: POST /v1/decide/{id}.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+    },
+    "version": {
+      "description": "Profile version. Increase it on every change; each decision records the version it used.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": { "$ref": "#/$defs/bilingualText" },
+    "description": { "$ref": "#/$defs/bilingualText" },
+    "model": { "$ref": "#/$defs/modelId" },
+    "fallback_models": {
+      "description": "Models to try, in order, when the primary model fails.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/modelId" },
+      "uniqueItems": true
+    },
+    "input": {
+      "description": "Optional mapping from a raw client payload to the state sent to the model. Without it, the request state is used as is.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "path": {
+            "description": "JSONPath into the request payload, for example $.issue.title.",
+            "type": "string",
+            "pattern": "^\\$(\\.[A-Za-z0-9_-]+|\\[[0-9]+\\])*$"
+          }
+        }
+      }
+    },
+    "questions": {
+      "description": "The questions sent to the model. A list (not a map) so that form editors can handle it.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/question" }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default"],
+      "properties": {
+        "rules": {
+          "description": "Checked in order; the first rule whose condition is true sets the action.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["when", "action"],
+            "properties": {
+              "when": {
+                "description": "Condition on the answers, for example \"department.p >= 0.85\".",
+                "type": "string",
+                "minLength": 1
+              },
+              "action": { "$ref": "#/$defs/action" }
+            }
+          }
+        },
+        "default": { "$ref": "#/$defs/action" }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "pattern": "\\S" },
+    "bilingualText": {
+      "description": "Text in English and Japanese, so that non-engineers can read the profile.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["en", "ja"],
+      "properties": {
+        "en": { "$ref": "#/$defs/nonEmpty" },
+        "ja": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "modelId": {
+      "description": "Model id known to an adapter, for example clef-flash, clef, jev-latest.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "name": {
+      "description": "Same rule as question ids in the decision model APIs.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,100}$"
+    },
+    "action": {
+      "description": "auto, review, or a custom action name such as cancel.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+    },
+    "question": {
+      "type": "object",
+      "required": ["name", "type", "instructions"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "type": { "enum": ["noul", "choice", "score"] },
+        "instructions": { "$ref": "#/$defs/nonEmpty" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "noul" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/noulQuestion" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "choice" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/choiceQuestion" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "score" } }, "required": ["type"] },
+          "then": { "$ref": "#/$defs/scoreQuestion" }
+        }
+      ]
+    },
+    "noulQuestion": {
+      "description": "Yes/no question. The model returns the probability of yes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "instructions"],
+      "properties": {
+        "name": true,
+        "type": { "const": "noul" },
+        "instructions": true,
+        "criteria": {
+          "description": "Optional: what a yes and a no mean.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "true": { "$ref": "#/$defs/nonEmpty" },
+            "false": { "$ref": "#/$defs/nonEmpty" }
+          }
+        }
+      }
+    },
+    "choiceQuestion": {
+      "description": "Pick one option. The model returns the chosen option and a probability per option.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "instructions", "criteria"],
+      "properties": {
+        "name": true,
+        "type": { "const": "choice" },
+        "instructions": true,
+        "criteria": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 255,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value"],
+            "properties": {
+              "value": { "$ref": "#/$defs/nonEmpty" },
+              "description": { "$ref": "#/$defs/nonEmpty" }
+            }
+          }
+        }
+      }
+    },
+    "scoreQuestion": {
+      "description": "Rate on an ordered rubric. Levels are listed lowest first and indexed from 0.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "instructions", "criteria"],
+      "properties": {
+        "name": true,
+        "type": { "const": "score" },
+        "instructions": true,
+        "criteria": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    }
+  }
+}

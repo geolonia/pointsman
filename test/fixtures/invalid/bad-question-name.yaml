@@ -1,0 +1,10 @@
+# expect: /questions/0/name: must match pattern
+id: bad-question-name
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: "is it ok", type: noul, instructions: Is it ok? }
+policy:
+  default: review

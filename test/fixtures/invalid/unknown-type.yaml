@@ -1,0 +1,10 @@
+# expect: /questions/0/type: must be equal to one of the allowed values (noul, choice, score)
+id: unknown-type
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: q, type: multi, instructions: Pick some }
+policy:
+  default: review

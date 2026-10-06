@@ -1,0 +1,13 @@
+# expect: /questions/0/criteria: duplicate value "a"
+id: duplicate-choice-value
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - name: team
+    type: choice
+    instructions: Which team?
+    criteria: [{ value: a }, { value: b }, { value: a }]
+policy:
+  default: review

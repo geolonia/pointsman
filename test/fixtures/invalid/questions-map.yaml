@@ -1,0 +1,10 @@
+# expect: /questions: must be array
+id: questions-map
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  urgent: { type: noul, instructions: Is it urgent? }
+policy:
+  default: review

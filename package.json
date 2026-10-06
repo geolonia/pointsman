@@ -1,0 +1,18 @@
+{
+  "name": "pointsman",
+  "private": true,
+  "description": "Decision service: typed questions in, typed answers, probabilities and an action out.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "check": "npm test && npm run validate:profiles"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0",
+    "yaml": "^2.9.1"
+  }
+}

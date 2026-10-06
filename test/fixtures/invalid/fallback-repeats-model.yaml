@@ -1,0 +1,11 @@
+# expect: repeats the primary model "clef-flash"
+id: fallback-repeats-model
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+fallback_models: [clef-flash]
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+policy:
+  default: review

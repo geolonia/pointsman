@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# Example profile: decide if an infrastructure deploy is stuck or only slow.
+# The client calls this only after a simple rule finds the case unclear.
+id: deploy-progress
+version: 1
+title:
+  en: Deploy progress
+  ja: デプロイの進行状況
+description:
+  en: Decide from recent stack events whether a deploy is still making progress or is stuck.
+  ja: 直近のスタックイベントから、デプロイが進んでいるか止まっているかを判断する。
+model: clef-flash
+fallback_models: [clef]
+questions:
+  - name: stuck
+    type: noul
+    instructions: >-
+      Given the recent stack events and the time since the last event,
+      is this deploy stuck (it will not finish without someone stepping in)?
+    criteria:
+      true: No real progress; resources wait on something that will not happen, or the same step keeps retrying.
+      false: The deploy is slow but still moving, for example a long resource creation that is known to take time.
+  - name: phase
+    type: choice
+    instructions: Which phase is the deploy in?
+    criteria:
+      - { value: creating, description: "Resources are being created or updated" }
+      - { value: rolling_back, description: "The deploy failed and changes are being rolled back" }
+      - { value: cleaning_up, description: "Old resources are being removed" }
+      - { value: waiting, description: "Waiting on an external resource, for example a certificate or DNS" }
+policy:
+  rules:
+    - when: "stuck.p >= 0.9"
+      action: cancel
+    - when: "stuck.p >= 0.6"
+      action: review
+  default: continue
