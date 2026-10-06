@@ -1,0 +1,26 @@
+{
+  "_source": "PLACEHOLDER shaped after the documented Clef-flash output schema (2026-10-06). Replace with a recorded response from the first real call (issue #3).",
+  "model": "clef-flash",
+  "answers": {
+    "team": {
+      "type": "choice",
+      "choice": "frontend",
+      "probabilities": { "backend": 0.12, "frontend": 0.85, "docs": 0.03 },
+      "confidence": 0.78
+    },
+    "urgent": { "type": "noul", "noul": 0.71 },
+    "effort": {
+      "type": "score",
+      "score": 0.9,
+      "legend": {
+        "0": "A small change, less than an hour",
+        "1": "A few hours",
+        "2": "A few days",
+        "3": "Needs a plan; more than a week"
+      },
+      "probabilities": { "0": 0.3, "1": 0.55, "2": 0.12, "3": 0.03 },
+      "confidence": 0.42
+    }
+  },
+  "usage": { "input_tokens": 412, "output_tokens": 9 }
+}

@@ -105,6 +105,9 @@ describe('configuration', () => {
     ['kv without a PROFILES binding', { ...base, PROFILE_SOURCE: 'kv' }, 'no PROFILES binding'],
     ['a missing TOKENS binding', { ...base, TOKENS: undefined }, 'no TOKENS binding'],
     ['a missing DB binding', { ...base, DB: undefined }, 'no DB binding'],
+    ['unknown MODEL_MODE', { ...base, MODEL_MODE: 'openai' }, 'MODEL_MODE must be'],
+    ['missing MODEL_MODE', { ...base, MODEL_MODE: undefined }, 'MODEL_MODE must be'],
+    ['workers-ai without an AI binding', { ...base, MODEL_MODE: 'workers-ai' }, 'no AI binding'],
   ])('answers 500 for %s', async (_, vars, cause) => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
@@ -117,12 +120,12 @@ describe('configuration', () => {
     }
   });
 
-  it('serves no model outside mock mode', async () => {
+  it('answers 500 when no model of the profile has an adapter', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const app = createApp(() => ({ ...depsFor({ ...base, MODEL_MODE: undefined }), tokens, log }));
-      await expectError(await decide(app), 500, 'internal_error');
-      expect(String(logged.mock.calls[0]?.[0])).toContain('no adapter for model');
+      const deps: Deps = { store, tokens, log, adapterFor: () => null };
+      await expectError(await decide(createApp(() => deps)), 500, 'internal_error');
+      expect(String(logged.mock.calls[0]?.[0])).toContain('no adapter for any model');
     } finally {
       logged.mockRestore();
     }

@@ -28,5 +28,28 @@
       "database_id": "local-dev-only",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // `pnpm dev:live`: real model calls through Workers AI and the AI Gateway
+  // (needs `wrangler login`; costs a little per call). Profiles, tokens and the
+  // decision log stay local. Bindings and vars are not inherited by
+  // environments, so they are repeated here.
+  "env": {
+    "live": {
+      "vars": {
+        "PROFILE_SOURCE": "bundled",
+        "MODEL_MODE": "workers-ai",
+        "AI_GATEWAY_ID": "pointsman"
+      },
+      "ai": { "binding": "AI" },
+      "kv_namespaces": [{ "binding": "TOKENS", "id": "local-dev-only" }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "pointsman",
+          "database_id": "local-dev-only",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
 }

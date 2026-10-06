@@ -1,0 +1,9 @@
+{
+  "id": "pointsman",
+  "collect_logs": true,
+  "cache_ttl": 0,
+  "cache_invalidate_on_update": true,
+  "rate_limiting_interval": 60,
+  "rate_limiting_limit": 600,
+  "rate_limiting_technique": "sliding"
+}
