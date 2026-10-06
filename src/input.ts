@@ -30,3 +30,17 @@ export function buildState(profile: Profile, payload: unknown): unknown {
   }
   return state;
 }
+
+/**
+ * State that already has the profile's input fields: keep only those fields
+ * (an object without them gives {}); without an input mapping, unchanged.
+ */
+export function pickInputFields(profile: Profile, state: unknown): unknown {
+  if (!profile.input) return state;
+  if (state === null || typeof state !== 'object' || Array.isArray(state)) return {};
+  const picked: Record<string, unknown> = {};
+  for (const { name } of profile.input) {
+    if (Object.hasOwn(state, name)) picked[name] = (state as Record<string, unknown>)[name];
+  }
+  return picked;
+}

@@ -59,6 +59,8 @@ decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
 
 ## Clients
 
+- [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `decide` and
+  `get_decision`, so agents can ask a profile instead of deciding themselves.
 - [GitHub issue triage](actions/triage/): a GitHub Action that labels new
   issues from a Pointsman decision, or asks for a human review.
 - [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a

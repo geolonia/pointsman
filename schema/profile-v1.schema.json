@@ -51,6 +51,17 @@
       "maxItems": 64,
       "items": { "$ref": "#/$defs/question" }
     },
+    "mcp": {
+      "description": "MCP settings (docs/mcp.md).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "visible": {
+          "description": "List the profile and allow calling it through MCP. Default false.",
+          "type": "boolean"
+        }
+      }
+    },
     "log": {
       "description": "Decision log settings.",
       "type": "object",
