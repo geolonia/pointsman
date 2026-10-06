@@ -9,9 +9,9 @@
 // wrangler login (`wrangler auth token`). Account: CLOUDFLARE_ACCOUNT_ID, or
 // the only account of the wrangler login. The token is never printed.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { wrangler } from './lib/wrangler.mjs';
 
 function fail(message, code = 1) {
   console.error(message);
@@ -39,10 +39,6 @@ try {
 }
 if (typeof settings.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(settings.id)) {
   fail(`${values.file}: "id" must be a gateway name (lower case, digits, "-", "_"; max 64)`, 2);
-}
-
-function wrangler(args) {
-  return execFileSync('npx', ['--no-install', 'wrangler', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 function credentials() {

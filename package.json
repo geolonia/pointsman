@@ -15,11 +15,12 @@
     "test:scripts": "node --test \"test/**/*.test.mjs\"",
     "test:worker": "pnpm build && vitest run",
     "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
-    "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm deploy:dry-run",
+    "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm check:public && pnpm deploy:dry-run",
     "deploy:dry-run": "pnpm build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "dev:live": "pnpm build && wrangler dev --env live",
-    "ai-gateway": "node scripts/ai-gateway.mjs"
+    "ai-gateway": "node scripts/ai-gateway.mjs",
+    "check:public": "node scripts/check-public.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.3.6",

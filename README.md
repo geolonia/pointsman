@@ -17,7 +17,8 @@ A profile is versioned config: typed questions plus a policy. See
 [examples/profiles/](examples/profiles/).
 
 This repository holds only example profiles. Real profiles live in your own
-configuration repository.
+private configuration repository; see [docs/deployment.md](docs/deployment.md)
+and the template in [template/config-repo](template/config-repo/).
 
 ## API
 

@@ -1,0 +1,4 @@
+# The engine is checked out here by the workflows (and for local work).
+engine/
+node_modules/
+.wrangler/

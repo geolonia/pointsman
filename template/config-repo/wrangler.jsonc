@@ -1,0 +1,31 @@
+// Deploy config for Pointsman. Replace every <placeholder> (the workflows
+// refuse to deploy while one is left). The account comes from the
+// CLOUDFLARE_ACCOUNT_ID secret, not from this file.
+{
+  "$schema": "engine/node_modules/wrangler/config-schema.json",
+  "name": "<worker name, e.g. pointsman>",
+  "main": "engine/src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "PROFILE_SOURCE": "kv",
+    "MODEL_MODE": "workers-ai",
+    // Name of the AI Gateway (see ai-gateway.json); remove to call Workers AI directly.
+    "AI_GATEWAY_ID": "pointsman"
+  },
+  "ai": { "binding": "AI" },
+  "kv_namespaces": [
+    // Profiles, written by the deploy workflow (engine/scripts/publish-profiles.mjs).
+    { "binding": "PROFILES", "id": "<PROFILES namespace id>" },
+    // API tokens (engine/scripts/tokens.mjs).
+    { "binding": "TOKENS", "id": "<TOKENS namespace id>" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "<D1 database name, e.g. pointsman>",
+      "database_id": "<D1 database id>",
+      "migrations_dir": "engine/migrations"
+    }
+  ]
+}

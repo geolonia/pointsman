@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../engine/schema/profile-v1.schema.json
+# Example profile; replace with your own. The file name must be <id>.yaml.
+id: issue-triage
+version: 1
+title:
+  en: Issue triage
+  ja: Issue の振り分け
+description:
+  en: Route a new issue to the right team and flag issues that block work today.
+  ja: 新しい Issue を担当チームに振り分け、今日の作業を止めている Issue に印を付ける。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: title, path: $.issue.title }
+  - { name: body, path: $.issue.body }
+questions:
+  - name: team
+    type: choice
+    instructions: Which team should handle this issue?
+    criteria:
+      - { value: backend, description: "APIs, databases, background jobs" }
+      - { value: frontend, description: "Web pages, styles, browser behaviour" }
+      - { value: docs, description: "Documentation, tutorials, examples" }
+  - name: urgent
+    type: noul
+    instructions: Does this issue block someone's work today?
+    criteria:
+      true: Someone cannot continue their work until this is fixed.
+      false: Work can continue; this can wait for normal planning.
+  - name: effort
+    type: score
+    instructions: How much work does this issue look like?
+    criteria:
+      - A small change, less than an hour
+      - A few hours
+      - A few days
+      - Needs a plan; more than a week
+policy:
+  rules:
+    - when: "team.p >= 0.85"
+      action: auto
+  default: review
