@@ -1,20 +1,28 @@
 // MCP server (Streamable HTTP, stateless) at /mcp. See docs/mcp.md.
 //
-// Tools: list_profiles, decide, get_decision. Only profiles that set
+// Tools: list_profiles, decide, get_decision, and submit_feedback for people
+// logged in through OAuth (not for API tokens). Only profiles that set
 // `mcp.visible: true` and are in the caller's scope are listed or callable;
-// any other profile looks unknown. Callers authenticate like the REST API
-// (API token as bearer token). submit_feedback is added for people logged in
-// through OAuth (step 2 of issue #11), not for API tokens.
+// any other profile looks unknown. People may use every MCP-visible profile.
 
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { makeDecision, type Deps } from './app';
 import { canUse, type TokenRecord } from './auth';
+import { parseFeedback } from './feedback';
+import type { Caller } from './oauth';
 import type { Profile } from './types';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type McpDeps = Pick<Deps, 'store' | 'adapterFor' | 'log'>;
+
+/** The scope a caller acts with; people are recorded as "github:<login>". */
+export function clientOf(caller: Caller): TokenRecord {
+  return caller.kind === 'token'
+    ? caller.record
+    : { client: `github:${caller.login}`, profiles: ['*'], created_at: '' };
+}
 
 function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
@@ -45,7 +53,8 @@ function describe(p: Profile) {
   };
 }
 
-function server(deps: McpDeps, client: TokenRecord): McpServer {
+function server(deps: McpDeps, caller: Caller): McpServer {
+  const client = clientOf(caller);
   const mcp = new McpServer({ name: 'pointsman', version: '0.1.0' });
 
   mcp.registerTool(
@@ -101,11 +110,41 @@ function server(deps: McpDeps, client: TokenRecord): McpServer {
     },
   );
 
+  // Feedback is a person's judgement, so only people logged in through OAuth
+  // get this tool; it is recorded under their GitHub login.
+  if (caller.kind === 'person') {
+    mcp.registerTool(
+      'submit_feedback',
+      {
+        description:
+          'Correct a decision: give the right answer for one or more of its questions. '
+          + 'Recorded in your name and used to measure how often the profile is right.',
+        inputSchema: {
+          decision_id: z.string().describe('decision_id returned by decide'),
+          correct: z.record(z.string(), z.union([z.boolean(), z.string(), z.number()]))
+            .describe('The right answers, by question name, for example {"team": "frontend"}'),
+          note: z.string().optional().describe('Why, in a sentence'),
+        },
+      },
+      async ({ decision_id, correct, note }) => {
+        const record = UUID.test(decision_id) ? await deps.log.get(decision_id) : null;
+        if (!record || !visible(await deps.store.get(record.profile), client)) return failure(`unknown decision "${decision_id}"`);
+        // Checked against the profile version the decision used.
+        const profile = await deps.store.get(record.profile, record.profile_version);
+        if (!profile) return failure('the profile version of this decision is no longer available');
+        const feedback = parseFeedback({ correct, by: caller.login, ...(note !== undefined && { note }) }, profile);
+        if (typeof feedback === 'string') return failure(feedback);
+        await deps.log.addFeedback(decision_id, { ...feedback, created_at: new Date().toISOString(), client: client.client });
+        return json({ recorded: true });
+      },
+    );
+  }
+
   return mcp;
 }
 
-/** Serve one MCP request for an authenticated client. */
-export function serveMcp(request: Request, deps: McpDeps, client: TokenRecord): Promise<Response> {
-  const handler = createMcpHandler(() => server(deps, client), { legacy: 'stateless' });
+/** Serve one MCP request for an authenticated caller. */
+export function serveMcp(request: Request, deps: McpDeps, caller: Caller): Promise<Response> {
+  const handler = createMcpHandler(() => server(deps, caller), { legacy: 'stateless' });
   return handler.fetch(request);
 }

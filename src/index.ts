@@ -4,6 +4,7 @@
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth';
 import { D1DecisionLog } from './log';
+import { purgeExpired, type OAuthConfig } from './oauth';
 import type { ModelAdapter } from './models/adapter';
 import { MockAdapter } from './models/mock';
 import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
@@ -23,6 +24,35 @@ interface PointsmanEnv {
   AI_GATEWAY_ID?: string | undefined;
   /** Worker secret for signing review callbacks. */
   CALLBACK_SECRET?: string | undefined;
+  // GitHub login for /mcp (src/oauth.ts): all of these, or none.
+  PUBLIC_URL?: string | undefined;
+  GITHUB_CLIENT_ID?: string | undefined;
+  /** Worker secret. */
+  GITHUB_CLIENT_SECRET?: string | undefined;
+  /** Comma-separated GitHub organizations whose members may log in. */
+  ALLOWED_GITHUB_ORGS?: string | undefined;
+  OAUTH_KV?: KVNamespace | undefined;
+}
+
+const OAUTH_SETTINGS = ['PUBLIC_URL', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'ALLOWED_GITHUB_ORGS', 'OAUTH_KV'] as const;
+
+function oauthFor(env: PointsmanEnv): OAuthConfig | undefined {
+  const missing = OAUTH_SETTINGS.filter((name) => !env[name]);
+  if (missing.length === OAUTH_SETTINGS.length) return undefined;
+  // Half a configuration would silently leave people without login.
+  if (missing.length > 0) throw new ConfigError(`GitHub login needs ${missing.join(', ')} as well`);
+  if (!/^https:\/\/[^/?#]+$/.test(env.PUBLIC_URL!)) throw new ConfigError('PUBLIC_URL must be an https origin without a path');
+  const orgs = env.ALLOWED_GITHUB_ORGS!.split(',').map((o) => o.trim()).filter(Boolean);
+  if (orgs.length === 0) throw new ConfigError('ALLOWED_GITHUB_ORGS must name at least one organization');
+  return {
+    issuer: env.PUBLIC_URL!,
+    github: {
+      clientId: env.GITHUB_CLIENT_ID!,
+      clientSecret: env.GITHUB_CLIENT_SECRET!,
+      orgs,
+      fetch: (url, init) => fetch(url, init),
+    },
+  };
 }
 
 let bundled: MemoryProfileStore | undefined;
@@ -64,6 +94,7 @@ export function depsFor(env: PointsmanEnv): Deps {
     log: new D1DecisionLog(env.DB),
     adapterFor: adaptersFor(env),
     callbacks: { secret: env.CALLBACK_SECRET || undefined, fetch: (url, init) => fetch(url, init) },
+    oauth: oauthFor(env),
   };
 }
 
@@ -71,10 +102,14 @@ const app = createApp((env) => depsFor(env as PointsmanEnv));
 
 export default {
   fetch: app.fetch,
-  // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are due.
+  // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are
+  // due, and remove expired OAuth records. A broken config (for example half
+  // of the OAuth settings) fails here as it does for requests.
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(retryDueCallbacks(depsFor(env as PointsmanEnv)).then((n) => {
+    const deps = depsFor(env as PointsmanEnv);
+    ctx.waitUntil(retryDueCallbacks(deps).then((n) => {
       if (n > 0) console.log(`retried ${n} callbacks`);
     }));
+    if (deps.oauth) ctx.waitUntil(purgeExpired(env as unknown as { OAUTH_KV: KVNamespace }, deps.oauth));
   },
 } satisfies ExportedHandler<Env>;

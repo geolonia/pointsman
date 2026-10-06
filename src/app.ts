@@ -1,11 +1,12 @@
 // HTTP API. See openapi.yaml for the contract.
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord, type TokenStore } from './auth';
 import { attempt, type Fetch } from './callbacks';
 import { parseFeedback, parseResolution } from './feedback';
 import { serveMcp } from './mcp';
+import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type OAuthConfig, type OAuthEnv } from './oauth';
 import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
@@ -22,6 +23,8 @@ export interface Deps {
   callbacks: { secret: string | undefined; fetch: Fetch };
   /** Adapter for a model id, or null when no adapter serves it. */
   adapterFor(model: string): ModelAdapter | null;
+  /** GitHub login for /mcp (src/oauth.ts); without it /mcp takes API tokens only. */
+  oauth?: OAuthConfig | undefined;
 }
 
 export class ConfigError extends Error {
@@ -64,7 +67,8 @@ function parseBody(body: unknown): Body | string {
 }
 
 export function createApp(deps: (env: Env) => Deps) {
-  const app = new Hono<{ Bindings: Env; Variables: { client: TokenRecord } }>();
+  type AppEnv = { Bindings: Env; Variables: { client: TokenRecord } };
+  const app = new Hono<AppEnv>();
 
   // Every API route needs a valid token. The token itself is never logged.
   app.use('/v1/*', async (c, next) => {
@@ -222,18 +226,41 @@ export function createApp(deps: (env: Env) => Deps) {
     });
   });
 
-  // MCP (docs/mcp.md): same API tokens as /v1, checked here because /mcp is
-  // outside the /v1 middleware.
+  // Hono's ExecutionContext type lacks newer Workers fields; it is the same object.
+  const ctxOf = (c: Context<AppEnv>) => c.executionCtx as unknown as ExecutionContext;
+
+  // MCP (docs/mcp.md): API tokens as for /v1, and, when OAuth is configured,
+  // access tokens of people logged in with GitHub. Checked here because /mcp
+  // is outside the /v1 middleware.
   app.all('/mcp', async (c) => {
     const d = deps(c.env);
+    if (d.oauth) {
+      return serveProtectedMcp(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d.tokens, (req, caller) => serveMcp(req, d, caller));
+    }
     const record = await authenticate(c.req.header('authorization'), d.tokens);
     if (!record) {
       const res = error(401, 'unauthorized', 'a valid API token is required');
       res.headers.set('www-authenticate', 'Bearer');
       return res;
     }
-    return serveMcp(c.req.raw, d, record);
+    return serveMcp(c.req.raw, d, { kind: 'token', record });
   });
+
+  // OAuth (src/oauth.ts). Without an OAuth config these routes are not found.
+  type OAuthRoute = (req: Request, env: OAuthEnv, ctx: ExecutionContext, config: OAuthConfig, d: Deps) => Promise<Response>;
+  const withOAuth = (serve: OAuthRoute) => async (c: Context<AppEnv>) => {
+    const d = deps(c.env);
+    if (!d.oauth) return error(404, 'not_found', 'not found');
+    return serve(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d);
+  };
+  const notFound = () => Promise.resolve(error(404, 'not_found', 'not found'));
+  app.all('/.well-known/oauth-protected-resource/mcp', withOAuth((req, env, ctx, config, d) => serveProtectedMcp(req, env, ctx, config, d.tokens, notFound)));
+  app.all('/.well-known/oauth-authorization-server', withOAuth(serveAuthorizationServer));
+  app.all('/oauth/token', withOAuth(serveAuthorizationServer));
+  app.all('/oauth/register', withOAuth(serveAuthorizationServer));
+  app.get('/authorize', withOAuth((req, env, _ctx, config) => showConsent(req, env, config)));
+  app.post('/authorize', withOAuth((req, env, _ctx, config) => answerConsent(req, env, config)));
+  app.get('/callback', withOAuth((req, env, _ctx, config) => finishLogin(req, env, config)));
 
   app.notFound(() => error(404, 'not_found', 'not found'));
 

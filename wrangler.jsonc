@@ -7,6 +7,9 @@
   "name": "pointsman",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  // Outgoing fetches (review callbacks, OAuth client metadata) reach only
+  // public addresses.
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "observability": { "enabled": true },
   // Retries review callbacks that are due (src/callbacks.ts).
   "triggers": { "crons": ["*/5 * * * *"] },

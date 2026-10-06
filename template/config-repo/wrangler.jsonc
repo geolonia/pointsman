@@ -6,6 +6,9 @@
   "name": "<worker name, e.g. pointsman>",
   "main": "engine/src/index.ts",
   "compatibility_date": "2026-10-01",
+  // Outgoing fetches (review callbacks, OAuth client metadata) reach only
+  // public addresses.
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "observability": { "enabled": true },
   // Retries review callbacks that are due. Callbacks are signed with the
   // Worker secret CALLBACK_SECRET: wrangler secret put CALLBACK_SECRET
@@ -15,6 +18,12 @@
     "MODEL_MODE": "workers-ai",
     // Name of the AI Gateway (see ai-gateway.json); remove to call Workers AI directly.
     "AI_GATEWAY_ID": "pointsman"
+    // GitHub login for MCP clients (engine/docs/mcp.md). Optional: set all of
+    // these, the OAUTH_KV namespace below and the Worker secret
+    // GITHUB_CLIENT_SECRET, or none of them.
+    // "PUBLIC_URL": "https://pointsman.example.workers.dev",
+    // "GITHUB_CLIENT_ID": "Iv23li...",
+    // "ALLOWED_GITHUB_ORGS": "example-org"
   },
   "ai": { "binding": "AI" },
   "kv_namespaces": [
@@ -22,6 +31,8 @@
     { "binding": "PROFILES", "id": "<PROFILES namespace id>" },
     // API tokens (engine/scripts/tokens.mjs).
     { "binding": "TOKENS", "id": "<TOKENS namespace id>" }
+    // OAuth grants and tokens, for GitHub login (see vars).
+    // { "binding": "OAUTH_KV", "id": "id of the namespace" }
   ],
   "d1_databases": [
     {
