@@ -17,4 +17,11 @@ Set-up and how deploys work:
 [docs/deployment.md](https://github.com/geolonia/pointsman/blob/main/docs/deployment.md).
 
 Every change to a profile needs a higher `version`; a published version
-cannot be changed.
+cannot be changed. The validation workflow checks this on every pull request
+(`check-profile-versions.mjs`: changes are compared by profile id, comments
+and formatting do not count, new and deleted profiles pass).
+
+Protect `main` (Settings → Rules or Branches): require a pull request, and
+require the status check **Validate profiles and config**. Otherwise a pull
+request with an invalid profile or a missing version bump can still be merged,
+and the deploy stops after the merge.
