@@ -156,8 +156,20 @@ test('cancel-update: false only stops the command', async (t) => {
   assert.doesNotMatch(r.aws, /cancel-update-stack/);
 });
 
+test('a command that ignores SIGTERM is killed after the grace time', async (t) => {
+  const p = await pointsman(['cancel']);
+  t.after(p.close);
+  const r = await runWatch(t, { url: p.url, command: "trap '' TERM; sleep 30 & wait; sleep 30", inputs: { 'INPUT_KILL-AFTER-SECONDS': '0.5' } });
+  assert.equal(r.code, 1, r.stdout);
+  assert.ok(r.seconds < 10, `ended after ${r.seconds}s`);
+  assert.match(r.stdout, /sending SIGKILL/);
+  assert.match(r.output, /^result=cancelled$/m);
+});
+
 for (const [name, inputs, message] of [
   ['a stack name with shell syntax', { INPUT_STACKS: 'App;rm -rf /' }, /must be CloudFormation stack names/],
+  ['a plain http url', { INPUT_URL: 'http://pointsman.example.com' }, /must be an https URL/],
+  ['a url with a query', { INPUT_URL: 'https://example.com?x=1' }, /must not contain a query/],
   ['a missing token', { INPUT_TOKEN: '' }, /input "token" is required/],
   ['a non-numeric interval', { 'INPUT_INTERVAL-SECONDS': 'soon' }, /must be a number/],
   ['zero consecutive', { INPUT_CONSECUTIVE: '0' }, /must be a number >= 1/],

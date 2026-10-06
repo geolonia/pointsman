@@ -11,7 +11,7 @@ inputs:
     description: CloudFormation stack names to watch, comma separated.
     required: true
   url:
-    description: Base URL of the Pointsman Worker.
+    description: Base URL of the Pointsman Worker (https; http only for localhost).
     required: true
   token:
     description: Pointsman API token (store it as a secret).
@@ -28,6 +28,9 @@ inputs:
   consecutive:
     description: Consecutive "cancel" answers needed before the deploy is stopped.
     default: '2'
+  kill-after-seconds:
+    description: After stopping the deploy with SIGTERM, send SIGKILL if it is still running after this many seconds.
+    default: '30'
   cancel-update:
     description: Also run `aws cloudformation cancel-update-stack` for a stack in UPDATE_IN_PROGRESS when stopping.
     default: 'true'

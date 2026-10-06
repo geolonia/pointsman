@@ -21,6 +21,28 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 const STACK = /^[A-Za-z][A-Za-z0-9-]{0,127}$/;
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * Base URL of the Worker. https only (the token is a bearer token), except
+ * http on loopback for local development; no query, fragment or credentials.
+ */
+export function parseBaseUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('input "url" is not a valid URL');
+  }
+  const local = url.protocol === 'http:' && LOOPBACK.includes(url.hostname);
+  if ((url.protocol !== 'https:' && !local) || !url.hostname) {
+    throw new Error('input "url" must be an https URL (http only for localhost)');
+  }
+  if (url.search || url.hash || url.username || url.password) {
+    throw new Error('input "url" must not contain a query, fragment or credentials');
+  }
+  return url.href.replace(/\/+$/, '');
+}
 
 function input(name, { required = false } = {}) {
   const value = (process.env[`INPUT_${name.toUpperCase()}`] ?? '').trim();
@@ -67,7 +89,7 @@ async function stackState(stack) {
 }
 
 async function ask({ url, token, profile }, state) {
-  const res = await fetch(`${url.replace(/\/+$/, '')}/v1/decide/${encodeURIComponent(profile)}`, {
+  const res = await fetch(`${url}/v1/decide/${encodeURIComponent(profile)}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ state, ref: `github:${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` }),
@@ -82,12 +104,12 @@ export async function main() {
   const command = input('run', { required: true });
   const stacks = input('stacks', { required: true }).split(',').map((s) => s.trim()).filter(Boolean);
   if (stacks.length === 0 || !stacks.every((s) => STACK.test(s))) throw new Error('input "stacks" must be CloudFormation stack names');
-  const pointsman = { url: input('url', { required: true }), token: input('token', { required: true }), profile: input('profile') || 'deploy-progress' };
-  if (!/^https?:\/\//.test(pointsman.url)) throw new Error('input "url" must start with https://');
+  const pointsman = { url: parseBaseUrl(input('url', { required: true })), token: input('token', { required: true }), profile: input('profile') || 'deploy-progress' };
   const quietMs = number('quiet-minutes', 15) * 60_000;
   const intervalMs = number('interval-seconds', 60, { min: 0.05 }) * 1000;
   const needed = number('consecutive', 2, { min: 1 });
   const cancelUpdate = (input('cancel-update') || 'true') === 'true';
+  const killAfterMs = number('kill-after-seconds', 30, { min: 0 }) * 1000;
 
   const started = Date.now();
   // detached: the command gets its own process group, so a cancel stops it
@@ -133,11 +155,19 @@ export async function main() {
     if (cancels < needed) continue;
 
     log('the deploy looks stuck; stopping it');
-    try {
-      process.kill(-child.pid, 'SIGTERM');
-    } catch {
-      // already gone
-    }
+    const signal = (name) => {
+      try {
+        process.kill(-child.pid, name);
+      } catch {
+        // already gone
+      }
+    };
+    signal('SIGTERM');
+    // A command that ignores SIGTERM or hangs while stopping gets SIGKILL.
+    const killer = setTimeout(() => {
+      log(`still running after ${killAfterMs / 1000}s; sending SIGKILL`);
+      signal('SIGKILL');
+    }, killAfterMs);
     if (cancelUpdate) {
       for (const s of states.filter((s) => s.status === 'UPDATE_IN_PROGRESS')) {
         try {
@@ -149,6 +179,7 @@ export async function main() {
       }
     }
     await exited;
+    clearTimeout(killer);
     setOutput('result', 'cancelled');
     console.log(`::error::Deploy stopped: no stack event for ${state.minutes_since_last_event} minutes and Pointsman judged it stuck ${needed} times in a row (decision ${decision.decision_id}).`);
     return 1;

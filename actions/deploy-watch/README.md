@@ -67,12 +67,13 @@ watched stacks, besides what the deploy itself needs.
 |---|---|---|
 | `run` | (required) | The deploy command, run with bash. Set it in the workflow; never build it from event data. |
 | `stacks` | (required) | Stack names to watch, comma separated |
-| `url`, `token` | (required) | Pointsman Worker URL and API token (secret) |
+| `url`, `token` | (required) | Pointsman Worker URL (https; http only for localhost) and API token (secret) |
 | `profile` | `deploy-progress` | Profile whose policy returns `cancel` for a stuck deploy |
 | `quiet-minutes` | `15` | Minutes without a new stack event before Pointsman is asked |
 | `interval-seconds` | `60` | How often the stacks are checked |
 | `consecutive` | `2` | `cancel` answers in a row needed to stop the deploy |
 | `cancel-update` | `true` | Also cancel stack updates in progress |
+| `kill-after-seconds` | `30` | SIGKILL the command if it is still running this long after SIGTERM |
 
 Output `result`: `finished` or `cancelled`.
 
