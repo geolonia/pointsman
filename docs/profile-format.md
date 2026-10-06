@@ -22,6 +22,8 @@ Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
 | `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
 | `questions` | yes | 1 to 64 questions (see below). |
 | `policy` | yes | `rules` (checked in order, first match wins) and a `default` action. |
+| `mcp` | no | `visible: true` lists the profile and allows calling it through MCP (default false, see [mcp.md](mcp.md)). |
+| `log` | no | `store_state: true` keeps the full state in the decision log (default: only a hash, see [decision-log.md](decision-log.md)). |
 
 Actions are `auto`, `review`, or a custom name such as `cancel`. See
 [Policy conditions](#policy-conditions).

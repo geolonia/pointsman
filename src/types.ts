@@ -38,6 +38,7 @@ export interface Profile {
   fallback_models?: string[];
   input?: { name: string; path: string }[];
   questions: Question[];
+  mcp?: { visible?: boolean };
   log?: { store_state?: boolean };
   policy: {
     rules?: { when: string; action: string }[];

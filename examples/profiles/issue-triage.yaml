@@ -13,6 +13,8 @@ fallback_models: [clef]
 input:
   - { name: title, path: $.issue.title }
   - { name: body, path: $.issue.body }
+mcp:
+  visible: true
 questions:
   - name: team
     type: choice

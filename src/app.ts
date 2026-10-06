@@ -5,7 +5,8 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord, type TokenStore } from './auth';
 import { attempt, type Fetch } from './callbacks';
 import { parseFeedback, parseResolution } from './feedback';
-import { buildState } from './input';
+import { serveMcp } from './mcp';
+import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
@@ -85,14 +86,6 @@ export function createApp(deps: (env: Env) => Deps) {
   });
 
   app.post('/v1/decide/:profile', async (c) => {
-    const { store, adapterFor, log } = deps(c.env);
-
-    // Checked before the profile lookup, so a token cannot probe which
-    // profiles exist outside its scope.
-    if (!canUse(c.get('client'), c.req.param('profile'))) {
-      return error(403, 'forbidden', 'this token may not use this profile');
-    }
-
     const versionParam = c.req.query('version');
     let version: number | undefined;
     if (versionParam !== undefined) {
@@ -101,71 +94,14 @@ export function createApp(deps: (env: Env) => Deps) {
       }
       version = Number(versionParam);
     }
-
     let raw: unknown;
     try {
       raw = await c.req.json();
     } catch {
       return error(400, 'invalid_request', 'body must be valid JSON');
     }
-    const body = parseBody(raw);
-    if (typeof body === 'string') return error(400, 'invalid_request', body);
-
-    const profile = await store.get(c.req.param('profile'), version);
-    if (!profile) return error(404, 'profile_not_found', 'unknown profile or version');
-
-    const state = buildState(profile, body.state);
-    if (profile.input && Object.keys(state as object).length === 0) {
-      return error(400, 'invalid_request', 'no field of the profile input mapping was found in "state"');
-    }
-
-    // The profile's model first, then its fallback models in order. A model
-    // error (failed call, or an answer that does not fit the profile) moves
-    // on to the next model; the decision records the model that answered.
-    const models = [profile.model, ...(profile.fallback_models ?? [])];
-    const served = models.filter((m) => adapterFor(m) !== null);
-    if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
-
-    let answers;
-    let model;
-    for (const m of served) {
-      try {
-        const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m));
-        answers = normalizeAnswers(profile, response);
-        model = response.model;
-        break;
-      } catch (err) {
-        if (!(err instanceof ModelError)) throw err;
-        console.error(`model error for profile ${profile.id}, model ${m}: ${err.message}`);
-      }
-    }
-    if (!answers || !model) return error(502, 'model_error', 'the model did not return a usable answer');
-
-    // Profiles are validated before they reach a store, so a PolicyError here
-    // means a store holds an unvalidated profile: a 500, like other config errors.
-    const { action, rule } = compilePolicy(profile).decide(answers);
-
-    const decision: Decision = {
-      decision_id: crypto.randomUUID(),
-      ...(body.ref !== undefined && { ref: body.ref }),
-      answers,
-      action,
-      profile: profile.id,
-      profile_version: profile.version,
-      model,
-    };
-    // Every decision is logged before it is returned. If the log fails, the
-    // client gets a 500 and must not act on an unlogged decision.
-    await log.insert({
-      ...decision,
-      created_at: new Date().toISOString(),
-      client: c.get('client').client,
-      rule,
-      state_hash: await hashState(state),
-      ...(profile.log?.store_state && { state }),
-      ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
-    });
-    return c.json(decision);
+    const result = await makeDecision(deps(c.env), c.get('client'), c.req.param('profile'), raw, version);
+    return result.ok ? c.json(result.decision) : error(result.status, result.code, result.message);
   });
 
   // A decision is visible only to tokens that may use its profile; for others
@@ -286,6 +222,19 @@ export function createApp(deps: (env: Env) => Deps) {
     });
   });
 
+  // MCP (docs/mcp.md): same API tokens as /v1, checked here because /mcp is
+  // outside the /v1 middleware.
+  app.all('/mcp', async (c) => {
+    const d = deps(c.env);
+    const record = await authenticate(c.req.header('authorization'), d.tokens);
+    if (!record) {
+      const res = error(401, 'unauthorized', 'a valid API token is required');
+      res.headers.set('www-authenticate', 'Bearer');
+      return res;
+    }
+    return serveMcp(c.req.raw, d, record);
+  });
+
   app.notFound(() => error(404, 'not_found', 'not found'));
 
   app.onError((err) => {
@@ -294,6 +243,94 @@ export function createApp(deps: (env: Env) => Deps) {
   });
 
   return app;
+}
+
+export type DecisionResult =
+  | { ok: true; decision: Decision }
+  | { ok: false; status: ContentfulStatusCode; code: string; message: string };
+
+const fail = (status: ContentfulStatusCode, code: string, message: string): DecisionResult => ({ ok: false, status, code, message });
+
+/**
+ * Decide for one client: scope check, request check, model call (with
+ * fallback models), policy, decision log. Used by the REST API and by MCP.
+ */
+export async function makeDecision(
+  { store, adapterFor, log }: Pick<Deps, 'store' | 'adapterFor' | 'log'>,
+  client: TokenRecord,
+  profileId: string,
+  raw: unknown,
+  version?: number,
+  /**
+   * The state already has the profile's input fields (MCP callers send
+   * them directly) instead of a raw payload for the input mapping.
+   */
+  { stateIsMapped = false }: { stateIsMapped?: boolean } = {},
+): Promise<DecisionResult> {
+  // Checked before the profile lookup, so a token cannot probe which
+  // profiles exist outside its scope.
+  if (!canUse(client, profileId)) return fail(403, 'forbidden', 'this token may not use this profile');
+
+  const body = parseBody(raw);
+  if (typeof body === 'string') return fail(400, 'invalid_request', body);
+
+  const profile = await store.get(profileId, version);
+  if (!profile) return fail(404, 'profile_not_found', 'unknown profile or version');
+
+  const state = stateIsMapped ? pickInputFields(profile, body.state) : buildState(profile, body.state);
+  if (profile.input && Object.keys(state as object).length === 0) {
+    return fail(400, 'invalid_request', stateIsMapped
+      ? `"state" must be an object with at least one of: ${profile.input.map((i) => i.name).join(', ')}`
+      : 'no field of the profile input mapping was found in "state"');
+  }
+
+  // The profile's model first, then its fallback models in order. A model
+  // error (failed call, or an answer that does not fit the profile) moves
+  // on to the next model; the decision records the model that answered.
+  const models = [profile.model, ...(profile.fallback_models ?? [])];
+  const served = models.filter((m) => adapterFor(m) !== null);
+  if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
+
+  let answers;
+  let model;
+  for (const m of served) {
+    try {
+      const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m));
+      answers = normalizeAnswers(profile, response);
+      model = response.model;
+      break;
+    } catch (err) {
+      if (!(err instanceof ModelError)) throw err;
+      console.error(`model error for profile ${profile.id}, model ${m}: ${err.message}`);
+    }
+  }
+  if (!answers || !model) return fail(502, 'model_error', 'the model did not return a usable answer');
+
+  // Profiles are validated before they reach a store, so a PolicyError here
+  // means a store holds an unvalidated profile: a 500, like other config errors.
+  const { action, rule } = compilePolicy(profile).decide(answers);
+
+  const decision: Decision = {
+    decision_id: crypto.randomUUID(),
+    ...(body.ref !== undefined && { ref: body.ref }),
+    answers,
+    action,
+    profile: profile.id,
+    profile_version: profile.version,
+    model,
+  };
+  // Every decision is logged before it is returned. If the log fails, the
+  // client gets a 500 and must not act on an unlogged decision.
+  await log.insert({
+    ...decision,
+    created_at: new Date().toISOString(),
+    client: client.client,
+    rule,
+    state_hash: await hashState(state),
+    ...(profile.log?.store_state && { state }),
+    ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
+  });
+  return { ok: true, decision };
 }
 
 /** Longer than one attempt (10 s timeout), so a claim never expires mid-send. */
