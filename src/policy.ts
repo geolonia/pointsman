@@ -246,13 +246,16 @@ function evaluate(node: Node, answers: Record<string, Answer>): boolean {
     case 'cmp': {
       const l = valueOf(node.left, answers);
       const r = valueOf(node.right, answers);
+      if (node.op === '==') return l === r;
+      if (node.op === '!=') return l !== r;
+      // The parser allows ordering only between numbers (see comparison()).
+      const a = l as number;
+      const b = r as number;
       switch (node.op) {
-        case '==': return l === r;
-        case '!=': return l !== r;
-        case '>=': return l >= r;
-        case '>': return l > r;
-        case '<=': return l <= r;
-        case '<': return l < r;
+        case '>=': return a >= b;
+        case '>': return a > b;
+        case '<=': return a <= b;
+        case '<': return a < b;
       }
     }
   }
