@@ -1,0 +1,42 @@
+name: Pointsman deploy watch
+description: >-
+  Runs a deploy command and watches its CloudFormation stack. When the stack
+  shows no new event for a while, asks a Pointsman profile whether the deploy
+  is stuck; after two consecutive "cancel" answers, stops the deploy.
+inputs:
+  run:
+    description: The deploy command, run with bash (for example `npx cdk deploy MyStack --require-approval never`). Comes from the workflow, never from event data.
+    required: true
+  stacks:
+    description: CloudFormation stack names to watch, comma separated.
+    required: true
+  url:
+    description: Base URL of the Pointsman Worker (https; http only for localhost).
+    required: true
+  token:
+    description: Pointsman API token (store it as a secret).
+    required: true
+  profile:
+    description: Decision profile id; its policy must return the action "cancel" for a stuck deploy.
+    default: deploy-progress
+  quiet-minutes:
+    description: Minutes without a new stack event before Pointsman is asked.
+    default: '15'
+  interval-seconds:
+    description: How often the stacks are checked.
+    default: '60'
+  consecutive:
+    description: Consecutive "cancel" answers needed before the deploy is stopped.
+    default: '2'
+  kill-after-seconds:
+    description: After stopping the deploy with SIGTERM, send SIGKILL if it is still running after this many seconds.
+    default: '30'
+  cancel-update:
+    description: Also run `aws cloudformation cancel-update-stack` for a stack in UPDATE_IN_PROGRESS when stopping.
+    default: 'true'
+outputs:
+  result:
+    description: '"finished" (the command ended by itself) or "cancelled".'
+runs:
+  using: node24
+  main: watch.mjs
