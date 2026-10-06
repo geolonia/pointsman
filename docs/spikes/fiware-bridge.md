@@ -117,6 +117,6 @@ above should follow whatever #16 decides.
   Pointsman API token limited to its profiles.
 - Write one Property with the action as value and one level of
   sub-properties; align names with #16.
-- Not covered here: retries when Pointsman or the broker is down (the broker
-  does not retry failed notifications by default; a queue would), `@context`
+- Not covered here: retries when Pointsman or the broker is down (not tested
+  whether the broker retries failed notifications; a queue would), `@context`
   handling for non-core attribute names, and multi-tenancy (`NGSILD-Tenant`).
