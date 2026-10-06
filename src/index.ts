@@ -103,7 +103,8 @@ const app = createApp((env) => depsFor(env as PointsmanEnv));
 export default {
   fetch: app.fetch,
   // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are
-  // due, and remove expired OAuth records.
+  // due, and remove expired OAuth records. A broken config (for example half
+  // of the OAuth settings) fails here as it does for requests.
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const deps = depsFor(env as PointsmanEnv);
     ctx.waitUntil(retryDueCallbacks(deps).then((n) => {

@@ -73,7 +73,7 @@ until then.
    has them commented out in `wrangler.jsonc`.
 
 Set all of these or none: without them `/mcp` takes API tokens only; with only
-some of them every request fails with a configuration error, so the mistake shows up at once.
+some of them every request and every cron run (including callback retries) fails with a configuration error, so the mistake shows up at once.
 
 ## Decisions through MCP
 
