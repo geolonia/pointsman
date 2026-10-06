@@ -2,17 +2,26 @@
 // example profiles and the mock model (see wrangler.jsonc). Responses are
 // checked against openapi.yaml.
 
-import { exports } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { env, exports } from 'cloudflare:workers';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { hashToken, newToken, tokenKey } from '../../src/auth';
 import * as contract from '../../generated/openapi-validators.mjs';
 import type { Validator } from '../../generated/openapi-validators.mjs';
 
 const BASE = 'http://pointsman.test';
+const TOKEN = newToken();
+
+beforeEach(async () => {
+  const record = { client: 'test', profiles: ['*'], created_at: '2026-10-06T00:00:00Z' };
+  await env.TOKENS.put(tokenKey(await hashToken(TOKEN)), JSON.stringify(record));
+});
+
+const auth = { authorization: `Bearer ${TOKEN}` };
 
 function post(path: string, body: unknown, raw = false) {
   return exports.default.fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...auth },
     body: raw ? (body as string) : JSON.stringify(body),
   });
 }
@@ -101,7 +110,7 @@ describe('POST /v1/decide/{profile}', () => {
 
 describe('GET /v1/profiles', () => {
   it('lists the bundled profiles', async () => {
-    const res = await exports.default.fetch(`${BASE}/v1/profiles`);
+    const res = await exports.default.fetch(`${BASE}/v1/profiles`, { headers: auth });
     expect(res.status).toBe(200);
     const { profiles } = await json(res, contract.profileList);
     expect(profiles.map((p: any) => p.id)).toEqual(['deploy-progress', 'issue-triage']);
@@ -111,13 +120,13 @@ describe('GET /v1/profiles', () => {
 
 describe('other routes', () => {
   it('answers 404 in the error format', async () => {
-    const res = await exports.default.fetch(`${BASE}/v1/nothing`);
+    const res = await exports.default.fetch(`${BASE}/v1/nothing`, { headers: auth });
     expect(res.status).toBe(404);
     expect((await json(res, contract.error)).error.code).toBe('not_found');
   });
 
   it('answers 404 for GET on the decide endpoint', async () => {
-    const res = await exports.default.fetch(`${BASE}/v1/decide/issue-triage`);
+    const res = await exports.default.fetch(`${BASE}/v1/decide/issue-triage`, { headers: auth });
     expect(res.status).toBe(404);
   });
 });

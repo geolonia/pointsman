@@ -2,6 +2,7 @@
 
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { authenticate, canUse, type TokenRecord, type TokenStore } from './auth';
 import { buildState } from './input';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
@@ -11,6 +12,7 @@ import type { Decision } from './types';
 
 export interface Deps {
   store: ProfileStore;
+  tokens: TokenStore;
   /** Adapter for a model id, or null when no adapter serves it. */
   adapterFor(model: string): ModelAdapter | null;
 }
@@ -54,15 +56,35 @@ function parseBody(body: unknown): Body | string {
 }
 
 export function createApp(deps: (env: Env) => Deps) {
-  const app = new Hono<{ Bindings: Env }>();
+  const app = new Hono<{ Bindings: Env; Variables: { client: TokenRecord } }>();
+
+  // Every API route needs a valid token. The token itself is never logged.
+  app.use('/v1/*', async (c, next) => {
+    const record = await authenticate(c.req.header('authorization'), deps(c.env).tokens);
+    if (!record) {
+      const res = error(401, 'unauthorized', 'a valid API token is required');
+      res.headers.set('www-authenticate', 'Bearer');
+      return res;
+    }
+    c.set('client', record);
+    await next();
+  });
 
   app.get('/v1/profiles', async (c) => {
     const { store } = deps(c.env);
-    return c.json({ profiles: await store.list() });
+    const client = c.get('client');
+    const profiles = (await store.list()).filter((p) => canUse(client, p.id));
+    return c.json({ profiles });
   });
 
   app.post('/v1/decide/:profile', async (c) => {
     const { store, adapterFor } = deps(c.env);
+
+    // Checked before the profile lookup, so a token cannot probe which
+    // profiles exist outside its scope.
+    if (!canUse(c.get('client'), c.req.param('profile'))) {
+      return error(403, 'forbidden', 'this token may not use this profile');
+    }
 
     const versionParam = c.req.query('version');
     let version: number | undefined;

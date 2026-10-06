@@ -2,6 +2,7 @@
 // environment (see wrangler.jsonc) and serves the API.
 
 import { ConfigError, createApp, type Deps } from './app';
+import { KvTokenStore } from './auth';
 import { MockAdapter } from './models/mock';
 import { KvProfileStore, MemoryProfileStore, type ProfileStore } from './profiles/store';
 import type { Profile } from './types';
@@ -12,6 +13,7 @@ interface PointsmanEnv {
   PROFILE_SOURCE?: string;
   MODEL_MODE?: string;
   PROFILES?: KVNamespace;
+  TOKENS?: KVNamespace;
 }
 
 let bundled: MemoryProfileStore | undefined;
@@ -31,8 +33,10 @@ function storeFor(env: PointsmanEnv): ProfileStore {
 const mock = new MockAdapter();
 
 export function depsFor(env: PointsmanEnv): Deps {
+  if (!env.TOKENS) throw new ConfigError('no TOKENS binding');
   return {
     store: storeFor(env),
+    tokens: new KvTokenStore(env.TOKENS),
     // Real adapters come with #3; outside mock mode no model is served yet.
     adapterFor: () => (env.MODEL_MODE === 'mock' ? mock : null),
   };
