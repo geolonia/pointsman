@@ -34,9 +34,8 @@ jobs:
     permissions:
       issues: write
     steps:
-      # Pin to a full commit SHA of geolonia/pointsman (the commit that adds
-      # this action, or a later one).
-      - uses: geolonia/pointsman/actions/triage@<commit SHA>
+      # Pinned to a full commit SHA; update it to a later commit to get changes.
+      - uses: geolonia/pointsman/actions/triage@0b569edc13966977a476b70b02c1c51cff191964 # main 2026-10-06
         with:
           url: ${{ vars.POINTSMAN_URL }}
           token: ${{ secrets.POINTSMAN_TOKEN }}

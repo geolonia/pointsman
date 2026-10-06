@@ -43,12 +43,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: aws-actions/configure-aws-credentials@<commit SHA>
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
           aws-region: ap-northeast-1
-      # Pin to a full commit SHA of geolonia/pointsman.
-      - uses: geolonia/pointsman/actions/deploy-watch@<commit SHA>
+      # Pinned to a full commit SHA; update it to a later commit to get changes.
+      - uses: geolonia/pointsman/actions/deploy-watch@0b569edc13966977a476b70b02c1c51cff191964 # main 2026-10-06
         with:
           run: npx cdk deploy AppStack --require-approval never
           stacks: AppStack
