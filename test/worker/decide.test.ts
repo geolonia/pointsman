@@ -37,7 +37,8 @@ describe('POST /v1/decide/{profile}', () => {
       profile: 'issue-triage',
       profile_version: 1,
       model: 'mock',
-      action: 'review',
+      // Mock: team.p = 0.9, and the rule is team.p >= 0.85.
+      action: 'auto',
     });
     expect(d.answers.team).toMatchObject({ type: 'choice', value: 'backend', p: 0.9 });
     expect(d.answers.urgent).toEqual({ type: 'noul', value: false, p: 0.8, yes: 0.2 });
@@ -55,6 +56,7 @@ describe('POST /v1/decide/{profile}', () => {
     expect(res.status).toBe(200);
     const d = await json(res, contract.decision);
     expect(d.ref).toBeUndefined();
+    // Mock: stuck.yes = 0.2, below both rules.
     expect(d.action).toBe('continue');
   });
 

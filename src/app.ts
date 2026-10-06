@@ -5,6 +5,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { buildState } from './input';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
+import { compilePolicy } from './policy';
 import type { ProfileStore } from './profiles/store';
 import type { Decision } from './types';
 
@@ -106,12 +107,15 @@ export function createApp(deps: (env: Env) => Deps) {
       throw err;
     }
 
+    // Profiles are validated before they reach a store, so a PolicyError here
+    // means a store holds an unvalidated profile: a 500, like other config errors.
+    const { action } = compilePolicy(profile).decide(answers);
+
     const decision: Decision = {
       decision_id: crypto.randomUUID(),
       ...(body.ref !== undefined && { ref: body.ref }),
       answers,
-      // Policy rules are evaluated in #4; until then the default action applies.
-      action: profile.policy.default,
+      action,
       profile: profile.id,
       profile_version: profile.version,
       model,

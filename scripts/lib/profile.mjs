@@ -2,13 +2,15 @@
 //
 // Two layers, like geolonia/datamodels: the JSON Schema checks the shape, and
 // the rules below check what JSON Schema cannot express (unique names, the
-// file name matching the id).
+// file name matching the id, policy conditions).
 
 import { readFileSync } from 'node:fs';
 import { basename, extname, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { parse as parseYaml } from 'yaml';
+// The same condition parser the Worker uses (Node.js strips the types).
+import { policyErrors } from '../../src/policy.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const schemaPath = join(here, '..', '..', 'schema', 'profile-v1.schema.json');
@@ -70,6 +72,9 @@ export function validateProfile(profile, { fileName } = {}) {
       errors.push(`/questions/${i}/criteria: duplicate value "${d}"`);
     }
   });
+  for (const [i, message] of policyErrors(profile)) {
+    errors.push(`/policy/rules/${i}/when: ${message}`);
+  }
   if ((profile.fallback_models ?? []).includes(profile.model)) {
     errors.push(`/fallback_models: repeats the primary model "${profile.model}"`);
   }
