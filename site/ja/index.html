@@ -89,7 +89,7 @@
 <section class="band" id="features">
   <div class="wrap">
     <div class="section-head">
-      <h2>確かめられる判定</h2>
+      <h2><span class="phrase">確かめられる</span><span class="phrase">判定</span></h2>
       <p>多くのシステムは、どのチームに回すか、急ぎかどうか、待つか止めるか、といった小さな判断を一日中しています。Pointsman はそれを一か所で、毎回同じやり方で行い、あとで測れる記録を残します。</p>
     </div>
     <div class="grid3">
@@ -98,7 +98,7 @@
         <p>はい／いいえ、選択、スコアの質問です。どの答えにも確率が付くので、モデルがどれだけ確信しているかが分かります。</p>
       </div>
       <div class="card">
-        <h3>プロンプトではなくポリシー</h3>
+        <h3><span class="phrase">プロンプトではなく</span><span class="phrase">ポリシー</span></h3>
         <p><code>team.p &gt;= 0.85</code> のようなルールで、答えをアクションに変えます。ポリシーはただの設定で、読み込むときに検査され、コードとして実行されることはありません。</p>
       </div>
       <div class="card">
@@ -106,11 +106,11 @@
         <p>しきい値に届かなければ、アクションは <code>review</code> です。判定はレビュー待ちの一覧に入り、最終的な答えは署名付きでコールバック先に送られます。</p>
       </div>
       <div class="card">
-        <h3>バージョン付きのプロファイル</h3>
+        <h3><span class="phrase">バージョン付きの</span><span class="phrase">プロファイル</span></h3>
         <p>質問とポリシーは YAML のプロファイルに書き、JSON Schema で CI が検証します。判定ごとに、プロファイルのバージョンとモデルが記録されます。</p>
       </div>
       <div class="card">
-        <h3>フィードバックと正解率</h3>
+        <h3><span class="phrase">フィードバックと</span><span class="phrase">正解率</span></h3>
         <p>人が判定を訂正すると、その訂正が答えの横に記録されます。しきい値を上げる前に、プロファイルのバージョンごとの正解率を測れます。</p>
       </div>
       <div class="card">
@@ -153,7 +153,7 @@
   <div class="wrap split">
     <div>
       <div class="section-head" style="margin-bottom:0">
-        <h2>プロファイルは設定です</h2>
+        <h2><span class="phrase">プロファイルは</span><span class="phrase">設定です</span></h2>
         <p>プロファイルには、何を聞き、答えをどう使うかを書きます。しきい値はプロンプトではなく、プルリクエストで変えます。</p>
       </div>
       <ul class="points">
@@ -192,22 +192,22 @@
 <section class="band alt" id="clients">
   <div class="wrap">
     <div class="section-head">
-      <h2>どこからでも聞ける</h2>
+      <h2><span class="phrase">どこからでも</span><span class="phrase">聞ける</span></h2>
       <p>誰が聞いても、同じプロファイル、同じポリシー、同じ判定ログです。</p>
     </div>
     <div class="grid2">
       <div class="card">
         <h3>REST API</h3>
         <p>判定、判定の取得、フィードバック、レビュー待ちの処理ができます。OpenAPI で記述されています。クライアントごとに API トークンがあり、必要なプロファイルだけに限れます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml →</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml（英語）→</a>
       </div>
       <div class="card">
         <h3>エージェント向けの MCP</h3>
         <p>Pointsman をコネクタとして追加すると、エージェントは推測する代わりに <code>decide</code> を呼びます。機械は API トークンを、人は GitHub でログインして使い、判定を訂正することもできます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/docs/mcp.md">docs/mcp.md →</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/docs/mcp.md">docs/mcp.md（英語）→</a>
       </div>
       <div class="card">
-        <h3>GitHub の Issue 振り分け</h3>
+        <h3><span class="phrase">GitHub の</span> <span class="phrase">Issue 振り分け</span></h3>
         <p>GitHub Action が、判定に基づいて新しい Issue にラベルを付けます。使うのは指定したラベルだけです。確信がないときは、代わりに「要確認」のラベルを付けます。</p>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage →</a>
       </div>
@@ -248,9 +248,9 @@
         </li>
         <li>
           <div>
-            <h3>自分たちの環境にデプロイ</h3>
+            <h3><span class="phrase">自分たちの環境に</span><span class="phrase">デプロイ</span></h3>
             <p>設定リポジトリのテンプレートをコピーします。プロファイルも Cloudflare アカウントも自分たちのもので、非公開のままです。</p>
-            <a class="more" style="font:14px var(--mono);color:var(--muted)" href="https://github.com/geolonia/pointsman/blob/main/docs/deployment.md">docs/deployment.md →</a>
+            <a class="more" style="font:14px var(--mono);color:var(--muted)" href="https://github.com/geolonia/pointsman/blob/main/docs/deployment.md">docs/deployment.md（英語）→</a>
           </div>
         </li>
       </ol>
