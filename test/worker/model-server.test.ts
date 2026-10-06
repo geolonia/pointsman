@@ -75,6 +75,14 @@ describe('ModelServerAdapter', () => {
     expect(err.message).not.toContain(KEY);
   });
 
+  it('does not follow redirects', async () => {
+    const { adapter, calls } = server(() => new Response(null, { status: 307, headers: { location: 'http://elsewhere.example/v1/systemone' } }));
+    const err = await errorOf(adapter.decide(request));
+    expect(calls[0]!.init.redirect).toBe('manual');
+    expect(calls).toHaveLength(1);
+    expect(err.message).toBe('strands-decider-2B-hobson-v19: model server answered HTTP 307');
+  });
+
   it('uses the profile model id when the response names no model', async () => {
     const { adapter } = server(() => Response.json({ answers }));
     expect((await adapter.decide(request)).model).toBe('local-decider');
@@ -216,6 +224,38 @@ describe('model server settings', () => {
   ])('refuses %s', (_, settings, message) => {
     expect(() => depsFor({ ...base, ...settings } as never)).toThrow(ConfigError);
     expect(() => depsFor({ ...base, ...settings } as never)).toThrow(message);
+  });
+});
+
+describe('answers from the server in logs', () => {
+  it('keeps option names from the response out of the logged error', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const echo = 'Login page is blank';
+    const { adapter } = server(() => Response.json({
+      answers: {
+        ...answers,
+        team: { type: 'choice', choice: echo, probabilities: { [echo]: 0.9, frontend: 0.1 }, confidence: 0.9 },
+      },
+    }));
+    const profile: Profile = { ...triage, model: 'local-decider', fallback_models: [] };
+    const token = newToken();
+    const deps: Deps = {
+      callbacks: noCallbacks,
+      store: new MemoryProfileStore([profile]),
+      tokens: new MemoryTokenStore(new Map([[await hashToken(token), { client: 't', profiles: ['*'], created_at: '' }]])),
+      log: fakeLog(),
+      adapterFor: (m) => (adapter.serves(m) ? adapter : null),
+    };
+    const res = await createApp(() => deps).request('/v1/decide/issue-triage', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ state: { issue: { title: echo } } }),
+    }, env);
+    expect(res.status).toBe(502);
+    const messages = logged.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    expect(messages).toContain('question "team": unknown option in the answer');
+    expect(messages).not.toContain(echo);
+    logged.mockRestore();
   });
 });
 

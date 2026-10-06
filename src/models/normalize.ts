@@ -20,7 +20,9 @@ function isProbability(x: unknown): x is number {
 function top(probabilities: Record<string, number>): [string, number] {
   let best: [string, number] | undefined;
   for (const [k, v] of Object.entries(probabilities)) {
-    if (!isProbability(v)) throw new ModelError(`invalid probability for "${k}"`);
+    // Keys come from the model's response: they are not put into messages,
+    // which are logged, so a backend echoing its input cannot leak it there.
+    if (!isProbability(v)) throw new ModelError('invalid probability');
     if (!best || v > best[1]) best = [k, v];
   }
   if (!best) throw new ModelError('empty probabilities');
@@ -29,7 +31,7 @@ function top(probabilities: Record<string, number>): [string, number] {
 
 function checkKeys(name: string, probabilities: Record<string, number>, allowed: string[]): void {
   for (const k of Object.keys(probabilities)) {
-    if (!allowed.includes(k)) throw new ModelError(`question "${name}": unknown option "${k}"`);
+    if (!allowed.includes(k)) throw new ModelError(`question "${name}": unknown option in the answer`);
   }
 }
 

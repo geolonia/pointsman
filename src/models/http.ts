@@ -92,6 +92,9 @@ export class ModelServerAdapter implements ModelAdapter {
           ...(apiKey && { authorization: `Bearer ${apiKey}` }),
         },
         body: JSON.stringify({ ...request, model: name }),
+        // A redirect would resend the state to a URL that was never checked
+        // (possibly plain http); it is answered as an HTTP error instead.
+        redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
