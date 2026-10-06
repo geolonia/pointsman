@@ -10,10 +10,10 @@
 // the token does not show up in the process list or shell history.
 // --dry-run prints what would be written instead of calling wrangler.
 
-import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 // Same token format and hashing as the Worker (Node.js strips the types).
 import { hashToken, newToken, tokenKey } from '../src/auth.ts';
+import { wrangler as runWrangler } from './lib/wrangler.mjs';
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -56,9 +56,11 @@ function wrangler(args) {
     console.log(`[dry-run] wrangler ${full.join(' ')}`);
     return '';
   }
-  const r = spawnSync('npx', ['--no-install', 'wrangler', ...full], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
-  if (r.status !== 0) fail(`wrangler failed (exit ${r.status ?? r.signal})`);
-  return r.stdout;
+  try {
+    return runWrangler(full);
+  } catch (err) {
+    return fail(err.message);
+  }
 }
 
 switch (command) {

@@ -53,6 +53,10 @@ jobs:
       - name: Validate example profiles
         run: pnpm validate:profiles
 
+      # This repository is public: no account ids, resource ids or real profiles.
+      - name: Check for organization-specific data
+        run: pnpm check:public
+
       # Bundles the Worker and validates wrangler.jsonc without touching
       # Cloudflare.
       - name: Dry-run deploy

@@ -4,7 +4,7 @@
 // the rules below check what JSON Schema cannot express (unique names, the
 // file name matching the id, policy conditions).
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -96,4 +96,32 @@ export function validateProfileFile(path) {
     return [`(parse): ${err.message.split('\n')[0]}`];
   }
   return validateProfile(profile, { fileName: path });
+}
+
+/**
+ * Profiles in one folder must have distinct ids (foo.yaml and foo.json would
+ * both be published as foo). Takes [path, profile] pairs; returns messages.
+ */
+export function duplicateIdErrors(entries) {
+  const byId = new Map();
+  for (const [path, profile] of entries) {
+    if (!profile || typeof profile.id !== 'string') continue;
+    byId.set(profile.id, [...(byId.get(profile.id) ?? []), path]);
+  }
+  return [...byId].filter(([, paths]) => paths.length > 1)
+    .map(([id, paths]) => `duplicate profile id "${id}": ${paths.join(', ')}`);
+}
+
+/**
+ * Profile files in a file or folder (recursively), sorted. Throws if missing.
+ * Symbolic links inside a folder are skipped, so a link loop cannot make the
+ * walk endless and no file outside the folder is published by accident.
+ */
+export function collectProfileFiles(path) {
+  if (!statSync(path).isDirectory()) return [path];
+  return readdirSync(path, { withFileTypes: true })
+    .filter((entry) => !entry.isSymbolicLink())
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .filter((entry) => entry.isDirectory() || PROFILE_EXTENSIONS.includes(extname(entry.name)))
+    .flatMap((entry) => collectProfileFiles(join(path, entry.name)));
 }

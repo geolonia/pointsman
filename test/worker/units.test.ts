@@ -163,6 +163,18 @@ describe('KvProfileStore', () => {
     expect(await store.list()).toEqual(index);
   });
 
+  it('serves the newest readable version while a new one has not reached this location', async () => {
+    // The index already names version 2, but profile:issue-triage:2 is not
+    // readable yet (KV is eventually consistent). Storage is shared between
+    // the tests of this file, so remove version 2 from the test above.
+    await kv.delete('profile:issue-triage:2');
+    await kv.put('profile:issue-triage:1', JSON.stringify(triage));
+    await kv.put('index', JSON.stringify(await new MemoryProfileStore([triage, v2]).list()));
+    expect((await store.get('issue-triage'))?.version).toBe(1);
+    // An explicitly requested version is never replaced by another one.
+    expect(await store.get('issue-triage', 2)).toBeNull();
+  });
+
   it('is empty without an index', async () => {
     await kv.delete('index');
     expect(await store.list()).toEqual([]);
