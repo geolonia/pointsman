@@ -61,6 +61,24 @@ describe('conditions', () => {
   });
 });
 
+describe('probabilities', () => {
+  const q: Question[] = [{
+    name: 'kind', type: 'choice', instructions: 'Kind?',
+    criteria: [{ value: 'constructor' }, { value: 'toString' }, { value: 'other' }],
+  }];
+  const a: Record<string, Answer> = {
+    kind: { type: 'choice', value: 'other', p: 1, probabilities: { other: 1 } },
+  };
+  const decide = (when: string) =>
+    compilePolicy({ questions: q, policy: { rules: [{ when, action: 'hit' }], default: 'miss' } }).decide(a).action;
+
+  it('reads a missing option as 0, also for names of Object.prototype members', () => {
+    expect(decide('kind.probabilities.constructor == 0')).toBe('hit');
+    expect(decide('kind.probabilities.toString < 0.5')).toBe('hit');
+    expect(decide('kind.probabilities.other == 1')).toBe('hit');
+  });
+});
+
 describe('rules', () => {
   const p = profile([
     { when: 'stuck.yes >= 0.9', action: 'cancel' },

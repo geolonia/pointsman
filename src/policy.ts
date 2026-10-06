@@ -227,7 +227,10 @@ function valueOf(operand: Operand, answers: Record<string, Answer>): Value {
   const a = answers[operand.question];
   if (!a) throw new PolicyError(`no answer for "${operand.question}"`);
   if (operand.field === 'probabilities') {
-    return 'probabilities' in a ? (a.probabilities[operand.key!] ?? 0) : 0;
+    // hasOwn: an option named like an Object.prototype member ("constructor")
+    // that the model left out reads as 0, not as an inherited function.
+    if (!('probabilities' in a) || !Object.hasOwn(a.probabilities, operand.key!)) return 0;
+    return a.probabilities[operand.key!]!;
   }
   return (a as unknown as Record<string, Value>)[operand.field]!;
 }
