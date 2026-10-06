@@ -21,9 +21,11 @@ export const PROFILE_EXTENSIONS = ['.yaml', '.yml', '.json'];
 
 /** Parse a profile file. Throws on syntax errors and duplicate keys. */
 export function parseProfile(text, fileName) {
-  if (extname(fileName) === '.json') return JSON.parse(text);
   // uniqueKeys: a duplicate key would silently drop the first value.
-  return parseYaml(text, { uniqueKeys: true, prettyErrors: true });
+  // JSON.parse keeps only the last duplicate, so JSON is also parsed as YAML
+  // (JSON is valid YAML) to catch duplicates; JSON.parse enforces JSON syntax.
+  const data = parseYaml(text, { uniqueKeys: true, prettyErrors: true });
+  return extname(fileName) === '.json' ? JSON.parse(text) : data;
 }
 
 function schemaErrors() {

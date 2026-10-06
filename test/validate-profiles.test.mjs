@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,34 @@ for (const file of readdirSync(invalid)) {
     );
   });
 }
+
+// JSON fixtures cannot carry a "# expect:" comment, so these are written here.
+test('JSON profiles: valid file passes, duplicate keys and non-JSON syntax fail', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const profile = {
+    id: 'json-profile',
+    version: 1,
+    title: { en: 'Test', ja: 'テスト' },
+    description: { en: 'Test profile', ja: 'テスト用' },
+    model: 'clef-flash',
+    questions: [{ name: 'ok', type: 'noul', instructions: 'Is it ok?' }],
+    policy: { default: 'review' },
+  };
+  const file = join(dir, 'json-profile.json');
+  const valid = JSON.stringify(profile, null, 2);
+
+  writeFileSync(file, valid);
+  assert.deepEqual(validateProfileFile(file), []);
+
+  // A duplicate "default" must not let the last value win silently.
+  writeFileSync(file, valid.replace('"default": "review"', '"default": "review", "default": "auto"'));
+  assert.match(validateProfileFile(file).join('\n'), /\(parse\): Map keys must be unique/);
+
+  // YAML-only syntax (a comment) is not valid JSON.
+  writeFileSync(file, `# comment\n${valid}`);
+  assert.match(validateProfileFile(file).join('\n'), /\(parse\): Unexpected token/);
+});
 
 test('CLI exits 0 for the examples', () => {
   const r = spawnSync(process.execPath, [cli, examples], { encoding: 'utf8' });
