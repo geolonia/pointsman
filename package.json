@@ -17,7 +17,9 @@
     "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
     "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm deploy:dry-run",
     "deploy:dry-run": "pnpm build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local"
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "dev:live": "pnpm build && wrangler dev --env live",
+    "ai-gateway": "node scripts/ai-gateway.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.3.6",

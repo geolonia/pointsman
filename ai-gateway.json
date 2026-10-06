@@ -1,0 +1,13 @@
+{
+  "id": "pointsman",
+  "collect_logs": true,
+  "log_management": 100000,
+  "log_management_strategy": "DELETE_OLDEST",
+  "cache_ttl": 0,
+  "cache_invalidate_on_update": true,
+  "rate_limiting_interval": 60,
+  "rate_limiting_limit": 600,
+  "rate_limiting_technique": "sliding",
+  "authentication": true,
+  "workers_ai_billing_mode": "postpaid"
+}

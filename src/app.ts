@@ -116,22 +116,27 @@ export function createApp(deps: (env: Env) => Deps) {
       return error(400, 'invalid_request', 'no field of the profile input mapping was found in "state"');
     }
 
-    const adapter = adapterFor(profile.model);
-    if (!adapter) throw new ConfigError(`no adapter for model "${profile.model}"`);
+    // The profile's model first, then its fallback models in order. A model
+    // error (failed call, or an answer that does not fit the profile) moves
+    // on to the next model; the decision records the model that answered.
+    const models = [profile.model, ...(profile.fallback_models ?? [])];
+    const served = models.filter((m) => adapterFor(m) !== null);
+    if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
 
     let answers;
     let model;
-    try {
-      const response = await adapter.decide(toModelRequest(profile, state));
-      answers = normalizeAnswers(profile, response);
-      model = response.model;
-    } catch (err) {
-      if (err instanceof ModelError) {
-        console.error(`model error for profile ${profile.id}: ${err.message}`);
-        return error(502, 'model_error', 'the model did not return a usable answer');
+    for (const m of served) {
+      try {
+        const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m));
+        answers = normalizeAnswers(profile, response);
+        model = response.model;
+        break;
+      } catch (err) {
+        if (!(err instanceof ModelError)) throw err;
+        console.error(`model error for profile ${profile.id}, model ${m}: ${err.message}`);
       }
-      throw err;
     }
+    if (!answers || !model) return error(502, 'model_error', 'the model did not return a usable answer');
 
     // Profiles are validated before they reach a store, so a PolicyError here
     // means a store holds an unvalidated profile: a 500, like other config errors.

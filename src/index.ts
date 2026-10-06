@@ -4,7 +4,9 @@
 import { ConfigError, createApp, type Deps } from './app';
 import { KvTokenStore } from './auth';
 import { D1DecisionLog } from './log';
+import type { ModelAdapter } from './models/adapter';
 import { MockAdapter } from './models/mock';
+import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
 import { KvProfileStore, MemoryProfileStore, type ProfileStore } from './profiles/store';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
@@ -17,6 +19,8 @@ interface PointsmanEnv {
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
   DB?: D1Database | undefined;
+  AI?: AiRunner | undefined;
+  AI_GATEWAY_ID?: string | undefined;
 }
 
 let bundled: MemoryProfileStore | undefined;
@@ -35,6 +39,20 @@ function storeFor(env: PointsmanEnv): ProfileStore {
 
 const mock = new MockAdapter();
 
+function adaptersFor(env: PointsmanEnv): (model: string) => ModelAdapter | null {
+  switch (env.MODEL_MODE) {
+    case 'mock':
+      return () => mock;
+    case 'workers-ai': {
+      if (!env.AI) throw new ConfigError('MODEL_MODE is "workers-ai" but no AI binding');
+      const workersAi = new WorkersAiAdapter(env.AI, env.AI_GATEWAY_ID);
+      return (model) => (Object.hasOwn(WORKERS_AI_MODELS, model) ? workersAi : null);
+    }
+    default:
+      throw new ConfigError('MODEL_MODE must be "mock" or "workers-ai"');
+  }
+}
+
 export function depsFor(env: PointsmanEnv): Deps {
   if (!env.TOKENS) throw new ConfigError('no TOKENS binding');
   if (!env.DB) throw new ConfigError('no DB binding');
@@ -42,8 +60,7 @@ export function depsFor(env: PointsmanEnv): Deps {
     store: storeFor(env),
     tokens: new KvTokenStore(env.TOKENS),
     log: new D1DecisionLog(env.DB),
-    // Real adapters come with #3; outside mock mode no model is served yet.
-    adapterFor: () => (env.MODEL_MODE === 'mock' ? mock : null),
+    adapterFor: adaptersFor(env),
   };
 }
 
