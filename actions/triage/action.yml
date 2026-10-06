@@ -5,7 +5,7 @@ description: >-
   only a review label is added.
 inputs:
   url:
-    description: Base URL of the Pointsman Worker, e.g. https://pointsman.example.workers.dev
+    description: Base URL of the Pointsman Worker, e.g. https://pointsman.example.workers.dev (https; http only for localhost)
     required: true
   token:
     description: Pointsman API token (store it as a secret).

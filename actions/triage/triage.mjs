@@ -20,7 +20,12 @@ const LABEL = /^\S(?:.{0,48}\S)?$/;
 /** Events this action triages. */
 const ISSUE_ACTIONS = ['opened', 'reopened'];
 
-/** Base URL of the Worker: http(s), a host, no query or fragment. */
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * Base URL of the Worker. https only (the token is a bearer token), except
+ * http on loopback for local development; no query, fragment or credentials.
+ */
 export function parseBaseUrl(value) {
   let url;
   try {
@@ -28,7 +33,10 @@ export function parseBaseUrl(value) {
   } catch {
     throw new Error('input "url" is not a valid URL');
   }
-  if (!['https:', 'http:'].includes(url.protocol) || !url.hostname) throw new Error('input "url" must be an http(s) URL with a host');
+  const local = url.protocol === 'http:' && LOOPBACK.includes(url.hostname);
+  if ((url.protocol !== 'https:' && !local) || !url.hostname) {
+    throw new Error('input "url" must be an https URL (http only for localhost)');
+  }
   if (url.search || url.hash || url.username || url.password) {
     throw new Error('input "url" must not contain a query, fragment or credentials');
   }
