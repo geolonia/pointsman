@@ -1,11 +1,35 @@
-# pointsman
+# Pointsman
 
-A new Geolonia repository
+Pointsman sets the switches. Your systems ask a question, Pointsman decides
+which track it goes on, or calls a human when it is not sure.
 
-This repository was scaffolded by Geolonia Backstage.
+Pointsman is a model-agnostic decision service. A client sends a state to
+`POST /v1/decide/{profile}`. A decision model (for example Clef or Jev) answers
+the profile's typed questions with probabilities, and the profile's policy turns
+the answers into an action: `auto`, `review`, or a custom one.
 
-## Getting started
+Status: early proof of concept. See the [PoC milestone](https://github.com/geolonia/pointsman/milestone/1).
 
-- Update this README with setup instructions.
-- Implement your service code.
-- Keep `catalog-info.yaml` up to date.
+## Decision profiles
+
+A profile is versioned config: typed questions plus a policy. See
+[docs/profile-format.md](docs/profile-format.md) and the examples in
+[examples/profiles/](examples/profiles/).
+
+This repository holds only example profiles. Real profiles live in your own
+configuration repository.
+
+## Development
+
+Requires Node.js 24 and pnpm 12.
+
+```sh
+pnpm install
+pnpm test                 # validator tests
+pnpm validate:profiles    # validate the example profiles
+node scripts/validate-profiles.mjs path/to/profiles  # validate your own
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,11 @@
+# expect: duplicate question name "ok"
+id: duplicate-question
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+  - { name: ok, type: noul, instructions: Is it really ok? }
+policy:
+  default: review

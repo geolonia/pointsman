@@ -1,0 +1,12 @@
+# expect: /input/0/path: must match pattern
+id: bad-input-path
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+input:
+  - { name: title, path: issue.title }
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+policy:
+  default: review

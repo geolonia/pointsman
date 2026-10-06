@@ -1,0 +1,10 @@
+# expect: /version: must be >= 1
+id: bad-version
+version: 0
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+policy:
+  default: review

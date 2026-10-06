@@ -1,0 +1,8 @@
+# expect: (root): must have required property 'questions'
+id: missing-field
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+policy:
+  default: review

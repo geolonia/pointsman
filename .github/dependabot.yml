@@ -28,3 +28,16 @@ updates:
         update-types:
           - minor
           - patch
+
+  # "npm" also covers pnpm (it reads pnpm-lock.yaml).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 8
+    groups:
+      npm:
+        update-types:
+          - minor
+          - patch
