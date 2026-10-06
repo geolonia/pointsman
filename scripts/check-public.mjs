@@ -63,8 +63,11 @@ export function checkFile(path, text) {
   // Every account_id assignment is checked on its own: only a secret
   // reference or a <placeholder> is allowed as its value.
   for (const m of text.matchAll(/\baccount_id\b["']?\s*[:=]\s*([^\n]*)/g)) {
-    // The rest of the line, without a trailing comment, comma and quotes.
-    const value = m[1].replace(/\s+(#|\/\/).*$/, '').trim().replace(/,$/, '').trim().replace(/^["'](.*)["']$/, '$1');
+    // A quoted value is taken as written (a # or // inside the quotes is
+    // part of it); an unquoted one ends at a comment or a trailing comma.
+    const rest = m[1].trim();
+    const quoted = /^(["'])(.*?)\1/.exec(rest);
+    const value = quoted ? quoted[2] : rest.replace(/\s+(#|\/\/).*$/, '').replace(/,$/, '').trim();
     const allowed = /^\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}$/.test(value) || /^<[^>]+>$/.test(value);
     if (!allowed) {
       const line = text.slice(0, m.index).split('\n').length;

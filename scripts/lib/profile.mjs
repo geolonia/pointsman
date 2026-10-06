@@ -112,12 +112,16 @@ export function duplicateIdErrors(entries) {
     .map(([id, paths]) => `duplicate profile id "${id}": ${paths.join(', ')}`);
 }
 
-/** Profile files in a file or folder (recursively), sorted. Throws if missing. */
+/**
+ * Profile files in a file or folder (recursively), sorted. Throws if missing.
+ * Symbolic links inside a folder are skipped, so a link loop cannot make the
+ * walk endless and no file outside the folder is published by accident.
+ */
 export function collectProfileFiles(path) {
   if (!statSync(path).isDirectory()) return [path];
-  return readdirSync(path)
-    .sort()
-    .map((entry) => join(path, entry))
-    .filter((p) => statSync(p).isDirectory() || PROFILE_EXTENSIONS.includes(extname(p)))
-    .flatMap(collectProfileFiles);
+  return readdirSync(path, { withFileTypes: true })
+    .filter((entry) => !entry.isSymbolicLink())
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .filter((entry) => entry.isDirectory() || PROFILE_EXTENSIONS.includes(extname(entry.name)))
+    .flatMap((entry) => collectProfileFiles(join(path, entry.name)));
 }

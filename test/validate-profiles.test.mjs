@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,6 +90,17 @@ test('CLI rejects two files with the same profile id', (t) => {
   const r = spawnSync(process.execPath, [cli, dir], { encoding: 'utf8' });
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /duplicate profile id "issue-triage": .*issue-triage.json, .*issue-triage.yaml/);
+});
+
+test('CLI skips symbolic links inside a folder (no endless loop)', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  writeFileSync(join(dir, 'issue-triage.yaml'), readFileSync(join(examples, 'issue-triage.yaml'), 'utf8'));
+  symlinkSync(dir, join(dir, 'loop'), 'dir');
+  symlinkSync(join(examples, 'deploy-progress.yaml'), join(dir, 'deploy-progress.yaml'));
+  const r = spawnSync(process.execPath, [cli, dir], { encoding: 'utf8', timeout: 10000 });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /1 valid, 0 invalid/);
 });
 
 test('CLI exits 2 for a missing path', () => {
