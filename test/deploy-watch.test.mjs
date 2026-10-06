@@ -170,6 +170,8 @@ for (const [name, inputs, message] of [
   ['a stack name with shell syntax', { INPUT_STACKS: 'App;rm -rf /' }, /must be CloudFormation stack names/],
   ['a plain http url', { INPUT_URL: 'http://pointsman.example.com' }, /must be an https URL/],
   ['a url with a query', { INPUT_URL: 'https://example.com?x=1' }, /must not contain a query/],
+  ['a url with a bare ?', { INPUT_URL: 'https://example.com/?' }, /must not contain a query/],
+  ['a url with a bare #', { INPUT_URL: 'https://example.com/#' }, /must not contain a query/],
   ['a missing token', { INPUT_TOKEN: '' }, /input "token" is required/],
   ['a non-numeric interval', { 'INPUT_INTERVAL-SECONDS': 'soon' }, /must be a number/],
   ['zero consecutive', { INPUT_CONSECUTIVE: '0' }, /must be a number >= 1/],

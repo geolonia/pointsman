@@ -38,10 +38,11 @@ export function parseBaseUrl(value) {
   if ((url.protocol !== 'https:' && !local) || !url.hostname) {
     throw new Error('input "url" must be an https URL (http only for localhost)');
   }
-  if (url.search || url.hash || url.username || url.password) {
+  // Checked on the input too: a bare "?" or "#" leaves search and hash empty.
+  if (/[?#]/.test(value) || url.username || url.password) {
     throw new Error('input "url" must not contain a query, fragment or credentials');
   }
-  return url.href.replace(/\/+$/, '');
+  return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }
 
 function input(name, { required = false } = {}) {
