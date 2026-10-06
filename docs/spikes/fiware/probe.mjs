@@ -43,22 +43,30 @@ async function step(name, method, path, body) {
   const r = await call(method, path, body);
   await sleep(Number(process.env.WAIT_MS ?? 4000));
   results.push({ step: name, status: r.status, notifications: count - before, ...(r.status >= 300 && { error: r.text }) });
+  // Later steps build on this write, so a failed write ends the measurement.
+  if (r.status >= 300) throw new Error(`"${name}" failed with HTTP ${r.status}; later steps not measured`);
 }
+
+const subscriptionId = `urn:ngsi-ld:Subscription:probe-${run}`;
+let subscribed = false;
+let created = false;
 
 try {
   const sub = await call('POST', '/ngsi-ld/v1/subscriptions', {
-    id: `urn:ngsi-ld:Subscription:probe-${run}`,
+    id: subscriptionId,
     type: 'Subscription',
     entities: [{ type }],
     watchedAttributes: ['name'],
     notification: { endpoint: { uri: `http://${HOST_FROM_CONTAINER}:${PORT}/n/${label}`, accept: 'application/json' } },
   });
   if (sub.status !== 201) throw new Error(`subscription: ${sub.status} ${sub.text}`);
+  subscribed = true;
   await step('create entity (name, note)', 'POST', '/ngsi-ld/v1/entities', {
     id, type,
     name: { type: 'Property', value: 'first' },
     note: { type: 'Property', value: 'a' },
   });
+  created = true;
   const e = encodeURIComponent(id);
   await step('PATCH /attrs: unwatched note', 'PATCH', `/ngsi-ld/v1/entities/${e}/attrs`, { note: { type: 'Property', value: 'b' } });
   await step('PATCH /attrs/note: unwatched, single attribute', 'PATCH', `/ngsi-ld/v1/entities/${e}/attrs/note`, { type: 'Property', value: 'c' });
@@ -69,12 +77,17 @@ try {
   await step('PATCH /attrs/note: unwatched with sub-properties', 'PATCH', `/ngsi-ld/v1/entities/${e}/attrs/note`, {
     type: 'Property', value: 'e', model: { type: 'Property', value: 'm2' }, profile: { type: 'Property', value: 'p2' },
   });
-  await step('PATCH /attrs: unwatched note, same value again', 'PATCH', `/ngsi-ld/v1/entities/${e}/attrs`, { note: { type: 'Property', value: 'd' } });
+  // Exactly what the previous step wrote, so nothing changes.
+  await step('PATCH /attrs: unwatched note, same value again', 'PATCH', `/ngsi-ld/v1/entities/${e}/attrs`, {
+    note: { type: 'Property', value: 'e', model: { type: 'Property', value: 'm2' }, profile: { type: 'Property', value: 'p2' } },
+  });
   await step('PATCH /attrs: watched name (control)', 'PATCH', `/ngsi-ld/v1/entities/${e}/attrs`, { name: { type: 'Property', value: 'second' } });
-  await call('DELETE', `/ngsi-ld/v1/entities/${e}`);
-  await call('DELETE', `/ngsi-ld/v1/subscriptions/${encodeURIComponent(`urn:ngsi-ld:Subscription:probe-${run}`)}`);
 } catch (err) {
   results.push({ step: 'error', error: String(err.message ?? err) });
+} finally {
+  // Remove what was created, also after an error, so reruns start clean.
+  if (created) await call('DELETE', `/ngsi-ld/v1/entities/${encodeURIComponent(id)}`).catch(() => {});
+  if (subscribed) await call('DELETE', `/ngsi-ld/v1/subscriptions/${encodeURIComponent(subscriptionId)}`).catch(() => {});
 }
 server.close();
 console.log(JSON.stringify({ broker: label, results }, null, 2));
