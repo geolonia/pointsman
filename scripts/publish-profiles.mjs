@@ -9,10 +9,10 @@
 //
 // A published id + version never changes. The record of published versions is
 // the D1 table profile_versions (migrations/0002), not KV: D1 is strongly
-// consistent, KV listings are not. Each version is registered there (insert if
-// new) before anything is written to KV; if a version is already registered
-// with different content, nothing is written and the script fails ("increase
-// the version"). Old versions stay in KV, so feedback on old decisions can
+// consistent, KV listings are not. All versions are checked against it first;
+// if one is registered with different content, nothing is registered or
+// written and the script fails ("increase the version"). Then the new versions
+// are registered in one transaction, and only then written to KV. Old versions stay in KV, so feedback on old decisions can
 // still be checked against them. The index is written last; readers tolerate
 // a new index that arrives before the new profile (see KvProfileStore).
 
@@ -89,34 +89,38 @@ errors.push(...duplicateIdErrors(paths.map((p, i) => [p, profiles[i]])));
 if (errors.length > 0) fail(`Invalid profiles; nothing was published.\n${errors.join('\n')}`);
 if (profiles.length === 0) fail(`No profiles in ${values.dir}; nothing was published.`);
 
-// 2. Register the versions in D1 (write-once) and compare. Ids match
-// [a-z0-9-], versions are integers and hashes hex (validated above), so they
-// can be put into the SQL text directly.
+// 2. Check every version against the record in D1, then register the new
+// ones. Ids match [a-z0-9-], versions are integers and hashes hex (validated
+// above), so they can be put into the SQL text directly.
 const hash = (p) => createHash('sha256').update(canonicalJson(p)).digest('hex');
 const key = (p) => `profile:${p.id}:${p.version}`;
 const now = new Date().toISOString();
+const readRegistered = () => d1('SELECT profile_id, version, content_hash FROM profile_versions;');
+
 let registered;
 try {
-  const inserts = values['dry-run']
-    ? []
-    : profiles.map((p) => `INSERT OR IGNORE INTO profile_versions VALUES ('${p.id}', ${p.version}, '${hash(p)}', '${now}');`);
-  registered = d1([...inserts, 'SELECT profile_id, version, content_hash, published_at FROM profile_versions;'].join('\n'));
+  registered = readRegistered();
 } catch (err) {
   fail(err.message);
 }
-const byKey = new Map(registered.map((r) => [`${r.profile_id}:${r.version}`, r]));
-const conflicts = profiles.filter((p) => {
-  const r = byKey.get(`${p.id}:${p.version}`);
-  return r && r.content_hash !== hash(p);
-});
+let byKey = new Map(registered.map((r) => [`${r.profile_id}:${r.version}`, r]));
+const conflicts = profiles.filter((p) => byKey.has(`${p.id}:${p.version}`) && byKey.get(`${p.id}:${p.version}`).content_hash !== hash(p));
 if (conflicts.length > 0) {
   fail(`Already published with different content (increase "version"; nothing was published):\n  ${conflicts.map((p) => `${p.id} version ${p.version}`).join('\n  ')}`);
 }
-// New in this run: not registered before (dry run) or registered just now.
-const toWrite = profiles.filter((p) => {
-  const r = byKey.get(`${p.id}:${p.version}`);
-  return !r || r.published_at === now;
-});
+const toWrite = profiles.filter((p) => !byKey.has(`${p.id}:${p.version}`));
+
+// Register all new versions in one batch, which D1 runs as one transaction.
+// Plain INSERT (no OR IGNORE): if another deploy registered one of them in
+// the meantime, the whole batch fails and nothing is registered.
+if (toWrite.length > 0 && !values['dry-run']) {
+  try {
+    d1(toWrite.map((p) => `INSERT INTO profile_versions VALUES ('${p.id}', ${p.version}, '${hash(p)}', '${now}');`).join('\n'));
+    registered = readRegistered();
+  } catch (err) {
+    fail(`Registering the new versions failed; nothing was published (another deploy may have run at the same time):\n${err.message}`);
+  }
+}
 
 // 3. The index: all registered versions, latest title and description from
 // the repository.

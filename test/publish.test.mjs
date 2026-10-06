@@ -28,11 +28,14 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
     kv_namespaces: [{ binding: 'PROFILES', id: 'publish-test' }],
     d1_databases: [{ binding: 'DB', database_name: 'publish-test', database_id: 'publish-test', migrations_dir: join(root, 'migrations') }],
   }));
-  const migrate = spawnSync(wranglerBin, ['d1', 'migrations', 'apply', 'DB', '--local', '--config', config], { encoding: 'utf8' });
+  // Wrangler keeps local KV and D1 state in .wrangler/ of the working
+  // directory, so every call runs in the temporary folder.
+  const opts = { encoding: 'utf8', cwd: dir };
+  const migrate = spawnSync(wranglerBin, ['d1', 'migrations', 'apply', 'DB', '--local', '--config', config], opts);
   assert.equal(migrate.status, 0, migrate.stdout + migrate.stderr);
   const publish = (...extra) =>
-    spawnSync(process.execPath, [script, '--dir', profiles, '--config', config, '--local', ...extra], { encoding: 'utf8' });
-  const index = () => JSON.parse(spawnSync(wranglerBin, ['kv', 'key', 'get', 'index', '--binding', 'PROFILES', '--local', '--config', config, '--text'], { encoding: 'utf8' }).stdout);
+    spawnSync(process.execPath, [script, '--dir', profiles, '--config', config, '--local', ...extra], opts);
+  const index = () => JSON.parse(spawnSync(wranglerBin, ['kv', 'key', 'get', 'index', '--binding', 'PROFILES', '--local', '--config', config, '--text'], opts).stdout);
   const triage = join(profiles, 'issue-triage.yaml');
   const edit = (from, to) => writeFileSync(triage, readFileSync(triage, 'utf8').replace(from, to));
 
@@ -64,13 +67,23 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
 
   // KV is eventually consistent; at the extreme it shows nothing at all. The
   // record in D1 still refuses different content for a published version.
-  const kvWrangler = (...args) => spawnSync(wranglerBin, ['kv', 'key', ...args, '--binding', 'PROFILES', '--local', '--config', config], { encoding: 'utf8' });
+  const kvWrangler = (...args) => spawnSync(wranglerBin, ['kv', 'key', ...args, '--binding', 'PROFILES', '--local', '--config', config], opts);
   for (const k of ['index', 'profile:issue-triage:1', 'profile:issue-triage:2', 'profile:deploy-progress:1']) kvWrangler('delete', k);
   edit('team.p >= 0.8', 'team.p >= 0.7');
   r = publish();
   assert.equal(r.status, 1, r.stdout);
   assert.match(r.stderr, /Already published with different content[\s\S]*issue-triage version 2/);
   assert.equal(kvWrangler('get', 'index', '--text').stdout.trim(), 'Value not found', 'nothing was written');
+
+  // A run with a conflict and a new profile registers neither.
+  const extra = join(profiles, 'extra.yaml');
+  writeFileSync(extra, readFileSync(triage, 'utf8').replace('id: issue-triage', 'id: extra').replace(/^version: 2$/m, 'version: 1'));
+  edit('team.p >= 0.8', 'team.p >= 0.7');
+  r = publish();
+  assert.equal(r.status, 1, r.stdout);
+  const rows = JSON.parse(spawnSync(wranglerBin, ['d1', 'execute', 'DB', '--local', '--config', config, '--json', '--command', "SELECT count(*) AS n FROM profile_versions WHERE profile_id = 'extra'"], opts).stdout);
+  assert.equal(rows[0].results[0].n, 0, 'the new profile was not registered');
+  rmSync(extra);
 
   // A re-run with unchanged content rewrites the missing KV values.
   edit('team.p >= 0.7', 'team.p >= 0.8');

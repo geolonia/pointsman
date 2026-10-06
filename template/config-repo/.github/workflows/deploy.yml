@@ -23,6 +23,8 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # A manual run can be started on any branch; deploy only main.
+    if: github.ref == 'refs/heads/main'
     environment: production
     # The Cloudflare secrets are given only to the three steps that call
     # Cloudflare, not to installs or builds.
