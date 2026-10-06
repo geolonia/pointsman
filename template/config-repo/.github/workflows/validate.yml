@@ -24,6 +24,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The profile version check compares with the pull request's base.
+          fetch-depth: 0
 
       # engine.json pins the engine commit. The repository is fixed here, not
       # in engine.json: these steps run the engine's code (in deploy, with the
@@ -66,6 +68,15 @@ jobs:
 
       - name: Validate profiles
         run: node engine/scripts/validate-profiles.mjs profiles
+
+      # A changed profile needs a higher version: a published version never
+      # changes, and the deploy would stop after the merge. Make this job a
+      # required status check on main (see README).
+      - name: Check profile versions
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node engine/scripts/check-profile-versions.mjs --base "$BASE_SHA" profiles
 
       - name: Dry-run deploy
         env:

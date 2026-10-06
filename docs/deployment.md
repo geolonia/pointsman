@@ -82,7 +82,9 @@ A published version never changes: every version is first registered with a
 hash of its content in the D1 table `profile_versions`, which (unlike KV) is
 strongly consistent. If the content of a registered version differs, the
 deploy stops and nothing is written. Increase `version` for every
-change. Old versions stay in KV, so feedback on old decisions is checked
+change; the validation workflow checks this on pull requests
+(`scripts/check-profile-versions.mjs`), so a missing bump is caught before the
+merge. Old versions stay in KV, so feedback on old decisions is checked
 against the version that made them. Removing a profile from the repository
 removes it from the index (it can no longer be called), but keeps its versions.
 
