@@ -23,9 +23,8 @@ Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
 | `questions` | yes | 1 to 64 questions (see below). |
 | `policy` | yes | `rules` (checked in order, first match wins) and a `default` action. |
 
-Actions are `auto`, `review`, or a custom name such as `cancel`. The syntax of
-`when` conditions is defined in the policy issue (#4); for now it is only
-checked to be a non-empty string.
+Actions are `auto`, `review`, or a custom name such as `cancel`. See
+[Policy conditions](#policy-conditions).
 
 ### Lists, not maps
 
@@ -110,5 +109,40 @@ always the probability of `value`:
 | `score` | most likely level (0 = lowest) | its probability | `score` (weighted level), `probabilities` |
 
 Policy conditions use these fields, for example `team.p >= 0.85` or
-`stuck.yes >= 0.9`. Answers that do not fit the profile (missing question,
+`stuck.yes >= 0.9` (see below). Answers that do not fit the profile (missing question,
 unknown option, probability outside 0–1) are rejected with a `model_error`.
+
+## Policy conditions
+
+`policy.rules` are checked in order. The first rule whose `when` condition is
+true gives the action; when no rule matches, `policy.default` applies.
+
+```yaml
+policy:
+  rules:
+    - when: "stuck.yes >= 0.9 and phase.value != 'rolling_back'"
+      action: cancel
+    - when: "team.p >= 0.85 or team.probabilities.backend >= 0.95"
+      action: auto
+  default: review
+```
+
+A condition compares a question field with a value:
+
+| Field | Question types | Type |
+|---|---|---|
+| `<question>.value` | all | `noul`: true/false, `choice`: option, `score`: level |
+| `<question>.p` | all | number: probability of `value` |
+| `<question>.yes` | `noul` | number: P(yes) |
+| `<question>.score` | `score` | number: weighted level |
+| `<question>.probabilities.<option>` | `choice`, `score` (level index) | number |
+
+- Comparisons: `==`, `!=`, `>=`, `>`, `<=`, `<`. Only numbers can be ordered.
+- Combine with `and`, `or`, `not` and parentheses. `and` binds tighter than `or`.
+- Values: numbers (`0.85`), strings in single or double quotes (`'maps'`),
+  `true`, `false`.
+
+Conditions are checked when the profile is validated: a question name that
+does not exist, a field the question type does not have, an option that the
+question does not list, or a comparison of different types fails validation.
+The engine evaluates conditions with its own parser; nothing is run as code.

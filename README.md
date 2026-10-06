@@ -37,7 +37,7 @@ curl -s localhost:8787/v1/decide/issue-triage \
     "urgent": { "type": "noul", "value": false, "p": 0.8, "yes": 0.2 },
     "effort": { "type": "score", "value": 0, "p": 0.7, "score": 0.6, "probabilities": { "0": 0.7, "1": 0.1, "2": 0.1, "3": 0.1 } }
   },
-  "action": "review",
+  "action": "auto",
   "profile": "issue-triage",
   "profile_version": 1,
   "model": "mock"

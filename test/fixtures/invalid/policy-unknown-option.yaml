@@ -1,0 +1,17 @@
+# expect: /policy/rules/0/when: "c" is not an option of "team"
+id: policy-unknown-option
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+  - name: team
+    type: choice
+    instructions: Which team?
+    criteria: [{ value: a }, { value: b }]
+policy:
+  rules:
+    - when: "team.value == 'c'"
+      action: auto
+  default: review
