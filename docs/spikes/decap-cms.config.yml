@@ -1,11 +1,16 @@
 # Decap CMS config tried in the spike (docs/spikes/decap-cms.md, issue #12).
-# Goes in admin/config.yml of a config repository. local_backend: true lets
+# As tried: for local testing only. local_backend: true lets
 # `npx decap-server` edit the files on disk without logging in.
+#
+# For real use, in admin/config.yml of a config repository: remove
+# local_backend, and keep publish_mode: editorial_workflow, so every save is a
+# branch and pull request instead of a commit to main (see the findings).
 local_backend: true
 backend:
   name: github
   repo: your-org/your-config-repo
   branch: main
+publish_mode: editorial_workflow
 media_folder: media
 collections:
   - name: profiles

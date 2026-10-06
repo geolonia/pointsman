@@ -9,9 +9,10 @@ part of a profile as a form and writes YAML that our validator accepts. It does
 not replace the validator, and its GitHub login needs care so that editors do
 not hand out write access to all their repositories.
 
-Tried with Decap CMS 3.16.3 and `decap-server` 3.11.3 (local backend), on copies
-of the two example profiles. The config used is
-[decap-cms.config.yml](decap-cms.config.yml).
+Tried with Decap CMS 3.16.3 and `decap-server` 3.11.3 (local backend, saving
+straight to files), on copies of the two example profiles. The config used is
+[decap-cms.config.yml](decap-cms.config.yml); it notes what to change for real
+use.
 
 ## What works
 
@@ -77,9 +78,11 @@ validation workflow runs on it, a person merges, and the deploy publishes.
 
 Use Decap for people who should not edit YAML, on these terms:
 
-- `publish_mode: editorial_workflow`, and branch protection on `main` in the
-  config repository, so every change is a pull request that the validation
-  workflow checks.
+- `publish_mode: editorial_workflow` (without it, Decap's GitHub backend
+  commits straight to `main`), and branch protection on `main` in the config
+  repository that requires a pull request and makes the profile validation job
+  a required status check, so a pull request with an invalid profile cannot be
+  merged.
 - A pull-request check that a changed profile has a higher version.
 - A dedicated GitHub App for the editor login, installed only on the config
   repository; a small OAuth endpoint for Decap in a Worker.
