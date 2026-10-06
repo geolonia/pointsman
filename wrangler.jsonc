@@ -8,6 +8,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
+  // Retries review callbacks that are due (src/callbacks.ts).
+  "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     // "bundled": example profiles built into the Worker (development only).
     // "kv": profiles from the PROFILES KV namespace.

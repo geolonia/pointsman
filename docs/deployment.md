@@ -49,7 +49,16 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 6. **Push to `main`.** The deploy workflow applies the database migrations,
    publishes the profiles and deploys the engine.
 
-7. **Create API tokens** for your clients:
+7. **Set the callback secret** after the first deploy (once; only needed
+   when clients use `callback_url`, see [reviews.md](reviews.md)):
+
+   ```sh
+   openssl rand -hex 32 | npx wrangler secret put CALLBACK_SECRET --config wrangler.jsonc
+   ```
+
+   Give the same value to the clients that receive callbacks.
+
+8. **Create API tokens** for your clients:
 
    ```sh
    git clone https://github.com/geolonia/pointsman engine   # once, at the pinned commit

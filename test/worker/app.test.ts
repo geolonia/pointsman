@@ -2,6 +2,7 @@
 
 import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
+import { fakeLog, noCallbacks } from './helpers';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { depsFor } from '../../src/index';
@@ -21,10 +22,10 @@ const tokens = new MemoryTokenStore(new Map([
   [await hashToken(TOKEN), { client: 'test', profiles: ['*'], created_at: '2026-10-06T00:00:00Z' }],
 ]));
 const headers = { authorization: `Bearer ${TOKEN}` };
-const log: DecisionLog = { insert: async () => {}, get: async () => null, addFeedback: async () => {} };
+const log: DecisionLog = fakeLog();
 
 function appWith(adapter: ModelAdapter | null) {
-  const deps: Deps = { store, tokens, log, adapterFor: () => adapter };
+  const deps: Deps = { callbacks: noCallbacks, store, tokens, log, adapterFor: () => adapter };
   return createApp(() => deps);
 }
 
@@ -123,7 +124,7 @@ describe('configuration', () => {
   it('answers 500 when no model of the profile has an adapter', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const deps: Deps = { store, tokens, log, adapterFor: () => null };
+      const deps: Deps = { callbacks: noCallbacks, store, tokens, log, adapterFor: () => null };
       await expectError(await decide(createApp(() => deps)), 500, 'internal_error');
       expect(String(logged.mock.calls[0]?.[0])).toContain('no adapter for any model');
     } finally {

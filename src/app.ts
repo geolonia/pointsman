@@ -3,9 +3,10 @@
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord, type TokenStore } from './auth';
-import { parseFeedback } from './feedback';
+import { attempt, type Fetch } from './callbacks';
+import { parseFeedback, parseResolution } from './feedback';
 import { buildState } from './input';
-import { hashState, type DecisionLog } from './log';
+import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
 import { compilePolicy } from './policy';
@@ -16,6 +17,8 @@ export interface Deps {
   store: ProfileStore;
   tokens: TokenStore;
   log: DecisionLog;
+  /** Signing secret and fetch for review callbacks (see src/callbacks.ts). */
+  callbacks: { secret: string | undefined; fetch: Fetch };
   /** Adapter for a model id, or null when no adapter serves it. */
   adapterFor(model: string): ModelAdapter | null;
 }
@@ -208,6 +211,81 @@ export function createApp(deps: (env: Env) => Deps) {
     return c.body(null, 204);
   });
 
+  app.get('/v1/reviews', async (c) => {
+    const client = c.get('client');
+    const profile = c.req.query('profile');
+    let profiles = client.profiles;
+    if (profile !== undefined) {
+      if (!canUse(client, profile)) return error(403, 'forbidden', 'this token may not use this profile');
+      profiles = [profile];
+    }
+    const pending = await deps(c.env).log.pendingReviews(profiles, 100);
+    return c.json({
+      reviews: pending.map(({ callback_url: _, callback: __, ...visible }) => visible),
+    });
+  });
+
+  app.post('/v1/reviews/:id/resolve', async (c) => {
+    const d = deps(c.env);
+    const id = c.req.param('id');
+    const record = await findDecision(c, d.log, id);
+    if (!record) return error(404, 'decision_not_found', 'unknown decision');
+    if (record.review?.status !== 'pending') {
+      return error(409, 'not_pending', 'this decision has no pending review');
+    }
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return error(400, 'invalid_request', 'body must be valid JSON');
+    }
+    const profile = await d.store.get(record.profile, record.profile_version);
+    if (!profile) {
+      return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
+    }
+    const input = parseResolution(raw, profile);
+    if (typeof input === 'string') return error(400, 'invalid_request', input);
+
+    const finalAnswers: Record<string, FinalAnswer> = {};
+    for (const q of profile.questions) {
+      finalAnswers[q.name] = Object.hasOwn(input.correct, q.name)
+        ? { value: input.correct[q.name], source: 'human' }
+        : { value: record.answers[q.name]?.value, source: 'model' };
+    }
+    const now = new Date().toISOString();
+    const resolved = await d.log.resolve(id, {
+      resolved_at: now,
+      resolved_by: input.by,
+      client: c.get('client').client,
+      final_action: input.action,
+      final_answers: finalAnswers,
+      correct: input.correct,
+      ...(input.note !== undefined && { note: input.note }),
+    });
+    // Someone else resolved it between the check above and this update.
+    if (!resolved) return error(409, 'not_pending', 'this decision has no pending review');
+
+    // First delivery right away, after the response; retries are scheduled.
+    const updated = await d.log.get(id);
+    if (updated?.callback_url && updated.callback?.status === 'pending') {
+      const delivery = deliver(updated, d);
+      try {
+        c.executionCtx.waitUntil(delivery);
+      } catch {
+        await delivery; // no execution context (tests): deliver inline
+      }
+    }
+    return c.json({
+      decision_id: id,
+      action: input.action,
+      answers: finalAnswers,
+      resolved_by: input.by,
+      resolved_at: now,
+      callback: updated?.callback_url ? 'pending' : 'none',
+    });
+  });
+
   app.notFound(() => error(404, 'not_found', 'not found'));
 
   app.onError((err) => {
@@ -216,4 +294,18 @@ export function createApp(deps: (env: Env) => Deps) {
   });
 
   return app;
+}
+
+/** One callback attempt for a resolved decision; records the outcome. */
+export async function deliver(d: DecisionRecord, deps: Pick<Deps, 'log' | 'callbacks'>, now = new Date()): Promise<void> {
+  const state = await attempt(d, { ...deps.callbacks, now });
+  await deps.log.recordCallback(d.decision_id, state);
+  if (state.status !== 'delivered') console.error(`callback for ${d.decision_id}: ${state.last_error} (${state.status})`);
+}
+
+/** Retry every callback that is due (run by the scheduled handler). */
+export async function retryDueCallbacks(deps: Pick<Deps, 'log' | 'callbacks'>, now = new Date()): Promise<number> {
+  const due = await deps.log.dueCallbacks(now.toISOString(), 50);
+  for (const d of due) await deliver(d, deps, now);
+  return due.length;
 }

@@ -2,6 +2,7 @@
 
 import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
+import { fakeLog, noCallbacks } from './helpers';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { depsFor } from '../../src/index';
@@ -105,12 +106,12 @@ describe('recorded Clef-flash response', () => {
 
 describe('fallback models', () => {
   const token = newToken();
-  const log: DecisionLog = { insert: async () => {}, get: async () => null, addFeedback: async () => {} };
+  const log: DecisionLog = fakeLog();
   const withFallback = { ...triage, model: 'clef-flash', fallback_models: ['clef'] };
 
   async function decide(adapters: Record<string, ModelAdapter>, profile: Profile = withFallback) {
     const tokens = new MemoryTokenStore(new Map([[await hashToken(token), { client: 't', profiles: ['*'], created_at: '' }]]));
-    const deps: Deps = {
+    const deps: Deps = { callbacks: noCallbacks,
       store: new MemoryProfileStore([profile]),
       tokens,
       log,
