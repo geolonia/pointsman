@@ -1,10 +1,11 @@
 // Error paths with fake model adapters and stores.
 
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { depsFor } from '../../src/index';
+import type { DecisionLog } from '../../src/log';
 import { ModelError, type ModelAdapter, type ModelResponse } from '../../src/models/adapter';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
@@ -20,9 +21,10 @@ const tokens = new MemoryTokenStore(new Map([
   [await hashToken(TOKEN), { client: 'test', profiles: ['*'], created_at: '2026-10-06T00:00:00Z' }],
 ]));
 const headers = { authorization: `Bearer ${TOKEN}` };
+const log: DecisionLog = { insert: async () => {}, get: async () => null, addFeedback: async () => {} };
 
 function appWith(adapter: ModelAdapter | null) {
-  const deps: Deps = { store, tokens, adapterFor: () => adapter };
+  const deps: Deps = { store, tokens, log, adapterFor: () => adapter };
   return createApp(() => deps);
 }
 
@@ -93,19 +95,36 @@ describe('model failures', () => {
 });
 
 describe('configuration', () => {
+  const DB = (env as unknown as { DB: D1Database }).DB;
+  const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB };
+
+  // All of these are 500s, so the logged error shows which check failed.
   it.each([
-    ['unknown PROFILE_SOURCE', { PROFILE_SOURCE: 'files', MODEL_MODE: 'mock', TOKENS: env.TOKENS }],
-    ['missing PROFILE_SOURCE', { MODEL_MODE: 'mock', TOKENS: env.TOKENS }],
-    ['kv without a PROFILES binding', { PROFILE_SOURCE: 'kv', MODEL_MODE: 'mock', TOKENS: env.TOKENS }],
-    ['a missing TOKENS binding', { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock' }],
-  ])('answers 500 for %s', async (_, vars) => {
-    const app = createApp(() => depsFor(vars));
-    const res = await app.request('/v1/profiles', { headers }, env);
-    await expectError(res, 500, 'internal_error');
+    ['unknown PROFILE_SOURCE', { ...base, PROFILE_SOURCE: 'files' }, 'PROFILE_SOURCE must be'],
+    ['missing PROFILE_SOURCE', { ...base, PROFILE_SOURCE: undefined }, 'PROFILE_SOURCE must be'],
+    ['kv without a PROFILES binding', { ...base, PROFILE_SOURCE: 'kv' }, 'no PROFILES binding'],
+    ['a missing TOKENS binding', { ...base, TOKENS: undefined }, 'no TOKENS binding'],
+    ['a missing DB binding', { ...base, DB: undefined }, 'no DB binding'],
+  ])('answers 500 for %s', async (_, vars, cause) => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const app = createApp(() => depsFor(vars));
+      const res = await app.request('/v1/profiles', { headers }, env);
+      await expectError(res, 500, 'internal_error');
+      expect(String(logged.mock.calls[0]?.[0])).toContain(cause);
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it('serves no model outside mock mode', async () => {
-    const app = createApp(() => ({ ...depsFor({ PROFILE_SOURCE: 'bundled', TOKENS: env.TOKENS }), tokens }));
-    await expectError(await decide(app), 500, 'internal_error');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const app = createApp(() => ({ ...depsFor({ ...base, MODEL_MODE: undefined }), tokens, log }));
+      await expectError(await decide(app), 500, 'internal_error');
+      expect(String(logged.mock.calls[0]?.[0])).toContain('no adapter for model');
+    } finally {
+      logged.mockRestore();
+    }
   });
 });

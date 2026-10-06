@@ -18,5 +18,15 @@
   // API tokens (see scripts/tokens.mjs). The id is a placeholder: in local
   // development (wrangler dev) KV is simulated, and real deployments set
   // their own namespace in the config repository.
-  "kv_namespaces": [{ "binding": "TOKENS", "id": "local-dev-only" }]
+  "kv_namespaces": [{ "binding": "TOKENS", "id": "local-dev-only" }],
+  // Decision log. Placeholder id, as above. Apply migrations/ with
+  // `pnpm db:migrate:local` before `pnpm dev`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pointsman",
+      "database_id": "local-dev-only",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
