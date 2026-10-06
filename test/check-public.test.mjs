@@ -14,6 +14,7 @@ for (const [name, path, text, expected] of [
   [`${ACCOUNT} in a config`, 'config.toml', `${ACCOUNT} = "abc"`, /sets account_id/],
   [`${ACCOUNT} next to an allowed secret reference`, 'deploy.yml', `token: \${{ secrets.TOKEN }}\n${ACCOUNT}: "abc"`, /deploy.yml:2: sets account_id/],
   [`${ACCOUNT} in JSON`, 'wrangler.json', `{ "${ACCOUNT}": "abc" }`, /sets account_id/],
+  [`a real ${ACCOUNT} with a comment`, 'config.yml', `${ACCOUNT}: abc # the real one`, /sets account_id/],
   ['a real KV id in wrangler.jsonc', 'wrangler.jsonc', wrangler('my-namespace'), /kv_namespaces\[0\]\.id is "my-namespace"/],
   ['a D1 uuid', 'wrangler.jsonc', '{ "d1_databases": [{ "binding": "DB", "database_id": "6f0a3c1e-1111-4222-8333-444455556666" }] }', /database_id is "6f0a3c1e/],
   ['a wrangler.toml', 'wrangler.toml', 'name = "x"', /use wrangler.jsonc/],
@@ -38,6 +39,8 @@ for (const [name, path, text] of [
   ['template profiles', 'template/config-repo/profiles/x.yaml', profile],
   ['a workflow using the account secret', '.github/workflows/d.yml', `${ACCOUNT}: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}`],
   [`an ${ACCOUNT} placeholder`, 'docs/x.jsonc', `"${ACCOUNT}": "<account id>"`],
+  [`an ${ACCOUNT} placeholder with a JSONC comment`, 'docs/x.jsonc', `"${ACCOUNT}": "<account id>", // from the dashboard`],
+  [`an ${ACCOUNT} secret with a YAML comment`, '.github/workflows/d.yml', `${ACCOUNT}: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }} # set in production`],
 ]) {
   test(`accepts ${name}`, () => {
     assert.deepEqual(checkFile(path, text), []);

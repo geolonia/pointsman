@@ -4,7 +4,7 @@
 // the rules below check what JSON Schema cannot express (unique names, the
 // file name matching the id, policy conditions).
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -110,4 +110,14 @@ export function duplicateIdErrors(entries) {
   }
   return [...byId].filter(([, paths]) => paths.length > 1)
     .map(([id, paths]) => `duplicate profile id "${id}": ${paths.join(', ')}`);
+}
+
+/** Profile files in a file or folder (recursively), sorted. Throws if missing. */
+export function collectProfileFiles(path) {
+  if (!statSync(path).isDirectory()) return [path];
+  return readdirSync(path)
+    .sort()
+    .map((entry) => join(path, entry))
+    .filter((p) => statSync(p).isDirectory() || PROFILE_EXTENSIONS.includes(extname(p)))
+    .flatMap(collectProfileFiles);
 }

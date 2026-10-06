@@ -16,13 +16,13 @@
 // still be checked against them. The index is written last; readers tolerate
 // a new index that arrives before the new profile (see KvProfileStore).
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { extname, join } from 'node:path';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../src/log.ts';
-import { duplicateIdErrors, PROFILE_EXTENSIONS, parseProfile, validateProfile } from './lib/profile.mjs';
+import { collectProfileFiles, duplicateIdErrors, parseProfile, validateProfile } from './lib/profile.mjs';
 import { wrangler } from './lib/wrangler.mjs';
 
 function fail(message, code = 1) {
@@ -64,15 +64,13 @@ function d1(sql) {
 const profiles = [];
 const paths = [];
 const errors = [];
-let entries;
+let files;
 try {
-  entries = readdirSync(values.dir).sort();
+  files = collectProfileFiles(values.dir);
 } catch (err) {
   fail(err.message, 2);
 }
-for (const entry of entries) {
-  if (!PROFILE_EXTENSIONS.includes(extname(entry))) continue;
-  const path = join(values.dir, entry);
+for (const path of files) {
   try {
     const profile = parseProfile(readFileSync(path, 'utf8'), path);
     const problems = validateProfile(profile, { fileName: path });

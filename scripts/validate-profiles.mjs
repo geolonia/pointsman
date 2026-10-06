@@ -4,19 +4,8 @@
 // Usage: node scripts/validate-profiles.mjs <file-or-directory>...
 // Exits 1 when any profile is invalid, or when no profile is found.
 
-import { readdirSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { duplicateIdErrors, parseProfile, PROFILE_EXTENSIONS, validateProfileFile } from './lib/profile.mjs';
-
-function collect(path) {
-  if (!statSync(path).isDirectory()) return [path];
-  return readdirSync(path)
-    .sort()
-    .map((entry) => join(path, entry))
-    .filter((p) => statSync(p).isDirectory() || PROFILE_EXTENSIONS.includes(extname(p)))
-    .flatMap(collect);
-}
+import { collectProfileFiles, duplicateIdErrors, parseProfile, validateProfileFile } from './lib/profile.mjs';
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -26,7 +15,7 @@ if (args.length === 0) {
 
 let files;
 try {
-  files = args.flatMap(collect);
+  files = args.flatMap(collectProfileFiles);
 } catch (err) {
   console.error(err.message);
   process.exit(2);

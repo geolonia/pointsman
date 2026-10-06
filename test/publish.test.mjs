@@ -107,6 +107,26 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
   assert.match(kvWrangler('get', 'profile:issue-triage:2', '--text').stdout, /"version":2/);
 });
 
+test('publish-profiles publishes profiles in subfolders, like the validator checks them', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-publish-nested-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const profiles = join(dir, 'profiles');
+  mkdirSync(join(profiles, 'ops'), { recursive: true });
+  cpSync(join(root, 'examples', 'profiles', 'issue-triage.yaml'), join(profiles, 'issue-triage.yaml'));
+  cpSync(join(root, 'examples', 'profiles', 'deploy-progress.yaml'), join(profiles, 'ops', 'deploy-progress.yaml'));
+  const config = join(dir, 'wrangler.jsonc');
+  writeFileSync(config, JSON.stringify({
+    name: 'publish-nested', main: join(root, 'src', 'index.ts'), compatibility_date: '2026-10-01',
+    kv_namespaces: [{ binding: 'PROFILES', id: 'publish-nested' }],
+    d1_databases: [{ binding: 'DB', database_name: 'publish-nested', database_id: 'publish-nested', migrations_dir: join(root, 'migrations') }],
+  }));
+  const opts = { encoding: 'utf8', cwd: dir };
+  assert.equal(spawnSync(wranglerBin, ['d1', 'migrations', 'apply', 'DB', '--local', '--config', config], opts).status, 0);
+  const r = spawnSync(process.execPath, [script, '--dir', profiles, '--config', config, '--local'], opts);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Index: deploy-progress@1, issue-triage@1/);
+});
+
 for (let [name, args, message] of [
   ['no --dir', ['--local'], /Usage/],
   ['no target', ['--dir', 'examples/profiles'], /exactly one of --local or --remote/],
