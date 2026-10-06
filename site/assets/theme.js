@@ -5,8 +5,12 @@
 (function () {
   var root = document.documentElement;
   var light = window.matchMedia('(prefers-color-scheme: light)');
+  // The choice made on this page, for when storage is blocked.
+  var chosen = null;
+  var COLORS = { dark: '#141414', light: '#F5F2EC' };
 
   function stored() {
+    if (chosen) return chosen;
     try {
       var t = localStorage.getItem('theme');
       return t === 'light' || t === 'dark' ? t : null;
@@ -17,6 +21,10 @@
 
   function apply(theme) {
     root.dataset.theme = theme;
+    // The browser bar follows the page theme, not only the system setting.
+    document.querySelectorAll('meta[name="theme-color"]').forEach(function (meta) {
+      meta.setAttribute('content', COLORS[theme]);
+    });
     var button = document.querySelector('.theme-toggle');
     if (button) {
       // The label says what a click does.
@@ -34,10 +42,11 @@
     var button = e.target.closest && e.target.closest('.theme-toggle');
     if (!button) return;
     var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    chosen = next;
     try {
       localStorage.setItem('theme', next);
     } catch (err) {
-      // Private mode or blocked storage: switch for this page only.
+      // Private mode or blocked storage: the choice lasts for this page.
     }
     apply(next);
   });

@@ -28,6 +28,9 @@
   --primary-bg: var(--cream);
   --primary-fg: var(--ink);
   --primary-hover: #fff;
+  /* Small text that marks the decision taken. Green text has enough
+     contrast on dark; on light it is ink text with a green mark. */
+  --go-text: var(--green);
 }
 
 /* Light theme: on the cream background, with ink text. Used when the visitor
@@ -54,6 +57,7 @@
   --primary-bg: var(--ink);
   --primary-fg: var(--cream);
   --primary-hover: #000;
+  --go-text: var(--fg);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
@@ -77,6 +81,7 @@
     --primary-bg: var(--ink);
     --primary-fg: var(--cream);
     --primary-hover: #000;
+  --go-text: var(--fg);
   }
 }
 
@@ -141,7 +146,7 @@ header.nav nav a:hover { color: var(--fg); }
 .s { color: var(--code-str); }
 .n { color: var(--code-num); }
 .c { color: var(--code-comment); }
-.go-val { color: var(--green); font-weight: 600; }
+.go-val { color: var(--go-text); font-weight: 600; text-decoration: underline 2px var(--green); text-underline-offset: 3px; }
 
 /* Sections */
 section.band { padding: 88px 0; border-top: 1px solid var(--line); }
@@ -171,7 +176,7 @@ section.band.alt { background: var(--bg-alt); }
 .flow-wrap { padding: 0; margin: 0; }
 .outcomes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .outcomes code { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
-.outcomes code.auto { color: var(--green); border-color: rgba(46, 158, 107, 0.5); }
+.outcomes code.auto { color: var(--go-text); border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
 
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
 .points { margin: 24px 0 0; padding: 0; list-style: none; display: grid; gap: 16px; }
