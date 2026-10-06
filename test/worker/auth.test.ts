@@ -57,7 +57,7 @@ describe('tokens', () => {
     expect(await authenticate(header, new MemoryTokenStore())).toBeNull();
   });
 
-  it.each(['bearer', 'BEARER', 'BeArEr'])('accept the scheme written as %s', async (scheme) => {
+  it.each(['bearer', 'BEARER', 'BeArEr', 'Bearer  ', 'Bearer   '])('accept the scheme written as %j', async (scheme) => {
     const tokens = new MemoryTokenStore(new Map([
       [await hashToken(ALL), { client: 'c', profiles: ['*'], created_at: '' }],
     ]));

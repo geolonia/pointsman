@@ -75,8 +75,9 @@ export class MemoryTokenStore implements TokenStore {
  * is missing, malformed, or names an unknown token.
  */
 export async function authenticate(header: string | undefined, store: TokenStore): Promise<TokenRecord | null> {
-  // Auth scheme names are case-insensitive (RFC 7235), the token is not.
-  const match = /^Bearer (\S+)$/i.exec(header ?? '');
+  // RFC 7235: the scheme name is case-insensitive and is followed by one or
+  // more spaces. The token itself is case-sensitive.
+  const match = /^Bearer +(\S+)$/i.exec(header ?? '');
   // Checking the format first avoids a store lookup for obvious garbage.
   if (!match || !TOKEN_FORMAT.test(match[1]!)) return null;
   return store.get(await hashToken(match[1]!));
