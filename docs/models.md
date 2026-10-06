@@ -32,7 +32,13 @@ pnpm ai-gateway apply --dry-run
 pnpm ai-gateway apply
 ```
 
-It needs an API token with **AI Gateway: Read and Edit** in
+Settings: logs on (100,000, oldest deleted first), no caching (a cached
+answer would hide a model or profile change), rate limit 600 calls per minute,
+no gateway retries (the engine's fallback models handle failures), and
+authentication on (calls through the Worker binding are authenticated
+automatically; direct HTTP calls need a token).
+
+The script needs an API token with **AI Gateway: Read and Edit** in
 `CLOUDFLARE_API_TOKEN` (the token from `wrangler login` has no AI Gateway
 permission) and the account in `CLOUDFLARE_ACCOUNT_ID`, unless the wrangler
 login has exactly one account. You can also create the gateway in the
