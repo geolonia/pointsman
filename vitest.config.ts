@@ -9,7 +9,10 @@ export default defineConfig({
         // Only for the KvProfileStore tests.
         kvNamespaces: ['TEST_KV'],
         // Applied to the DB binding by test/worker/apply-migrations.ts.
-        bindings: { TEST_MIGRATIONS: await readD1Migrations('./migrations') },
+        bindings: {
+          TEST_MIGRATIONS: await readD1Migrations('./migrations'),
+          CALLBACK_SECRET: 'test-callback-secret',
+        },
       },
     })),
   ],

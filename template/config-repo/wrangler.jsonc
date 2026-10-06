@@ -7,6 +7,9 @@
   "main": "engine/src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
+  // Retries review callbacks that are due. Callbacks are signed with the
+  // Worker secret CALLBACK_SECRET: wrangler secret put CALLBACK_SECRET
+  "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "PROFILE_SOURCE": "kv",
     "MODEL_MODE": "workers-ai",

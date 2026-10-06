@@ -53,6 +53,10 @@ Decisions are logged with their profile version and model, and can be
 corrected: `GET /v1/decisions/{id}`, `POST /v1/decisions/{id}/feedback`. See
 [docs/decision-log.md](docs/decision-log.md).
 
+Decisions with action `review` wait for a person: `GET /v1/reviews`,
+`POST /v1/reviews/{id}/resolve`; the final answer is sent, signed, to the
+decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
+
 ## API tokens
 
 Every request needs `Authorization: Bearer <token>`. Each client gets its own

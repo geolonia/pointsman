@@ -1,7 +1,7 @@
 // Worker entry point: picks the profile store and model adapters from the
 // environment (see wrangler.jsonc) and serves the API.
 
-import { ConfigError, createApp, type Deps } from './app';
+import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth';
 import { D1DecisionLog } from './log';
 import type { ModelAdapter } from './models/adapter';
@@ -21,6 +21,8 @@ interface PointsmanEnv {
   DB?: D1Database | undefined;
   AI?: AiRunner | undefined;
   AI_GATEWAY_ID?: string | undefined;
+  /** Worker secret for signing review callbacks. */
+  CALLBACK_SECRET?: string | undefined;
 }
 
 let bundled: MemoryProfileStore | undefined;
@@ -61,7 +63,18 @@ export function depsFor(env: PointsmanEnv): Deps {
     tokens: new KvTokenStore(env.TOKENS),
     log: new D1DecisionLog(env.DB),
     adapterFor: adaptersFor(env),
+    callbacks: { secret: env.CALLBACK_SECRET || undefined, fetch: (url, init) => fetch(url, init) },
   };
 }
 
-export default createApp((env) => depsFor(env as PointsmanEnv));
+const app = createApp((env) => depsFor(env as PointsmanEnv));
+
+export default {
+  fetch: app.fetch,
+  // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are due.
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(retryDueCallbacks(depsFor(env as PointsmanEnv)).then((n) => {
+      if (n > 0) console.log(`retried ${n} callbacks`);
+    }));
+  },
+} satisfies ExportedHandler<Env>;

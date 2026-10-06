@@ -109,6 +109,74 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/Error' }
+  /v1/reviews:
+    get:
+      operationId: listReviews
+      summary: List decisions waiting for a human review
+      description: Decisions with action `review` that are not resolved yet, oldest first (at most 100), for the profiles this token may use.
+      parameters:
+        - name: profile
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Pending reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [reviews]
+                properties:
+                  reviews:
+                    type: array
+                    items:
+                      allOf: [{ $ref: '#/components/schemas/DecisionRecordBase' }]
+                      unevaluatedProperties: false
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The token may not use this profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+  /v1/reviews/{id}/resolve:
+    post:
+      operationId: resolveReview
+      summary: Resolve a pending review
+      description: |
+        Sets the final action and answers. Answers in `correct` replace the
+        model's (source `human`); the others are kept (source `model`).
+        `correct` is also stored as feedback. When the decision has a
+        `callback_url`, the final answer is sent there (see "Callbacks").
+      parameters:
+        - { $ref: '#/components/parameters/DecisionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveRequest' }
+            example: { action: auto, correct: { team: frontend }, by: reviewer@example.com }
+      responses:
+        '200':
+          description: Resolved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Resolution' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Unknown decision, or one whose profile this token may not use.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: The decision has no pending review (not a review, or already resolved), or its profile version is gone.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
   /v1/profiles:
     get:
       operationId: listProfiles
@@ -199,9 +267,19 @@ components:
           description: The model that answered.
           type: string
     DecisionRecord:
+      allOf:
+        - $ref: '#/components/schemas/DecisionRecordBase'
+        - type: object
+          required: [feedback]
+          properties:
+            feedback:
+              type: array
+              items: { $ref: '#/components/schemas/Feedback' }
+            callback: { $ref: '#/components/schemas/CallbackState' }
+      unevaluatedProperties: false
+    DecisionRecordBase:
       type: object
-      additionalProperties: false
-      required: [decision_id, created_at, client, profile, profile_version, model, action, rule, answers, state_hash, feedback]
+      required: [decision_id, created_at, client, profile, profile_version, model, action, rule, answers, state_hash]
       properties:
         decision_id: { type: string, format: uuid }
         created_at: { type: string, format: date-time }
@@ -220,9 +298,62 @@ components:
           additionalProperties: { $ref: '#/components/schemas/Answer' }
         state_hash: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the state sent to the model (keys sorted). }
         state: { description: 'The state sent to the model. Only when the profile sets log.store_state.' }
-        feedback:
-          type: array
-          items: { $ref: '#/components/schemas/Feedback' }
+        review: { $ref: '#/components/schemas/Review' }
+    Review:
+      description: Only for decisions with action `review`.
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [pending, resolved] }
+        resolved_at: { type: string, format: date-time }
+        resolved_by: { type: string }
+        final_action: { type: string }
+        final_answers: { $ref: '#/components/schemas/FinalAnswers' }
+    FinalAnswers:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [value, source]
+        properties:
+          value: {}
+          source: { type: string, enum: [model, human] }
+    CallbackState:
+      description: Delivery of the final answer to the decision's callback_url.
+      type: object
+      additionalProperties: false
+      required: [status, attempts]
+      properties:
+        status: { type: string, enum: [pending, delivered, failed] }
+        attempts: { type: integer, minimum: 0 }
+        last_error: { type: string }
+        next_at: { type: string, format: date-time }
+    ResolveRequest:
+      type: object
+      additionalProperties: false
+      required: [action, by]
+      properties:
+        action: { type: string, pattern: '^[a-z][a-z0-9_-]{0,62}$', description: 'The final action, e.g. auto; not review.' }
+        correct:
+          description: Corrected answers by question name (as in feedback). Empty or left out to keep the model's answers.
+          type: object
+        by: { type: string, minLength: 1, maxLength: 100 }
+        note: { type: string, maxLength: 1000 }
+    Resolution:
+      type: object
+      additionalProperties: false
+      required: [decision_id, action, answers, resolved_by, resolved_at, callback]
+      properties:
+        decision_id: { type: string, format: uuid }
+        action: { type: string }
+        answers: { $ref: '#/components/schemas/FinalAnswers' }
+        resolved_by: { type: string }
+        resolved_at: { type: string, format: date-time }
+        callback:
+          type: string
+          enum: [pending, none]
+          description: pending when the final answer will be sent to the callback_url.
     FeedbackRequest:
       type: object
       additionalProperties: false
@@ -317,5 +448,5 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_found, model_error, internal_error]
+              enum: [invalid_request, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_pending, not_found, model_error, internal_error]
             message: { type: string }

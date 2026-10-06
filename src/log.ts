@@ -20,6 +20,44 @@ export interface DecisionRecord {
   /** Only when the profile sets log.store_state. */
   state?: unknown;
   callback_url?: string;
+  /** Set for decisions with action "review". */
+  review?: Review;
+  /** Set when the decision has a callback_url and a callback was due. */
+  callback?: CallbackState;
+}
+
+export interface FinalAnswer {
+  value: unknown;
+  /** "human" when the reviewer changed or confirmed it explicitly. */
+  source: 'model' | 'human';
+}
+
+export interface Review {
+  status: 'pending' | 'resolved';
+  resolved_at?: string;
+  resolved_by?: string;
+  final_action?: string;
+  final_answers?: Record<string, FinalAnswer>;
+}
+
+export interface CallbackState {
+  status: 'pending' | 'delivered' | 'failed';
+  attempts: number;
+  last_error?: string;
+  next_at?: string;
+}
+
+export interface Resolution {
+  resolved_at: string;
+  resolved_by: string;
+  client: string;
+  final_action: string;
+  final_answers: Record<string, FinalAnswer>;
+  /** Stored as feedback when not empty. */
+  correct: Record<string, unknown>;
+  note?: string;
+  /** Set when the decision has a callback_url: the first attempt is due now. */
+  callback_next_at?: string;
 }
 
 export interface FeedbackRecord {
@@ -34,6 +72,20 @@ export interface DecisionLog {
   insert(record: DecisionRecord): Promise<void>;
   get(id: string): Promise<(DecisionRecord & { feedback: FeedbackRecord[] }) | null>;
   addFeedback(decisionId: string, feedback: FeedbackRecord): Promise<void>;
+  /** Pending reviews, oldest first, for the given profile ids ("*" = all). */
+  pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]>;
+  /** Resolve a pending review. False when it is not pending (any more). */
+  resolve(decisionId: string, resolution: Resolution): Promise<boolean>;
+  /** Decisions whose callback is pending and due at or before `now`. */
+  dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]>;
+  /**
+   * Claim a due callback before sending it: true only for one caller, and
+   * only while the callback is still pending, due at `now`, and at the
+   * attempt count the caller read. The claim holds it until `leaseUntil`.
+   */
+  claimCallback(decisionId: string, claim: { id: string; now: string; leaseUntil: string; attempts: number }): Promise<boolean>;
+  /** Record the result of an attempt; ignored unless `claimId` still holds the claim. */
+  recordCallback(decisionId: string, state: CallbackState, claimId: string): Promise<boolean>;
 }
 
 /** JSON with sorted object keys, so equal states hash equally. */
@@ -69,6 +121,50 @@ interface DecisionRow {
   state_hash: string;
   state: string | null;
   callback_url: string | null;
+  review_status: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  final_action: string | null;
+  final_answers: string | null;
+  callback_status: string | null;
+  callback_attempts: number;
+  callback_last_error: string | null;
+  callback_next_at: string | null;
+}
+
+function fromRow(row: DecisionRow): DecisionRecord {
+  return {
+    decision_id: row.id,
+    created_at: row.created_at,
+    client: row.client,
+    ...(row.ref !== null && { ref: row.ref }),
+    profile: row.profile_id,
+    profile_version: row.profile_version,
+    model: row.model,
+    action: row.action,
+    rule: row.rule,
+    answers: JSON.parse(row.answers) as Record<string, Answer>,
+    state_hash: row.state_hash,
+    ...(row.state !== null && { state: JSON.parse(row.state) as unknown }),
+    ...(row.callback_url !== null && { callback_url: row.callback_url }),
+    ...(row.review_status !== null && {
+      review: {
+        status: row.review_status as Review['status'],
+        ...(row.resolved_at !== null && { resolved_at: row.resolved_at }),
+        ...(row.resolved_by !== null && { resolved_by: row.resolved_by }),
+        ...(row.final_action !== null && { final_action: row.final_action }),
+        ...(row.final_answers !== null && { final_answers: JSON.parse(row.final_answers) as Record<string, FinalAnswer> }),
+      },
+    }),
+    ...(row.callback_status !== null && {
+      callback: {
+        status: row.callback_status as CallbackState['status'],
+        attempts: row.callback_attempts,
+        ...(row.callback_last_error !== null && { last_error: row.callback_last_error }),
+        ...(row.callback_next_at !== null && { next_at: row.callback_next_at }),
+      },
+    }),
+  };
 }
 
 interface FeedbackRow {
@@ -90,13 +186,14 @@ export class D1DecisionLog implements DecisionLog {
     await this.db
       .prepare(
         `INSERT INTO decisions (id, created_at, client, ref, profile_id, profile_version, model, action,
-           rule, answers, state_hash, state, callback_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           rule, answers, state_hash, state, callback_url, review_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         r.decision_id, r.created_at, r.client, r.ref ?? null, r.profile, r.profile_version, r.model,
         r.action, r.rule, JSON.stringify(r.answers), r.state_hash,
         r.state === undefined ? null : JSON.stringify(r.state), r.callback_url ?? null,
+        r.action === 'review' ? 'pending' : null,
       )
       .run();
   }
@@ -109,19 +206,7 @@ export class D1DecisionLog implements DecisionLog {
     const row = (decisions!.results as unknown as DecisionRow[])[0];
     if (!row) return null;
     return {
-      decision_id: row.id,
-      created_at: row.created_at,
-      client: row.client,
-      ...(row.ref !== null && { ref: row.ref }),
-      profile: row.profile_id,
-      profile_version: row.profile_version,
-      model: row.model,
-      action: row.action,
-      rule: row.rule,
-      answers: JSON.parse(row.answers) as Record<string, Answer>,
-      state_hash: row.state_hash,
-      ...(row.state !== null && { state: JSON.parse(row.state) as unknown }),
-      ...(row.callback_url !== null && { callback_url: row.callback_url }),
+      ...fromRow(row),
       feedback: (feedback!.results as unknown as FeedbackRow[]).map((f) => ({
         created_at: f.created_at,
         client: f.client,
@@ -137,5 +222,71 @@ export class D1DecisionLog implements DecisionLog {
       .prepare('INSERT INTO feedback (decision_id, created_at, client, by, correct, note) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(decisionId, f.created_at, f.client, f.by, JSON.stringify(f.correct), f.note ?? null)
       .run();
+  }
+
+  async pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]> {
+    const all = profiles.includes('*');
+    if (!all && profiles.length === 0) return [];
+    const where = all ? '' : ` AND profile_id IN (${profiles.map(() => '?').join(', ')})`;
+    const { results } = await this.db
+      .prepare(`SELECT * FROM decisions WHERE review_status = 'pending'${where} ORDER BY created_at, id LIMIT ?`)
+      .bind(...(all ? [] : profiles), limit)
+      .all<DecisionRow>();
+    return results.map(fromRow);
+  }
+
+  async resolve(decisionId: string, r: Resolution): Promise<boolean> {
+    // The UPDATE only matches a pending review, so two people resolving at
+    // the same time cannot both succeed; the feedback row is written in the
+    // same batch (one transaction) and only when the UPDATE matched.
+    const statements = [
+      this.db.prepare(
+        `UPDATE decisions SET review_status = 'resolved', resolved_at = ?, resolved_by = ?, resolved_client = ?,
+           final_action = ?, final_answers = ?,
+           callback_status = CASE WHEN callback_url IS NULL THEN NULL ELSE 'pending' END,
+           callback_next_at = CASE WHEN callback_url IS NULL THEN NULL ELSE ? END
+         WHERE id = ? AND review_status = 'pending'`,
+      ).bind(r.resolved_at, r.resolved_by, r.client, r.final_action, JSON.stringify(r.final_answers),
+        r.callback_next_at ?? r.resolved_at, decisionId),
+    ];
+    if (Object.keys(r.correct).length > 0) {
+      statements.push(this.db.prepare(
+        `INSERT INTO feedback (decision_id, created_at, client, by, correct, note)
+         SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
+      ).bind(decisionId, r.resolved_at, r.client, r.resolved_by, JSON.stringify(r.correct), r.note ?? null));
+    }
+    const [update] = await this.db.batch(statements);
+    return (update!.meta.changes ?? 0) === 1;
+  }
+
+  async dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]> {
+    const { results } = await this.db
+      .prepare(`SELECT * FROM decisions WHERE callback_status = 'pending' AND callback_next_at <= ? ORDER BY callback_next_at LIMIT ?`)
+      .bind(now, limit)
+      .all<DecisionRow>();
+    return results.map(fromRow);
+  }
+
+  async claimCallback(decisionId: string, c: { id: string; now: string; leaseUntil: string; attempts: number }): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE decisions SET callback_claim = ?, callback_next_at = ?
+         WHERE id = ? AND callback_status = 'pending' AND callback_next_at <= ? AND callback_attempts = ?`,
+      )
+      .bind(c.id, c.leaseUntil, decisionId, c.now, c.attempts)
+      .run();
+    return (result.meta.changes ?? 0) === 1;
+  }
+
+  async recordCallback(decisionId: string, c: CallbackState, claimId: string): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE decisions SET callback_status = ?, callback_attempts = ?, callback_last_error = ?, callback_next_at = ?,
+           callback_claim = NULL
+         WHERE id = ? AND callback_claim = ?`,
+      )
+      .bind(c.status, c.attempts, c.last_error ?? null, c.next_at ?? null, decisionId, claimId)
+      .run();
+    return (result.meta.changes ?? 0) === 1;
   }
 }

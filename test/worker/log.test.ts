@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { fakeLog, noCallbacks } from './helpers';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken, tokenKey } from '../../src/auth';
 import { canonicalJson, hashState, type DecisionLog } from '../../src/log';
@@ -113,15 +114,11 @@ describe('store_state', () => {
   const profiles = (bundled as Profile[]).map((p) => (p.id === 'deploy-progress' ? { ...p, log: { store_state: true } } : p));
   const tokens = new MemoryTokenStore();
   const stored: unknown[] = [];
-  const log: DecisionLog = {
-    insert: async (r) => void stored.push(r),
-    get: async () => null,
-    addFeedback: async () => {},
-  };
+  const log: DecisionLog = fakeLog({ insert: async (r) => void stored.push(r) });
 
   it('stores the full state when the profile asks for it', async () => {
     tokens.records.set(await hashToken(ALL), { client: 'all', profiles: ['*'], created_at: '' });
-    const deps: Deps = { store: new MemoryProfileStore(profiles), tokens, log, adapterFor: () => new MockAdapter() };
+    const deps: Deps = { callbacks: noCallbacks, store: new MemoryProfileStore(profiles), tokens, log, adapterFor: () => new MockAdapter() };
     const res = await createApp(() => deps).request('/v1/decide/deploy-progress', {
       method: 'POST',
       headers: { authorization: `Bearer ${ALL}` },
@@ -134,7 +131,7 @@ describe('store_state', () => {
   it('answers 500 and returns no decision when the log fails', async () => {
     tokens.records.set(await hashToken(ALL), { client: 'all', profiles: ['*'], created_at: '' });
     const failing: DecisionLog = { ...log, insert: async () => { throw new Error('D1 down'); } };
-    const deps: Deps = { store: new MemoryProfileStore(profiles), tokens, log: failing, adapterFor: () => new MockAdapter() };
+    const deps: Deps = { callbacks: noCallbacks, store: new MemoryProfileStore(profiles), tokens, log: failing, adapterFor: () => new MockAdapter() };
     const res = await createApp(() => deps).request('/v1/decide/deploy-progress', {
       method: 'POST',
       headers: { authorization: `Bearer ${ALL}` },

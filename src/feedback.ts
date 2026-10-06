@@ -12,12 +12,34 @@ export interface Feedback {
 const MAX_BY = 100;
 const MAX_NOTE = 1000;
 
+export interface ResolutionInput extends Feedback {
+  action: string;
+}
+
+const ACTION = /^[a-z][a-z0-9_-]{0,62}$/;
+
 /** Returns the feedback, or an error message. */
 export function parseFeedback(body: unknown, profile: Profile): Feedback | string {
+  return parse(body, profile, { resolution: false }) as Feedback | string;
+}
+
+/**
+ * A review resolution: the final `action`, who resolved it, and optionally
+ * corrected answers (`correct` may be empty: the model's answers are kept).
+ */
+export function parseResolution(body: unknown, profile: Profile): ResolutionInput | string {
+  return parse(body, profile, { resolution: true }) as ResolutionInput | string;
+}
+
+function parse(body: unknown, profile: Profile, { resolution }: { resolution: boolean }): Feedback | ResolutionInput | string {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return 'body must be a JSON object';
   const b = body as Record<string, unknown>;
+  const fields = resolution ? ['action', 'correct', 'by', 'note'] : ['correct', 'by', 'note'];
   for (const key of Object.keys(b)) {
-    if (!['correct', 'by', 'note'].includes(key)) return `unknown field "${key}"`;
+    if (!fields.includes(key)) return `unknown field "${key}"`;
+  }
+  if (resolution && (typeof b.action !== 'string' || !ACTION.test(b.action) || b.action === 'review')) {
+    return '"action" must be the final action, e.g. "auto" (lower case; not "review")';
   }
   if (typeof b.by !== 'string' || b.by.trim() === '' || b.by.length > MAX_BY) {
     return `"by" must be a string of 1 to ${MAX_BY} characters`;
@@ -25,9 +47,10 @@ export function parseFeedback(body: unknown, profile: Profile): Feedback | strin
   if (b.note !== undefined && (typeof b.note !== 'string' || b.note.length > MAX_NOTE)) {
     return `"note" must be a string of at most ${MAX_NOTE} characters`;
   }
-  const correct = b.correct;
-  if (correct === null || typeof correct !== 'object' || Array.isArray(correct) || Object.keys(correct).length === 0) {
-    return '"correct" must be an object with at least one question';
+  const correct = resolution && b.correct === undefined ? {} : b.correct;
+  if (correct === null || typeof correct !== 'object' || Array.isArray(correct)
+    || (!resolution && Object.keys(correct).length === 0)) {
+    return resolution ? '"correct" must be an object' : '"correct" must be an object with at least one question';
   }
   for (const [name, value] of Object.entries(correct)) {
     const q = profile.questions.find((x) => x.name === name);
@@ -49,6 +72,7 @@ export function parseFeedback(body: unknown, profile: Profile): Feedback | strin
     }
   }
   return {
+    ...(resolution && { action: b.action as string }),
     correct: correct as Feedback['correct'],
     by: b.by,
     ...(b.note !== undefined && { note: b.note as string }),
