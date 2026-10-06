@@ -24,7 +24,7 @@
   --code-key: #c8c3b9;
   --code-str: #d9c9a3;
   --code-num: #9fc3e0;
-  --code-comment: #77736c;
+  --code-comment: #8f8a82;
   --primary-bg: var(--cream);
   --primary-fg: var(--ink);
   --primary-hover: #fff;
@@ -53,7 +53,7 @@
   --code-key: #57524a;
   --code-str: #8a5a12;
   --code-num: #1f5f8b;
-  --code-comment: #8c877e;
+  --code-comment: #6b665e;
   --primary-bg: var(--ink);
   --primary-fg: var(--cream);
   --primary-hover: #000;
@@ -77,7 +77,7 @@
     --code-key: #57524a;
     --code-str: #8a5a12;
     --code-num: #1f5f8b;
-    --code-comment: #8c877e;
+    --code-comment: #6b665e;
     --primary-bg: var(--ink);
     --primary-fg: var(--cream);
     --primary-hover: #000;
