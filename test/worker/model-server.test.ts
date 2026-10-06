@@ -112,6 +112,23 @@ describe('ModelServerAdapter', () => {
     expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('reports a body that stalls after the headers as a timeout', async () => {
+    const { adapter } = server(
+      (_, init) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"answers":'));
+              init.signal!.addEventListener('abort', () => controller.error(init.signal!.reason));
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      { timeoutMs: 100 },
+    );
+    expect((await errorOf(adapter.decide(request))).message).toBe('strands-decider-2B-hobson-v19: no answer within 100 ms');
+  });
+
   it('refuses a model it does not serve', async () => {
     const { adapter, calls } = server(() => Response.json({ answers }));
     expect(adapter.serves('clef-flash')).toBe(false);

@@ -61,6 +61,8 @@ export function parseModelList(raw: string): Parsed<Record<string, string>> {
   return { ok: true, value: models };
 }
 
+const timedOut = (err: unknown) => err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+
 function isObject(x: unknown): x is Record<string, unknown> {
   return x !== null && typeof x === 'object' && !Array.isArray(x);
 }
@@ -93,9 +95,8 @@ export class ModelServerAdapter implements ModelAdapter {
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
-      const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
       // Only the reason: the error could repeat the request.
-      throw new ModelError(`${name}: ${timedOut ? `no answer within ${timeoutMs} ms` : 'model server not reachable'}`);
+      throw new ModelError(`${name}: ${timedOut(err) ? `no answer within ${timeoutMs} ms` : 'model server not reachable'}`);
     }
     if (!res.ok) {
       // The body is not included: it may echo the request.
@@ -104,8 +105,10 @@ export class ModelServerAdapter implements ModelAdapter {
     let raw: unknown;
     try {
       raw = await res.json();
-    } catch {
-      throw new ModelError(`${name}: model server answered with invalid JSON`);
+    } catch (err) {
+      // The timeout also covers reading the body: a server that stalls after
+      // the headers is a timeout, not invalid JSON.
+      throw new ModelError(`${name}: ${timedOut(err) ? `no answer within ${timeoutMs} ms` : 'model server answered with invalid JSON'}`);
     }
     // Answers are checked in detail by normalizeAnswers(); here only the shape.
     if (!isObject(raw) || !isObject(raw.answers)) throw new ModelError(`${name}: response has no answers`);
