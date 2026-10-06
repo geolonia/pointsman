@@ -92,11 +92,14 @@ describe('recorded Clef-flash response', () => {
     }, env);
     expect(res.status).toBe(200);
     const d = await res.json<any>();
-    expect(d.model).toBe(clefFlashResponse.model);
-    for (const [name, answer] of Object.entries(d.answers) as [string, any][]) {
-      expect(answer.type).toBe((clefFlashResponse.answers as any)[name].type);
-      expect(answer.p).toBeGreaterThanOrEqual(0.5);
-    }
+    expect(d.model).toBe('clef-flash');
+    expect(d.answers).toEqual({
+      team: { type: 'choice', value: 'frontend', p: 0.9633, probabilities: { backend: 0.0304, frontend: 0.9633, docs: 0.0063 } },
+      urgent: { type: 'noul', value: true, p: 0.8348, yes: 0.8348 },
+      effort: { type: 'score', value: 1, p: 0.524, score: 1.0223, probabilities: { '0': 0.2579, '1': 0.524, '2': 0.156, '3': 0.0621 } },
+    });
+    // team.p >= 0.85 is the first rule of issue-triage.
+    expect(d.action).toBe('auto');
   });
 });
 

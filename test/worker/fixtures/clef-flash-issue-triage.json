@@ -1,26 +1,41 @@
 {
-  "_source": "PLACEHOLDER shaped after the documented Clef-flash output schema (2026-10-06). Replace with a recorded response from the first real call (issue #3).",
+  "_source": "Recorded 2026-10-06 from @cf/cloudflare/clef-flash via AI Gateway for examples/profiles/issue-triage.yaml v1, state {title: \"Login page is blank\", body: \"Since this morning the login page shows only a white screen in Firefox and Chrome. The browser console shows a JavaScript error in main.js.\"}",
   "model": "clef-flash",
   "answers": {
     "team": {
       "type": "choice",
       "choice": "frontend",
-      "probabilities": { "backend": 0.12, "frontend": 0.85, "docs": 0.03 },
-      "confidence": 0.78
+      "probabilities": {
+        "backend": 0.0304,
+        "frontend": 0.9633,
+        "docs": 0.0063
+      },
+      "confidence": 0.8934
     },
-    "urgent": { "type": "noul", "noul": 0.71 },
+    "urgent": {
+      "type": "noul",
+      "noul": 0.8348
+    },
     "effort": {
       "type": "score",
-      "score": 0.9,
+      "score": 1.0223,
       "legend": {
         "0": "A small change, less than an hour",
         "1": "A few hours",
         "2": "A few days",
         "3": "Needs a plan; more than a week"
       },
-      "probabilities": { "0": 0.3, "1": 0.55, "2": 0.12, "3": 0.03 },
-      "confidence": 0.42
+      "probabilities": {
+        "0": 0.2579,
+        "1": 0.524,
+        "2": 0.156,
+        "3": 0.0621
+      },
+      "confidence": 0.1591
     }
   },
-  "usage": { "input_tokens": 412, "output_tokens": 9 }
+  "usage": {
+    "input_tokens": 397,
+    "output_tokens": 0
+  }
 }
