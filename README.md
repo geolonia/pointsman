@@ -48,6 +48,10 @@ curl -s localhost:8787/v1/decide/issue-triage \
 In every answer, `p` is the probability of `value`. For yes/no questions,
 `yes` is the probability of yes.
 
+Decisions are logged with their profile version and model, and can be
+corrected: `GET /v1/decisions/{id}`, `POST /v1/decisions/{id}/feedback`. See
+[docs/decision-log.md](docs/decision-log.md).
+
 ## API tokens
 
 Every request needs `Authorization: Bearer <token>`. Each client gets its own
@@ -70,6 +74,7 @@ Requires Node.js 24 and pnpm 12. The Worker runs on Cloudflare Workers.
 
 ```sh
 pnpm install
+pnpm db:migrate:local     # create the local decision log (D1)
 pnpm dev                  # local Worker on :8787, example profiles, mock model
 pnpm test                 # script tests and Worker tests (in workerd)
 pnpm check                # typecheck, tests, profile validation, dry-run deploy

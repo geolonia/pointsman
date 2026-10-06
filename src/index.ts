@@ -3,17 +3,20 @@
 
 import { ConfigError, createApp, type Deps } from './app';
 import { KvTokenStore } from './auth';
+import { D1DecisionLog } from './log';
 import { MockAdapter } from './models/mock';
 import { KvProfileStore, MemoryProfileStore, type ProfileStore } from './profiles/store';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
 import bundledProfiles from '../generated/profiles.json';
 
+// Every binding may be missing in a misconfigured deployment.
 interface PointsmanEnv {
-  PROFILE_SOURCE?: string;
-  MODEL_MODE?: string;
-  PROFILES?: KVNamespace;
-  TOKENS?: KVNamespace;
+  PROFILE_SOURCE?: string | undefined;
+  MODEL_MODE?: string | undefined;
+  PROFILES?: KVNamespace | undefined;
+  TOKENS?: KVNamespace | undefined;
+  DB?: D1Database | undefined;
 }
 
 let bundled: MemoryProfileStore | undefined;
@@ -34,9 +37,11 @@ const mock = new MockAdapter();
 
 export function depsFor(env: PointsmanEnv): Deps {
   if (!env.TOKENS) throw new ConfigError('no TOKENS binding');
+  if (!env.DB) throw new ConfigError('no DB binding');
   return {
     store: storeFor(env),
     tokens: new KvTokenStore(env.TOKENS),
+    log: new D1DecisionLog(env.DB),
     // Real adapters come with #3; outside mock mode no model is served yet.
     adapterFor: () => (env.MODEL_MODE === 'mock' ? mock : null),
   };

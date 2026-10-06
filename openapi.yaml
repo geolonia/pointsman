@@ -58,6 +58,57 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '502': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
+  /v1/decisions/{id}:
+    get:
+      operationId: getDecision
+      summary: Get a logged decision with its feedback
+      parameters:
+        - { $ref: '#/components/parameters/DecisionId' }
+      responses:
+        '200':
+          description: The decision as logged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Unknown decision, or one whose profile this token may not use.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+  /v1/decisions/{id}/feedback:
+    post:
+      operationId: submitFeedback
+      summary: Correct the answers of a decision
+      description: |
+        Corrections are checked against the profile version the decision used.
+        A decision can get feedback more than once; all of it is kept.
+      parameters:
+        - { $ref: '#/components/parameters/DecisionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FeedbackRequest' }
+            example:
+              correct: { team: frontend }
+              by: reviewer@example.com
+      responses:
+        '204': { description: Feedback stored }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Unknown decision, or one whose profile this token may not use.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: The profile version of the decision is no longer available.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
   /v1/profiles:
     get:
       operationId: listProfiles
@@ -78,6 +129,12 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/Error' }
 components:
+  parameters:
+    DecisionId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   securitySchemes:
     bearer:
       type: http
@@ -141,6 +198,57 @@ components:
         model:
           description: The model that answered.
           type: string
+    DecisionRecord:
+      type: object
+      additionalProperties: false
+      required: [decision_id, created_at, client, profile, profile_version, model, action, rule, answers, state_hash, feedback]
+      properties:
+        decision_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        client: { type: string, description: The client whose token made the decision. }
+        ref: { type: string }
+        profile: { type: string }
+        profile_version: { type: integer, minimum: 1 }
+        model: { type: string }
+        action: { type: string }
+        rule:
+          description: Index of the policy rule that matched; null when the default action applied.
+          type: [integer, 'null']
+          minimum: 0
+        answers:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/Answer' }
+        state_hash: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the state sent to the model (keys sorted). }
+        state: { description: 'The state sent to the model. Only when the profile sets log.store_state.' }
+        feedback:
+          type: array
+          items: { $ref: '#/components/schemas/Feedback' }
+    FeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [correct, by]
+      properties:
+        correct:
+          description: 'Corrected values by question name: true/false (noul), an option (choice), a level (score).'
+          type: object
+          minProperties: 1
+          additionalProperties:
+            oneOf:
+              - { type: boolean }
+              - { type: string }
+              - { type: integer, minimum: 0 }
+        by: { type: string, minLength: 1, maxLength: 100, description: Who made the correction. }
+        note: { type: string, maxLength: 1000 }
+    Feedback:
+      type: object
+      additionalProperties: false
+      required: [created_at, client, by, correct]
+      properties:
+        created_at: { type: string, format: date-time }
+        client: { type: string }
+        by: { type: string }
+        correct: { type: object }
+        note: { type: string }
     Answer:
       oneOf:
         - $ref: '#/components/schemas/NoulAnswer'
@@ -209,5 +317,5 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, unauthorized, forbidden, profile_not_found, not_found, model_error, internal_error]
+              enum: [invalid_request, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_found, model_error, internal_error]
             message: { type: string }

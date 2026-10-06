@@ -26,6 +26,7 @@ const ajv = new Ajv2020({
 const base = 'https://pointsman.invalid/openapi';
 const responses = {
   decision: { $ref: '#/components/schemas/Decision' },
+  decisionRecord: { $ref: '#/components/schemas/DecisionRecord' },
   error: { $ref: '#/components/schemas/Error' },
   profileList: api.paths['/v1/profiles'].get.responses['200'].content['application/json'].schema,
 };

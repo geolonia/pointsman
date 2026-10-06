@@ -38,6 +38,7 @@ export interface Profile {
   fallback_models?: string[];
   input?: { name: string; path: string }[];
   questions: Question[];
+  log?: { store_state?: boolean };
   policy: {
     rules?: { when: string; action: string }[];
     default: string;

@@ -3,7 +3,9 @@
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord, type TokenStore } from './auth';
+import { parseFeedback } from './feedback';
 import { buildState } from './input';
+import { hashState, type DecisionLog } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
 import { compilePolicy } from './policy';
@@ -13,6 +15,7 @@ import type { Decision } from './types';
 export interface Deps {
   store: ProfileStore;
   tokens: TokenStore;
+  log: DecisionLog;
   /** Adapter for a model id, or null when no adapter serves it. */
   adapterFor(model: string): ModelAdapter | null;
 }
@@ -22,6 +25,7 @@ export class ConfigError extends Error {
 }
 
 const MAX_REF_LENGTH = 200;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function error(status: ContentfulStatusCode, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status });
@@ -78,7 +82,7 @@ export function createApp(deps: (env: Env) => Deps) {
   });
 
   app.post('/v1/decide/:profile', async (c) => {
-    const { store, adapterFor } = deps(c.env);
+    const { store, adapterFor, log } = deps(c.env);
 
     // Checked before the profile lookup, so a token cannot probe which
     // profiles exist outside its scope.
@@ -131,7 +135,7 @@ export function createApp(deps: (env: Env) => Deps) {
 
     // Profiles are validated before they reach a store, so a PolicyError here
     // means a store holds an unvalidated profile: a 500, like other config errors.
-    const { action } = compilePolicy(profile).decide(answers);
+    const { action, rule } = compilePolicy(profile).decide(answers);
 
     const decision: Decision = {
       decision_id: crypto.randomUUID(),
@@ -142,7 +146,61 @@ export function createApp(deps: (env: Env) => Deps) {
       profile_version: profile.version,
       model,
     };
+    // Every decision is logged before it is returned. If the log fails, the
+    // client gets a 500 and must not act on an unlogged decision.
+    await log.insert({
+      ...decision,
+      created_at: new Date().toISOString(),
+      client: c.get('client').client,
+      rule,
+      state_hash: await hashState(state),
+      ...(profile.log?.store_state && { state }),
+      ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
+    });
     return c.json(decision);
+  });
+
+  // A decision is visible only to tokens that may use its profile; for others
+  // it does not exist (404), as for unknown ids.
+  async function findDecision(c: { get(key: 'client'): TokenRecord }, log: DecisionLog, id: string) {
+    if (!UUID.test(id)) return null;
+    const record = await log.get(id);
+    return record && canUse(c.get('client'), record.profile) ? record : null;
+  }
+
+  app.get('/v1/decisions/:id', async (c) => {
+    const record = await findDecision(c, deps(c.env).log, c.req.param('id'));
+    if (!record) return error(404, 'decision_not_found', 'unknown decision');
+    const { callback_url: _, ...visible } = record;
+    return c.json(visible);
+  });
+
+  app.post('/v1/decisions/:id/feedback', async (c) => {
+    const { store, log } = deps(c.env);
+    const id = c.req.param('id');
+    const record = await findDecision(c, log, id);
+    if (!record) return error(404, 'decision_not_found', 'unknown decision');
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return error(400, 'invalid_request', 'body must be valid JSON');
+    }
+    // Feedback is checked against the profile version the decision used.
+    const profile = await store.get(record.profile, record.profile_version);
+    if (!profile) {
+      return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
+    }
+    const feedback = parseFeedback(raw, profile);
+    if (typeof feedback === 'string') return error(400, 'invalid_request', feedback);
+
+    await log.addFeedback(id, {
+      ...feedback,
+      created_at: new Date().toISOString(),
+      client: c.get('client').client,
+    });
+    return c.body(null, 204);
   });
 
   app.notFound(() => error(404, 'not_found', 'not found'));

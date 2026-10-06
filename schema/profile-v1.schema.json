@@ -51,6 +51,17 @@
       "maxItems": 64,
       "items": { "$ref": "#/$defs/question" }
     },
+    "log": {
+      "description": "Decision log settings.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "store_state": {
+          "description": "Store the full state with each decision. Default false: only a SHA-256 hash of the state is stored, because the state can hold personal or confidential data.",
+          "type": "boolean"
+        }
+      }
+    },
     "policy": {
       "type": "object",
       "additionalProperties": false,
