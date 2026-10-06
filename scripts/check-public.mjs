@@ -71,6 +71,10 @@ export function checkFile(path, text) {
       problems.push(`${path}:${line}: sets account_id`);
     }
   }
+  // Only JSON configs are inspected below, so TOML configs are not allowed.
+  if (/^wrangler.*\.toml$/.test(basename(path))) {
+    problems.push(`${path}: use wrangler.jsonc; TOML configs are not checked for ids and routes`);
+  }
   if (/^wrangler.*\.jsonc?$/.test(basename(path))) {
     try {
       for (const [where, value] of wranglerIds(text)) {

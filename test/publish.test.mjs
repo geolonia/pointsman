@@ -85,6 +85,20 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
   assert.equal(rows[0].results[0].n, 0, 'the new profile was not registered');
   rmSync(extra);
 
+  // Going back to a lower version registers nothing either.
+  writeFileSync(extra, readFileSync(triage, 'utf8').replace('id: issue-triage', 'id: extra').replace(/^version: 2$/m, 'version: 1'));
+  // Version 1's own content (no conflict), so the version check is what stops it.
+  edit('team.p >= 0.7', 'team.p >= 0.85');
+  edit(/^version: 2$/m, 'version: 1');
+  r = publish();
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /issue-triage: the repository has version 1, but version 2 is already published/);
+  const rows2 = JSON.parse(spawnSync(wranglerBin, ['d1', 'execute', 'DB', '--local', '--config', config, '--json', '--command', "SELECT count(*) AS n FROM profile_versions WHERE profile_id = 'extra'"], opts).stdout);
+  assert.equal(rows2[0].results[0].n, 0, 'the new profile was not registered');
+  rmSync(extra);
+  edit(/^version: 1$/m, 'version: 2');
+  edit('team.p >= 0.85', 'team.p >= 0.7');
+
   // A re-run with unchanged content rewrites the missing KV values.
   edit('team.p >= 0.7', 'team.p >= 0.8');
   r = publish();

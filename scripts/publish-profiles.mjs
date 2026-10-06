@@ -108,6 +108,14 @@ const conflicts = profiles.filter((p) => byKey.has(`${p.id}:${p.version}`) && by
 if (conflicts.length > 0) {
   fail(`Already published with different content (increase "version"; nothing was published):\n  ${conflicts.map((p) => `${p.id} version ${p.version}`).join('\n  ')}`);
 }
+// Versions only go up; checked before anything is registered.
+for (const p of profiles) {
+  const published = registered.filter((r) => r.profile_id === p.id).map((r) => Number(r.version));
+  const latest = Math.max(0, ...published);
+  if (p.version < latest) {
+    fail(`${p.id}: the repository has version ${p.version}, but version ${latest} is already published; versions only go up. Nothing was published.`);
+  }
+}
 const toWrite = profiles.filter((p) => !byKey.has(`${p.id}:${p.version}`));
 
 // Register all new versions in one batch, which D1 runs as one transaction.
@@ -143,9 +151,6 @@ for (const [id, set] of [...versions].sort(([a], [b]) => a.localeCompare(b))) {
   // index, so it can no longer be called without a version.
   const p = latestFromRepo.get(id);
   if (!p) continue;
-  if (p.version !== latest) {
-    fail(`${id}: the repository has version ${p.version}, but version ${latest} is already published; versions only go up.`);
-  }
   index.push({ id, version: latest, versions: sorted, title: p.title, description: p.description });
 }
 

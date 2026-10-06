@@ -16,6 +16,7 @@ for (const [name, path, text, expected] of [
   [`${ACCOUNT} in JSON`, 'wrangler.json', `{ "${ACCOUNT}": "abc" }`, /sets account_id/],
   ['a real KV id in wrangler.jsonc', 'wrangler.jsonc', wrangler('my-namespace'), /kv_namespaces\[0\]\.id is "my-namespace"/],
   ['a D1 uuid', 'wrangler.jsonc', '{ "d1_databases": [{ "binding": "DB", "database_id": "6f0a3c1e-1111-4222-8333-444455556666" }] }', /database_id is "6f0a3c1e/],
+  ['a wrangler.toml', 'wrangler.toml', 'name = "x"', /use wrangler.jsonc/],
   ['routes', 'wrangler.jsonc', wrangler('local-dev-only', '\n  "routes": ["x.example.com/*"],'), /routes is set/],
   ['a profile outside the example folders', 'profiles/team.yaml', profile, /a decision profile outside/],
 ]) {
