@@ -151,27 +151,9 @@ last, which changes the watched attribute).
   the first time, when the attribute does not exist yet), which no tested
   broker turns into a notification. The input hash stays as the guard for
   brokers not tested here.
-- **Upstream:** no existing Orion-LD issue covers this (searched
-  FIWARE/context.Orion-LD for `watchedAttributes`). A report with the probe as
-  the reproduction is drafted below and not yet filed.
-
-<details>
-<summary>Draft report for FIWARE/context.Orion-LD</summary>
-
-**Subscription with watchedAttributes notifies on PATCH /entities/{id}/attrs of other attributes**
-
-Orion-LD 1.9.0, 1.12.0 and the build of 2026-09-25 (`post-v1.12.0`), with MongoDB 4.4.
-
-1. Create a subscription for type `T` with `"watchedAttributes": ["name"]`.
-2. Create an entity of type `T` with `name` and `note`.
-3. `PATCH /ngsi-ld/v1/entities/{id}/attrs` with `{"note": {"type": "Property", "value": "b"}}`.
-
-Expected (clause 5.8.6): no notification, `note` is not watched.
-Actual: one notification per request, also when the value does not change.
-
-`PATCH /ngsi-ld/v1/entities/{id}/attrs/note` and `POST /ngsi-ld/v1/entities/{id}/attrs` with the same change send no notification, and Scorpio 6.0.2, Stellio 2.38.0 and GeonicDB 0.20.0 send none for any of these requests. A client that writes back to the entity it was notified about (for example a decision written next to the input) loops.
-
-</details>
+- **Upstream:** not reported to Orion-LD (decided 2026-10-07): the bridge
+  avoids the problem by writing one attribute at a time. No existing Orion-LD
+  issue covers it; the probe and the table above reproduce it if needed.
 
 Pointsman's decision log has a state hash too (`state_hash`), but the bridge
 cannot use it without an extra call, so the hash on the entity is simpler.
