@@ -64,7 +64,7 @@ paths:
       summary: List the profiles this token may use, with their versions
       responses:
         '200':
-          description: All profiles
+          description: The profiles this token may use (all profiles for a token with scope *)
           content:
             application/json:
               schema:

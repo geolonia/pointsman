@@ -50,12 +50,27 @@ describe('tokens', () => {
     ['no header', undefined],
     ['an empty header', ''],
     ['another scheme', `Basic ${ALL}`],
-    ['lower-case scheme', `bearer ${ALL}`],
     ['a token without a scheme', ALL],
     ['extra text', `Bearer ${ALL} x`],
     ['a malformed token', 'Bearer pm_short'],
   ])('reject %s', async (_, header) => {
     expect(await authenticate(header, new MemoryTokenStore())).toBeNull();
+  });
+
+  it.each(['bearer', 'BEARER', 'BeArEr'])('accept the scheme written as %s', async (scheme) => {
+    const tokens = new MemoryTokenStore(new Map([
+      [await hashToken(ALL), { client: 'c', profiles: ['*'], created_at: '' }],
+    ]));
+    expect(await authenticate(`${scheme} ${ALL}`, tokens)).toMatchObject({ client: 'c' });
+  });
+
+  it('treat the token itself as case-sensitive', async () => {
+    const tokens = new MemoryTokenStore(new Map([
+      [await hashToken(ALL), { client: 'c', profiles: ['*'], created_at: '' }],
+    ]));
+    const changed = `pm_${ALL.slice(3).replace(/[a-z]/, (ch) => ch.toUpperCase())}`;
+    expect(changed).not.toBe(ALL);
+    expect(await authenticate(`Bearer ${changed}`, tokens)).toBeNull();
   });
 
   it('accept a known token and reject an unknown one', async () => {
