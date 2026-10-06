@@ -6,8 +6,8 @@ export default defineConfig({
     cloudflareTest(async () => ({
       wrangler: { configPath: './wrangler.jsonc' },
       miniflare: {
-        // Only for the KvProfileStore tests.
-        kvNamespaces: ['TEST_KV'],
+        // TEST_KV: KvProfileStore tests; TEST_OAUTH_KV: OAuth tests, which pass it as OAUTH_KV (test/worker/oauth.test.ts).
+        kvNamespaces: ['TEST_KV', 'TEST_OAUTH_KV'],
         // Applied to the DB binding by test/worker/apply-migrations.ts.
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations('./migrations'),
