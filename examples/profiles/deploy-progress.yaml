@@ -30,8 +30,8 @@ questions:
       - { value: waiting, description: "Waiting on an external resource, for example a certificate or DNS" }
 policy:
   rules:
-    - when: "stuck.p >= 0.9"
+    - when: "stuck.yes >= 0.9"
       action: cancel
-    - when: "stuck.p >= 0.6"
+    - when: "stuck.yes >= 0.6"
       action: review
   default: continue

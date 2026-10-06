@@ -1,7 +1,8 @@
 name: CI
 
-# Runs the validator tests and validates the example profiles on every pull
-# request and on main.
+# Typechecks, tests and validates on every pull request and on main, and
+# dry-runs the Worker deploy. It does NOT deploy: deployments come from a
+# private config repository with its own wrangler config (see issue #10).
 #
 # No `paths` filter on purpose: this check is meant to be required on main, and
 # a filtered workflow never reports on PRs it skips, which blocks them forever.
@@ -18,7 +19,9 @@ jobs:
   check:
     name: Test and validate profiles
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      WRANGLER_SEND_METRICS: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,9 +41,19 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # Each invalid fixture must fail for the reason it names.
+      # Generates the runtime types with `wrangler types`, then runs tsc.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Script tests (each invalid fixture must fail for the reason it names)
+      # and Worker tests in workerd (responses checked against openapi.yaml).
       - name: Test
         run: pnpm test
 
       - name: Validate example profiles
         run: pnpm validate:profiles
+
+      # Bundles the Worker and validates wrangler.jsonc without touching
+      # Cloudflare.
+      - name: Dry-run deploy
+        run: pnpm deploy:dry-run

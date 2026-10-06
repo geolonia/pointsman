@@ -41,3 +41,8 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # @cloudflare/vitest-plugin supports only vitest 4 (peer ^4.1.0). Remove
+      # this when the plugin supports the next major.
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]

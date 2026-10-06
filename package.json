@@ -8,13 +8,26 @@
     "node": ">=24"
   },
   "scripts": {
+    "build": "node scripts/build-profiles.mjs && node scripts/build-openapi-validators.mjs",
+    "dev": "pnpm build && wrangler dev",
+    "typecheck": "pnpm build && wrangler types && tsc -p tsconfig.json && tsc -p test/worker/tsconfig.json",
+    "test": "pnpm test:scripts && pnpm test:worker",
+    "test:scripts": "node --test \"test/**/*.test.mjs\"",
+    "test:worker": "pnpm build && vitest run",
     "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
-    "test": "node --test \"test/**/*.test.mjs\"",
-    "check": "pnpm test && pnpm validate:profiles"
+    "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm deploy:dry-run",
+    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run --outdir .wrangler/dry-run"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.3.6",
     "ajv": "^8.20.0",
+    "typescript": "^7.0.2",
+    "vitest": "~4.1.11",
+    "wrangler": "^4.147.0",
     "yaml": "^2.9.1"
   },
-  "packageManager": "pnpm@12.9.1"
+  "packageManager": "pnpm@12.9.1",
+  "dependencies": {
+    "hono": "^4.13.13"
+  }
 }

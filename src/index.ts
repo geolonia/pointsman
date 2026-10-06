@@ -1,0 +1,41 @@
+// Worker entry point: picks the profile store and model adapters from the
+// environment (see wrangler.jsonc) and serves the API.
+
+import { ConfigError, createApp, type Deps } from './app';
+import { MockAdapter } from './models/mock';
+import { KvProfileStore, MemoryProfileStore, type ProfileStore } from './profiles/store';
+import type { Profile } from './types';
+// Built from examples/profiles by scripts/build-profiles.mjs.
+import bundledProfiles from '../generated/profiles.json';
+
+interface PointsmanEnv {
+  PROFILE_SOURCE?: string;
+  MODEL_MODE?: string;
+  PROFILES?: KVNamespace;
+}
+
+let bundled: MemoryProfileStore | undefined;
+
+function storeFor(env: PointsmanEnv): ProfileStore {
+  switch (env.PROFILE_SOURCE) {
+    case 'bundled':
+      return (bundled ??= new MemoryProfileStore(bundledProfiles as Profile[]));
+    case 'kv':
+      if (!env.PROFILES) throw new ConfigError('PROFILE_SOURCE is "kv" but no PROFILES binding');
+      return new KvProfileStore(env.PROFILES);
+    default:
+      throw new ConfigError('PROFILE_SOURCE must be "bundled" or "kv"');
+  }
+}
+
+const mock = new MockAdapter();
+
+export function depsFor(env: PointsmanEnv): Deps {
+  return {
+    store: storeFor(env),
+    // Real adapters come with #3; outside mock mode no model is served yet.
+    adapterFor: () => (env.MODEL_MODE === 'mock' ? mock : null),
+  };
+}
+
+export default createApp((env) => depsFor(env as PointsmanEnv));
