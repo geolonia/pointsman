@@ -3,15 +3,33 @@ kind: Component
 metadata:
   namespace: geolonia
   name: pointsman
-  description: A new Geolonia repository
+  description: Model-agnostic decision service. Typed questions in; typed answers, probabilities and an action out.
   annotations:
     github.com/project-slug: geolonia/pointsman
-  tags: ['service']
+  tags: ['service', 'cloudflare-workers', 'decision-models']
 spec:
   type: 'service'
-  lifecycle: 'production'
+  lifecycle: 'experimental'
   owner: group:geolonia/geonicdb
   system: system:geolonia/standards
+  providesApis:
+    - api:geolonia/pointsman-api
   # accessGrants:
   #   - team: group:geolonia/team-name
   #     permission: write  # read | triage | write | maintain | admin
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  namespace: geolonia
+  name: pointsman-api
+  description: Pointsman REST API (decide, profiles).
+  annotations:
+    github.com/project-slug: geolonia/pointsman
+spec:
+  type: openapi
+  lifecycle: 'experimental'
+  owner: group:geolonia/geonicdb
+  system: system:geolonia/standards
+  definition:
+    $text: ./openapi.yaml

@@ -1,0 +1,18 @@
+// Development config for the public engine. It uses the bundled example
+// profiles and the mock model, so it runs without any Cloudflare resources.
+// A real deployment uses its own config from a private config repository
+// (see issue #10); never add account IDs or real bindings here.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pointsman",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "vars": {
+    // "bundled": example profiles built into the Worker (development only).
+    // "kv": profiles from the PROFILES KV namespace.
+    "PROFILE_SOURCE": "bundled",
+    // "mock": every model id is answered by the mock adapter.
+    "MODEL_MODE": "mock"
+  }
+}

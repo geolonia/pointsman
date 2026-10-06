@@ -19,16 +19,50 @@ A profile is versioned config: typed questions plus a policy. See
 This repository holds only example profiles. Real profiles live in your own
 configuration repository.
 
+## API
+
+Described in [openapi.yaml](openapi.yaml).
+
+```sh
+curl -s localhost:8787/v1/decide/issue-triage \
+  -H 'content-type: application/json' \
+  -d '{"state": {"issue": {"title": "Login page is blank", "body": "Since this morning."}}}'
+```
+
+```json
+{
+  "decision_id": "8c0f…",
+  "answers": {
+    "team": { "type": "choice", "value": "backend", "p": 0.9, "probabilities": { "backend": 0.9, "frontend": 0.05, "docs": 0.05 } },
+    "urgent": { "type": "noul", "value": false, "p": 0.8, "yes": 0.2 },
+    "effort": { "type": "score", "value": 0, "p": 0.7, "score": 0.6, "probabilities": { "0": 0.7, "1": 0.1, "2": 0.1, "3": 0.1 } }
+  },
+  "action": "review",
+  "profile": "issue-triage",
+  "profile_version": 1,
+  "model": "mock"
+}
+```
+
+In every answer, `p` is the probability of `value`. For yes/no questions,
+`yes` is the probability of yes.
+
 ## Development
 
-Requires Node.js 24 and pnpm 12.
+Requires Node.js 24 and pnpm 12. The Worker runs on Cloudflare Workers.
 
 ```sh
 pnpm install
-pnpm test                 # validator tests
-pnpm validate:profiles    # validate the example profiles
+pnpm dev                  # local Worker on :8787, example profiles, mock model
+pnpm test                 # script tests and Worker tests (in workerd)
+pnpm check                # typecheck, tests, profile validation, dry-run deploy
 node scripts/validate-profiles.mjs path/to/profiles  # validate your own
 ```
+
+`wrangler.jsonc` in this repository is for development only: it serves the
+example profiles built into the Worker (`PROFILE_SOURCE=bundled`) and answers
+every question with a mock model (`MODEL_MODE=mock`). A real deployment uses
+its own configuration with `PROFILE_SOURCE=kv`.
 
 ## License
 

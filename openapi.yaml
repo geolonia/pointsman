@@ -1,0 +1,188 @@
+openapi: 3.1.0
+info:
+  title: Pointsman API
+  version: 0.1.0
+  description: |
+    Decision service. A client sends a state; a decision model answers the
+    profile's typed questions with probabilities; the profile's policy turns
+    the answers into an action.
+
+    In every answer, `p` is the probability of `value`.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8787
+    description: Local development (wrangler dev)
+paths:
+  /v1/decide/{profile}:
+    post:
+      operationId: decide
+      summary: Get a decision from a profile
+      parameters:
+        - name: profile
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        - name: version
+          in: query
+          required: false
+          description: Profile version. The latest version when not given.
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecideRequest' }
+            example:
+              state: { issue: { title: Login page is blank, body: Since this morning the login page shows nothing. } }
+              ref: 'example:123'
+      responses:
+        '200':
+          description: The decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Decision' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+  /v1/profiles:
+    get:
+      operationId: listProfiles
+      summary: List profiles and their versions
+      responses:
+        '200':
+          description: All profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProfileSummary' }
+        '500': { $ref: '#/components/responses/Error' }
+components:
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    DecideRequest:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          description: |
+            What the model decides about: free text, or any JSON object or array.
+            When the profile has an `input` mapping, this is the raw client
+            payload the mapping reads from.
+          oneOf:
+            - { type: string, minLength: 1 }
+            - { type: object }
+            - { type: array }
+        ref:
+          description: The client's reference for this decision, for example an issue id.
+          type: string
+          minLength: 1
+          maxLength: 200
+        callback_url:
+          description: Where to send the final answer after a human review (https only).
+          type: string
+          format: uri
+          pattern: '^https://'
+    Decision:
+      type: object
+      additionalProperties: false
+      required: [decision_id, answers, action, profile, profile_version, model]
+      properties:
+        decision_id: { type: string, format: uuid }
+        ref: { type: string }
+        answers:
+          type: object
+          description: One answer per question, keyed by question name.
+          additionalProperties: { $ref: '#/components/schemas/Answer' }
+        action:
+          description: auto, review, or a custom action defined by the profile.
+          type: string
+        profile: { type: string }
+        profile_version: { type: integer, minimum: 1 }
+        model:
+          description: The model that answered.
+          type: string
+    Answer:
+      oneOf:
+        - $ref: '#/components/schemas/NoulAnswer'
+        - $ref: '#/components/schemas/ChoiceAnswer'
+        - $ref: '#/components/schemas/ScoreAnswer'
+    NoulAnswer:
+      type: object
+      additionalProperties: false
+      required: [type, value, p, 'yes']
+      properties:
+        type: { const: noul }
+        value: { type: boolean, description: 'true when P(yes) >= 0.5' }
+        p: { $ref: '#/components/schemas/Probability' }
+        'yes': { $ref: '#/components/schemas/Probability' }
+    ChoiceAnswer:
+      type: object
+      additionalProperties: false
+      required: [type, value, p, probabilities]
+      properties:
+        type: { const: choice }
+        value: { type: string, description: The most likely option. }
+        p: { $ref: '#/components/schemas/Probability' }
+        probabilities: { $ref: '#/components/schemas/Probabilities' }
+    ScoreAnswer:
+      type: object
+      additionalProperties: false
+      required: [type, value, p, score, probabilities]
+      properties:
+        type: { const: score }
+        value: { type: integer, minimum: 0, description: The most likely level, 0 = lowest. }
+        p: { $ref: '#/components/schemas/Probability' }
+        score: { type: number, minimum: 0, description: Probability-weighted level; can fall between levels. }
+        probabilities:
+          $ref: '#/components/schemas/Probabilities'
+          description: Probability per level, keyed by level index.
+    Probability: { type: number, minimum: 0, maximum: 1 }
+    Probabilities:
+      type: object
+      additionalProperties: { $ref: '#/components/schemas/Probability' }
+    ProfileSummary:
+      type: object
+      additionalProperties: false
+      required: [id, version, versions, title, description]
+      properties:
+        id: { type: string }
+        version: { type: integer, minimum: 1, description: Latest version. }
+        versions: { type: array, items: { type: integer, minimum: 1 } }
+        title: { $ref: '#/components/schemas/BilingualText' }
+        description: { $ref: '#/components/schemas/BilingualText' }
+    BilingualText:
+      type: object
+      additionalProperties: false
+      required: [en, ja]
+      properties:
+        en: { type: string }
+        ja: { type: string }
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [invalid_request, profile_not_found, not_found, model_error, internal_error]
+            message: { type: string }

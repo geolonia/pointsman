@@ -98,5 +98,17 @@ The example values are made up. Notes:
   [output schema](https://developers.cloudflare.com/workers-ai/models/clef-flash/schema-output.json)),
   [Jev docs](https://docs.typesafe.ai/primitives/choice).
 
-How these answers become the engine's own answer format (value + `p` per
-question) is defined in the model adapter issue (#3).
+## Engine answer format
+
+The engine normalizes model answers (`src/models/normalize.ts`) so that `p` is
+always the probability of `value`:
+
+| Type | `value` | `p` | Extra |
+|---|---|---|---|
+| `noul` | `true` when P(yes) ≥ 0.5 | P(value) | `yes`: P(yes) |
+| `choice` | most likely option | its probability | `probabilities` |
+| `score` | most likely level (0 = lowest) | its probability | `score` (weighted level), `probabilities` |
+
+Policy conditions use these fields, for example `team.p >= 0.85` or
+`stuck.yes >= 0.9`. Answers that do not fit the profile (missing question,
+unknown option, probability outside 0–1) are rejected with a `model_error`.
