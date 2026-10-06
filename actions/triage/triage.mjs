@@ -37,10 +37,11 @@ export function parseBaseUrl(value) {
   if ((url.protocol !== 'https:' && !local) || !url.hostname) {
     throw new Error('input "url" must be an https URL (http only for localhost)');
   }
-  if (url.search || url.hash || url.username || url.password) {
+  // Checked on the input too: a bare "?" or "#" leaves search and hash empty.
+  if (/[?#]/.test(value) || url.username || url.password) {
     throw new Error('input "url" must not contain a query, fragment or credentials');
   }
-  return url.href.replace(/\/+$/, '');
+  return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
 }
 
 function input(name, { required = false } = {}) {
@@ -63,15 +64,20 @@ export function parseLabelMap(text) {
   return map;
 }
 
-/** Labels for a decision: only mapped answers, only for action "auto". */
+/**
+ * Labels for a decision: only mapped answers, only for action "auto". When
+ * nothing maps (for example an answer missing from the allow-list), the
+ * review label is added, so no issue is left without a label.
+ */
 export function labelsFor(decision, map, reviewLabel) {
   if (decision.action !== 'auto') return [reviewLabel];
+  const answers = decision.answers !== null && typeof decision.answers === 'object' ? decision.answers : {};
   const labels = [];
-  for (const [question, answer] of Object.entries(decision.answers ?? {})) {
+  for (const [question, answer] of Object.entries(answers)) {
     const label = map.get(`${question}=${String(answer?.value)}`);
     if (label && !labels.includes(label)) labels.push(label);
   }
-  return labels;
+  return labels.length > 0 ? labels : [reviewLabel];
 }
 
 function setOutput(name, value) {

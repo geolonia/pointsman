@@ -122,6 +122,14 @@ test('the issue is sent as JSON data, with the token and a ref', async (t) => {
   assert.ok(!r.summary.includes('rm -rf'), 'the issue text is not written to the summary');
 });
 
+test('auto without any mapped answer: the review label', async (t) => {
+  const s = await servers([200, decision('auto', { team: { type: 'choice', value: 'ops', p: 0.99 } })]);
+  t.after(s.close);
+  const r = await runAction(t, { url: s.url, event: issueEvent() });
+  assert.equal(r.code, 0, r.stdout);
+  assert.deepEqual(s.seen.labels.map((l) => l.body.labels), [['needs-triage']]);
+});
+
 test('review: adds only the review label, no team labels', async (t) => {
   const s = await servers([200, decision('review', AUTO.answers)]);
   t.after(s.close);
@@ -164,6 +172,8 @@ for (const [name, inputs, event, message] of [
   ['a plain http url', { INPUT_URL: 'http://pointsman.example.com' }, issueEvent(), /must be an https URL/],
   ['a url without host', { INPUT_URL: 'https://' }, issueEvent(), /not a valid URL/],
   ['a url with a query', { INPUT_URL: 'https://example.com?tenant=a' }, issueEvent(), /must not contain a query/],
+  ['a url with a bare ?', { INPUT_URL: 'https://example.com/?' }, issueEvent(), /must not contain a query/],
+  ['a url with a bare #', { INPUT_URL: 'https://example.com/#' }, issueEvent(), /must not contain a query/],
   ['a url with credentials', { INPUT_URL: 'https://user:pw@example.com' }, issueEvent(), /must not contain/],
   ['a too long review label', { 'INPUT_REVIEW-LABEL': 'x'.repeat(51) }, issueEvent(), /review-label/],
   ['a non-issue event', {}, { action: 'opened', pull_request: { number: 1 } }, /issues events/],
@@ -194,7 +204,10 @@ test('parseLabelMap and labelsFor', () => {
   assert.equal(map.get('team=frontend'), 'team/frontend');
   assert.equal(map.get('effort=0'), 'good first issue');
   assert.deepEqual(labelsFor(decision('auto', { effort: { value: 0 }, urgent: { value: false } }), map, 'x'), ['good first issue']);
-  assert.deepEqual(labelsFor(decision('auto', {}), map, 'x'), []);
+  // Nothing mapped, or no answers at all: the review label, never nothing.
+  assert.deepEqual(labelsFor(decision('auto', {}), map, 'x'), ['x']);
+  assert.deepEqual(labelsFor(decision('auto', { team: { value: 'ops' } }), map, 'x'), ['x']);
+  assert.deepEqual(labelsFor({ ...decision('auto', {}), answers: null }, map, 'x'), ['x']);
   assert.deepEqual(labelsFor(decision('review', AUTO.answers), map, 'x'), ['x']);
 });
 
