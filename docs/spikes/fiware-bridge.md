@@ -11,8 +11,8 @@ sub-properties.
 
 Tried with Orion-LD (post-1.12.0, `fiware/orion-ld:latest` of 2026-09-25) and
 MongoDB 4.4 in containers, a local Pointsman (`wrangler dev`, mock model) and
-the bridge in `wrangler dev`. The bridge and the profile are in
-[fiware/](fiware/).
+the bridge in `wrangler dev`. The bridge is in [fiware/bridge.js](fiware/bridge.js);
+the profile is below.
 
 ## The flow
 
@@ -34,8 +34,43 @@ sequenceDiagram
   the profile reads, `format: normalized`, and the bridge's shared secret as a
   header (`endpoint.receiverInfo`). The bridge refuses notifications without it.
 - **Profile:** its `input` paths read the normalized entity, for example
-  `$.description.value`, so the bridge sends the entity as it is. Example:
-  [service-request-triage.yaml](fiware/service-request-triage.yaml).
+  `$.description.value`, so the bridge sends the entity as it is. The profile
+  used:
+
+```yaml
+# Spike profile (#14): triage a city service request that arrives as an
+# NGSI-LD entity. The input paths read the entity in normalized form, so the
+# bridge passes the entity as it is.
+id: service-request-triage
+version: 1
+title:
+  en: Service request triage
+  ja: 市民からの依頼の振り分け
+description:
+  en: Route a service request to the right department and flag safety issues.
+  ja: 市民からの依頼を担当部署に振り分け、安全に関わるものに印を付ける。
+model: clef-flash
+input:
+  - { name: title, path: $.name.value }
+  - { name: description, path: $.description.value }
+questions:
+  - name: department
+    type: choice
+    instructions: Which department should handle this request?
+    criteria:
+      - { value: roads, description: "Roads, potholes, traffic signs" }
+      - { value: parks, description: "Parks, trees, playgrounds" }
+      - { value: waste, description: "Garbage, illegal dumping" }
+  - name: safety
+    type: noul
+    instructions: Is someone at risk until this is fixed?
+policy:
+  rules:
+    - when: "department.p >= 0.85 and safety.value == false"
+      action: auto
+  default: review
+```
+
 - **Configuration in the bridge:** entity type → profile, input attributes,
   result attribute. Nothing else.
 - **Reference:** the entity id is sent as `ref`, so the decision log links back
