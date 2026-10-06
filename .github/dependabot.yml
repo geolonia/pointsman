@@ -29,6 +29,7 @@ updates:
           - minor
           - patch
 
+  # "npm" also covers pnpm (it reads pnpm-lock.yaml).
   - package-ecosystem: npm
     directory: /
     schedule:

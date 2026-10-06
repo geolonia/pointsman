@@ -21,13 +21,13 @@ configuration repository.
 
 ## Development
 
-Requires Node.js 24 and npm.
+Requires Node.js 24 and pnpm 12.
 
 ```sh
-npm ci
-npm test                      # validator tests
-npm run validate:profiles     # validate the example profiles
-node scripts/validate-profiles.mjs path/to/profiles   # validate your own
+pnpm install
+pnpm test                 # validator tests
+pnpm validate:profiles    # validate the example profiles
+node scripts/validate-profiles.mjs path/to/profiles  # validate your own
 ```
 
 ## License

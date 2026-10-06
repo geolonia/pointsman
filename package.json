@@ -10,10 +10,11 @@
   "scripts": {
     "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
     "test": "node --test \"test/**/*.test.mjs\"",
-    "check": "npm test && npm run validate:profiles"
+    "check": "pnpm test && pnpm validate:profiles"
   },
   "devDependencies": {
     "ajv": "^8.20.0",
     "yaml": "^2.9.1"
-  }
+  },
+  "packageManager": "pnpm@12.9.1"
 }
