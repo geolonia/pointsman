@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointsman – open-source decision service</title>
+<meta name="description" content="Pointsman sets the switches. Your systems ask a question, Pointsman decides which track it goes on, or calls a person when it is not sure.">
+<meta property="og:title" content="Pointsman – open-source decision service">
+<meta property="og:description" content="Your systems ask a question, Pointsman decides which track it goes on, or calls a person when it is not sure.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/social-preview-1280x640.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#141414">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/tile-ink-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #171717;
+  --cream: #F5F2EC;
+  --dark: #141414;
+  --green: #2E9E6B;
+  --panel: #1c1c1c;
+  --panel-2: #222;
+  --line: #2e2e2e;
+  --muted: #a8a49c;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body { margin: 0; background: var(--dark); color: var(--cream); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { display: block; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+h1, h2, h3 { font-family: var(--mono); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; margin: 0; }
+code, pre { font-family: var(--mono); font-size: 0.86em; }
+p { margin: 0; }
+
+/* Navigation */
+header.nav { position: sticky; top: 0; z-index: 10; background: rgba(20, 20, 20, 0.86); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+header.nav .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+header.nav .brand { margin-right: auto; display: flex; }
+header.nav .brand img { height: 28px; width: auto; }
+header.nav nav { display: flex; gap: 22px; font-size: 15px; }
+header.nav nav a { text-decoration: none; color: var(--muted); }
+header.nav nav a:hover { color: var(--cream); }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 8px; font: 500 15px/1 var(--sans); text-decoration: none; border: 1px solid var(--line); white-space: nowrap; }
+.btn:hover { border-color: #555; }
+.btn.primary { background: var(--cream); color: var(--ink); border-color: var(--cream); }
+.btn.primary:hover { background: #fff; }
+.btn svg { width: 18px; height: 18px; }
+
+/* Hero */
+.hero { padding: 88px 0 72px; }
+.hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; }
+.eyebrow { font: 500 13px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 20px; }
+.hero h1 { font-size: clamp(36px, 5.2vw, 58px); letter-spacing: -0.04em; }
+.hero h1 .go { color: var(--green); }
+.hero .lead { margin-top: 22px; font-size: 19px; color: #d6d2ca; max-width: 34em; }
+.hero .actions { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.chip { font: 13px/1 var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; }
+
+/* Code cards */
+.card-code { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.card-code .bar { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); font: 12px/1.4 var(--mono); color: var(--muted); }
+.card-code pre { margin: 0; padding: 18px 20px; overflow-x: auto; line-height: 1.6; color: #e9e5dd; }
+.card-code + .card-code { margin-top: 14px; }
+.k { color: #c8c3b9; }
+.s { color: #d9c9a3; }
+.n { color: #9fc3e0; }
+.c { color: #77736c; }
+.go-val { color: var(--green); font-weight: 600; }
+
+/* Sections */
+section.band { padding: 88px 0; border-top: 1px solid var(--line); }
+section.band.alt { background: #181818; }
+.section-head { max-width: 46em; margin-bottom: 44px; }
+.section-head h2 { font-size: clamp(28px, 3.4vw, 38px); }
+.section-head p { margin-top: 14px; color: var(--muted); font-size: 18px; }
+
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
+.card h3 { font-size: 18px; margin-bottom: 10px; }
+.card p { color: #cfcac1; font-size: 16px; }
+.card code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.card .more { display: inline-block; margin-top: 14px; font: 14px var(--mono); color: var(--muted); text-decoration: none; }
+.card .more:hover { color: var(--cream); }
+
+/* Flow */
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; counter-reset: step; }
+.flow li { list-style: none; position: relative; padding: 0 22px 0 0; }
+.flow li::before { counter-increment: step; content: counter(step); display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; border: 1px solid #4a4a4a; font: 600 15px var(--mono); margin-bottom: 18px; background: var(--dark); position: relative; z-index: 1; }
+.flow li::after { content: ''; position: absolute; top: 17px; left: 34px; right: 0; height: 1px; background: var(--line); }
+.flow li:last-child::after { display: none; }
+.flow li:last-child::before { background: var(--green); border-color: var(--green); color: var(--dark); }
+.flow h3 { font-size: 17px; margin-bottom: 8px; }
+.flow p { color: #cfcac1; font-size: 15.5px; }
+.flow-wrap { padding: 0; margin: 0; }
+.outcomes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.outcomes code { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
+.outcomes code.auto { color: var(--green); border-color: rgba(46, 158, 107, 0.5); }
+
+.split { display: grid; grid-template-columns: 1fr 1.1fr; gap: 48px; align-items: start; }
+.points { margin: 24px 0 0; padding: 0; list-style: none; display: grid; gap: 16px; }
+.points li { padding-left: 22px; position: relative; color: #d6d2ca; }
+.points li::before { content: ''; position: absolute; left: 0; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); }
+.points strong { color: var(--cream); font-weight: 600; }
+
+/* Get started */
+.steps { counter-reset: s; display: grid; gap: 18px; margin: 0; padding: 0; }
+.steps > li { list-style: none; display: grid; grid-template-columns: 40px 1fr; gap: 16px; }
+.steps > li::before { counter-increment: s; content: counter(s); font: 600 15px var(--mono); width: 34px; height: 34px; border: 1px solid #4a4a4a; border-radius: 50%; display: grid; place-items: center; }
+.steps h3 { font-size: 17px; margin: 5px 0 10px; }
+.steps p { color: #cfcac1; margin-bottom: 10px; }
+
+.status { margin-top: 36px; padding: 16px 20px; border: 1px dashed #444; border-radius: 10px; color: var(--muted); font-size: 15.5px; }
+.status a { color: var(--cream); }
+
+footer { border-top: 1px solid var(--line); padding: 40px 0 56px; color: var(--muted); font-size: 15px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: center; justify-content: space-between; }
+footer img { height: 26px; width: auto; }
+footer nav { display: flex; gap: 22px; flex-wrap: wrap; }
+footer a { color: var(--muted); text-decoration: none; }
+footer a:hover { color: var(--cream); }
+
+@media (max-width: 900px) {
+  header.nav nav { display: none; }
+  .hero { padding: 56px 0 48px; }
+  .hero .wrap, .split { grid-template-columns: 1fr; gap: 40px; }
+  .grid3 { grid-template-columns: 1fr 1fr; }
+  .flow { grid-template-columns: 1fr 1fr; gap: 32px 0; }
+  .flow li:nth-child(2)::after { display: none; }
+}
+@media (max-width: 600px) {
+  .wrap { padding: 0 16px; }
+  body { font-size: 16px; }
+  header.nav .btn span { display: none; }
+  .grid3, .grid2, .flow { grid-template-columns: 1fr; }
+  .flow li::after { display: none; }
+  section.band { padding: 64px 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Pointsman home"><img src="assets/lockup-on-dark.svg" alt="Pointsman" width="146" height="28"></a>
+    <nav aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#profiles">Profiles</a>
+      <a href="#clients">Clients</a>
+      <a href="#start">Get started</a>
+    </nav>
+    <a class="btn" href="https://github.com/geolonia/pointsman">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">Open-source decision service</p>
+      <h1>Pointsman sets the <span class="go">switches.</span></h1>
+      <p class="lead">Your systems ask a question. Pointsman decides which track it goes on, or calls a person when it is not sure.</p>
+      <div class="actions">
+        <a class="btn primary" href="#start">Get started</a>
+        <a class="btn" href="https://github.com/geolonia/pointsman">View on GitHub</a>
+      </div>
+      <div class="chips">
+        <span class="chip">Cloudflare Workers</span>
+        <span class="chip">Any model</span>
+        <span class="chip">REST + MCP</span>
+        <span class="chip">OpenAPI</span>
+        <span class="chip">MIT</span>
+      </div>
+    </div>
+    <div>
+      <div class="card-code">
+        <div class="bar"><span>POST /v1/decide/issue-triage</span><span>request</span></div>
+<pre><span class="k">{</span> <span class="k">"state"</span>: { <span class="k">"issue"</span>: {
+  <span class="k">"title"</span>: <span class="s">"Login page is blank"</span>,
+  <span class="k">"body"</span>: <span class="s">"Since this morning."</span>
+} } <span class="k">}</span></pre>
+      </div>
+      <div class="card-code">
+        <div class="bar"><span>200 OK</span><span>decision</span></div>
+<pre>{
+  <span class="k">"answers"</span>: {
+    <span class="k">"team"</span>:   { <span class="k">"value"</span>: <span class="s">"backend"</span>, <span class="k">"p"</span>: <span class="n">0.9</span> },
+    <span class="k">"urgent"</span>: { <span class="k">"value"</span>: <span class="n">false</span>, <span class="k">"p"</span>: <span class="n">0.8</span> },
+    <span class="k">"effort"</span>: { <span class="k">"value"</span>: <span class="n">0</span>, <span class="k">"p"</span>: <span class="n">0.7</span> }
+  },
+  <span class="k">"action"</span>: <span class="go-val">"auto"</span>,
+  <span class="k">"profile_version"</span>: <span class="n">1</span>
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Decisions you can check</h2>
+      <p>Many systems make small routing decisions all day: which team, how urgent, wait or stop. Pointsman makes them in one place, the same way every time, and keeps a record you can measure.</p>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>Typed questions</h3>
+        <p>Yes/no, choice and score questions. Every answer comes with its probability, so you know how sure the model is.</p>
+      </div>
+      <div class="card">
+        <h3>Policy, not prompts</h3>
+        <p>Rules like <code>team.p &gt;= 0.85</code> turn answers into an action. The policy is plain config, checked when it is loaded, never evaluated as code.</p>
+      </div>
+      <div class="card">
+        <h3>A person when unsure</h3>
+        <p>Below your threshold the action is <code>review</code>. The decision waits in a review queue, and the final answer is sent back, signed, to your callback.</p>
+      </div>
+      <div class="card">
+        <h3>Versioned profiles</h3>
+        <p>Questions and policy live in YAML profiles with a JSON Schema, validated in CI. Each decision records the profile version and the model.</p>
+      </div>
+      <div class="card">
+        <h3>Feedback and accuracy</h3>
+        <p>People correct decisions; corrections are logged next to the answers. Measure how often each profile version was right before you raise its thresholds.</p>
+      </div>
+      <div class="card">
+        <h3>Any model</h3>
+        <p>Models plug in through adapters. Today: Workers AI models through Cloudflare AI Gateway, and a mock model for development and tests.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>How it works</h2>
+      <p>One request in, one decision out. The decision log keeps everything needed to explain it later.</p>
+    </div>
+    <ol class="flow flow-wrap">
+      <li>
+        <h3>Send a state</h3>
+        <p>Your system posts what it knows: an issue, a deploy event, a form. As JSON or text, to a profile.</p>
+      </li>
+      <li>
+        <h3>Ask the questions</h3>
+        <p>The profile's model answers its typed questions. If it fails, a fallback model takes over.</p>
+      </li>
+      <li>
+        <h3>Apply the policy</h3>
+        <p>The rules compare answers and probabilities. The first rule that matches picks the action.</p>
+      </li>
+      <li>
+        <h3>Act</h3>
+        <p>Your system follows the action, or a person decides.</p>
+        <div class="outcomes"><code class="auto">auto</code><code>review</code><code>your own</code></div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="band" id="profiles">
+  <div class="wrap split">
+    <div>
+      <div class="section-head" style="margin-bottom:0">
+        <h2>Profiles are config</h2>
+        <p>A profile says what to ask and what to do with the answers. Change a threshold with a pull request, not a prompt.</p>
+      </div>
+      <ul class="points">
+        <li><strong>Reviewed like code.</strong> Profiles live in your own private config repository and are published on deploy, write-once per version.</li>
+        <li><strong>Validated before they run.</strong> A JSON Schema and a validator check every profile in CI.</li>
+        <li><strong>Visible where you want.</strong> A profile can be offered to agents through MCP, or kept to the API.</li>
+      </ul>
+      <p style="margin-top:24px"><a class="btn" href="https://github.com/geolonia/pointsman/blob/main/docs/profile-format.md">Profile format</a></p>
+    </div>
+    <div class="card-code">
+      <div class="bar"><span>profiles/issue-triage.yaml</span><span>YAML</span></div>
+<pre><span class="k">id</span>: issue-triage
+<span class="k">version</span>: <span class="n">1</span>
+<span class="k">model</span>: clef-flash
+<span class="k">fallback_models</span>: [clef]
+<span class="k">questions</span>:
+  - <span class="k">name</span>: team
+    <span class="k">type</span>: choice
+    <span class="k">instructions</span>: <span class="s">Which team should handle this issue?</span>
+    <span class="k">criteria</span>:
+      - { <span class="k">value</span>: backend,  <span class="k">description</span>: <span class="s">"APIs, databases"</span> }
+      - { <span class="k">value</span>: frontend, <span class="k">description</span>: <span class="s">"Web pages, styles"</span> }
+      - { <span class="k">value</span>: docs,     <span class="k">description</span>: <span class="s">"Documentation"</span> }
+  - <span class="k">name</span>: urgent
+    <span class="k">type</span>: noul
+    <span class="k">instructions</span>: <span class="s">Does this block someone's work today?</span>
+<span class="k">policy</span>:
+  <span class="k">rules</span>:
+    - <span class="k">when</span>: <span class="s">"team.p >= 0.85"</span>
+      <span class="k">action</span>: <span class="go-val">auto</span>
+  <span class="k">default</span>: review</pre>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="clients">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Ask from anywhere</h2>
+      <p>The same profiles, the same policy and the same decision log, whoever asks.</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>REST API</h3>
+        <p>Decide, read a decision, send feedback, work the review queue. Described in OpenAPI; every client has its own API token, limited to the profiles it needs.</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml →</a>
+      </div>
+      <div class="card">
+        <h3>MCP for agents</h3>
+        <p>Add Pointsman as a connector, and agents call <code>decide</code> instead of guessing. Machines use API tokens; people log in with GitHub and can correct decisions.</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/docs/mcp.md">docs/mcp.md →</a>
+      </div>
+      <div class="card">
+        <h3>GitHub issue triage</h3>
+        <p>A GitHub Action labels new issues from a decision, using only the labels you list. When Pointsman is not sure, the issue gets a "needs triage" label instead.</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage →</a>
+      </div>
+      <div class="card">
+        <h3>Deploy watch</h3>
+        <p>A GitHub Action that watches a CloudFormation deploy and stops it when Pointsman judges it stuck, instead of waiting for a timeout.</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap split">
+    <div>
+      <div class="section-head" style="margin-bottom:28px">
+        <h2>Get started</h2>
+        <p>Run it locally in a few minutes, with the example profiles and a mock model. No Cloudflare account needed.</p>
+      </div>
+      <ol class="steps">
+        <li>
+          <div>
+            <h3>Install</h3>
+            <p>Node.js 24 and pnpm.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Start the Worker</h3>
+            <p>A local decision log, then the Worker on port 8787.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Ask for a decision</h3>
+            <p>Create a local API token and send a state to a profile.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Deploy your own</h3>
+            <p>Copy the config repository template: your profiles, your Cloudflare account, private.</p>
+            <a class="more" style="font:14px var(--mono);color:var(--muted)" href="https://github.com/geolonia/pointsman/blob/main/docs/deployment.md">docs/deployment.md →</a>
+          </div>
+        </li>
+      </ol>
+    </div>
+    <div>
+      <div class="card-code">
+        <div class="bar"><span>terminal</span><span>sh</span></div>
+<pre><span class="c"># 1. install</span>
+git clone https://github.com/geolonia/pointsman
+cd pointsman
+pnpm install
+
+<span class="c"># 2. start</span>
+pnpm db:migrate:local
+pnpm dev
+
+<span class="c"># 3. ask (in a second terminal)</span>
+node scripts/tokens.mjs create \
+  --client demo --profiles issue-triage --local
+export POINTSMAN_TOKEN=<span class="s">pm_…</span>
+curl -s localhost:8787/v1/decide/issue-triage \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"state": {"issue": {"title": "Login page is blank"}}}'</pre>
+      </div>
+      <p class="status">Pointsman is an early proof of concept. Follow the <a href="https://github.com/geolonia/pointsman/milestone/1">PoC milestone</a>, and open an issue if you try it.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <img src="assets/lockup-on-dark.svg" alt="Pointsman" width="136" height="26">
+    <nav aria-label="Links">
+      <a href="https://github.com/geolonia/pointsman">GitHub</a>
+      <a href="https://github.com/geolonia/pointsman/issues">Issues</a>
+      <a href="https://github.com/geolonia/pointsman/blob/main/LICENSE">MIT License</a>
+    </nav>
+    <span>An open-source project by <a href="https://geolonia.com" style="color:var(--cream)">Geolonia</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
