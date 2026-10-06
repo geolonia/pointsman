@@ -296,10 +296,24 @@ export function createApp(deps: (env: Env) => Deps) {
   return app;
 }
 
-/** One callback attempt for a resolved decision; records the outcome. */
+/** Longer than one attempt (10 s timeout), so a claim never expires mid-send. */
+const CLAIM_LEASE_MS = 60_000;
+
+/**
+ * One callback attempt for a resolved decision. The callback is claimed
+ * first, so the first delivery and the cron retry can never send the same
+ * attempt twice; only the claimant sends and records the outcome.
+ */
 export async function deliver(d: DecisionRecord, deps: Pick<Deps, 'log' | 'callbacks'>, now = new Date()): Promise<void> {
+  const claim = {
+    id: crypto.randomUUID(),
+    now: now.toISOString(),
+    leaseUntil: new Date(now.getTime() + CLAIM_LEASE_MS).toISOString(),
+    attempts: d.callback?.attempts ?? 0,
+  };
+  if (!(await deps.log.claimCallback(d.decision_id, claim))) return; // someone else has it
   const state = await attempt(d, { ...deps.callbacks, now });
-  await deps.log.recordCallback(d.decision_id, state);
+  await deps.log.recordCallback(d.decision_id, state, claim.id);
   if (state.status !== 'delivered') console.error(`callback for ${d.decision_id}: ${state.last_error} (${state.status})`);
 }
 

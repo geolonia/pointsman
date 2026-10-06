@@ -78,7 +78,14 @@ export interface DecisionLog {
   resolve(decisionId: string, resolution: Resolution): Promise<boolean>;
   /** Decisions whose callback is pending and due at or before `now`. */
   dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]>;
-  recordCallback(decisionId: string, state: CallbackState): Promise<void>;
+  /**
+   * Claim a due callback before sending it: true only for one caller, and
+   * only while the callback is still pending, due at `now`, and at the
+   * attempt count the caller read. The claim holds it until `leaseUntil`.
+   */
+  claimCallback(decisionId: string, claim: { id: string; now: string; leaseUntil: string; attempts: number }): Promise<boolean>;
+  /** Record the result of an attempt; ignored unless `claimId` still holds the claim. */
+  recordCallback(decisionId: string, state: CallbackState, claimId: string): Promise<boolean>;
 }
 
 /** JSON with sorted object keys, so equal states hash equally. */
@@ -260,10 +267,26 @@ export class D1DecisionLog implements DecisionLog {
     return results.map(fromRow);
   }
 
-  async recordCallback(decisionId: string, c: CallbackState): Promise<void> {
-    await this.db
-      .prepare('UPDATE decisions SET callback_status = ?, callback_attempts = ?, callback_last_error = ?, callback_next_at = ? WHERE id = ?')
-      .bind(c.status, c.attempts, c.last_error ?? null, c.next_at ?? null, decisionId)
+  async claimCallback(decisionId: string, c: { id: string; now: string; leaseUntil: string; attempts: number }): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE decisions SET callback_claim = ?, callback_next_at = ?
+         WHERE id = ? AND callback_status = 'pending' AND callback_next_at <= ? AND callback_attempts = ?`,
+      )
+      .bind(c.id, c.leaseUntil, decisionId, c.now, c.attempts)
       .run();
+    return (result.meta.changes ?? 0) === 1;
+  }
+
+  async recordCallback(decisionId: string, c: CallbackState, claimId: string): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `UPDATE decisions SET callback_status = ?, callback_attempts = ?, callback_last_error = ?, callback_next_at = ?,
+           callback_claim = NULL
+         WHERE id = ? AND callback_claim = ?`,
+      )
+      .bind(c.status, c.attempts, c.last_error ?? null, c.next_at ?? null, decisionId, claimId)
+      .run();
+    return (result.meta.changes ?? 0) === 1;
   }
 }

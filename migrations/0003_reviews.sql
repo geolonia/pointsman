@@ -12,6 +12,7 @@ ALTER TABLE decisions ADD COLUMN callback_status TEXT;      -- 'pending' | 'deli
 ALTER TABLE decisions ADD COLUMN callback_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE decisions ADD COLUMN callback_last_error TEXT;
 ALTER TABLE decisions ADD COLUMN callback_next_at TEXT;     -- when the next retry is due
+ALTER TABLE decisions ADD COLUMN callback_claim TEXT;       -- id of the run that is sending it now
 
 CREATE INDEX decisions_review ON decisions (review_status, profile_id, created_at);
 CREATE INDEX decisions_callback ON decisions (callback_status, callback_next_at);

@@ -2,7 +2,7 @@
 
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp, retryDueCallbacks, type Deps } from '../../src/app';
+import { createApp, deliver, retryDueCallbacks, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { MAX_ATTEMPTS, sign, type Fetch } from '../../src/callbacks';
 import { D1DecisionLog } from '../../src/log';
@@ -247,6 +247,50 @@ describe('callbacks', () => {
     expect(working.sent).toHaveLength(1);
     expect((await failing.call('GET', `/v1/decisions/${id}`)).data.callback).toEqual({ status: 'delivered', attempts: 2 });
     quiet.mockRestore();
+  });
+
+  it('sends each attempt once when the first delivery and the cron run race', async () => {
+    const s = setup();
+    await addTokens(s.tokens);
+    const id = await newReview(s.call, { callback_url: 'https://client.example/hook' });
+    // Resolve through the log (no first delivery), then race two senders.
+    const log = new D1DecisionLog(DB);
+    await log.resolve(id, { resolved_at: new Date().toISOString(), resolved_by: 'x', client: 'all', final_action: 'auto', final_answers: {}, correct: {} });
+    const record = (await log.get(id))!;
+    await Promise.all([deliver(record, s.deps), deliver(record, s.deps), retryDueCallbacks(s.deps)]);
+    expect(s.sent).toHaveLength(1);
+    expect((await log.get(id))?.callback).toEqual({ status: 'delivered', attempts: 1 });
+  });
+
+  it('does not send from a stale snapshot', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const s = setup({ status: 503 });
+    await addTokens(s.tokens);
+    const id = await newReview(s.call, { callback_url: 'https://client.example/hook' });
+    const log = new D1DecisionLog(DB);
+    await log.resolve(id, { resolved_at: new Date().toISOString(), resolved_by: 'x', client: 'all', final_action: 'auto', final_answers: {}, correct: {} });
+    const stale = (await log.get(id))!;
+    await deliver(stale, s.deps); // attempt 1 (fails, retry later)
+    // Due again, but the snapshot still says 0 attempts: no second send.
+    await deliver(stale, s.deps, new Date(Date.now() + 3600_000));
+    expect(s.sent).toHaveLength(1);
+    expect((await log.get(id))?.callback?.attempts).toBe(1);
+    quiet.mockRestore();
+  });
+
+  it('ignores a result recorded with a claim that is no longer held', async () => {
+    const s = setup();
+    await addTokens(s.tokens);
+    const id = await newReview(s.call, { callback_url: 'https://client.example/hook' });
+    const log = new D1DecisionLog(DB);
+    await log.resolve(id, { resolved_at: new Date().toISOString(), resolved_by: 'x', client: 'all', final_action: 'auto', final_answers: {}, correct: {} });
+    const now = new Date();
+    const claim = { id: 'a', now: now.toISOString(), leaseUntil: new Date(now.getTime() + 60_000).toISOString(), attempts: 0 };
+    expect(await log.claimCallback(id, claim)).toBe(true);
+    expect(await log.claimCallback(id, { ...claim, id: 'b' })).toBe(false);
+    expect(await log.recordCallback(id, { status: 'failed', attempts: 9 }, 'b')).toBe(false);
+    expect(await log.recordCallback(id, { status: 'delivered', attempts: 1 }, 'a')).toBe(true);
+    expect((await log.get(id))?.callback).toEqual({ status: 'delivered', attempts: 1 });
   });
 
   it('never sends unsigned callbacks', async () => {
