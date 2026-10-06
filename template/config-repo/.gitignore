@@ -1,4 +1,4 @@
 # The engine is checked out here by the workflows (and for local work).
-engine/
+/engine
 node_modules/
 .wrangler/
