@@ -6,6 +6,7 @@ import { KvTokenStore } from './auth';
 import { D1DecisionLog } from './log';
 import { purgeExpired, type OAuthConfig } from './oauth';
 import type { ModelAdapter } from './models/adapter';
+import { checkServerUrl, DEFAULT_TIMEOUT_MS, ModelServerAdapter, parseModelList } from './models/http';
 import { MockAdapter } from './models/mock';
 import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
 import { KvProfileStore, MemoryProfileStore, type ProfileStore } from './profiles/store';
@@ -32,6 +33,15 @@ interface PointsmanEnv {
   /** Comma-separated GitHub organizations whose members may log in. */
   ALLOWED_GITHUB_ORGS?: string | undefined;
   OAUTH_KV?: KVNamespace | undefined;
+  // A model server speaking the shared format (src/models/http.ts), for
+  // example a local Strands Decider. Its models take precedence over
+  // MODEL_MODE. URL and MODELS together, or neither.
+  MODEL_SERVER_URL?: string | undefined;
+  /** Comma-separated model ids, each optionally `id=server-name`. */
+  MODEL_SERVER_MODELS?: string | undefined;
+  /** Worker secret; sent as a bearer token. */
+  MODEL_SERVER_API_KEY?: string | undefined;
+  MODEL_SERVER_TIMEOUT_MS?: string | undefined;
 }
 
 const OAUTH_SETTINGS = ['PUBLIC_URL', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'ALLOWED_GITHUB_ORGS', 'OAUTH_KV'] as const;
@@ -71,7 +81,45 @@ function storeFor(env: PointsmanEnv): ProfileStore {
 
 const mock = new MockAdapter();
 
+function modelServerFor(env: PointsmanEnv): ModelServerAdapter | undefined {
+  if (!env.MODEL_SERVER_URL && !env.MODEL_SERVER_MODELS) {
+    // A key or timeout alone means a forgotten URL; say so instead of ignoring it.
+    if (env.MODEL_SERVER_API_KEY || env.MODEL_SERVER_TIMEOUT_MS) {
+      throw new ConfigError('MODEL_SERVER_API_KEY and MODEL_SERVER_TIMEOUT_MS need MODEL_SERVER_URL and MODEL_SERVER_MODELS');
+    }
+    return undefined;
+  }
+  if (!env.MODEL_SERVER_URL || !env.MODEL_SERVER_MODELS) {
+    throw new ConfigError('MODEL_SERVER_URL and MODEL_SERVER_MODELS go together');
+  }
+  const url = checkServerUrl(env.MODEL_SERVER_URL);
+  if (!url.ok) throw new ConfigError(`MODEL_SERVER_URL ${url.error}`);
+  const models = parseModelList(env.MODEL_SERVER_MODELS);
+  if (!models.ok) throw new ConfigError(`MODEL_SERVER_MODELS: ${models.error}`);
+  let timeoutMs = DEFAULT_TIMEOUT_MS;
+  if (env.MODEL_SERVER_TIMEOUT_MS !== undefined && env.MODEL_SERVER_TIMEOUT_MS !== '') {
+    timeoutMs = Number(env.MODEL_SERVER_TIMEOUT_MS);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60_000) {
+      throw new ConfigError('MODEL_SERVER_TIMEOUT_MS must be a whole number of milliseconds from 100 to 60000');
+    }
+  }
+  return new ModelServerAdapter({
+    url: url.value,
+    models: models.value,
+    apiKey: env.MODEL_SERVER_API_KEY || undefined,
+    timeoutMs,
+    fetch: (u, init) => fetch(u, init),
+  });
+}
+
 function adaptersFor(env: PointsmanEnv): (model: string) => ModelAdapter | null {
+  const byMode = adaptersByMode(env);
+  const server = modelServerFor(env);
+  if (!server) return byMode;
+  return (model) => (server.serves(model) ? server : byMode(model));
+}
+
+function adaptersByMode(env: PointsmanEnv): (model: string) => ModelAdapter | null {
   switch (env.MODEL_MODE) {
     case 'mock':
       return () => mock;

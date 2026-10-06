@@ -12,8 +12,60 @@ answered.
 | `mock` | every model id, answered by a fixed mock | development and tests |
 | `workers-ai` | `clef-flash`, `clef` (Workers AI) | real deployments, `pnpm dev:live` |
 
-Other backends (Jev, a local model) are new adapters behind the same
-interface (`src/models/adapter.ts`); see issue #15 for a local model.
+A **model server** (below) can serve some model ids in either mode; those
+go to the server, all others as `MODEL_MODE` says. Other backends are new
+adapters behind the same interface (`src/models/adapter.ts`).
+
+## Model server (local or self-hosted models)
+
+Any server that answers `POST /v1/systemone` in the shared request and answer
+format can serve models, for example a local
+[Strands Decider](https://strandsagents.com/blog/introducing-strands-decider/)
+(see the spike, [spikes/local-decider.md](spikes/local-decider.md)).
+
+| Setting | Meaning |
+|---|---|
+| `MODEL_SERVER_URL` | Base URL, for example `http://127.0.0.1:8794`. https, or http only for `localhost`, `127.0.0.1`, `[::1]`. No credentials, query or fragment. |
+| `MODEL_SERVER_MODELS` | Comma-separated model ids from profiles that the server answers. `id=name` sends a different model name to the server. |
+| `MODEL_SERVER_API_KEY` | Optional. Sent as `Authorization: Bearer …`; a Worker secret, never logged. |
+| `MODEL_SERVER_TIMEOUT_MS` | Optional, 100 to 60000 (default 10000). |
+
+URL and models go together; with only one of them, or an invalid value,
+every request fails with a configuration error, so the mistake shows up at once. A failed call (not reachable, timeout,
+HTTP error, invalid answer) is a model error, so the profile's next fallback
+model answers. Errors and logs never include the request, the response body
+or the key.
+
+### Real answers in local development
+
+About 4.6 GB is downloaded on first use (the decider and its
+Qwen3.5-2B backbone, both Apache-2.0). Python 3.10 or newer.
+
+```sh
+python3 -m venv .venv && . .venv/bin/activate
+pip install strands-decider
+strands-decider serve StrandsAgents/strands-decider-2B-hobson-v19 --port 8794
+```
+
+Then, in a second terminal, put the settings in `.dev.vars` (not committed)
+and start the Worker as usual:
+
+```sh
+cat > .dev.vars <<'VARS'
+MODEL_SERVER_URL=http://127.0.0.1:8794
+MODEL_SERVER_MODELS=clef-flash=strands-decider-2B-hobson-v19
+VARS
+pnpm dev
+```
+
+Profiles that use `clef-flash` are now answered by the local decider (a
+decision records `strands-decider-2B-hobson-v19` as its model); everything
+else still uses the mock. A deployed Worker needs an https server it can
+reach; Workers cannot call addresses on your own machine.
+
+The decider's probabilities run lower than Clef-flash's for the same answer
+(see the spike), so check a profile's thresholds against its accuracy before
+switching a deployed profile to it.
 
 ## Workers AI and AI Gateway
 
