@@ -49,9 +49,9 @@ group's call), or `common` if the group prefers.
 | `externalReference` | Property (text) | | A reference outside the broker (an issue URL) | |
 | `action` | Property (text) | yes | `auto`, `review`, or a custom action of the profile | (ours) |
 | `answers` | Property (structured, list) | yes | Per question: `name`, `type` (`noul`, `choice`, `score`), `value`, `probability`, and for choice/score the `probabilities` per option or level | (ours) |
-| `profile` | Property (text) | yes | Profile id | the plan (`prov:hadPlan` on a qualified association), with `profileVersion` |
+| `profile` | Property (text) | yes | Profile id | (ours) identifies the plan; see below |
 | `profileVersion` | Property (integer) | yes | Profile version | |
-| `model` | Property (text) | yes | Model id that answered | `prov:wasAssociatedWith` (software agent) |
+| `model` | Property (text) | yes | Model id that answered | (ours) identifies the agent; see below |
 | `decidedAt` | Property (DateTime) | yes | When the decision was made | `prov:endedAtTime` |
 | `reviewStatus` | Property (text) | | `pending`, `resolved`; absent when no review was asked | |
 | `finalAction` | Property (text) | | The action after a person's review | |
@@ -118,9 +118,14 @@ Notes on choices:
 ```
 
 `Decision` would be declared a subclass of `prov:Activity` in the vocabulary.
-The profile as a plan needs PROV's qualified form (`prov:qualifiedAssociation`
-with `prov:agent` and `prov:hadPlan`); the flat attributes stay simple for
-NGSI-LD users, and the vocabulary documents the mapping.
+`profile`, `profileVersion` and `model` are plain values, not PROV-O
+relations: in PROV-O, `prov:wasAssociatedWith` points from an activity to an
+agent resource, and `prov:hadPlan` from a qualified association
+(`prov:qualifiedAssociation` with `prov:agent` and `prov:hadPlan`) to a plan
+resource. The values identify that agent (the model) and that plan (the
+profile version). To publish real PROV-O, the vocabulary would mint IRIs for
+models and profile versions and add the qualified association; the flat
+attributes stay as the simple form for NGSI-LD users.
 `answers` as `@json` keeps its inner keys from being expanded.
 
 ## How it relates to the bridge Property (#14)
