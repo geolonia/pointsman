@@ -45,7 +45,9 @@ profile works with any of them.
 | `score` | Rate on an ordered rubric | List of level descriptions, lowest first, 2–10 items | `score` (probability-weighted level, can fall between levels), `probabilities` per level, `legend`, `confidence` |
 
 Question names follow the model APIs: letters, digits, `_`, `.`, `-`, at most
-100 characters. Answers come back under the same names.
+100 characters. Answers come back under the same names. Choice option values
+use the same characters, so that policy conditions can refer to them
+(`team.probabilities.customer-support`); put readable text in `description`.
 
 ## Model API format (checked 2026-10-06)
 

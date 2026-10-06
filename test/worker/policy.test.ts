@@ -120,6 +120,10 @@ describe('invalid conditions', () => {
     ['stuck.value > false', '> works only on numbers'],
     ['1 == 1', 'must refer to a question'],
     ['constructor.p > 0', 'does not refer to a question'],
+    // Fields inherited from Object.prototype are not fields.
+    ['stuck.constructor == stuck.constructor', 'noul questions have value, p, yes'],
+    ['team.toString == team.toString', 'choice questions have value, p'],
+    ['effort.__proto__ == effort.__proto__', 'score questions have value, p, score'],
   ])('%j fails: %s', (when, message) => {
     expect(() => compileCondition(when, questions)).toThrow(PolicyError);
     expect(() => compileCondition(when, questions)).toThrow(message);

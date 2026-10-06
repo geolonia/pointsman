@@ -166,7 +166,10 @@
             "additionalProperties": false,
             "required": ["value"],
             "properties": {
-              "value": { "$ref": "#/$defs/nonEmpty" },
+              "value": {
+                "description": "Option id: letters, digits, '_', '.', '-' (like question names), so policy conditions can refer to it, e.g. team.probabilities.<value>. Put readable text in description.",
+                "$ref": "#/$defs/name"
+              },
               "description": { "$ref": "#/$defs/nonEmpty" }
             }
           }

@@ -101,7 +101,8 @@ function resolveReference(word: string, questions: Question[]): Operand {
     if (!options.includes(key)) throw new PolicyError(`"${word}": "${key}" is not an option of "${q.name}"`);
     return { kind: 'number', question: q.name, field: 'probabilities', key };
   }
-  const kind = FIELDS[q.type][field];
+  // hasOwn: a field name like "constructor" must not match Object.prototype.
+  const kind = Object.hasOwn(FIELDS[q.type], field) ? FIELDS[q.type][field] : undefined;
   if (!kind) {
     throw new PolicyError(
       `"${word}": ${q.type} questions have ${Object.keys(FIELDS[q.type]).join(', ')}${optionsOf(q) ? ', probabilities.<option>' : ''}`,
