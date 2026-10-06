@@ -83,9 +83,11 @@ describe('ModelServerAdapter', () => {
     expect(err.message).toBe('strands-decider-2B-hobson-v19: model server answered HTTP 307');
   });
 
-  it('uses the profile model id when the response names no model', async () => {
-    const { adapter } = server(() => Response.json({ answers }));
-    expect((await adapter.decide(request)).model).toBe('local-decider');
+  it('records the configured server model name, not the one in the response', async () => {
+    for (const model of [undefined, 'Login page is blank']) {
+      const { adapter } = server(() => Response.json({ model, answers }));
+      expect((await adapter.decide(request)).model).toBe('strands-decider-2B-hobson-v19');
+    }
   });
 
   it.each([
@@ -170,12 +172,15 @@ describe('model server settings', () => {
   });
 
   it('parses model lists with optional server names', () => {
-    expect(parseModelList('local-decider, other=other-v2')).toEqual({
-      ok: true,
-      value: { 'local-decider': 'local-decider', other: 'other-v2' },
-    });
+    const parsed = parseModelList('local-decider, other=other-v2');
+    expect(parsed.ok && { ...parsed.value }).toEqual({ 'local-decider': 'local-decider', other: 'other-v2' });
     // A model may be called "error" without being mistaken for a failure.
-    expect(parseModelList('error')).toEqual({ ok: true, value: { error: 'error' } });
+    const error = parseModelList('error');
+    expect(error.ok && { ...error.value }).toEqual({ error: 'error' });
+    // Ids start with a letter or digit, so no prototype names; the map has no prototype anyway.
+    expect(parseModelList('__proto__').ok).toBe(false);
+    const constructor = parseModelList('constructor');
+    expect(constructor.ok && Object.keys(constructor.value)).toEqual(['constructor']);
   });
 
   it.each([

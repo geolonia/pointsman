@@ -47,7 +47,7 @@ export function checkServerUrl(raw: string): Parsed<string> {
 
 /** Parses comma-separated `id` or `id=server-name` entries. */
 export function parseModelList(raw: string): Parsed<Record<string, string>> {
-  const models: Record<string, string> = {};
+  const models: Record<string, string> = Object.create(null);
   for (const entry of raw.split(',').map((e) => e.trim()).filter(Boolean)) {
     const [id, name = id, extra] = entry.split('=').map((p) => p.trim());
     // Same rule as model ids in profiles (schema/profile-v1.schema.json).
@@ -115,9 +115,8 @@ export class ModelServerAdapter implements ModelAdapter {
     }
     // Answers are checked in detail by normalizeAnswers(); here only the shape.
     if (!isObject(raw) || !isObject(raw.answers)) throw new ModelError(`${name}: response has no answers`);
-    return {
-      model: typeof raw.model === 'string' && raw.model !== '' ? raw.model : request.model,
-      answers: raw.answers as ModelResponse['answers'],
-    };
+    // The configured name, not the server's `model` field: that field is
+    // server-controlled and would be stored in the decision log.
+    return { model: name, answers: raw.answers as ModelResponse['answers'] };
   }
 }
