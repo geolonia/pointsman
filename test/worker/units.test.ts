@@ -101,6 +101,23 @@ describe('normalizeAnswers', () => {
     })).toThrow(ModelError);
   });
 
+  it.each([-0.1, 3.5, Number.NaN, '1'])('rejects the weighted score %s', (score) => {
+    expect(() => normalizeAnswers({ ...triage, questions: [triage.questions[2]!] }, {
+      model: 'm',
+      answers: {
+        effort: { type: 'score', score: score as number, legend: {}, probabilities: { '0': 0.5, '1': 0.5 }, confidence: 1 },
+      },
+    })).toThrow(/score outside 0\.\.3/);
+  });
+
+  it('accepts the weighted score at the top level', () => {
+    const answers = normalizeAnswers({ ...triage, questions: [triage.questions[2]!] }, {
+      model: 'm',
+      answers: { effort: { type: 'score', score: 3, legend: {}, probabilities: { '3': 1 }, confidence: 1 } },
+    });
+    expect(answers.effort).toMatchObject({ value: 3, score: 3 });
+  });
+
   it('rejects a negative probability', () => {
     expect(() => noul(-0.1)).toThrow(ModelError);
   });

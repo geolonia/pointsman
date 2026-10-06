@@ -58,7 +58,10 @@ export function normalizeAnswers(profile: Profile, response: ModelResponse): Rec
         if (q.type !== 'score') break;
         checkKeys(q.name, a.probabilities ?? {}, q.criteria.map((_, i) => String(i)));
         const [level, p] = top(a.probabilities ?? {});
-        if (typeof a.score !== 'number') throw new ModelError(`question "${q.name}": invalid score`);
+        const maxLevel = q.criteria.length - 1;
+        if (!Number.isFinite(a.score) || a.score < 0 || a.score > maxLevel) {
+          throw new ModelError(`question "${q.name}": score outside 0..${maxLevel}`);
+        }
         answers[q.name] = {
           type: 'score',
           value: Number(level),
