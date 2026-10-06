@@ -43,7 +43,11 @@ export default {
         results.push({ id: entity.id, error: String(err) });
       }
     }
-    return Response.json({ handled: results });
+    // Any failure: answer 502 so a broker that retries notifications sends it
+    // again. Entities that succeeded are skipped on the retry (input hash), so
+    // a retry repeats only the failed ones.
+    const failed = results.some((r) => r.error);
+    return Response.json({ handled: results }, { status: failed ? 502 : 200 });
   },
 };
 

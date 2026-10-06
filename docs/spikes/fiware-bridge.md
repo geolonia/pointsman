@@ -152,6 +152,9 @@ above should follow whatever #16 decides.
   Pointsman API token limited to its profiles.
 - Write one Property with the action as value and one level of
   sub-properties; align names with #16.
-- Not covered here: retries when Pointsman or the broker is down (not tested
-  whether the broker retries failed notifications; a queue would), `@context`
+- The bridge answers 502 when any entity failed, so a broker that retries
+  notifications sends it again; the input hash makes the retry skip entities
+  that already succeeded.
+- Not covered here: whether the broker retries failed notifications (not
+  tested; a queue in front of the bridge would make retries certain), `@context`
   handling for non-core attribute names, and multi-tenancy (`NGSILD-Tenant`).
