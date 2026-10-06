@@ -82,3 +82,8 @@ removes it from the index (it can no longer be called), but keeps its versions.
 Change `ref` in `engine.json` to a newer commit and open a pull request: the
 validate workflow checks your profiles against that engine version before
 anything is deployed.
+
+The engine repository itself is fixed in the workflows (`ENGINE_REPOSITORY`),
+not taken from `engine.json`: the workflows run the engine's code, the deploy
+workflow with the Cloudflare credentials, so a pull request that only edits
+`engine.json` cannot point them at other code.

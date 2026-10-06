@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # The only engine repository these workflows will run.
+  ENGINE_REPOSITORY: geolonia/pointsman
+
 jobs:
   validate:
     name: Validate profiles and config
@@ -21,21 +25,23 @@ jobs:
         with:
           persist-credentials: false
 
-      # engine.json pins the engine to one commit; refuse anything else.
+      # engine.json pins the engine commit. The repository is fixed here, not
+      # in engine.json: these steps run the engine's code (in deploy, with the
+      # Cloudflare credentials), so a pull request must not be able to point
+      # them at another repository. Change ENGINE_REPOSITORY only on purpose.
       - name: Read engine.json
         id: engine
         run: |
           repo=$(jq -r .repository engine.json)
           ref=$(jq -r .ref engine.json)
-          [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "::error::engine.json: invalid repository"; exit 1; }
+          [[ "$repo" == "$ENGINE_REPOSITORY" ]] || { echo "::error::engine.json: repository must be $ENGINE_REPOSITORY"; exit 1; }
           [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::engine.json: ref must be a 40-character commit SHA"; exit 1; }
-          echo "repository=$repo" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - name: Checkout engine
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ steps.engine.outputs.repository }}
+          repository: ${{ env.ENGINE_REPOSITORY }}
           ref: ${{ steps.engine.outputs.ref }}
           path: engine
           persist-credentials: false
