@@ -95,7 +95,11 @@
 }
 
 /* Theme switch */
-.theme-toggle { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+/* Hidden until theme.js runs (it sets data-theme-ready): without JavaScript
+   the page follows the system setting and the button would do nothing. */
+.theme-toggle { display: none; }
+:root[data-theme-ready] .theme-toggle { display: inline-grid; }
+.theme-toggle { place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
 .theme-toggle:hover { color: var(--fg); border-color: var(--line-strong); }
 .theme-toggle svg { width: 18px; height: 18px; }
 .theme-toggle .icon-sun { display: none; }

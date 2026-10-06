@@ -34,6 +34,7 @@
   }
 
   apply(stored() || (light.matches ? 'light' : 'dark'));
+  root.dataset.themeReady = '';
   light.addEventListener('change', function (e) {
     if (!stored()) apply(e.matches ? 'light' : 'dark');
   });
