@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { validateProfileFile } from '../scripts/lib/profile.mjs';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
 const examples = join(root, 'examples', 'profiles');
 const invalid = join(root, 'test', 'fixtures', 'invalid');
 const cli = join(root, 'scripts', 'validate-profiles.mjs');
@@ -42,9 +44,12 @@ test('CLI exits 1 when any profile is invalid', () => {
   assert.match(r.stdout, /FAIL {2}.*missing-ja\.yaml/);
 });
 
-test('CLI exits 1 when no profile is found', () => {
-  const r = spawnSync(process.execPath, [cli, join(root, 'docs')], { encoding: 'utf8' });
+test('CLI exits 1 when no profile is found', (t) => {
+  const empty = mkdtempSync(join(tmpdir(), 'pointsman-'));
+  t.after(() => rmSync(empty, { recursive: true }));
+  const r = spawnSync(process.execPath, [cli, empty], { encoding: 'utf8' });
   assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /No profiles found/);
 });
 
 test('CLI exits 2 for a missing path', () => {
