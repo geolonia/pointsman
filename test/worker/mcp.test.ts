@@ -101,6 +101,17 @@ describe('/mcp', () => {
     expect(record.callback_url).toBeUndefined();
 
     expect((await call('get_decision', { decision_id: d.decision_id }, DEPLOY_ONLY)).isError).toBe(true);
+
+    // A decision of a profile that is not MCP-visible (made through REST) looks unknown.
+    const rest = await exports.default.fetch('http://pointsman.test/v1/decide/deploy-progress', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ALL}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ state: 'No stack event for 40 minutes.' }),
+    });
+    const hidden = (await rest.json<any>()).decision_id;
+    const got2 = await call('get_decision', { decision_id: hidden });
+    expect(got2.isError).toBe(true);
+    expect(got2.text).toContain('unknown decision');
     expect((await call('get_decision', { decision_id: 'not-a-uuid' })).text).toContain('unknown decision');
   });
 });

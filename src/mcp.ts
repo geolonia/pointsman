@@ -93,7 +93,9 @@ function server(deps: McpDeps, client: TokenRecord): McpServer {
     },
     async ({ decision_id }) => {
       const record = UUID.test(decision_id) ? await deps.log.get(decision_id) : null;
-      if (!record || !canUse(client, record.profile)) return failure(`unknown decision "${decision_id}"`);
+      // Decisions of profiles that are not MCP-visible look unknown too.
+      const profile = record ? await deps.store.get(record.profile) : null;
+      if (!record || !visible(profile, client)) return failure(`unknown decision "${decision_id}"`);
       const { callback_url: _, state: __, ...shown } = record;
       return json(shown);
     },
