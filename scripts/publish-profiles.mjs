@@ -7,16 +7,20 @@
 //   profile:<id>:<version>  the profile JSON
 //   index                   one summary per profile id, with all versions
 //
-// A published id + version never changes: if KV already holds that version
+// A published id + version never changes. The record of published versions is
+// the D1 table profile_versions (migrations/0002), not KV: D1 is strongly
+// consistent, KV listings are not. Each version is registered there (insert if
+// new) before anything is written to KV; if a version is already registered
 // with different content, nothing is written and the script fails ("increase
 // the version"). Old versions stay in KV, so feedback on old decisions can
-// still be checked against them. The index is written last, so a new version
-// becomes visible only after the profile itself is stored.
+// still be checked against them. The index is written last; readers tolerate
+// a new index that arrives before the new profile (see KvProfileStore).
 
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { createHash } from 'node:crypto';
 import { canonicalJson } from '../src/log.ts';
 import { duplicateIdErrors, PROFILE_EXTENSIONS, parseProfile, validateProfile } from './lib/profile.mjs';
 import { wrangler } from './lib/wrangler.mjs';
@@ -44,13 +48,17 @@ try {
 if (!values.dir) fail('Usage: publish-profiles.mjs --dir <profiles> (--local|--remote) [--config f] [--env e] [--dry-run]', 2);
 if (values.local === values.remote) fail('Give exactly one of --local or --remote.', 2);
 
-const target = [
-  '--binding', 'PROFILES',
+const where = [
   values.local ? '--local' : '--remote',
   ...(values.config ? ['--config', values.config] : []),
   ...(values.env ? ['--env', values.env] : []),
 ];
-const kv = (args, opts) => wrangler(['kv', ...args, ...target], opts);
+const kv = (args) => wrangler(['kv', ...args, '--binding', 'PROFILES', ...where]);
+/** Run SQL on the DB binding; returns the rows of the last statement. */
+function d1(sql) {
+  const out = JSON.parse(wrangler(['d1', 'execute', 'DB', '--command', sql, '--json', ...where]));
+  return out[out.length - 1]?.results ?? [];
+}
 
 // 1. Read and validate every profile.
 const profiles = [];
@@ -81,34 +89,41 @@ errors.push(...duplicateIdErrors(paths.map((p, i) => [p, profiles[i]])));
 if (errors.length > 0) fail(`Invalid profiles; nothing was published.\n${errors.join('\n')}`);
 if (profiles.length === 0) fail(`No profiles in ${values.dir}; nothing was published.`);
 
-// 2. Compare with what KV already holds.
-let existingKeys;
+// 2. Register the versions in D1 (write-once) and compare. Ids match
+// [a-z0-9-], versions are integers and hashes hex (validated above), so they
+// can be put into the SQL text directly.
+const hash = (p) => createHash('sha256').update(canonicalJson(p)).digest('hex');
+const key = (p) => `profile:${p.id}:${p.version}`;
+const now = new Date().toISOString();
+let registered;
 try {
-  existingKeys = new Set(JSON.parse(kv(['key', 'list', '--prefix', 'profile:'])).map((k) => k.name));
+  const inserts = values['dry-run']
+    ? []
+    : profiles.map((p) => `INSERT OR IGNORE INTO profile_versions VALUES ('${p.id}', ${p.version}, '${hash(p)}', '${now}');`);
+  registered = d1([...inserts, 'SELECT profile_id, version, content_hash, published_at FROM profile_versions;'].join('\n'));
 } catch (err) {
   fail(err.message);
 }
-const key = (p) => `profile:${p.id}:${p.version}`;
-const toWrite = [];
-const conflicts = [];
-for (const p of profiles) {
-  if (!existingKeys.has(key(p))) {
-    toWrite.push(p);
-    continue;
-  }
-  const stored = JSON.parse(kv(['key', 'get', key(p), '--text']));
-  if (canonicalJson(stored) !== canonicalJson(p)) conflicts.push(`${p.id} version ${p.version}`);
-}
+const byKey = new Map(registered.map((r) => [`${r.profile_id}:${r.version}`, r]));
+const conflicts = profiles.filter((p) => {
+  const r = byKey.get(`${p.id}:${p.version}`);
+  return r && r.content_hash !== hash(p);
+});
 if (conflicts.length > 0) {
-  fail(`Already published with different content (increase "version"; nothing was published):\n  ${conflicts.join('\n  ')}`);
+  fail(`Already published with different content (increase "version"; nothing was published):\n  ${conflicts.map((p) => `${p.id} version ${p.version}`).join('\n  ')}`);
 }
+// New in this run: not registered before (dry run) or registered just now.
+const toWrite = profiles.filter((p) => {
+  const r = byKey.get(`${p.id}:${p.version}`);
+  return !r || r.published_at === now;
+});
 
-// 3. The index: all versions in KV plus the new ones, latest title and description.
+// 3. The index: all registered versions, latest title and description from
+// the repository.
 const versions = new Map();
-for (const name of existingKeys) {
-  const [, id, v] = name.split(':');
-  if (!versions.has(id)) versions.set(id, new Set());
-  versions.get(id).add(Number(v));
+for (const r of registered) {
+  if (!versions.has(r.profile_id)) versions.set(r.profile_id, new Set());
+  versions.get(r.profile_id).add(Number(r.version));
 }
 for (const p of profiles) {
   if (!versions.has(p.id)) versions.set(p.id, new Set());
@@ -120,12 +135,12 @@ for (const [id, set] of [...versions].sort(([a], [b]) => a.localeCompare(b))) {
   const sorted = [...set].sort((a, b) => a - b);
   const latest = sorted[sorted.length - 1];
   // The repository holds the current version of each profile; a profile that
-  // was removed from the repository keeps its old versions in KV but leaves
-  // the index, so it can no longer be called without a version.
+  // was removed from the repository keeps its old versions but leaves the
+  // index, so it can no longer be called without a version.
   const p = latestFromRepo.get(id);
   if (!p) continue;
   if (p.version !== latest) {
-    fail(`${id}: the repository has version ${p.version}, but KV already has version ${latest}; versions only go up.`);
+    fail(`${id}: the repository has version ${p.version}, but version ${latest} is already published; versions only go up.`);
   }
   index.push({ id, version: latest, versions: sorted, title: p.title, description: p.description });
 }
@@ -137,11 +152,12 @@ if (values['dry-run']) process.exit(0);
 // 4. Write profiles first, then the index.
 const dir = mkdtempSync(join(tmpdir(), 'pointsman-publish-'));
 try {
-  if (toWrite.length > 0) {
-    const file = join(dir, 'profiles.json');
-    writeFileSync(file, JSON.stringify(toWrite.map((p) => ({ key: key(p), value: JSON.stringify(p) }))));
-    kv(['bulk', 'put', file]);
-  }
+  // All versions in the repository, not only new ones: a previous run may
+  // have registered a version and failed before writing it to KV. The content
+  // is the registered content, so rewriting it changes nothing.
+  const file = join(dir, 'profiles.json');
+  writeFileSync(file, JSON.stringify(profiles.map((p) => ({ key: key(p), value: JSON.stringify(p) }))));
+  kv(['bulk', 'put', file]);
   kv(['key', 'put', 'index', JSON.stringify(index)]);
 } catch (err) {
   fail(err.message);

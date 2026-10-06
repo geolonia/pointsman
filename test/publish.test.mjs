@@ -26,7 +26,10 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
     main: join(root, 'src', 'index.ts'),
     compatibility_date: '2026-10-01',
     kv_namespaces: [{ binding: 'PROFILES', id: 'publish-test' }],
+    d1_databases: [{ binding: 'DB', database_name: 'publish-test', database_id: 'publish-test', migrations_dir: join(root, 'migrations') }],
   }));
+  const migrate = spawnSync(wranglerBin, ['d1', 'migrations', 'apply', 'DB', '--local', '--config', config], { encoding: 'utf8' });
+  assert.equal(migrate.status, 0, migrate.stdout + migrate.stderr);
   const publish = (...extra) =>
     spawnSync(process.execPath, [script, '--dir', profiles, '--config', config, '--local', ...extra], { encoding: 'utf8' });
   const index = () => JSON.parse(spawnSync(wranglerBin, ['kv', 'key', 'get', 'index', '--binding', 'PROFILES', '--local', '--config', config, '--text'], { encoding: 'utf8' }).stdout);
@@ -58,6 +61,23 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
     ['deploy-progress', 1, [1]],
     ['issue-triage', 2, [1, 2]],
   ]);
+
+  // KV is eventually consistent; at the extreme it shows nothing at all. The
+  // record in D1 still refuses different content for a published version.
+  const kvWrangler = (...args) => spawnSync(wranglerBin, ['kv', 'key', ...args, '--binding', 'PROFILES', '--local', '--config', config], { encoding: 'utf8' });
+  for (const k of ['index', 'profile:issue-triage:1', 'profile:issue-triage:2', 'profile:deploy-progress:1']) kvWrangler('delete', k);
+  edit('team.p >= 0.8', 'team.p >= 0.7');
+  r = publish();
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /Already published with different content[\s\S]*issue-triage version 2/);
+  assert.equal(kvWrangler('get', 'index', '--text').stdout.trim(), 'Value not found', 'nothing was written');
+
+  // A re-run with unchanged content rewrites the missing KV values.
+  edit('team.p >= 0.7', 'team.p >= 0.8');
+  r = publish();
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(index().map((s) => [s.id, s.version]), [['deploy-progress', 1], ['issue-triage', 2]]);
+  assert.match(kvWrangler('get', 'profile:issue-triage:2', '--text').stdout, /"version":2/);
 });
 
 for (let [name, args, message] of [
