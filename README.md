@@ -8,6 +8,8 @@ Pointsman is a model-agnostic decision service. A client sends a state to
 the profile's typed questions with probabilities, and the profile's policy turns
 the answers into an action: `auto`, `review`, or a custom one.
 
+Website: https://geolonia.github.io/pointsman/
+
 Status: early proof of concept. See the [PoC milestone](https://github.com/geolonia/pointsman/milestone/1).
 
 ## Decision profiles
@@ -99,6 +101,11 @@ node scripts/validate-profiles.mjs path/to/profiles  # validate your own
 example profiles built into the Worker (`PROFILE_SOURCE=bundled`) and answers
 every question with a mock model (`MODEL_MODE=mock`). A real deployment uses
 its own configuration with `PROFILE_SOURCE=kv`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Every commit needs a sign-off
+(`git commit -s`, [DCO](https://developercertificate.org/)).
 
 ## License
 
