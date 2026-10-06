@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="deploy-progress" name="Deploy progress" namespace="https://github.com/geolonia/pointsman/docs/spikes">
+  <decision id="action" name="Action">
+    <decisionTable id="policy" hitPolicy="FIRST">
+      <input id="in_stuck" label="stuck.yes">
+        <inputExpression id="ie_stuck" typeRef="number"><text>stuck_yes</text></inputExpression>
+      </input>
+      <input id="in_phase" label="phase.value">
+        <inputExpression id="ie_phase" typeRef="string"><text>phase_value</text></inputExpression>
+      </input>
+      <output id="out_action" name="action" typeRef="string" />
+      <rule id="r1">
+        <inputEntry id="r1_i1"><text>&gt;= 0.9</text></inputEntry>
+        <inputEntry id="r1_i2"><text>-</text></inputEntry>
+        <outputEntry id="r1_o"><text>"cancel"</text></outputEntry>
+      </rule>
+      <rule id="r2">
+        <inputEntry id="r2_i1"><text>&gt;= 0.6</text></inputEntry>
+        <inputEntry id="r2_i2"><text>not("rolling_back")</text></inputEntry>
+        <outputEntry id="r2_o"><text>"review"</text></outputEntry>
+      </rule>
+      <rule id="r3">
+        <inputEntry id="r3_i1"><text>-</text></inputEntry>
+        <inputEntry id="r3_i2"><text>-</text></inputEntry>
+        <outputEntry id="r3_o"><text>"continue"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>
