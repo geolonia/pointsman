@@ -73,6 +73,13 @@ jobs:
       - name: Validate profiles
         run: node engine/scripts/validate-profiles.mjs profiles
 
+      # Build and dry-run before the first change on Cloudflare, so a broken
+      # revision stops here and leaves migrations and profiles untouched.
+      - name: Build and dry-run deploy
+        run: |
+          pnpm --dir engine build
+          engine/node_modules/.bin/wrangler deploy --dry-run --config wrangler.jsonc --outdir .wrangler/dry-run
+
       - name: Apply database migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -85,9 +92,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node engine/scripts/publish-profiles.mjs --dir profiles --remote --config wrangler.jsonc
-
-      - name: Build the engine
-        run: pnpm --dir engine build
 
       - name: Deploy the engine
         env:

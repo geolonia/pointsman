@@ -4,12 +4,16 @@ import { checkFile } from '../scripts/check-public.mjs';
 
 // 32 hex, made up; built at runtime so this file passes the check itself.
 const FAKE_ID = '0123456789abcdef'.repeat(2);
+// Also built at runtime, so the check does not flag the examples below.
+const ACCOUNT = ['account', 'id'].join('_');
 const profile = 'id: x\nversion: 1\nquestions: []\npolicy: { default: review }\n';
 const wrangler = (kv, extra = '') => `{\n  // comment\n  "name": "x",${extra}\n  "kv_namespaces": [{ "binding": "TOKENS", "id": "${kv}" }],\n}`;
 
 for (const [name, path, text, expected] of [
   ['an account id in any file', 'docs/setup.md', `Account: ${FAKE_ID}`, /docs\/setup.md:1: looks like a Cloudflare account/],
-  ['account_id in a config', 'config.toml', 'account_id = "abc"', /sets account_id/],
+  [`${ACCOUNT} in a config`, 'config.toml', `${ACCOUNT} = "abc"`, /sets account_id/],
+  [`${ACCOUNT} next to an allowed secret reference`, 'deploy.yml', `token: \${{ secrets.TOKEN }}\n${ACCOUNT}: "abc"`, /deploy.yml:2: sets account_id/],
+  [`${ACCOUNT} in JSON`, 'wrangler.json', `{ "${ACCOUNT}": "abc" }`, /sets account_id/],
   ['a real KV id in wrangler.jsonc', 'wrangler.jsonc', wrangler('my-namespace'), /kv_namespaces\[0\]\.id is "my-namespace"/],
   ['a D1 uuid', 'wrangler.jsonc', '{ "d1_databases": [{ "binding": "DB", "database_id": "6f0a3c1e-1111-4222-8333-444455556666" }] }', /database_id is "6f0a3c1e/],
   ['routes', 'wrangler.jsonc', wrangler('local-dev-only', '\n  "routes": ["x.example.com/*"],'), /routes is set/],
@@ -31,7 +35,8 @@ for (const [name, path, text] of [
   ['example profiles', 'examples/profiles/x.yaml', profile],
   ['test fixtures', 'test/fixtures/invalid/x.yaml', profile],
   ['template profiles', 'template/config-repo/profiles/x.yaml', profile],
-  ['a workflow using the account secret', '.github/workflows/d.yml', 'account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}'],
+  ['a workflow using the account secret', '.github/workflows/d.yml', `${ACCOUNT}: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}`],
+  [`an ${ACCOUNT} placeholder`, 'docs/x.jsonc', `"${ACCOUNT}": "<account id>"`],
 ]) {
   test(`accepts ${name}`, () => {
     assert.deepEqual(checkFile(path, text), []);

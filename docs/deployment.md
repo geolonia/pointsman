@@ -62,7 +62,7 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 - **Validate** (pull requests and `main`; no secrets): checks the config,
   validates the profiles with the pinned engine (so the schema version is
   pinned too), and dry-runs the deploy.
-- **Deploy** (`main`): the same checks, then
+- **Deploy** (`main`): the same checks, a build and dry run, and only then
   `wrangler d1 migrations apply`, `publish-profiles.mjs`, `wrangler deploy`.
   The Cloudflare secrets are given only to these three steps.
 

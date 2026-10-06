@@ -60,8 +60,16 @@ export function checkFile(path, text) {
     const line = text.slice(0, m.index).split('\n').length;
     problems.push(`${path}:${line}: looks like a Cloudflare account or resource id (${m[0].slice(0, 6)}…)`);
   }
-  if (/\baccount_id\b\s*["']?\s*[:=]/.test(text) && !/\$\{\{|<account/.test(text)) {
-    problems.push(`${path}: sets account_id`);
+  // Every account_id assignment is checked on its own: only a secret
+  // reference or a <placeholder> is allowed as its value.
+  for (const m of text.matchAll(/\baccount_id\b["']?\s*[:=]\s*([^\n]*)/g)) {
+    // The rest of the line, without a trailing comma and quotes.
+    const value = m[1].trim().replace(/,$/, '').trim().replace(/^["'](.*)["']$/, '$1');
+    const allowed = /^\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}$/.test(value) || /^<[^>]+>$/.test(value);
+    if (!allowed) {
+      const line = text.slice(0, m.index).split('\n').length;
+      problems.push(`${path}:${line}: sets account_id`);
+    }
   }
   if (/^wrangler.*\.jsonc?$/.test(basename(path))) {
     try {
