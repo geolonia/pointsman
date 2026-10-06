@@ -1,0 +1,123 @@
+# Decap CMS config tried in the spike (docs/spikes/decap-cms.md, issue #12).
+# Goes in admin/config.yml of a config repository. local_backend: true lets
+# `npx decap-server` edit the files on disk without logging in.
+local_backend: true
+backend:
+  name: github
+  repo: your-org/your-config-repo
+  branch: main
+media_folder: media
+collections:
+  - name: profiles
+    label: Profiles
+    label_singular: Profile
+    folder: profiles
+    extension: yaml
+    format: yaml
+    create: true
+    identifier_field: id
+    slug: "{{fields.id}}"
+    summary: "{{id}} v{{version}}: {{title.en}}"
+    fields:
+      - { name: id, label: ID, widget: string, pattern: ['^[a-z0-9][a-z0-9-]{0,62}$', 'Lower case letters, digits and "-"'], hint: "Used in the URL. Must match the file name." }
+      - { name: version, label: Version, widget: number, value_type: int, min: 1, hint: "Increase on every change." }
+      - name: title
+        label: Title
+        widget: object
+        fields:
+          - { name: en, label: English, widget: string }
+          - { name: ja, label: Japanese, widget: string }
+      - name: description
+        label: Description
+        widget: object
+        fields:
+          - { name: en, label: English, widget: text }
+          - { name: ja, label: Japanese, widget: text }
+      - { name: model, label: Model, widget: select, options: [clef-flash, clef] }
+      - { name: fallback_models, label: Fallback models, widget: select, multiple: true, required: false, options: [clef-flash, clef] }
+      - name: input
+        label: Input mapping
+        widget: list
+        required: false
+        summary: "{{fields.name}} ← {{fields.path}}"
+        fields:
+          - { name: name, label: Name, widget: string, pattern: ['^[A-Za-z0-9_.-]{1,100}$', 'Letters, digits, "_", ".", "-"'] }
+          - { name: path, label: JSONPath, widget: string, pattern: ['^\$(\.[A-Za-z0-9_-]+|\[[0-9]+\])*$', 'For example $.issue.title'] }
+      - name: questions
+        label: Questions
+        widget: list
+        min: 1
+        max: 64
+        typeKey: type
+        summary: "{{fields.name}}"
+        types:
+          - label: Yes/no (noul)
+            name: noul
+            widget: object
+            summary: "{{fields.name}} (yes/no)"
+            fields:
+              - { name: name, label: Name, widget: string, pattern: ['^[A-Za-z0-9_.-]{1,100}$', 'Letters, digits, "_", ".", "-"'] }
+              - { name: instructions, label: Instructions, widget: text }
+              - name: criteria
+                label: What yes and no mean
+                widget: object
+                required: false
+                fields:
+                  - { name: "true", label: "Yes means", widget: text, required: false }
+                  - { name: "false", label: "No means", widget: text, required: false }
+          - label: Choice
+            name: choice
+            widget: object
+            summary: "{{fields.name}} (choice)"
+            fields:
+              - { name: name, label: Name, widget: string, pattern: ['^[A-Za-z0-9_.-]{1,100}$', 'Letters, digits, "_", ".", "-"'] }
+              - { name: instructions, label: Instructions, widget: text }
+              - name: criteria
+                label: Options
+                widget: list
+                min: 2
+                max: 255
+                summary: "{{fields.value}}"
+                fields:
+                  - { name: value, label: Value, widget: string, pattern: ['^[A-Za-z0-9_.-]{1,100}$', 'Letters, digits, "_", ".", "-"'] }
+                  - { name: description, label: Description, widget: string, required: false }
+          - label: Score
+            name: score
+            widget: object
+            summary: "{{fields.name}} (score)"
+            fields:
+              - { name: name, label: Name, widget: string, pattern: ['^[A-Za-z0-9_.-]{1,100}$', 'Letters, digits, "_", ".", "-"'] }
+              - { name: instructions, label: Instructions, widget: text }
+              - name: criteria
+                label: Levels (lowest first)
+                widget: list
+                min: 2
+                max: 10
+                field: { name: level, label: Level, widget: string }
+      - name: mcp
+        label: MCP
+        widget: object
+        required: false
+        collapsed: true
+        fields:
+          - { name: visible, label: Visible to MCP clients, widget: boolean, default: false, required: false }
+      - name: log
+        label: Decision log
+        widget: object
+        required: false
+        collapsed: true
+        fields:
+          - { name: store_state, label: Store the full state, widget: boolean, default: false, required: false }
+      - name: policy
+        label: Policy
+        widget: object
+        fields:
+          - name: rules
+            label: Rules (first match wins)
+            widget: list
+            required: false
+            summary: "{{fields.when}} → {{fields.action}}"
+            fields:
+              - { name: when, label: Condition, widget: string, hint: 'For example team.p >= 0.85' }
+              - { name: action, label: Action, widget: string, pattern: ['^[a-z][a-z0-9_-]{0,62}$', 'auto, review, or your own action'] }
+          - { name: default, label: Default action, widget: string, pattern: ['^[a-z][a-z0-9_-]{0,62}$', 'auto, review, or your own action'] }
