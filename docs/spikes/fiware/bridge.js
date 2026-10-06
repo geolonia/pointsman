@@ -36,7 +36,12 @@ export default {
     for (const entity of notification.data ?? []) {
       const route = ROUTES[entity.type];
       if (!route) continue;
-      results.push(await handle(entity, route, env));
+      // One entity's failure must not stop the others in the notification.
+      try {
+        results.push(await handle(entity, route, env));
+      } catch (err) {
+        results.push({ id: entity.id, error: String(err) });
+      }
     }
     return Response.json({ handled: results });
   },
@@ -52,6 +57,9 @@ async function handle(entity, route, env) {
   });
   if (!res.ok) return { id: entity.id, error: `pointsman ${res.status}: ${await res.text()}` };
   const d = await res.json();
+  if (!d || typeof d.action !== 'string' || !d.answers || typeof d.answers !== 'object') {
+    return { id: entity.id, error: 'unexpected response from pointsman' };
+  }
 
   // One Property: the action as value, the rest as sub-properties
   // (Property of Property), so a consumer that only needs the action reads
@@ -78,14 +86,18 @@ async function handle(entity, route, env) {
     body: JSON.stringify({ [route.attribute]: property }),
   });
   // PATCH /attrs only updates attributes that exist; POST /attrs appends.
-  let status = patch.status;
+  let write = patch;
   if (patch.status === 207 || patch.status === 404) {
-    const append = await fetch(`${env.BROKER_URL}/ngsi-ld/v1/entities/${encodeURIComponent(entity.id)}/attrs`, {
+    write = await fetch(`${env.BROKER_URL}/ngsi-ld/v1/entities/${encodeURIComponent(entity.id)}/attrs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ [route.attribute]: property }),
     });
-    status = `${patch.status} then POST ${append.status}`;
   }
-  return { id: entity.id, action: d.action, decision: d.decision_id, write: status };
+  // Without a successful write the input hash is not stored either, so the
+  // next notification decides again: report it as a failure.
+  if (!write.ok) {
+    return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status} ${await write.text()}` };
+  }
+  return { id: entity.id, action: d.action, decision: d.decision_id, write: write.status };
 }
