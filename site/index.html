@@ -8,7 +8,8 @@
 <meta property="og:title" content="Pointsman – open-source decision service">
 <meta property="og:description" content="Your systems ask a question, Pointsman decides which track it goes on, or calls a person when it is not sure.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="assets/social-preview-1280x640.png">
+<meta property="og:url" content="https://geolonia.github.io/pointsman/">
+<meta property="og:image" content="https://geolonia.github.io/pointsman/assets/social-preview-1280x640.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#141414">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
@@ -55,7 +56,7 @@ header.nav nav a:hover { color: var(--cream); }
 
 /* Hero */
 .hero { padding: 88px 0 72px; }
-.hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 56px; align-items: center; }
 .eyebrow { font: 500 13px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 20px; }
 .hero h1 { font-size: clamp(36px, 5.2vw, 58px); letter-spacing: -0.04em; }
 .hero h1 .go { color: var(--green); }
@@ -105,7 +106,7 @@ section.band.alt { background: #181818; }
 .outcomes code { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
 .outcomes code.auto { color: var(--green); border-color: rgba(46, 158, 107, 0.5); }
 
-.split { display: grid; grid-template-columns: 1fr 1.1fr; gap: 48px; align-items: start; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
 .points { margin: 24px 0 0; padding: 0; list-style: none; display: grid; gap: 16px; }
 .points li { padding-left: 22px; position: relative; color: #d6d2ca; }
 .points li::before { content: ''; position: absolute; left: 0; top: 0.62em; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); }
@@ -131,7 +132,7 @@ footer a:hover { color: var(--cream); }
 @media (max-width: 900px) {
   header.nav nav { display: none; }
   .hero { padding: 56px 0 48px; }
-  .hero .wrap, .split { grid-template-columns: 1fr; gap: 40px; }
+  .hero .wrap, .split { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   .grid3 { grid-template-columns: 1fr 1fr; }
   .flow { grid-template-columns: 1fr 1fr; gap: 32px 0; }
   .flow li:nth-child(2)::after { display: none; }
@@ -140,7 +141,7 @@ footer a:hover { color: var(--cream); }
   .wrap { padding: 0 16px; }
   body { font-size: 16px; }
   header.nav .btn span { display: none; }
-  .grid3, .grid2, .flow { grid-template-columns: 1fr; }
+  .grid3, .grid2, .flow { grid-template-columns: minmax(0, 1fr); }
   .flow li::after { display: none; }
   section.band { padding: 64px 0; }
 }
