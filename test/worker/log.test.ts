@@ -151,6 +151,13 @@ describe('canonicalJson', () => {
   it('sorts keys at every level and keeps array order', () => {
     expect(canonicalJson({ b: 1, a: { d: [2, 1], c: null } })).toBe('{"a":{"c":null,"d":[2,1]},"b":1}');
   });
+  it('writes values JSON cannot hold as null, like JSON.stringify does in arrays', () => {
+    expect(canonicalJson([undefined, () => 1, 1])).toBe(JSON.stringify([undefined, () => 1, 1]));
+    expect(canonicalJson([undefined])).toBe('[null]');
+    expect(canonicalJson(undefined)).toBe('null');
+    expect(canonicalJson({ a: undefined, b: [undefined] })).toBe('{"b":[null]}');
+  });
+
   it('gives equal hashes for equal states with different key order', async () => {
     expect(await hashState({ a: 1, b: 2 })).toBe(await hashState({ b: 2, a: 1 }));
     expect(await hashState('text')).not.toBe(await hashState('text '));

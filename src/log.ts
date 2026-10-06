@@ -45,7 +45,9 @@ export function canonicalJson(value: unknown): string {
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
   }
-  return JSON.stringify(value);
+  // JSON.stringify gives undefined for undefined, functions and symbols; JSON
+  // writes those as null inside arrays, so do the same everywhere.
+  return JSON.stringify(value) ?? 'null';
 }
 
 export async function hashState(state: unknown): Promise<string> {
