@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { parse as parseYaml } from 'yaml';
 
 /** Folders where profiles may live. */
@@ -33,8 +34,9 @@ function looksLikeProfile(path, text) {
 }
 
 function wranglerIds(text) {
-  // Strip // comments so JSONC parses; good enough for wrangler configs.
-  const json = JSON.parse(text.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
+  const errors = [];
+  const json = parseJsonc(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0) throw new Error(`${printParseErrorCode(errors[0].error)} at offset ${errors[0].offset}`);
   const found = [];
   const walk = (node, path) => {
     if (Array.isArray(node)) node.forEach((x, i) => walk(x, `${path}[${i}]`));

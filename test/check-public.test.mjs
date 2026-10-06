@@ -23,6 +23,7 @@ for (const [name, path, text, expected] of [
 
 for (const [name, path, text] of [
   ['local-dev-only ids', 'wrangler.jsonc', wrangler('local-dev-only')],
+  ['JSONC with inline and block comments', 'wrangler.jsonc', '{ /* block */ "name": "x", // inline\n "kv_namespaces": [{ "binding": "T", "id": "local-dev-only" }], }'],
   ['template placeholders', 'template/config-repo/wrangler.jsonc', wrangler('<PROFILES namespace id>')],
   ['a 64-hex SHA-256', 'docs/a.md', `hash ${'ab'.repeat(32)}`],
   ['a 40-hex commit SHA', 'docs/a.md', `commit ${'a1'.repeat(20)}`],

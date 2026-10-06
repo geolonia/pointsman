@@ -41,6 +41,21 @@ test('the template is refused until every placeholder is replaced', (t) => {
   assert.match(r.stderr, /engine.json: "ref" must be a 40-character commit SHA/);
 });
 
+test('a malformed engine.json or wrangler.jsonc is refused', (t) => {
+  const dir = makeRepo(t);
+  fill(dir);
+  writeFileSync(join(dir, 'engine.json'), '{ invalid json');
+  let r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /engine.json: .*JSON/);
+
+  fill(dir);
+  writeFileSync(join(dir, 'wrangler.jsonc'), '{ "name": "x", "main": }');
+  r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /wrangler.jsonc: ValueExpected/);
+});
+
 test('a filled-in config repository validates and builds', (t) => {
   const dir = makeRepo(t);
   fill(dir);

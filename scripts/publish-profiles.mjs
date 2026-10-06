@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { canonicalJson } from '../src/log.ts';
-import { PROFILE_EXTENSIONS, parseProfile, validateProfile } from './lib/profile.mjs';
+import { duplicateIdErrors, PROFILE_EXTENSIONS, parseProfile, validateProfile } from './lib/profile.mjs';
 import { wrangler } from './lib/wrangler.mjs';
 
 function fail(message, code = 1) {
@@ -54,6 +54,7 @@ const kv = (args, opts) => wrangler(['kv', ...args, ...target], opts);
 
 // 1. Read and validate every profile.
 const profiles = [];
+const paths = [];
 const errors = [];
 let entries;
 try {
@@ -68,11 +69,15 @@ for (const entry of entries) {
     const profile = parseProfile(readFileSync(path, 'utf8'), path);
     const problems = validateProfile(profile, { fileName: path });
     if (problems.length > 0) errors.push(`${path}\n  ${problems.join('\n  ')}`);
-    else profiles.push(profile);
+    else {
+      profiles.push(profile);
+      paths.push(path);
+    }
   } catch (err) {
     errors.push(`${path}\n  (parse): ${err.message.split('\n')[0]}`);
   }
 }
+errors.push(...duplicateIdErrors(paths.map((p, i) => [p, profiles[i]])));
 if (errors.length > 0) fail(`Invalid profiles; nothing was published.\n${errors.join('\n')}`);
 if (profiles.length === 0) fail(`No profiles in ${values.dir}; nothing was published.`);
 

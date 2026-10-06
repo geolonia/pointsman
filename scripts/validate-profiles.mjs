@@ -6,7 +6,8 @@
 
 import { readdirSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { PROFILE_EXTENSIONS, validateProfileFile } from './lib/profile.mjs';
+import { readFileSync } from 'node:fs';
+import { duplicateIdErrors, parseProfile, PROFILE_EXTENSIONS, validateProfileFile } from './lib/profile.mjs';
 
 function collect(path) {
   if (!statSync(path).isDirectory()) return [path];
@@ -46,6 +47,18 @@ for (const file of files) {
   console.log(`FAIL  ${file}`);
   for (const e of errors) console.log(`      ${e}`);
 }
+
+// Ids must be unique across all files given (a config repository's profiles/).
+const parsed = files.map((f) => {
+  try {
+    return [f, parseProfile(readFileSync(f, 'utf8'), f)];
+  } catch {
+    return [f, null];
+  }
+});
+const duplicates = duplicateIdErrors(parsed);
+for (const d of duplicates) console.log(`FAIL  ${d}`);
+if (duplicates.length > 0) failed += 1;
 
 console.log(`\n${files.length - failed} valid, ${failed} invalid`);
 process.exit(failed === 0 ? 0 : 1);

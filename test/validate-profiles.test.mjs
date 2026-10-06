@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,6 +79,17 @@ test('CLI exits 1 when no profile is found', (t) => {
   const r = spawnSync(process.execPath, [cli, empty], { encoding: 'utf8' });
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /No profiles found/);
+});
+
+test('CLI rejects two files with the same profile id', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const yaml = readFileSync(join(examples, 'issue-triage.yaml'), 'utf8');
+  writeFileSync(join(dir, 'issue-triage.yaml'), yaml);
+  writeFileSync(join(dir, 'issue-triage.json'), JSON.stringify(parseYaml(yaml)));
+  const r = spawnSync(process.execPath, [cli, dir], { encoding: 'utf8' });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /duplicate profile id "issue-triage": .*issue-triage.json, .*issue-triage.yaml/);
 });
 
 test('CLI exits 2 for a missing path', () => {

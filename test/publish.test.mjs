@@ -60,13 +60,22 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
   ]);
 });
 
-for (const [name, args, message] of [
+for (let [name, args, message] of [
   ['no --dir', ['--local'], /Usage/],
   ['no target', ['--dir', 'examples/profiles'], /exactly one of --local or --remote/],
   ['a missing folder', ['--dir', 'no-such-dir', '--local'], /ENOENT/],
   ['an invalid profile', ['--dir', 'test/fixtures/invalid', '--local'], /Invalid profiles; nothing was published/],
+  ['duplicate ids', ['--dir', '__DUP__', '--local'], /duplicate profile id "issue-triage"/],
 ]) {
-  test(`publish-profiles rejects ${name}`, () => {
+  test(`publish-profiles rejects ${name}`, (t) => {
+    if (args.includes('__DUP__')) {
+      const dir = mkdtempSync(join(tmpdir(), 'pointsman-dup-'));
+      t.after(() => rmSync(dir, { recursive: true, force: true }));
+      const yaml = readFileSync(join(root, 'examples', 'profiles', 'issue-triage.yaml'), 'utf8');
+      writeFileSync(join(dir, 'issue-triage.yaml'), yaml);
+      writeFileSync(join(dir, 'issue-triage.yml'), yaml);
+      args = args.map((a) => (a === '__DUP__' ? dir : a));
+    }
     const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', cwd: root });
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, message);

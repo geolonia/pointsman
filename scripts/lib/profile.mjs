@@ -97,3 +97,17 @@ export function validateProfileFile(path) {
   }
   return validateProfile(profile, { fileName: path });
 }
+
+/**
+ * Profiles in one folder must have distinct ids (foo.yaml and foo.json would
+ * both be published as foo). Takes [path, profile] pairs; returns messages.
+ */
+export function duplicateIdErrors(entries) {
+  const byId = new Map();
+  for (const [path, profile] of entries) {
+    if (!profile || typeof profile.id !== 'string') continue;
+    byId.set(profile.id, [...(byId.get(profile.id) ?? []), path]);
+  }
+  return [...byId].filter(([, paths]) => paths.length > 1)
+    .map(([id, paths]) => `duplicate profile id "${id}": ${paths.join(', ')}`);
+}
