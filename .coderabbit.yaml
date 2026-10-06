@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# Inherits the org-wide CodeRabbit defaults from geolonia/coderabbit. Without
+# `inheritance: true` this file would replace them entirely, including the
+# setting that lets CodeRabbit approve pull requests.
+
+inheritance: true
+
+# Repository-specific overrides go below. Examples:
+#
+# language: en-US              # the org default is Japanese
+#
+# reviews:
+#   profile: assertive         # more thorough, and noisier
+#   path_filters:
+#     - "!**/*.snap"
+#     - "!**/fixtures/**"
+#   auto_review:
+#     ignore_title_keywords:
+#       - "chore(deps)"

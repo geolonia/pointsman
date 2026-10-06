@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  namespace: geolonia
+  name: pointsman
+  description: A new Geolonia repository
+  annotations:
+    github.com/project-slug: geolonia/pointsman
+  tags: ['service']
+spec:
+  type: 'service'
+  lifecycle: 'production'
+  owner: group:geolonia/geonicdb
+  system: system:geolonia/standards
+  # accessGrants:
+  #   - team: group:geolonia/team-name
+  #     permission: write  # read | triage | write | maintain | admin

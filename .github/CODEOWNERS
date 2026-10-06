@@ -1,0 +1,16 @@
+# Code owners for access configuration.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# catalog-info.yaml declares who owns this repository and which teams may
+# access it. Its code owner should be the owning team named in spec.owner,
+# so that team reviews access changes up to `write`. The Backstage templates
+# add that line at enrollment; when adding this file by hand, append:
+#
+#   /catalog-info.yaml @geolonia/<owner-team>
+#
+# Grants of `maintain` or `admin` additionally need an approving review from
+# @geolonia/operations on the pull request; the central team-access sync
+# checks for it and skips the grant otherwise.
+
+/.github/CODEOWNERS @geolonia/operations
+/catalog-info.yaml @geolonia/geonicdb
