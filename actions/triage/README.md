@@ -23,7 +23,7 @@ name: Triage
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions: {}
 
@@ -34,7 +34,8 @@ jobs:
     permissions:
       issues: write
     steps:
-      # Pin to a full commit SHA of geolonia/pointsman.
+      # Pin to a full commit SHA of geolonia/pointsman (the commit that adds
+      # this action, or a later one).
       - uses: geolonia/pointsman/actions/triage@<commit SHA>
         with:
           url: ${{ vars.POINTSMAN_URL }}

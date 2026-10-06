@@ -15,6 +15,25 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const MAPPING = /^([A-Za-z0-9_.-]{1,100})=([A-Za-z0-9_.-]{1,100}):\s*(\S(?:.{0,48}\S)?)\s*$/;
+/** GitHub label names: 1 to 50 characters. */
+const LABEL = /^\S(?:.{0,48}\S)?$/;
+/** Events this action triages. */
+const ISSUE_ACTIONS = ['opened', 'reopened'];
+
+/** Base URL of the Worker: http(s), a host, no query or fragment. */
+export function parseBaseUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('input "url" is not a valid URL');
+  }
+  if (!['https:', 'http:'].includes(url.protocol) || !url.hostname) throw new Error('input "url" must be an http(s) URL with a host');
+  if (url.search || url.hash || url.username || url.password) {
+    throw new Error('input "url" must not contain a query, fragment or credentials');
+  }
+  return url.href.replace(/\/+$/, '');
+}
 
 function input(name, { required = false } = {}) {
   const value = (process.env[`INPUT_${name.toUpperCase()}`] ?? '').trim();
@@ -71,7 +90,7 @@ async function addLabels(labels, { api, repo, number, githubToken }) {
 }
 
 async function decide({ url, token, profile, issue, ref }) {
-  const res = await fetch(`${url.replace(/\/+$/, '')}/v1/decide/${encodeURIComponent(profile)}`, {
+  const res = await fetch(`${url}/v1/decide/${encodeURIComponent(profile)}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ state: { issue: { title: issue.title ?? '', body: issue.body ?? '' } }, ref }),
@@ -85,17 +104,22 @@ async function decide({ url, token, profile, issue, ref }) {
 
 export async function run() {
   // Configuration errors stop before any call.
-  const url = input('url', { required: true });
+  const url = parseBaseUrl(input('url', { required: true }));
   const token = input('token', { required: true });
   const profile = input('profile') || 'issue-triage';
   const map = parseLabelMap(input('labels', { required: true }));
   const reviewLabel = input('review-label') || 'needs-triage';
+  if (!LABEL.test(reviewLabel)) throw new Error('input "review-label" must be a label name of 1 to 50 characters');
   const githubToken = input('github-token', { required: true });
-  if (!/^https?:\/\//.test(url)) throw new Error('input "url" must start with https://');
 
+  // Only new (or reopened) issues: an issue_comment event also carries an
+  // "issue", and a pull request can look like one.
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   const issue = event.issue;
-  if (!issue || typeof issue.number !== 'number') throw new Error('this action runs on issues events only');
+  if (process.env.GITHUB_EVENT_NAME !== 'issues' || !ISSUE_ACTIONS.includes(event.action)
+    || !issue || typeof issue.number !== 'number' || issue.pull_request) {
+    throw new Error(`this action runs on issues events (${ISSUE_ACTIONS.join(', ')}) only`);
+  }
   const repo = process.env.GITHUB_REPOSITORY;
   const github = { api: process.env.GITHUB_API_URL || 'https://api.github.com', repo, number: issue.number, githubToken };
 

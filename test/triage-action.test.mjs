@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { labelsFor, parseLabelMap } from '../actions/triage/triage.mjs';
+import { labelsFor, parseBaseUrl, parseLabelMap } from '../actions/triage/triage.mjs';
 
 const script = fileURLToPath(new URL('../actions/triage/triage.mjs', import.meta.url));
 const LABELS = 'team=backend: team/backend\nteam=frontend: team/frontend\nurgent=true: urgent\n# comment\neffort=0: good first issue';
@@ -67,6 +67,7 @@ function runAction(t, { url, inputs = {}, event }) {
     GITHUB_OUTPUT: files.output,
     GITHUB_STEP_SUMMARY: files.summary,
     GITHUB_REPOSITORY: 'example/repo',
+    GITHUB_EVENT_NAME: 'issues',
     GITHUB_API_URL: url,
     INPUT_URL: url,
     INPUT_TOKEN: 'pm_test',
@@ -159,8 +160,15 @@ for (const [name, inputs, event, message] of [
   ['a malformed label mapping', { INPUT_LABELS: 'team frontend' }, issueEvent(), /labels line 1/],
   ['an empty label mapping', { INPUT_LABELS: '# nothing' }, issueEvent(), /no mappings/],
   ['a missing token', { INPUT_TOKEN: '' }, issueEvent(), /input "token" is required/],
-  ['a non-http url', { INPUT_URL: 'file:///etc/passwd' }, issueEvent(), /must start with https/],
-  ['a non-issue event', {}, { action: 'opened', pull_request: { number: 1 } }, /issues events only/],
+  ['a non-http url', { INPUT_URL: 'file:///etc/passwd' }, issueEvent(), /must be an http\(s\) URL/],
+  ['a url without host', { INPUT_URL: 'https://' }, issueEvent(), /not a valid URL/],
+  ['a url with a query', { INPUT_URL: 'https://example.com?tenant=a' }, issueEvent(), /must not contain a query/],
+  ['a url with credentials', { INPUT_URL: 'https://user:pw@example.com' }, issueEvent(), /must not contain/],
+  ['a too long review label', { 'INPUT_REVIEW-LABEL': 'x'.repeat(51) }, issueEvent(), /review-label/],
+  ['a non-issue event', {}, { action: 'opened', pull_request: { number: 1 } }, /issues events/],
+  ['an issue_comment event', { GITHUB_EVENT_NAME: 'issue_comment' }, { action: 'created', issue: { number: 42, title: 't', body: 'b' }, comment: { body: 'c' } }, /issues events/],
+  ['a closed issue', {}, { action: 'closed', issue: { number: 42, title: 't', body: 'b' } }, /issues events/],
+  ['a pull request in an issues event', {}, { action: 'opened', issue: { number: 42, title: 't', body: 'b', pull_request: {} } }, /issues events/],
 ]) {
   test(`stops on ${name} before calling anything`, async (t) => {
     const s = await servers([200, AUTO]);
@@ -172,6 +180,14 @@ for (const [name, inputs, event, message] of [
   });
 }
 
+test('a reopened issue is triaged too', async (t) => {
+  const s = await servers([200, AUTO]);
+  t.after(s.close);
+  const r = await runAction(t, { url: s.url, event: { ...issueEvent(), action: 'reopened' } });
+  assert.equal(r.code, 0, r.stdout);
+  assert.equal(s.seen.decide.length, 1);
+});
+
 test('parseLabelMap and labelsFor', () => {
   const map = parseLabelMap(LABELS);
   assert.equal(map.get('team=frontend'), 'team/frontend');
@@ -179,4 +195,9 @@ test('parseLabelMap and labelsFor', () => {
   assert.deepEqual(labelsFor(decision('auto', { effort: { value: 0 }, urgent: { value: false } }), map, 'x'), ['good first issue']);
   assert.deepEqual(labelsFor(decision('auto', {}), map, 'x'), []);
   assert.deepEqual(labelsFor(decision('review', AUTO.answers), map, 'x'), ['x']);
+});
+
+test('parseBaseUrl keeps a path and drops a trailing slash', () => {
+  assert.equal(parseBaseUrl('https://pointsman.example.workers.dev/'), 'https://pointsman.example.workers.dev');
+  assert.equal(parseBaseUrl('https://example.com/pointsman/'), 'https://example.com/pointsman');
 });
