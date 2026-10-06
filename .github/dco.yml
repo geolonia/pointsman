@@ -1,0 +1,7 @@
+# DCO GitHub App (https://github.com/apps/dco): every commit of a pull request
+# needs a Signed-off-by line matching its author; bots and merge commits are
+# exempt. See CONTRIBUTING.md.
+allowRemediationCommits:
+  # A contributor who forgot to sign off can add a follow-up commit that signs
+  # off the earlier ones, instead of rewriting history.
+  individual: true
