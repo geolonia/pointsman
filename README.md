@@ -57,6 +57,13 @@ Decisions with action `review` wait for a person: `GET /v1/reviews`,
 `POST /v1/reviews/{id}/resolve`; the final answer is sent, signed, to the
 decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
 
+## Clients
+
+- [GitHub issue triage](actions/triage/): a GitHub Action that labels new
+  issues from a Pointsman decision, or asks for a human review.
+- [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a
+  CloudFormation deploy when Pointsman judges it stuck.
+
 ## API tokens
 
 Every request needs `Authorization: Bearer <token>`. Each client gets its own

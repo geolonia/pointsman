@@ -1,0 +1,35 @@
+name: Pointsman issue triage
+description: >-
+  Asks a Pointsman decision profile about a new issue and applies labels from
+  an explicit allow-list. When Pointsman is not sure (action other than auto),
+  only a review label is added.
+inputs:
+  url:
+    description: Base URL of the Pointsman Worker, e.g. https://pointsman.example.workers.dev (https; http only for localhost)
+    required: true
+  token:
+    description: Pointsman API token (store it as a secret).
+    required: true
+  profile:
+    description: Decision profile id.
+    default: issue-triage
+  labels:
+    description: >-
+      Allow-list, one mapping per line: `<question>=<value>: <label>`, for
+      example `team=frontend: team/frontend` or `urgent=true: urgent`. Only
+      these labels are ever applied.
+    required: true
+  review-label:
+    description: Label added when Pointsman asks for a human review, or when the call fails.
+    default: needs-triage
+  github-token:
+    description: Token to add labels (needs issues write).
+    default: ${{ github.token }}
+outputs:
+  decision-id:
+    description: The Pointsman decision id.
+  action:
+    description: The action Pointsman returned (auto, review, ...), or "error".
+runs:
+  using: node24
+  main: triage.mjs
