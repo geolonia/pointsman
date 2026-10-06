@@ -2,6 +2,7 @@
   "name": "pointsman",
   "private": true,
   "description": "Decision service: typed questions in, typed answers, probabilities and an action out.",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=24"

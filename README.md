@@ -29,3 +29,7 @@ npm test                      # validator tests
 npm run validate:profiles     # validate the example profiles
 node scripts/validate-profiles.mjs path/to/profiles   # validate your own
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
