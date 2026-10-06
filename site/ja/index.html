@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pointsman – オープンソースの判定サービス</title>
+<meta name="description" content="Pointsman がポイントを切り替えます。システムが質問を送ると、Pointsman がどの線路に進めるかを決め、確信がないときは人に判断を任せます。">
+<meta property="og:title" content="Pointsman – オープンソースの判定サービス">
+<meta property="og:description" content="システムが質問を送ると、Pointsman がどの線路に進めるかを決め、確信がないときは人に判断を任せます。">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://geolonia.github.io/pointsman/ja/">
+<meta property="og:image" content="https://geolonia.github.io/pointsman/assets/social-preview-1280x640.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#141414">
+<link rel="alternate" hreflang="en" href="https://geolonia.github.io/pointsman/">
+<link rel="alternate" hreflang="ja" href="https://geolonia.github.io/pointsman/ja/">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../assets/tile-ink-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Pointsman ホーム"><img src="../assets/lockup-on-dark.svg" alt="Pointsman" width="146" height="28"></a>
+    <nav aria-label="セクション">
+      <a href="#features">特長</a>
+      <a href="#how">仕組み</a>
+      <a href="#profiles">プロファイル</a>
+      <a href="#clients">クライアント</a>
+      <a href="#start">はじめる</a>
+    </nav>
+    <a class="lang" href="../" hreflang="en" lang="en">English</a>
+    <a class="btn" href="https://github.com/geolonia/pointsman">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">オープンソースの判定サービス</p>
+      <h1><span class="phrase">Pointsman が</span><br><span class="go"><span class="phrase">ポイントを</span><span class="phrase">切り替えます。</span></span></h1>
+      <p class="lead">システムが質問を送ると、Pointsman がどの線路に進めるかを決めます。確信がないときは、人に判断を任せます。</p>
+      <div class="actions">
+        <a class="btn primary" href="#start">はじめる</a>
+        <a class="btn" href="https://github.com/geolonia/pointsman">GitHub で見る</a>
+      </div>
+      <div class="chips">
+        <span class="chip">Cloudflare Workers</span>
+        <span class="chip">モデルを選ばない</span>
+        <span class="chip">REST + MCP</span>
+        <span class="chip">OpenAPI</span>
+        <span class="chip">MIT</span>
+      </div>
+    </div>
+    <div>
+      <div class="card-code">
+        <div class="bar"><span>POST /v1/decide/issue-triage</span><span>リクエスト</span></div>
+<pre><span class="k">{</span> <span class="k">"state"</span>: { <span class="k">"issue"</span>: {
+  <span class="k">"title"</span>: <span class="s">"ログイン画面が真っ白"</span>,
+  <span class="k">"body"</span>: <span class="s">"今朝から表示されません。"</span>
+} } <span class="k">}</span></pre>
+      </div>
+      <div class="card-code">
+        <div class="bar"><span>200 OK</span><span>判定</span></div>
+<pre>{
+  <span class="k">"answers"</span>: {
+    <span class="k">"team"</span>:   { <span class="k">"value"</span>: <span class="s">"backend"</span>, <span class="k">"p"</span>: <span class="n">0.9</span> },
+    <span class="k">"urgent"</span>: { <span class="k">"value"</span>: <span class="n">false</span>, <span class="k">"p"</span>: <span class="n">0.8</span> },
+    <span class="k">"effort"</span>: { <span class="k">"value"</span>: <span class="n">0</span>, <span class="k">"p"</span>: <span class="n">0.7</span> }
+  },
+  <span class="k">"action"</span>: <span class="go-val">"auto"</span>,
+  <span class="k">"profile_version"</span>: <span class="n">1</span>
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>確かめられる判定</h2>
+      <p>多くのシステムは、どのチームに回すか、急ぎかどうか、待つか止めるか、といった小さな判断を一日中しています。Pointsman はそれを一か所で、毎回同じやり方で行い、あとで測れる記録を残します。</p>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>型のある質問</h3>
+        <p>はい／いいえ、選択、スコアの質問です。どの答えにも確率が付くので、モデルがどれだけ確信しているかが分かります。</p>
+      </div>
+      <div class="card">
+        <h3>プロンプトではなくポリシー</h3>
+        <p><code>team.p &gt;= 0.85</code> のようなルールで、答えをアクションに変えます。ポリシーはただの設定で、読み込むときに検査され、コードとして実行されることはありません。</p>
+      </div>
+      <div class="card">
+        <h3>迷ったら人へ</h3>
+        <p>しきい値に届かなければ、アクションは <code>review</code> です。判定はレビュー待ちの一覧に入り、最終的な答えは署名付きでコールバック先に送られます。</p>
+      </div>
+      <div class="card">
+        <h3>バージョン付きのプロファイル</h3>
+        <p>質問とポリシーは YAML のプロファイルに書き、JSON Schema で CI が検証します。判定ごとに、プロファイルのバージョンとモデルが記録されます。</p>
+      </div>
+      <div class="card">
+        <h3>フィードバックと正解率</h3>
+        <p>人が判定を訂正すると、その訂正が答えの横に記録されます。しきい値を上げる前に、プロファイルのバージョンごとの正解率を測れます。</p>
+      </div>
+      <div class="card">
+        <h3>モデルを選ばない</h3>
+        <p>モデルはアダプターでつなぎます。いまは Cloudflare AI Gateway 経由の Workers AI のモデルと、開発とテスト用のモックモデルが使えます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>仕組み</h2>
+      <p>リクエスト 1 つに、判定 1 つ。あとで理由を説明するのに必要なものは、すべて判定ログに残ります。</p>
+    </div>
+    <ol class="flow flow-wrap">
+      <li>
+        <h3>状態を送る</h3>
+        <p>システムが分かっていること（Issue、デプロイのイベント、フォームなど）を、JSON かテキストでプロファイルに送ります。</p>
+      </li>
+      <li>
+        <h3>質問に答える</h3>
+        <p>プロファイルのモデルが、型のある質問に答えます。失敗したときは予備のモデルが引き継ぎます。</p>
+      </li>
+      <li>
+        <h3>ポリシーを当てる</h3>
+        <p>ルールが答えと確率を比べます。最初に当てはまったルールがアクションを決めます。</p>
+      </li>
+      <li>
+        <h3>動く</h3>
+        <p>システムはアクションに従います。または人が決めます。</p>
+        <div class="outcomes"><code class="auto">auto</code><code>review</code><code>独自のアクション</code></div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="band" id="profiles">
+  <div class="wrap split">
+    <div>
+      <div class="section-head" style="margin-bottom:0">
+        <h2>プロファイルは設定です</h2>
+        <p>プロファイルには、何を聞き、答えをどう使うかを書きます。しきい値はプロンプトではなく、プルリクエストで変えます。</p>
+      </div>
+      <ul class="points">
+        <li><strong>コードと同じようにレビュー。</strong>プロファイルは自分たちの非公開の設定リポジトリに置き、デプロイ時に公開されます。同じバージョンは一度しか書き込めません。</li>
+        <li><strong>動かす前に検証。</strong>JSON Schema と検証ツールが、CI ですべてのプロファイルを確認します。</li>
+        <li><strong>見せる場所を選べる。</strong>MCP でエージェントに見せることも、API だけに限ることもできます。</li>
+      </ul>
+      <p style="margin-top:24px"><a class="btn" href="https://github.com/geolonia/pointsman/blob/main/docs/profile-format.md">プロファイルの形式（英語）</a></p>
+    </div>
+    <div class="card-code">
+      <div class="bar"><span>profiles/issue-triage.yaml</span><span>YAML</span></div>
+<pre><span class="k">id</span>: issue-triage
+<span class="k">version</span>: <span class="n">1</span>
+<span class="k">model</span>: clef-flash
+<span class="k">fallback_models</span>: [clef]
+<span class="k">questions</span>:
+  - <span class="k">name</span>: team
+    <span class="k">type</span>: choice
+    <span class="k">instructions</span>: <span class="s">Which team should handle this issue?</span>
+    <span class="k">criteria</span>:
+      - { <span class="k">value</span>: backend,  <span class="k">description</span>: <span class="s">"APIs, databases"</span> }
+      - { <span class="k">value</span>: frontend, <span class="k">description</span>: <span class="s">"Web pages, styles"</span> }
+      - { <span class="k">value</span>: docs,     <span class="k">description</span>: <span class="s">"Documentation"</span> }
+  - <span class="k">name</span>: urgent
+    <span class="k">type</span>: noul
+    <span class="k">instructions</span>: <span class="s">Does this block someone's work today?</span>
+<span class="k">policy</span>:
+  <span class="k">rules</span>:
+    - <span class="k">when</span>: <span class="s">"team.p >= 0.85"</span>
+      <span class="k">action</span>: <span class="go-val">auto</span>
+  <span class="k">default</span>: review</pre>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="clients">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>どこからでも聞ける</h2>
+      <p>誰が聞いても、同じプロファイル、同じポリシー、同じ判定ログです。</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>REST API</h3>
+        <p>判定、判定の取得、フィードバック、レビュー待ちの処理ができます。OpenAPI で記述されています。クライアントごとに API トークンがあり、必要なプロファイルだけに限れます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml →</a>
+      </div>
+      <div class="card">
+        <h3>エージェント向けの MCP</h3>
+        <p>Pointsman をコネクタとして追加すると、エージェントは推測する代わりに <code>decide</code> を呼びます。機械は API トークンを、人は GitHub でログインして使い、判定を訂正することもできます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/docs/mcp.md">docs/mcp.md →</a>
+      </div>
+      <div class="card">
+        <h3>GitHub の Issue 振り分け</h3>
+        <p>GitHub Action が、判定に基づいて新しい Issue にラベルを付けます。使うのは指定したラベルだけです。確信がないときは、代わりに「要確認」のラベルを付けます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage →</a>
+      </div>
+      <div class="card">
+        <h3>デプロイの見張り</h3>
+        <p>CloudFormation のデプロイを見張る GitHub Action です。タイムアウトを待たずに、Pointsman が止まっていると判断したところで止めます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap split">
+    <div>
+      <div class="section-head" style="margin-bottom:28px">
+        <h2>はじめる</h2>
+        <p>サンプルのプロファイルとモックモデルを使えば、数分で手元で動かせます。Cloudflare のアカウントは要りません。</p>
+      </div>
+      <ol class="steps">
+        <li>
+          <div>
+            <h3>インストール</h3>
+            <p>Node.js 24 と pnpm が必要です。</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>Worker を起動</h3>
+            <p>手元の判定ログを作り、ポート 8787 で Worker を起動します。</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>判定を頼む</h3>
+            <p>手元用の API トークンを作り、プロファイルに状態を送ります。</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <h3>自分たちの環境にデプロイ</h3>
+            <p>設定リポジトリのテンプレートをコピーします。プロファイルも Cloudflare アカウントも自分たちのもので、非公開のままです。</p>
+            <a class="more" style="font:14px var(--mono);color:var(--muted)" href="https://github.com/geolonia/pointsman/blob/main/docs/deployment.md">docs/deployment.md →</a>
+          </div>
+        </li>
+      </ol>
+    </div>
+    <div>
+      <div class="card-code">
+        <div class="bar"><span>ターミナル</span><span>sh</span></div>
+<pre><span class="c"># 1. インストール</span>
+git clone https://github.com/geolonia/pointsman
+cd pointsman
+pnpm install
+
+<span class="c"># 2. 起動</span>
+pnpm db:migrate:local
+pnpm dev
+
+<span class="c"># 3. 判定を頼む（別のターミナルで）</span>
+node scripts/tokens.mjs create \
+  --client demo --profiles issue-triage --local
+export POINTSMAN_TOKEN=<span class="s">pm_…</span>
+curl -s localhost:8787/v1/decide/issue-triage \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"state": {"issue": {"title": "Login page is blank"}}}'</pre>
+      </div>
+      <p class="status">Pointsman はまだ初期の試作段階です。<a href="https://github.com/geolonia/pointsman/milestone/1">PoC マイルストーン</a>で進み具合を確認できます。試したら、ぜひ Issue で教えてください。ドキュメントは英語です。</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <img src="../assets/lockup-on-dark.svg" alt="Pointsman" width="136" height="26">
+    <nav aria-label="リンク">
+      <a href="https://github.com/geolonia/pointsman">GitHub</a>
+      <a href="https://github.com/geolonia/pointsman/issues">Issue</a>
+      <a href="https://github.com/geolonia/pointsman/blob/main/LICENSE">MIT ライセンス</a>
+    </nav>
+    <span><a href="https://geolonia.com" style="color:var(--cream)">Geolonia</a> のオープンソースプロジェクト</span>
+  </div>
+</footer>
+
+</body>
+</html>
