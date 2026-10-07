@@ -229,7 +229,7 @@ describe('configuration', () => {
     expect(() => parseRoutes(JSON.stringify([{ ...route, inputs: [] }]))).toThrow(/inputs/);
     expect(() => parseRoutes(JSON.stringify([{ ...route, profile: '' }]))).toThrow(/profile/);
     expect(() => parseRoutes(JSON.stringify([{ ...route, attribute: 'description' }]))).toThrow(/must not be one of the inputs/);
-    expect(() => parseRoutes(JSON.stringify([route, route]))).toThrow(/listed twice/);
+    expect(() => parseRoutes(JSON.stringify([route, route]))).toThrow(/two routes without a name/);
   });
 
   const env: Env = {
@@ -392,3 +392,51 @@ describe('Decision entities', () => {
     expect(() => parseRoutes(JSON.stringify([{ ...route, reviewActions: 'review' }]))).toThrow(/reviewActions/);
   });
 });
+
+describe('chains of decisions', () => {
+  // Step 2 reads the step 1 result (check) and writes its own attribute.
+  const step2: Route = { type: 'RoadRestriction', profile: 'evacuation-access-check', inputs: ['description', 'check'], attribute: 'evacuation', name: 'evacuation', informedBy: 'check', decisionEntity: true };
+  const check = { type: 'Property', value: 'urgent', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-0' } };
+
+  it('allows more than one route per type, each named, and checks informedBy', () => {
+    expect(parseRoutes(JSON.stringify([route, step2]))).toEqual([route, step2]);
+    expect(() => parseRoutes(JSON.stringify([step2, step2]))).toThrow(/name evacuation is listed twice/);
+    expect(() => parseRoutes(JSON.stringify([{ ...step2, name: 'Evac Route' }]))).toThrow(/name/);
+    expect(() => parseRoutes(JSON.stringify([{ ...step2, informedBy: 'status' }]))).toThrow(/informedBy/);
+  });
+
+  it('picks the route named in the notification URL, and links the earlier decision', async () => {
+    const t = setup();
+    t.config.routes = [route, step2];
+    const res = await handleRequest(new Request('https://bridge.test/notify?route=evacuation', {
+      method: 'POST',
+      headers: { 'x-bridge-secret': SECRET, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'Notification', data: [entity({ check })] }),
+    }), t.config);
+    expect(res.status).toBe(200);
+    expect(t.calls[0]!.url).toBe('https://pm.test/v1/decide/evacuation-access-check');
+    const created = t.calls.find((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities')!.body as Record<string, unknown>;
+    expect(created.wasInformedBy).toEqual({ type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-0' });
+    // Written to the route's own attribute.
+    expect(t.calls.some((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/evacuation'))).toBe(true);
+  });
+
+  it('keeps /notify for the unnamed route, and ignores names it does not know', async () => {
+    const t = setup();
+    t.config.routes = [route, step2];
+    await t.notify([entity({ check })]);
+    expect(t.calls[0]!.url).toBe('https://pm.test/v1/decide/road-restriction-check');
+    const none = setup();
+    none.config.routes = [route, step2];
+    const res = await handleRequest(new Request('https://bridge.test/notify?route=other', {
+      method: 'POST', headers: { 'x-bridge-secret': SECRET }, body: JSON.stringify({ type: 'Notification', data: [entity({ check })] }),
+    }), none.config);
+    expect(await res.json()).toEqual({ handled: [] });
+    expect(none.calls).toHaveLength(0);
+  });
+
+  it('leaves wasInformedBy out when the earlier result has no decision link', () => {
+    expect(toDecisionEntity(decision, 'urn:x:1', step2, new Date(), undefined)).not.toHaveProperty('wasInformedBy');
+  });
+});
+

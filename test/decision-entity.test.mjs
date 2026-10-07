@@ -63,6 +63,12 @@ test('facts in a Decision entity match the schema, and the schema checks them', 
   assert.ok(!validate({ ...kv, facts: [] }), 'no empty list');
 });
 
+test('a chained decision links the one before, and matches the schema', () => {
+  const kv = values(toDecisionEntity(decision, 'urn:ngsi-ld:RoadRestriction:0001', route, new Date(), 'urn:ngsi-ld:Decision:d-0'));
+  assert.equal(kv.wasInformedBy, 'urn:ngsi-ld:Decision:d-0');
+  assert.ok(validate(kv), JSON.stringify(validate.errors));
+});
+
 test('the schema catches what the bridge must not write', () => {
   const kv = values(toDecisionEntity(decision, 'urn:ngsi-ld:RoadRestriction:0001', route));
   assert.ok(!validate({ ...kv, policyRule: '-1' }));
