@@ -381,6 +381,7 @@
       "then": {
         "required": [
           "finalAction",
+          "reviewedBy",
           "reviewedAt"
         ]
       },
