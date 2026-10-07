@@ -47,7 +47,7 @@ profiles. `scripts/check-public.mjs` checks that in CI.
    - `CLOUDFLARE_ACCOUNT_ID`
 
 6. **Push to `main`.** The deploy workflow applies the database migrations,
-   publishes the profiles and deploys the engine.
+   deploys the engine and publishes the profiles.
 
 7. **Set the callback secret** after the first deploy (once; only needed
    when clients use `callback_url`, see [reviews.md](reviews.md)):
