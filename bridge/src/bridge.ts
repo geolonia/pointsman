@@ -23,6 +23,8 @@ export interface BridgeConfig {
     url: string;
     /** Sent as `Authorization: Bearer …` when set. */
     token?: string;
+    /** Sent as `X-Api-Key` when set (for example a GeonicDB API key). */
+    apiKey?: string;
     /** Sent as `NGSILD-Tenant` when set. */
     tenant?: string;
     /** JSON-LD context for the writes, when attribute names are not core terms. */
@@ -219,6 +221,7 @@ async function writeAttribute(id: string, name: string, property: Record<string,
   const { broker } = config;
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (broker.token) headers.authorization = `Bearer ${broker.token}`;
+  if (broker.apiKey) headers['x-api-key'] = broker.apiKey;
   if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
   if (broker.context) headers.link = `<${broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const attrs = `${broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}/attrs`;
