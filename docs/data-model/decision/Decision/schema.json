@@ -130,7 +130,8 @@
                   "minimum": 0,
                   "maximum": 1
                 },
-                "description": "Probability of each option (choice) or level (score)"
+                "description": "Probability of each option (choice) or level (score)",
+                "minProperties": 1
               }
             },
             "description": "One option from a list"
@@ -171,7 +172,11 @@
                   "minimum": 0,
                   "maximum": 1
                 },
-                "description": "Probability of each option (choice) or level (score)"
+                "description": "Probability of each option (choice) or level (score)",
+                "minProperties": 1,
+                "propertyNames": {
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
               }
             },
             "description": "A level on an ordered scale"
@@ -300,7 +305,7 @@
             "type": [
               "boolean",
               "string",
-              "number"
+              "integer"
             ],
             "description": "The right answer according to a person"
           },
@@ -324,7 +329,8 @@
       "x-ngsi": {
         "type": "JsonProperty"
       },
-      "x-iri": "https://datamodels.jp/ns/decision/corrections"
+      "x-iri": "https://datamodels.jp/ns/decision/corrections",
+      "x-personal-data": true
     },
     "wasInformedBy": {
       "type": "string",
@@ -375,6 +381,7 @@
       "then": {
         "required": [
           "finalAction",
+          "reviewedBy",
           "reviewedAt"
         ]
       },

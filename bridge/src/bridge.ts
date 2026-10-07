@@ -27,6 +27,8 @@ export interface BridgeConfig {
     url: string;
     /** Sent as `Authorization: Bearer …` when set. */
     token?: string;
+    /** Sent as `X-Api-Key` when set (for example a GeonicDB API key). */
+    apiKey?: string;
     /** Sent as `NGSILD-Tenant` when set. */
     tenant?: string;
     /** JSON-LD context for the writes, when attribute names are not core terms. */
@@ -111,6 +113,12 @@ async function sameSecret(a: string, b: string): Promise<boolean> {
 
 /** Handles `POST /notify`. Any other request gets 404. */
 export async function handleRequest(request: Request, config: BridgeConfig): Promise<Response> {
+  // Also for Workers that build the config themselves: GeonicDB would silently
+  // prefer the token over the key.
+  if (config.broker.token && config.broker.apiKey) {
+    console.error('bridge configuration: broker token and API key are both set');
+    return Response.json({ error: 'bridge is not configured' }, { status: 500 });
+  }
   const url = new URL(request.url);
   if (request.method !== 'POST' || url.pathname !== '/notify') return Response.json({ error: 'not found' }, { status: 404 });
   // The subscription sends the secret in endpoint.receiverInfo.
@@ -255,6 +263,7 @@ async function writeAttribute(id: string, name: string, property: Record<string,
   const { broker } = config;
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (broker.token) headers.authorization = `Bearer ${broker.token}`;
+  if (broker.apiKey) headers['x-api-key'] = broker.apiKey;
   if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
   if (broker.context) headers.link = `<${broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const attrs = `${broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}/attrs`;

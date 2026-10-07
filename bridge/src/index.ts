@@ -14,6 +14,7 @@ export interface Env {
   NOTIFY_SECRET: string;
   POINTSMAN_TOKEN: string;
   BROKER_TOKEN?: string;
+  BROKER_API_KEY?: string;
 }
 
 /** Reads the configuration; throws naming the first missing or invalid setting. */
@@ -27,6 +28,8 @@ export function configFrom(env: Env): BridgeConfig {
       throw new Error(`${name} must be an https URL (http only for localhost)`);
     }
   }
+  // GeonicDB prefers the Bearer token when both are sent; refuse instead of guessing.
+  if (env.BROKER_TOKEN && env.BROKER_API_KEY) throw new Error('set BROKER_TOKEN or BROKER_API_KEY, not both');
   const trim = (u: string) => u.replace(/\/+$/, '');
   return {
     routes: parseRoutes(env.BRIDGE_ROUTES),
@@ -35,6 +38,7 @@ export function configFrom(env: Env): BridgeConfig {
     broker: {
       url: trim(env.BROKER_URL),
       ...(env.BROKER_TOKEN && { token: env.BROKER_TOKEN }),
+      ...(env.BROKER_API_KEY && { apiKey: env.BROKER_API_KEY }),
       ...(env.BROKER_TENANT && { tenant: env.BROKER_TENANT }),
       ...(env.BROKER_CONTEXT && { context: env.BROKER_CONTEXT }),
     },
