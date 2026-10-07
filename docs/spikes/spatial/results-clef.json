@@ -1,0 +1,804 @@
+[
+ {
+  "id": "flooded-underpass",
+  "place": "Inside a river flood hazard zone (maximum assumed rainfall); expected depth 1 to 3 m. Nearest evacuation site for floods: 専修大学, 227 m away; 3 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. With this section closed, cars can go around it without a real detour. Area: 九段南一丁目.",
+  "facts": {
+   "flood": {
+    "inside": true,
+    "depth": "1 to 3 m"
+   },
+   "shelters": {
+    "nearest": {
+     "name": "専修大学",
+     "distance_m": 227
+    },
+    "within_500m": 3
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "専修大学",
+      "length_m": 544,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "神田一橋中学校",
+      "length_m": 364,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "二松学舎大学",
+      "length_m": 1085,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "富士見みらい館",
+      "length_m": 461,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": {
+    "direct_m": 449,
+    "around_m": 449,
+    "extra_m": 0
+   },
+   "address": {
+    "muni_code": "13101",
+    "area": "九段南一丁目"
+   },
+   "ms": 4093
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.056,
+   "clarity": 2.57,
+   "category": "closedWeather",
+   "action": "publish"
+  },
+  "again": {
+   "danger": 0.056,
+   "clarity": 2.57,
+   "category": "closedWeather",
+   "action": "publish"
+  },
+  "facts_same_questions": {
+   "danger": 0.1,
+   "clarity": 2.55,
+   "category": "closedWeather",
+   "action": "publish"
+  },
+  "facts_reworded": {
+   "danger": 0.599,
+   "clarity": 2.55,
+   "category": "closedWeather",
+   "action": "review"
+  }
+ },
+ {
+  "id": "car-trapped",
+  "place": "Not inside a river flood hazard zone. Nearest evacuation site for floods: 麹町中学校, 169 m away; 1 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. Area: 紀尾井町.",
+  "facts": {
+   "flood": {
+    "inside": false
+   },
+   "shelters": {
+    "nearest": {
+     "name": "麹町中学校",
+     "distance_m": 169
+    },
+    "within_500m": 1
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "麹町小学校",
+      "length_m": 401,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "麹町中学校",
+      "length_m": 625,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "麹町中学校",
+      "length_m": 711,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "上智大学",
+      "length_m": 904,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": null,
+   "address": {
+    "muni_code": "13101",
+    "area": "紀尾井町"
+   },
+   "ms": 1962
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.978,
+   "clarity": 2.08,
+   "category": "closedWeather",
+   "action": "urgent"
+  },
+  "again": {
+   "danger": 0.978,
+   "clarity": 2.08,
+   "category": "closedWeather",
+   "action": "urgent"
+  },
+  "facts_same_questions": {
+   "danger": 0.978,
+   "clarity": 2.07,
+   "category": "closedWeather",
+   "action": "urgent"
+  },
+  "facts_reworded": {
+   "danger": 0.936,
+   "clarity": 2.12,
+   "category": "closedWeather",
+   "action": "urgent"
+  }
+ },
+ {
+  "id": "status-contradicts",
+  "place": "Not inside a river flood hazard zone. Nearest evacuation site for floods: 二松学舎大学, 993 m away; 0 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. Area: 千代田.",
+  "facts": {
+   "flood": {
+    "inside": false
+   },
+   "shelters": {
+    "nearest": {
+     "name": "二松学舎大学",
+     "distance_m": 993
+    },
+    "within_500m": 0
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "神田一橋中学校",
+      "length_m": 869,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "神田一橋中学校",
+      "length_m": 1565,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "麹町小学校",
+      "length_m": 2726,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "二松学舎大学",
+      "length_m": 736,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": null,
+   "address": {
+    "muni_code": "13101",
+    "area": "千代田"
+   },
+   "ms": 1609
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.031,
+   "clarity": 1.95,
+   "category": "alternatingOneWay",
+   "action": "review"
+  },
+  "again": {
+   "danger": 0.031,
+   "clarity": 1.95,
+   "category": "alternatingOneWay",
+   "action": "review"
+  },
+  "facts_same_questions": {
+   "danger": 0.059,
+   "clarity": 1.95,
+   "category": "alternatingOneWay",
+   "action": "review"
+  },
+  "facts_reworded": {
+   "danger": 0.297,
+   "clarity": 1.96,
+   "category": "alternatingOneWay",
+   "action": "review"
+  }
+ },
+ {
+  "id": "water-pipe-works",
+  "place": "Inside a river flood hazard zone (maximum assumed rainfall); expected depth 1 to 3 m. Nearest evacuation site for floods: 日本大学法学部①, 7 m away; 5 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. With this section closed, cars can go around it without a real detour. Area: 西神田二丁目.",
+  "facts": {
+   "flood": {
+    "inside": true,
+    "depth": "1 to 3 m"
+   },
+   "shelters": {
+    "nearest": {
+     "name": "日本大学法学部①",
+     "distance_m": 7
+    },
+    "within_500m": 5
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "日本大学経済学部",
+      "length_m": 392,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "お茶の水小学校",
+      "length_m": 362,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "専修大学",
+      "length_m": 204,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "専修大学",
+      "length_m": 600,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": {
+    "direct_m": 295,
+    "around_m": 295,
+    "extra_m": 0
+   },
+   "address": {
+    "muni_code": "13101",
+    "area": "西神田二丁目"
+   },
+   "ms": 3721
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.013,
+   "clarity": 2.39,
+   "category": "laneRestriction",
+   "action": "publish"
+  },
+  "again": {
+   "danger": 0.013,
+   "clarity": 2.39,
+   "category": "laneRestriction",
+   "action": "publish"
+  },
+  "facts_same_questions": {
+   "danger": 0.036,
+   "clarity": 2.31,
+   "category": "laneRestriction",
+   "action": "publish"
+  },
+  "facts_reworded": {
+   "danger": 0.307,
+   "clarity": 2.31,
+   "category": "laneRestriction",
+   "action": "publish"
+  }
+ },
+ {
+  "id": "vague",
+  "place": "Not inside a river flood hazard zone. Nearest evacuation site for floods: 明治大学, 388 m away; 6 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. Area: 神田小川町三丁目.",
+  "facts": {
+   "flood": {
+    "inside": false
+   },
+   "shelters": {
+    "nearest": {
+     "name": "明治大学",
+     "distance_m": 388
+    },
+    "within_500m": 6
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "明治大学",
+      "length_m": 32,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "神田さくら館",
+      "length_m": 293,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "区立スポーツセンター",
+      "length_m": 949,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "神田一橋中学校",
+      "length_m": 23,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": null,
+   "address": {
+    "muni_code": "13101",
+    "area": "神田小川町三丁目"
+   },
+   "ms": 2970
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.04,
+   "clarity": 0.9,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "again": {
+   "danger": 0.04,
+   "clarity": 0.9,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_same_questions": {
+   "danger": 0.245,
+   "clarity": 1.18,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_reworded": {
+   "danger": 0.319,
+   "clarity": 1.23,
+   "category": "closedWeather",
+   "action": "review"
+  }
+ },
+ {
+  "id": "fallen-tree",
+  "place": "Inside a river flood hazard zone (maximum assumed rainfall); expected depth 1 to 3 m. Nearest evacuation site for floods: 泰明小学校, 472 m away; 1 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. Area: 皇居外苑.",
+  "facts": {
+   "flood": {
+    "inside": true,
+    "depth": "1 to 3 m"
+   },
+   "shelters": {
+    "nearest": {
+     "name": "泰明小学校",
+     "distance_m": 472
+    },
+    "within_500m": 1
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "泰明小学校",
+      "length_m": 1298,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "泰明小学校",
+      "length_m": 640,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "泰明小学校",
+      "length_m": 237,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "泰明小学校",
+      "length_m": 1001,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": null,
+   "address": {
+    "muni_code": "13101",
+    "area": "皇居外苑"
+   },
+   "ms": 2868
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.055,
+   "clarity": 2.58,
+   "category": "closedWeather",
+   "action": "publish"
+  },
+  "again": {
+   "danger": 0.055,
+   "clarity": 2.58,
+   "category": "closedWeather",
+   "action": "publish"
+  },
+  "facts_same_questions": {
+   "danger": 0.15,
+   "clarity": 2.57,
+   "category": "closedWeather",
+   "action": "publish"
+  },
+  "facts_reworded": {
+   "danger": 0.769,
+   "clarity": 2.61,
+   "category": "closedWeather",
+   "action": "urgent"
+  }
+ },
+ {
+  "id": "water-rising/deep",
+  "place": "Inside a river flood hazard zone (maximum assumed rainfall); expected depth 3 to 5 m. Nearest evacuation site for floods: 中央区立総合スポーツセンター, 482 m away; 2 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. Area: 東日本橋一丁目.",
+  "facts": {
+   "flood": {
+    "inside": true,
+    "depth": "3 to 5 m"
+   },
+   "shelters": {
+    "nearest": {
+     "name": "中央区立総合スポーツセンター",
+     "distance_m": 482
+    },
+    "within_500m": 2
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "浅草中学校",
+      "length_m": 523,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "中央区立総合スポーツセンター",
+      "length_m": 1089,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "中央区立総合スポーツセンター",
+      "length_m": 340,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "久松小学校",
+      "length_m": 484,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": null,
+   "address": {
+    "muni_code": "13102",
+    "area": "東日本橋一丁目"
+   },
+   "ms": 2627
+  },
+  "fact_rule": "urgent (deep flood zone and danger.yes >= 0.4)",
+  "plain": {
+   "danger": 0.069,
+   "clarity": 1.51,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "again": {
+   "danger": 0.069,
+   "clarity": 1.51,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_same_questions": {
+   "danger": 0.455,
+   "clarity": 2,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_reworded": {
+   "danger": 0.935,
+   "clarity": 2.06,
+   "category": "closedWeather",
+   "action": "urgent"
+  }
+ },
+ {
+  "id": "water-rising/dry",
+  "place": "Not inside a river flood hazard zone. Nearest evacuation site for floods: 青南小学校, 555 m away; 0 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. Area: 南青山二丁目.",
+  "facts": {
+   "flood": {
+    "inside": false
+   },
+   "shelters": {
+    "nearest": {
+     "name": "青南小学校",
+     "distance_m": 555
+    },
+    "within_500m": 0
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "青山いきいきプラザ",
+      "length_m": 602,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "六本木中学校",
+      "length_m": 839,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "高陵中学校",
+      "length_m": 238,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "青南小学校",
+      "length_m": 341,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": null,
+   "address": {
+    "muni_code": "13103",
+    "area": "南青山二丁目"
+   },
+   "ms": 2679
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.069,
+   "clarity": 1.51,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "again": {
+   "danger": 0.069,
+   "clarity": 1.51,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_same_questions": {
+   "danger": 0.184,
+   "clarity": 1.91,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_reworded": {
+   "danger": 0.662,
+   "clarity": 2.01,
+   "category": "closedWeather",
+   "action": "review"
+  }
+ },
+ {
+  "id": "tree-on-road/bridge",
+  "place": "Inside a river flood hazard zone (maximum assumed rainfall); expected depth 1 to 3 m. Nearest evacuation site for floods: 日本大学法学部①, 443 m away; 2 within 500 m. None of 4 walking routes from nearby places to their nearest evacuation site pass this place. With this section closed, the drive around it is 439 m longer. Area: 飯田橋三丁目.",
+  "facts": {
+   "flood": {
+    "inside": true,
+    "depth": "1 to 3 m"
+   },
+   "shelters": {
+    "nearest": {
+     "name": "日本大学法学部①",
+     "distance_m": 443
+    },
+    "within_500m": 2
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 0,
+    "max_detour_m": 0,
+    "routes": [
+     {
+      "shelter": "日本大学法学部①",
+      "length_m": 962,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "日本大学経済学部",
+      "length_m": 227,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "専修大学",
+      "length_m": 579,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "日本歯科大学",
+      "length_m": 532,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": {
+    "direct_m": 178,
+    "around_m": 617,
+    "extra_m": 439
+   },
+   "address": {
+    "muni_code": "13101",
+    "area": "飯田橋三丁目"
+   },
+   "ms": 4937
+  },
+  "fact_rule": "review at least (long way around for cars, or an evacuation route cut)",
+  "plain": {
+   "danger": 0.106,
+   "clarity": 1.62,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "again": {
+   "danger": 0.106,
+   "clarity": 1.62,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_same_questions": {
+   "danger": 0.182,
+   "clarity": 1.89,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_reworded": {
+   "danger": 0.846,
+   "clarity": 1.94,
+   "category": "closedWeather",
+   "action": "urgent"
+  }
+ },
+ {
+  "id": "tree-on-road/grid",
+  "place": "Inside a river flood hazard zone (maximum assumed rainfall); expected depth 1 to 3 m. Nearest evacuation site for floods: 日本歯科大学, 316 m away; 2 within 500 m. 1 of 4 walking routes from nearby places to their nearest evacuation site pass this place. With this section closed, cars can go around it without a real detour. Area: 飯田橋四丁目.",
+  "facts": {
+   "flood": {
+    "inside": true,
+    "depth": "1 to 3 m"
+   },
+   "shelters": {
+    "nearest": {
+     "name": "日本歯科大学",
+     "distance_m": 316
+    },
+    "within_500m": 2
+   },
+   "routes": {
+    "checked": 4,
+    "blocked": 1,
+    "max_detour_m": -2,
+    "routes": [
+     {
+      "shelter": "日本歯科大学",
+      "length_m": 922,
+      "passes": true,
+      "detour_m": -2
+     },
+     {
+      "shelter": "日本大学法学部①",
+      "length_m": 639,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "富士見みらい館",
+      "length_m": 7,
+      "passes": false,
+      "detour_m": null
+     },
+     {
+      "shelter": "日本歯科大学",
+      "length_m": 545,
+      "passes": false,
+      "detour_m": null
+     }
+    ]
+   },
+   "detour": {
+    "direct_m": 242,
+    "around_m": 242,
+    "extra_m": 0
+   },
+   "address": {
+    "muni_code": "13101",
+    "area": "飯田橋四丁目"
+   },
+   "ms": 6067
+  },
+  "fact_rule": null,
+  "plain": {
+   "danger": 0.106,
+   "clarity": 1.62,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "again": {
+   "danger": 0.106,
+   "clarity": 1.62,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_same_questions": {
+   "danger": 0.124,
+   "clarity": 1.93,
+   "category": "closedWeather",
+   "action": "review"
+  },
+  "facts_reworded": {
+   "danger": 0.629,
+   "clarity": 1.99,
+   "category": "closedWeather",
+   "action": "review"
+  }
+ }
+]
