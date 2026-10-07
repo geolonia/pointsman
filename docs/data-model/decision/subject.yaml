@@ -1,0 +1,13 @@
+# Subject metadata. One context per subject, versioned; the version below is the
+# version of context.jsonld and of every schema in this subject.
+name: decision
+version: 1.0.0
+title:
+  ja: 判定
+  en: Decision
+description:
+  ja: 自動判定（AI などのモデルによる判定）の記録。何について、どの規則と版で、どのモデルが、何と答え、どの行動になったか、人がどう確認したか。来歴は W3C PROV-O に基づく。
+  en: "Records of automated decisions (made with an AI or other model): what was decided about, with which rules and version, by which model, the answers and the resulting action, and how a person checked it. Provenance is based on W3C PROV-O."
+source: minted            # minted | profile | global
+origin:
+  note: Drafted in geolonia/pointsman (#16, #51, #52) from Pointsman's decision record. Not yet proposed to the datamodels group.
