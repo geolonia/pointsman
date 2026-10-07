@@ -20,9 +20,10 @@ build it.
 
 During heavy rain, a city's disaster headquarters receives reports of closed
 or restricted roads: from field staff, patrols, other offices. Each report
-becomes a `RoadRestriction` entity in the context broker. Before it appears on
-the public map, someone at the headquarters checks it. On a bad day that is
-hundreds of reports, and the urgent ones must not wait in the queue.
+becomes a `RoadRestriction` entity in the context broker. Without help,
+someone at the headquarters checks every report before it appears on the
+public map. On a bad day that is hundreds of reports, and the urgent ones must
+not wait in the queue.
 
 Pointsman does the first check on every report, within about a second:
 
@@ -68,8 +69,9 @@ the **headquarters view** with every report, and the **residents' view** with
 only what is published.
 
 1. **Start.** Both maps show a few existing restrictions in a small area.
-   One sentence explains the situation: heavy rain, reports coming in, each
-   one checked before it is published.
+   One sentence explains the situation: heavy rain, reports coming in.
+   Pointsman checks each one first: clear reports go to the public map at
+   once, the others go to a person.
 2. **Report.** The viewer picks one of the prepared reports (the six above,
    in English and Japanese) or writes one: draw a point or line on the map,
    choose a status, write a sentence.
@@ -97,7 +99,8 @@ only what is published.
 - Pointsman reads the entity as it is: no mapping code between the broker and
   the model, just paths in the profile.
 - The decision is data in the broker: other FIWARE apps can subscribe to it
-  or query it (`q=check=="urgent"`).
+  or query it (for example `q=check=="urgent"`; the attribute name and
+  format are decided in #47, following the Decision data model, #52).
 - People stay in charge: the city sets the thresholds, and everything that is
   not clear goes to a person, with the reason.
 
