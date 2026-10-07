@@ -177,6 +177,21 @@ describe('flood zones', () => {
     expect(r.values).toMatchObject({ inside: true, rank: 5 });
   });
 
+  it('put only readable tiles into the cache, and fetch an unreadable cached tile again', async () => {
+    const cache = await caches.open('facts-gsi-broken');
+    let body: Uint8Array = new Uint8Array([1, 2, 3]); // not a PNG
+    const server = { calls: 0 };
+    const fetchFn = (async () => (server.calls++, new Response(body))) as typeof fetch;
+    await expect(lookup(new GsiFactProvider({ fetch: fetchFn, cache }))).rejects.toThrow(FactError);
+    const url = 'https://disaportaldata.gsi.go.jp/raster/01_flood_l2_shinsuishin_data/17/116418/51611.png';
+    expect(await cache.match(url)).toBeUndefined();
+    // A bad body already in the cache (from an older version) is dropped and fetched again.
+    await cache.put(url, new Response(new Uint8Array([9, 9]), { headers: { 'cache-control': 'max-age=3600' } }));
+    body = await png(() => DEEP);
+    expect((await lookup(new GsiFactProvider({ fetch: fetchFn, cache }))).values).toMatchObject({ inside: true, rank: 5 });
+    expect(server.calls).toBe(2);
+  });
+
   it('do not keep a failed tile', async () => {
     let fail = true;
     const fetchFn = (async () => (fail ? new Response('busy', { status: 503 }) : new Response(await png(() => DEEP)))) as typeof fetch;
@@ -207,6 +222,22 @@ describe('evacuation sites', () => {
     }) as typeof fetch;
     const line: Geometry = { type: 'LineString', coordinates: [[139.10, 35.6855], [139.75, 35.6855]] };
     expect((await lookup(new GsiFactProvider({ fetch: fetchFn }), line)).values).toMatchObject({ found: true, name: 'West school' });
+  });
+
+  it('widen the search by 5 km also at the far latitude of a line', async () => {
+    // A north-south line close to the tile edge at 139.21875° E (zoom 10,
+    // x 907 | 908). 5 km west of its southern end stays east of the edge; 5 km
+    // west of its northern end crosses it. The site is 4.98 km west of the
+    // northern end, across the edge.
+    const north: [number, number] = [139.27430, 36.30];
+    const siteLon = north[0] - (4980 / (6371008.8 * Math.cos((36.30 * Math.PI) / 180))) * (180 / Math.PI);
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const x = Number(String(input).match(/\/10\/(\d+)\//)![1]);
+      return new Response(JSON.stringify({ type: 'FeatureCollection', features: x === 907 ? [site(siteLon, 36.30, 'Edge school')] : [] }));
+    }) as typeof fetch;
+    expect(siteLon).toBeLessThan(139.21875);
+    const line: Geometry = { type: 'LineString', coordinates: [[north[0], 35.70], north] };
+    expect((await lookup(new GsiFactProvider({ fetch: fetchFn }), line)).values).toMatchObject({ found: true, name: 'Edge school' });
   });
 
   it('find none farther than 5 km', async () => {

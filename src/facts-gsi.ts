@@ -120,8 +120,14 @@ export class GsiFactProvider implements FactProvider {
     const ps = g.type === 'Point' ? [g.coordinates] : g.coordinates;
     const lons = ps.map((p) => p[0]);
     const lats = ps.map((p) => p[1]);
-    const sw = tileOf(offset([Math.min(...lons), Math.min(...lats)], -SHELTERS.radius, -SHELTERS.radius), SHELTERS.zoom);
-    const ne = tileOf(offset([Math.max(...lons), Math.max(...lats)], SHELTERS.radius, SHELTERS.radius), SHELTERS.zoom);
+    // 5 km spans the most longitude where the latitude is farthest from the equator.
+    const widest = lats.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a));
+    const [west] = offset([Math.min(...lons), widest], -SHELTERS.radius, 0);
+    const [east] = offset([Math.max(...lons), widest], SHELTERS.radius, 0);
+    const [, south] = offset([0, Math.min(...lats)], 0, -SHELTERS.radius);
+    const [, north] = offset([0, Math.max(...lats)], 0, SHELTERS.radius);
+    const sw = tileOf([west, south], SHELTERS.zoom);
+    const ne = tileOf([east, north], SHELTERS.zoom);
     if ((ne.x - sw.x + 1) * (sw.y - ne.y + 1) > 9) throw new FactError('geometry spans too many tiles');
     const urls: string[] = [];
     for (let x = sw.x; x <= ne.x; x++) for (let y = ne.y; y <= sw.y; y++) urls.push(SHELTERS.url(SHELTERS.zoom, x, y));
@@ -156,20 +162,33 @@ export class GsiFactProvider implements FactProvider {
   }
 
   private async load(url: string, format: 'png' | 'geojson'): Promise<Tile<unknown>> {
-    let res = this.cache ? await this.cache.match(url) : undefined;
-    if (!res) {
-      res = await this.fetchFn(url, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) });
-      if (res.status === 404) return { data: null, date: '' };
-      if (!res.ok) throw new FactError(`tile ${res.status}`);
-      if (this.cache) {
-        const stored = new Response(res.clone().body, { headers: { 'cache-control': `public, max-age=${TILE_TTL_S}`, 'last-modified': res.headers.get('last-modified') ?? '' } });
-        await this.cache.put(url, stored).catch(() => {}); // a cache miss next time is fine
+    const decode = async (res: Response) => {
+      const modified = Date.parse(res.headers.get('last-modified') ?? '');
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      return {
+        bytes,
+        lastModified: res.headers.get('last-modified') ?? '',
+        tile: { data: format === 'png' ? await decodePng(bytes) : shelterList(bytes), date: Number.isNaN(modified) ? '' : new Date(modified).toISOString().slice(0, 10) },
+      };
+    };
+    const cached = this.cache ? await this.cache.match(url) : undefined;
+    if (cached) {
+      try {
+        return (await decode(cached)).tile;
+      } catch {
+        await this.cache!.delete(url).catch(() => {}); // unreadable: fetch it again
       }
     }
-    const modified = Date.parse(res.headers.get('last-modified') ?? '');
-    const date = Number.isNaN(modified) ? '' : new Date(modified).toISOString().slice(0, 10);
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    return { data: format === 'png' ? await decodePng(bytes) : shelterList(bytes), date };
+    const res = await this.fetchFn(url, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) });
+    if (res.status === 404) return { data: null, date: '' };
+    if (!res.ok) throw new FactError(`tile ${res.status}`);
+    // Decoded first: only a tile that can be read goes into the shared cache.
+    const { bytes, lastModified, tile } = await decode(res);
+    if (this.cache) {
+      const stored = new Response(bytes, { headers: { 'cache-control': `public, max-age=${TILE_TTL_S}`, 'last-modified': lastModified } });
+      await this.cache.put(url, stored).catch(() => {}); // a cache miss next time is fine
+    }
+    return tile;
   }
 }
 
