@@ -64,52 +64,119 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "name",
-          "type",
-          "value",
-          "probability"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Question name, as in the rule set"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "noul",
-              "choice",
-              "score"
-            ],
-            "description": "noul (yes or no), choice (one of a list of options) or score (a level on an ordered scale)"
-          },
-          "value": {
-            "type": [
-              "boolean",
-              "string",
-              "number"
-            ],
-            "description": "The answer: true or false, the chosen option, or the level"
-          },
-          "probability": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "Probability of this value, as given by the model"
-          },
-          "probabilities": {
+        "oneOf": [
+          {
             "type": "object",
-            "additionalProperties": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "value",
+              "probability"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Question name, as in the rule set"
+              },
+              "type": {
+                "const": "noul"
+              },
+              "value": {
+                "type": "boolean",
+                "description": "Yes (true) or no (false)"
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Probability of this value, as given by the model"
+              }
             },
-            "description": "For choice and score: probability of each option or level"
+            "description": "A yes/no answer"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "value",
+              "probability",
+              "probabilities"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Question name, as in the rule set"
+              },
+              "type": {
+                "const": "choice"
+              },
+              "value": {
+                "type": "string",
+                "description": "The chosen option"
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Probability of this value, as given by the model"
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "description": "Probability of each option (choice) or level (score)"
+              }
+            },
+            "description": "One option from a list"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "value",
+              "probability",
+              "probabilities"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Question name, as in the rule set"
+              },
+              "type": {
+                "const": "score"
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The most likely level, from 0 (lowest)"
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Probability of this value, as given by the model"
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "description": "Probability of each option (choice) or level (score)"
+              }
+            },
+            "description": "A level on an ordered scale"
           }
-        }
+        ]
       },
       "description": "The model's answers, one per question, each with its probability",
       "x-ngsi": {
@@ -221,6 +288,7 @@
         "required": [
           "name",
           "value",
+          "by",
           "at"
         ],
         "properties": {
@@ -290,6 +358,47 @@
       "required": [
         "externalReference"
       ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "reviewStatus"
+        ],
+        "properties": {
+          "reviewStatus": {
+            "const": "resolved"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "finalAction",
+          "reviewedAt"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "finalAction"
+              ]
+            },
+            {
+              "required": [
+                "reviewedBy"
+              ]
+            },
+            {
+              "required": [
+                "reviewedAt"
+              ]
+            }
+          ]
+        }
+      }
     }
   ],
   "additionalProperties": false
