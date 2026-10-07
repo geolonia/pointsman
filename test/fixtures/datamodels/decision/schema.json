@@ -268,7 +268,7 @@
     },
     "profile": {
       "type": "string",
-      "description": "Id of the rule set (in Pointsman: the profile) that asked the questions and turned the answers into the action",
+      "description": "Id of the rule set that asked the questions and turned the answers into the action",
       "x-ngsi": {
         "type": "Property"
       },

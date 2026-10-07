@@ -12,7 +12,7 @@ export interface Route {
   inputs: string[];
   /** The attribute the result is written to. */
   attribute: string;
-  /** Also create a Decision entity (docs/data-model/) for each decision. */
+  /** Also create a Decision entity (datamodels.jp Decision model) for each decision. */
   decisionEntity?: boolean;
   /** Actions a person checks before anything happens (default: review). */
   reviewActions?: string[];
@@ -316,10 +316,13 @@ async function writeAttribute(id: string, name: string, property: Record<string,
   return fetchFn(attrs, { method: 'POST', headers, body: JSON.stringify({ [name]: property }) });
 }
 
+/** The published context of the Decision model (datamodels.jp). */
+export const DECISION_CONTEXT = 'https://datamodels.jp/context/decision/v1.jsonld';
+
 /**
- * Terms of the Decision data model (docs/data-model/decision/context.jsonld),
- * sent inline: the model's context URL is not published yet. A test keeps
- * them equal to the file.
+ * The terms of the Decision model, for callers that need them inline (for
+ * example a Worker that serves them). A test keeps them equal to the
+ * published context (pinned copy in test/fixtures/datamodels/decision/).
  */
 export const DECISION_TERMS: Record<string, string | { '@id': string; '@type': '@id' }> = {
   decision: 'https://datamodels.jp/ns/decision/',
@@ -350,7 +353,7 @@ const CORE_CONTEXT = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.
 export const decisionEntityId = (decisionId: string) => `urn:ngsi-ld:Decision:${decisionId}`;
 
 /**
- * A Decision entity (docs/data-model/) in normalized form. A person takes
+ * A Decision entity (datamodels.jp Decision model) in normalized form. A person takes
  * part before anything happens for the route's review actions (default:
  * review); for the others the action is taken and a person can correct it
  * later through Pointsman's feedback.
@@ -367,7 +370,7 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
   const checked = (route.reviewActions ?? ['review']).includes(d.action);
   const rule = policyRule(d);
   return {
-    '@context': [DECISION_TERMS, CORE_CONTEXT],
+    '@context': [DECISION_CONTEXT, CORE_CONTEXT],
     id: decisionEntityId(d.decision_id),
     type: 'Decision',
     refersTo: { type: 'Relationship', object: entityId },

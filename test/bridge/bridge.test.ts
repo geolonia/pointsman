@@ -1,8 +1,8 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type Route, DECISION_TERMS, handleRequest, inputHash, parseRoutes, toDecisionEntity } from '../../bridge/src/bridge';
-import decisionContext from '../../docs/data-model/decision/context.jsonld?raw';
+import { type BridgeConfig, type Route, DECISION_CONTEXT, DECISION_TERMS, handleRequest, inputHash, parseRoutes, toDecisionEntity } from '../../bridge/src/bridge';
+import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
 // Made at run time, so no secret-looking literal sits in the code.
@@ -288,7 +288,7 @@ describe('Decision entities', () => {
     expect(create.headers.get('link')).toBeNull();
     expect(create.headers.get('ngsild-tenant')).toBe('demo');
     expect(create.body).toEqual({
-      '@context': [DECISION_TERMS, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
+      '@context': [DECISION_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
       id: 'urn:ngsi-ld:Decision:d-1',
       type: 'Decision',
       refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' },
