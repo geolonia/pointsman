@@ -167,7 +167,7 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
 
   const res = await fetchFn(`${config.pointsman.url}/v1/decide/${encodeURIComponent(route.profile)}`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${config.pointsman.token}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${config.pointsman.token}`, 'content-type': 'application/json', 'user-agent': USER_AGENT },
     body: JSON.stringify({ state: entity, ref: entity.id }),
   });
   if (!res.ok) {
@@ -254,10 +254,17 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
   return property;
 }
 
+/**
+ * Sent on every request. Some brokers sit behind firewalls that refuse
+ * requests without one (GeonicDB's AWS WAF answers 403), and Workers send none
+ * by default.
+ */
+export const USER_AGENT = 'pointsman-bridge (+https://github.com/geolonia/pointsman)';
+
 /** Authentication, tenant and content type: the same for every request to the broker. */
 function brokerHeaders(config: BridgeConfig, contentType: string): Record<string, string> {
   const { broker } = config;
-  const headers: Record<string, string> = { 'content-type': contentType };
+  const headers: Record<string, string> = { 'content-type': contentType, 'user-agent': USER_AGENT };
   if (broker.token) headers.authorization = `Bearer ${broker.token}`;
   if (broker.apiKey) headers['x-api-key'] = broker.apiKey;
   if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
