@@ -84,6 +84,31 @@ for a person (`type=Decision&q=reviewStatus=="pending"`).
   not accept yet (see [docs/decision-model-standards.md](../docs/decision-model-standards.md)).
   Tried with GeonicDB.
 
+## Chains of decisions
+
+A second route on the same entity type can decide on the first route's
+result, for example: a road restriction report is decided `urgent` or
+`review` (route 1, attribute `check`), then a second profile asks whether
+the closure cuts people off from their evacuation site (route 2).
+
+- Give the second route a `name`, and point its subscription to
+  `/notify?route=<name>`. `/notify` without a name serves the type's route
+  without a name; each type has at most one of those.
+- Its `inputs` include the first route's attribute (`check`), and its
+  subscription watches that attribute, with `q` limiting it to the actions
+  that should go on (for example `check=="urgent"`).
+- `informedBy: "check"`: its Decision entities link the first decision
+  (`wasInformedBy`, from `check.decision`), so the chain can be followed in
+  the broker.
+
+```json
+[
+  { "type": "RoadRestriction", "profile": "road-restriction-check", "inputs": ["description"], "attribute": "check", "decisionEntity": true },
+  { "type": "RoadRestriction", "profile": "evacuation-access-check", "inputs": ["description", "check"], "attribute": "evacuation",
+    "name": "evacuation", "informedBy": "check", "decisionEntity": true }
+]
+```
+
 ## How it avoids loops
 
 The bridge writes to the entity it was notified about. Two things keep that
@@ -105,7 +130,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 
 | Name | Meaning |
 |---|---|
-| `BRIDGE_ROUTES` | JSON list, one entry per entity type: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities) and `reviewActions` (actions a person checks first, default `["review"]`) |
+| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first, default `["review"]`), `name` and `informedBy` (for chains, below) |
 | `POINTSMAN_URL` | Pointsman's base URL |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
 | `BROKER_TENANT` | Optional: sent as `NGSILD-Tenant`. One bridge serves one tenant. |

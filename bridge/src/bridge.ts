@@ -16,6 +16,18 @@ export interface Route {
   decisionEntity?: boolean;
   /** Actions a person checks before anything happens (default: review). */
   reviewActions?: string[];
+  /**
+   * Needed when a type has more than one route: the subscription for this
+   * route notifies `/notify?route=<name>`. A route without a name serves
+   * `/notify` for its type.
+   */
+  name?: string;
+  /**
+   * For a chain of decisions: an input attribute written by an earlier
+   * route. Its `decision` relationship becomes this decision's
+   * `wasInformedBy` in the Decision entity.
+   */
+  informedBy?: string;
 }
 
 export interface BridgeConfig {
@@ -59,7 +71,7 @@ export function parseRoutes(json: string): Route[] {
   return data.map((r, i) => {
     const where = `bridge routes[${i}]`;
     if (!r || typeof r !== 'object') throw new Error(`${where}: expected an object`);
-    const { type, profile, inputs, attribute, decisionEntity, reviewActions } = r as Record<string, unknown>;
+    const { type, profile, inputs, attribute, decisionEntity, reviewActions, name, informedBy } = r as Record<string, unknown>;
     for (const [name, v] of Object.entries({ type, profile, attribute })) {
       if (typeof v !== 'string' || v === '') throw new Error(`${where}.${name}: expected a non-empty string`);
     }
@@ -72,12 +84,24 @@ export function parseRoutes(json: string): Route[] {
     if (reviewActions !== undefined && (!Array.isArray(reviewActions) || !reviewActions.every((x) => typeof x === 'string' && x !== ''))) {
       throw new Error(`${where}.reviewActions: expected a list of action names`);
     }
-    if (seen.has(type as string)) throw new Error(`${where}: type ${String(type)} is listed twice`);
-    seen.add(type as string);
+    if (name !== undefined && (typeof name !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(name))) {
+      throw new Error(`${where}.name: expected lower-case letters, digits and -`);
+    }
+    if (informedBy !== undefined && (typeof informedBy !== 'string' || !(inputs as string[]).includes(informedBy))) {
+      throw new Error(`${where}.informedBy: expected one of the inputs`);
+    }
+    // One unnamed route per type, and every name once.
+    const key = name === undefined ? `type:${String(type)}` : `name:${name}`;
+    if (seen.has(key)) {
+      throw new Error(name === undefined ? `${where}: type ${String(type)} has two routes without a name` : `${where}: name ${name} is listed twice`);
+    }
+    seen.add(key);
     return {
       type, profile, inputs, attribute,
       ...(decisionEntity !== undefined && { decisionEntity }),
       ...(reviewActions !== undefined && { reviewActions }),
+      ...(name !== undefined && { name }),
+      ...(informedBy !== undefined && { informedBy }),
     } as Route;
   });
 }
@@ -134,9 +158,11 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   const data = (notification as { data?: unknown })?.data;
   if (!Array.isArray(data)) return Response.json({ error: 'expected a notification with data' }, { status: 400 });
 
+  // ?route=<name> selects a named route; without it, the type's unnamed route.
+  const routeName = url.searchParams.get('route') ?? undefined;
   const results: EntityResult[] = [];
   for (const entity of data as Entity[]) {
-    const route = config.routes.find((r) => r.type === entity?.type);
+    const route = config.routes.find((r) => r.type === entity?.type && r.name === routeName);
     if (!route || typeof entity.id !== 'string') continue;
     // Deleting an entity also notifies (NGSI-LD 1.8: with deletedAt); there is
     // nothing left to decide about.
@@ -185,7 +211,7 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
   // without it a retry decides again (no input hash written yet).
   let decisionRef: string | undefined;
   if (route.decisionEntity) {
-    const created = await createDecisionEntity(toDecisionEntity(d, entity.id, route, decidedAt), config);
+    const created = await createDecisionEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
     // 409: a retry of a notification whose entity was created, then the write failed.
     if (!created.ok && created.status !== 409) {
       return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
@@ -329,7 +355,14 @@ export const decisionEntityId = (decisionId: string) => `urn:ngsi-ld:Decision:${
  * review); for the others the action is taken and a person can correct it
  * later through Pointsman's feedback.
  */
-export function toDecisionEntity(d: Decision, entityId: string, route: Route, now = new Date()): Record<string, unknown> {
+/** The earlier decision this one follows: the `decision` relationship of the route's informedBy attribute. */
+export function informedByOf(entity: Entity, route: Route): string | undefined {
+  if (!route.informedBy) return undefined;
+  const object = (entity[route.informedBy] as { decision?: { object?: unknown } } | undefined)?.decision?.object;
+  return typeof object === 'string' && object !== '' ? object : undefined;
+}
+
+export function toDecisionEntity(d: Decision, entityId: string, route: Route, now = new Date(), informedBy?: string): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
   const checked = (route.reviewActions ?? ['review']).includes(d.action);
   const rule = policyRule(d);
@@ -358,6 +391,7 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
     model: P(d.model),
     decidedAt: P({ '@type': 'DateTime', '@value': d.created_at ?? now.toISOString() }),
     humanInvolvement: { type: 'VocabProperty', vocab: checked ? 'dpv:HumanInvolvementForVerification' : 'dpv:HumanInvolvementForOversight' },
+    ...(informedBy !== undefined && { wasInformedBy: { type: 'Relationship', object: informedBy } }),
     ...(checked && { reviewStatus: P('pending') }),
   };
 }
