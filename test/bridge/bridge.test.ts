@@ -1,7 +1,8 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type Route, handleRequest, inputHash, parseRoutes } from '../../bridge/src/bridge';
+import { type BridgeConfig, type Route, DECISION_TERMS, handleRequest, inputHash, parseRoutes, toDecisionEntity } from '../../bridge/src/bridge';
+import decisionContext from '../../docs/data-model/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
 // Made at run time, so no secret-looking literal sits in the code.
@@ -16,12 +17,18 @@ function entity(extra: Record<string, unknown> = {}) {
 }
 
 const decision = {
+  created_at: '2026-07-08T01:46:12.000Z',
+  rule: 1 as number | null,
   decision_id: 'd-1',
   action: 'publish',
   profile: 'road-restriction-check',
   profile_version: 1,
   model: 'clef-flash',
-  answers: { category: { value: 'closedWeather', p: 0.96 }, danger: { value: false, p: 0.53 } },
+  // As Pointsman answers (src/types.ts Answer).
+  answers: {
+    category: { type: 'choice', value: 'closedWeather', p: 0.96, probabilities: { closedWeather: 0.96, other: 0.04 } },
+    danger: { type: 'noul', value: false, p: 0.53, yes: 0.47 },
+  },
 };
 
 type Call = { method: string; url: string; headers: Headers; body: unknown };
@@ -29,8 +36,9 @@ type Call = { method: string; url: string; headers: Headers; body: unknown };
 /** A fake broker and Pointsman. `broker` answers writes: a status per method, or a function. */
 function setup(opts: {
   pointsman?: (body: unknown) => Response;
-  broker?: { PATCH?: number; POST?: number };
+  broker?: { PATCH?: number; POST?: number; ENTITIES?: number };
   fail?: 'pointsman';
+  route?: Partial<Route>;
 } = {}) {
   const calls: Call[] = [];
   const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -42,11 +50,12 @@ function setup(opts: {
       if (opts.fail === 'pointsman') throw new Error('connection refused');
       return opts.pointsman ? opts.pointsman(body) : Response.json(decision);
     }
+    if (url === 'https://broker.test/ngsi-ld/v1/entities') return new Response(null, { status: opts.broker?.ENTITIES ?? 201 });
     const status = opts.broker?.[method as 'PATCH' | 'POST'] ?? (method === 'PATCH' ? 404 : 204);
     return new Response(status === 204 ? null : 'broker says no', { status });
   }) as typeof fetch;
   const config: BridgeConfig = {
-    routes: [route],
+    routes: [{ ...route, ...opts.route }],
     notifySecret: SECRET,
     pointsman: { url: 'https://pm.test', token: PM_TOKEN },
     broker: { url: 'https://broker.test', token: BROKER_TOKEN, tenant: 'demo', context: 'https://ctx.test/v1.jsonld' },
@@ -258,5 +267,109 @@ describe('configuration', () => {
     expect(() => configFrom({ ...env, NOTIFY_SECRET: '' })).toThrow(/NOTIFY_SECRET is not set/);
     expect(() => configFrom({ ...env, BROKER_URL: 'http://broker.test' })).toThrow(/BROKER_URL must be an https URL/);
     expect(configFrom({ ...env, BROKER_URL: 'http://localhost:1026' }).broker.url).toBe('http://localhost:1026');
+  });
+});
+
+describe('Decision entities', () => {
+  it('creates a Decision entity first, then links it from the property', async () => {
+    const { notify, calls } = setup({ route: { decisionEntity: true } });
+    const res = await notify([entity()]);
+    expect(res.status).toBe(200);
+    expect(calls.map((c) => `${c.method} ${c.url.replace(/^https:\/\/[^/]+/, '')}`)).toEqual([
+      'POST /v1/decide/road-restriction-check',
+      'POST /ngsi-ld/v1/entities',
+      'PATCH /ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs/check',
+      'POST /ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs',
+    ]);
+    const create = calls[1]!;
+    expect(create.headers.get('content-type')).toBe('application/ld+json');
+    expect(create.headers.get('link')).toBeNull();
+    expect(create.headers.get('ngsild-tenant')).toBe('demo');
+    expect(create.body).toEqual({
+      '@context': [DECISION_TERMS, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
+      id: 'urn:ngsi-ld:Decision:d-1',
+      type: 'Decision',
+      refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' },
+      action: P('publish'),
+      answers: { type: 'JsonProperty', json: [
+        { name: 'category', type: 'choice', value: 'closedWeather', probability: 0.96, probabilities: { closedWeather: 0.96, other: 0.04 } },
+        { name: 'danger', type: 'noul', value: false, probability: 0.53 },
+      ] },
+      profile: P('road-restriction-check'),
+      profileVersion: P(1),
+      policyRule: P('1'),
+      model: P('clef-flash'),
+      decidedAt: P({ '@type': 'DateTime', '@value': '2026-07-08T01:46:12.000Z' }),
+      humanInvolvement: { type: 'VocabProperty', vocab: 'dpv:HumanInvolvementForOversight' },
+    });
+    const check = (calls[3]!.body as { check: Record<string, unknown> }).check;
+    expect(check).toMatchObject({
+      decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-1' },
+      policyRule: P('1'),
+      observedAt: '2026-07-08T01:46:12.000Z',
+    });
+  });
+
+  it('marks review actions as checked by a person first, with a pending review', async () => {
+    const review = { ...decision, action: 'review', rule: null };
+    const out = toDecisionEntity(review, 'urn:x:1', { ...route, decisionEntity: true });
+    expect(out).toMatchObject({ policyRule: P('default'), humanInvolvement: { vocab: 'dpv:HumanInvolvementForVerification' }, reviewStatus: P('pending') });
+    const urgent = toDecisionEntity({ ...decision, action: 'urgent' }, 'urn:x:1', { ...route, reviewActions: ['review', 'urgent'] });
+    expect(urgent).toMatchObject({ humanInvolvement: { vocab: 'dpv:HumanInvolvementForVerification' }, reviewStatus: P('pending') });
+    expect(toDecisionEntity(decision, 'urn:x:1', route)).not.toHaveProperty('reviewStatus');
+  });
+
+  it('works with a Pointsman that does not return created_at and rule yet', async () => {
+    const { created_at: _, rule: __, ...older } = decision;
+    const out = toDecisionEntity(older, 'urn:x:1', route);
+    expect(out).not.toHaveProperty('policyRule');
+    expect(Date.parse((out.decidedAt as { value: { '@value': string } }).value['@value'])).not.toBeNaN();
+  });
+
+  it('accepts an existing Decision entity (a retry) and fails without one', async () => {
+    const retry = setup({ route: { decisionEntity: true }, broker: { ENTITIES: 409 } });
+    expect((await retry.notify([entity()])).status).toBe(200);
+
+    const down = setup({ route: { decisionEntity: true }, broker: { ENTITIES: 503 } });
+    const res = await down.notify([entity()]);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ handled: [{ id: 'urn:ngsi-ld:RoadRestriction:1', decision: 'd-1', error: 'broker refused the Decision entity: 503', retry: true }] });
+    // Nothing written to the entity, so the next notification decides again.
+    expect(down.calls).toHaveLength(2);
+
+    const refused = setup({ route: { decisionEntity: true }, broker: { ENTITIES: 400 } });
+    expect((await refused.notify([entity()])).status).toBe(200);
+  });
+
+  it('uses the terms of the data model', () => {
+    const file = JSON.parse(decisionContext) as { '@context': unknown[] };
+    const inline = file['@context'].find((c) => typeof c === 'object');
+    expect(DECISION_TERMS).toEqual(inline);
+  });
+
+  it('authenticates the Decision create like every other broker request', async () => {
+    const API_KEY = crypto.randomUUID();
+    const { notify, calls, config } = setup({ route: { decisionEntity: true } });
+    delete config.broker.token;
+    config.broker.apiKey = API_KEY;
+    await notify([entity()]);
+    const create = calls.find((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities')!;
+    expect(create.headers.get('x-api-key')).toBe(API_KEY);
+    expect(create.headers.get('ngsild-tenant')).toBe('demo');
+  });
+
+  it('uses one time for the entity and the property when Pointsman gives none', async () => {
+    const { created_at: _, ...older } = decision;
+    const { notify, calls } = setup({ route: { decisionEntity: true }, pointsman: () => Response.json(older) });
+    await notify([entity()]);
+    const created = calls.find((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities')!.body as { decidedAt: { value: { '@value': string } } };
+    const check = (calls.at(-1)!.body as { check: { observedAt: string } }).check;
+    expect(check.observedAt).toBe(created.decidedAt.value['@value']);
+  });
+
+  it('checks the route options', () => {
+    expect(parseRoutes(JSON.stringify([{ ...route, decisionEntity: true, reviewActions: ['review', 'urgent'] }]))[0]).toMatchObject({ decisionEntity: true, reviewActions: ['review', 'urgent'] });
+    expect(() => parseRoutes(JSON.stringify([{ ...route, decisionEntity: 'yes' }]))).toThrow(/decisionEntity/);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, reviewActions: 'review' }]))).toThrow(/reviewActions/);
   });
 });

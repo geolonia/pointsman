@@ -36,8 +36,10 @@ One property, named in the configuration (here `check`):
   "value": "publish",
   "observedAt": "2026-10-07T03:40:12.120Z",
   "decisionId": { "type": "Property", "value": "be691aa7-…" },
+  "decision": { "type": "Relationship", "object": "urn:ngsi-ld:Decision:be691aa7-…" },
   "profile": { "type": "Property", "value": "road-restriction-check" },
   "profileVersion": { "type": "Property", "value": 1 },
+  "policyRule": { "type": "Property", "value": "1" },
   "model": { "type": "Property", "value": "clef-flash" },
   "category": { "type": "Property", "value": "closedWeather" },
   "categoryProbability": { "type": "Property", "value": 0.96 },
@@ -53,7 +55,32 @@ One property, named in the configuration (here `check`):
   drops a third level).
 - `decisionId` is Pointsman's decision id: use it to fetch the full record or
   to send feedback.
-- The names may change with the Decision data model (#52).
+- `policyRule` is the rule of the profile's policy that gave the action
+  (`"0"`, `"1"`, …, or `"default"`): the reason for the result.
+- `decision` points to the Decision entity, when the route creates one (below).
+
+## Decision entities
+
+With `"decisionEntity": true` in a route, the bridge also creates one
+`Decision` entity per decision, following the draft data model in
+[docs/data-model/](../docs/data-model/): the answers with their probabilities,
+the profile version, the rule, the model, the time, and how a person takes
+part. Decisions can then be queried across entities, for example all that wait
+for a person (`type=Decision&q=reviewStatus=="pending"`).
+
+- The entity is created before the property is written; if the broker refuses
+  it, nothing is written and the notification fails (502 when a retry may
+  help).
+- `humanInvolvement` is `dpv:HumanInvolvementForVerification` (and
+  `reviewStatus` `pending`) for the route's `reviewActions` (default
+  `["review"]`), `dpv:HumanInvolvementForOversight` for the other actions:
+  they are taken, and a person can correct them later through Pointsman's
+  feedback.
+- The model's terms are sent inline in `@context`, because its context URL is
+  not published yet.
+- It uses NGSI-LD 1.8 `JsonProperty` and `VocabProperty`, which Orion-LD does
+  not accept yet (see [docs/decision-model-standards.md](../docs/decision-model-standards.md)).
+  Tried with GeonicDB.
 
 ## How it avoids loops
 
@@ -76,7 +103,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 
 | Name | Meaning |
 |---|---|
-| `BRIDGE_ROUTES` | JSON list, one entry per entity type: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input) |
+| `BRIDGE_ROUTES` | JSON list, one entry per entity type: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities) and `reviewActions` (actions a person checks first, default `["review"]`) |
 | `POINTSMAN_URL` | Pointsman's base URL |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
 | `BROKER_TENANT` | Optional: sent as `NGSILD-Tenant`. One bridge serves one tenant. |
