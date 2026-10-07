@@ -17,7 +17,7 @@ export default defineConfig({
     })),
   ],
   test: {
-    include: ['test/worker/**/*.test.ts'],
+    include: ['test/worker/**/*.test.ts', 'test/bridge/**/*.test.ts'],
     setupFiles: ['./test/worker/apply-migrations.ts'],
   },
 });

@@ -1,0 +1,20 @@
+// The FIWARE bridge as its own Worker (bridge/README.md). Values here are
+// examples; a deployment keeps its own copy of this file. Secrets
+// (NOTIFY_SECRET, POINTSMAN_TOKEN, BROKER_TOKEN) are set with
+// `wrangler secret put --config bridge/wrangler.jsonc`, or in bridge/.dev.vars
+// for `wrangler dev`.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "pointsman-bridge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // The bridge only calls Pointsman and the broker on public addresses.
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "observability": { "enabled": true },
+  "vars": {
+    "BRIDGE_ROUTES": "[{\"type\":\"RoadRestriction\",\"profile\":\"road-restriction-check\",\"inputs\":[\"roadName\",\"restrictionStatus\",\"statusLabel\",\"description\"],\"attribute\":\"check\"}]",
+    "POINTSMAN_URL": "https://pointsman.example.org",
+    "BROKER_URL": "https://broker.example.org",
+    "BROKER_CONTEXT": "https://datamodels.jp/context/transportation/v1.jsonld"
+  }
+}
