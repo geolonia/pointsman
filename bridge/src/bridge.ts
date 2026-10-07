@@ -12,6 +12,10 @@ export interface Route {
   inputs: string[];
   /** The attribute the result is written to. */
   attribute: string;
+  /** Also create a Decision entity (docs/data-model/) for each decision. */
+  decisionEntity?: boolean;
+  /** Actions a person checks before anything happens (default: review). */
+  reviewActions?: string[];
 }
 
 export interface BridgeConfig {
@@ -53,7 +57,7 @@ export function parseRoutes(json: string): Route[] {
   return data.map((r, i) => {
     const where = `bridge routes[${i}]`;
     if (!r || typeof r !== 'object') throw new Error(`${where}: expected an object`);
-    const { type, profile, inputs, attribute } = r as Record<string, unknown>;
+    const { type, profile, inputs, attribute, decisionEntity, reviewActions } = r as Record<string, unknown>;
     for (const [name, v] of Object.entries({ type, profile, attribute })) {
       if (typeof v !== 'string' || v === '') throw new Error(`${where}.${name}: expected a non-empty string`);
     }
@@ -62,9 +66,17 @@ export function parseRoutes(json: string): Route[] {
     }
     // Writing to an input would change the inputs and start a new decision.
     if ((inputs as string[]).includes(attribute as string)) throw new Error(`${where}: attribute must not be one of the inputs`);
+    if (decisionEntity !== undefined && typeof decisionEntity !== 'boolean') throw new Error(`${where}.decisionEntity: expected true or false`);
+    if (reviewActions !== undefined && (!Array.isArray(reviewActions) || !reviewActions.every((x) => typeof x === 'string' && x !== ''))) {
+      throw new Error(`${where}.reviewActions: expected a list of action names`);
+    }
     if (seen.has(type as string)) throw new Error(`${where}: type ${String(type)} is listed twice`);
     seen.add(type as string);
-    return { type, profile, inputs, attribute } as Route;
+    return {
+      type, profile, inputs, attribute,
+      ...(decisionEntity !== undefined && { decisionEntity }),
+      ...(reviewActions !== undefined && { reviewActions }),
+    } as Route;
   });
 }
 
@@ -159,7 +171,19 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     return { id: entity.id, error: 'unexpected answer from pointsman', retry: true };
   }
 
-  const property = toProperty(d, hash);
+  // The Decision entity first: the property on the entity points to it, and
+  // without it a retry decides again (no input hash written yet).
+  let decisionRef: string | undefined;
+  if (route.decisionEntity) {
+    const created = await createDecisionEntity(toDecisionEntity(d, entity.id, route), config);
+    // 409: a retry of a notification whose entity was created, then the write failed.
+    if (!created.ok && created.status !== 409) {
+      return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
+    }
+    decisionRef = decisionEntityId(d.decision_id);
+  }
+
+  const property = toProperty(d, hash, new Date(), decisionRef);
   const write = await writeAttribute(entity.id, route.attribute, property, config);
   // Without a successful write the input hash is not stored either, so the
   // next notification decides again: report it as a failure.
@@ -180,7 +204,16 @@ interface Decision {
   profile: string;
   profile_version: number;
   model: string;
-  answers: Record<string, { value: unknown; p: number }>;
+  answers: Record<string, { type?: string; value: unknown; p: number; probabilities?: Record<string, number> }>;
+  /** Pointsman returns both since #56; older versions do not. */
+  created_at?: string;
+  rule?: number | null;
+}
+
+/** "0", "1", ... for the rule that matched, "default" for the default action. */
+function policyRule(d: Decision): string | undefined {
+  if (d.rule === undefined) return undefined;
+  return d.rule === null ? 'default' : String(d.rule);
 }
 
 /**
@@ -188,15 +221,18 @@ interface Decision {
  * sub-properties, so a consumer that only needs the action reads
  * `<attribute>.value` and can filter on it.
  */
-export function toProperty(d: Decision, hash: string, now = new Date()): Record<string, unknown> {
+export function toProperty(d: Decision, hash: string, now = new Date(), decisionRef?: string): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
+  const rule = policyRule(d);
   const property: Record<string, unknown> = {
     type: 'Property',
     value: d.action,
-    observedAt: now.toISOString(),
+    observedAt: d.created_at ?? now.toISOString(),
     decisionId: P(d.decision_id),
+    ...(decisionRef && { decision: { type: 'Relationship', object: decisionRef } }),
     profile: P(d.profile),
     profileVersion: P(d.profile_version),
+    ...(rule !== undefined && { policyRule: P(rule) }),
     model: P(d.model),
     inputHash: P(hash),
   };
@@ -225,4 +261,82 @@ async function writeAttribute(id: string, name: string, property: Record<string,
   const write = await fetchFn(`${attrs}/${encodeURIComponent(name)}`, { method: 'PATCH', headers, body: JSON.stringify(property) });
   if (write.status !== 404) return write;
   return fetchFn(attrs, { method: 'POST', headers, body: JSON.stringify({ [name]: property }) });
+}
+
+/**
+ * Terms of the Decision data model (docs/data-model/decision/context.jsonld),
+ * sent inline: the model's context URL is not published yet. A test keeps
+ * them equal to the file.
+ */
+export const DECISION_TERMS: Record<string, string> = {
+  decision: 'https://datamodels.jp/ns/decision/',
+  Decision: 'decision:Decision',
+  prov: 'http://www.w3.org/ns/prov#',
+  dpv: 'https://w3id.org/dpv#',
+  refersTo: 'prov:used',
+  externalReference: 'decision:externalReference',
+  action: 'decision:action',
+  answers: 'decision:answers',
+  profile: 'decision:profile',
+  profileVersion: 'decision:profileVersion',
+  policyRule: 'decision:policyRule',
+  model: 'decision:model',
+  decidedAt: 'prov:endedAtTime',
+  humanInvolvement: 'dpv:hasHumanInvolvement',
+  reviewStatus: 'decision:reviewStatus',
+  finalAction: 'decision:finalAction',
+  reviewedBy: 'decision:reviewedBy',
+  reviewedAt: 'decision:reviewedAt',
+  corrections: 'decision:corrections',
+  wasInformedBy: 'prov:wasInformedBy',
+};
+
+const CORE_CONTEXT = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld';
+
+export const decisionEntityId = (decisionId: string) => `urn:ngsi-ld:Decision:${decisionId}`;
+
+/**
+ * A Decision entity (docs/data-model/) in normalized form. A person takes
+ * part before anything happens for the route's review actions (default:
+ * review); for the others the action is taken and a person can correct it
+ * later through Pointsman's feedback.
+ */
+export function toDecisionEntity(d: Decision, entityId: string, route: Route, now = new Date()): Record<string, unknown> {
+  const P = (value: unknown) => ({ type: 'Property', value });
+  const checked = (route.reviewActions ?? ['review']).includes(d.action);
+  const rule = policyRule(d);
+  return {
+    '@context': [DECISION_TERMS, CORE_CONTEXT],
+    id: decisionEntityId(d.decision_id),
+    type: 'Decision',
+    refersTo: { type: 'Relationship', object: entityId },
+    action: P(d.action),
+    answers: {
+      type: 'JsonProperty',
+      json: Object.entries(d.answers).map(([name, a]) => ({
+        name,
+        ...(a.type !== undefined && { type: a.type }),
+        value: a.value,
+        probability: a.p,
+        ...(a.probabilities && { probabilities: a.probabilities }),
+      })),
+    },
+    profile: P(d.profile),
+    profileVersion: P(d.profile_version),
+    ...(rule !== undefined && { policyRule: P(rule) }),
+    model: P(d.model),
+    decidedAt: P({ '@type': 'DateTime', '@value': d.created_at ?? now.toISOString() }),
+    humanInvolvement: { type: 'VocabProperty', vocab: checked ? 'dpv:HumanInvolvementForVerification' : 'dpv:HumanInvolvementForOversight' },
+    ...(checked && { reviewStatus: P('pending') }),
+  };
+}
+
+async function createDecisionEntity(entity: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
+  const fetchFn = config.fetch ?? fetch;
+  const { broker } = config;
+  // The context is in the body, so no Link header.
+  const headers: Record<string, string> = { 'content-type': 'application/ld+json' };
+  if (broker.token) headers.authorization = `Bearer ${broker.token}`;
+  if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
+  return fetchFn(`${broker.url}/ngsi-ld/v1/entities`, { method: 'POST', headers, body: JSON.stringify(entity) });
 }
