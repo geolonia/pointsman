@@ -90,6 +90,7 @@ Secrets (`wrangler secret put <NAME> --config bridge/wrangler.jsonc`, or
 | `NOTIFY_SECRET` | Shared secret the subscription sends in `x-bridge-secret`; other notifications are refused |
 | `POINTSMAN_TOKEN` | A Pointsman API token limited to the bridge's profiles (`node scripts/tokens.mjs create --client fiware-bridge --profiles road-restriction-check --remote`) |
 | `BROKER_TOKEN` | Optional: sent as `Authorization: Bearer …` to the broker |
+| `BROKER_API_KEY` | Optional, instead of `BROKER_TOKEN`: sent as `X-Api-Key` (for example a GeonicDB API key; its `allowedOrigins` must include `*`, because the bridge sends no `Origin`) |
 
 URLs must use https; plain http is accepted only for `localhost`.
 

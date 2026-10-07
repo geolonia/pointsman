@@ -236,6 +236,24 @@ describe('configuration', () => {
     expect(configFrom({ ...env, BROKER_TENANT: 't', BROKER_TOKEN }).broker).toEqual({ url: 'https://broker.test', tenant: 't', token: BROKER_TOKEN });
   });
 
+  it('sends an API key instead of a token, never both', async () => {
+    const API_KEY = crypto.randomUUID();
+    expect(configFrom({ ...env, BROKER_API_KEY: API_KEY }).broker).toEqual({ url: 'https://broker.test', apiKey: API_KEY });
+    expect(() => configFrom({ ...env, BROKER_API_KEY: API_KEY, BROKER_TOKEN })).toThrow(/not both/);
+    const { notify, calls, config } = setup();
+    delete config.broker.token;
+    config.broker.apiKey = API_KEY;
+    await notify([entity()]);
+    expect(calls[1]!.headers.get('x-api-key')).toBe(API_KEY);
+    expect(calls[1]!.headers.get('authorization')).toBeNull();
+
+    // A Worker that builds the config itself gets the same check.
+    const both = setup();
+    both.config.broker.apiKey = API_KEY;
+    expect((await both.notify([entity()])).status).toBe(500);
+    expect(both.calls).toHaveLength(0);
+  });
+
   it('names a missing setting, and refuses plain http except for localhost', () => {
     expect(() => configFrom({ ...env, NOTIFY_SECRET: '' })).toThrow(/NOTIFY_SECRET is not set/);
     expect(() => configFrom({ ...env, BROKER_URL: 'http://broker.test' })).toThrow(/BROKER_URL must be an https URL/);
