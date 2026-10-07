@@ -36,10 +36,13 @@ Pointsman does the first check on every report, within about a second:
 
 And the profile turns the answers into one of three actions:
 
-- **`urgent`**: `danger` is likely (≥ 0.7). A person looks at it now.
+- **`urgent`**: `danger` is likely (≥ 0.7), or the place is in a river flood
+  zone of 3 m or deeper and `danger` is at least 0.4 (a fact rule, version
+  2; see "Spatial facts and the chain"). A person looks at it now.
 - **`publish`**: clear, consistent, confident category, no danger. It goes to
   the public map without waiting.
-- **`review`**: everything else goes to the normal queue.
+- **`review`**: everything else goes to the normal queue, also a report with
+  `danger` at least 0.4 whose flood zone could not be looked up.
 
 The profile is [examples/profiles/road-restriction-check.yaml](../examples/profiles/road-restriction-check.yaml).
 
@@ -103,31 +106,66 @@ only what is published.
   format are decided in #47, following the Decision data model, #52).
 - People stay in charge: the city sets the thresholds, and everything that is
   not clear goes to a person, with the reason.
+- Places are checked with spatial data, not by the model: the rules read
+  facts such as "inside a 3 to 5 m flood zone" or "the way around on foot is
+  316 m longer" (below).
+
+## Spatial facts and the chain
+
+Two additions after the first version (October 2026):
+
+- **Facts in the rules** (#64, #65, #70): for each report, Pointsman looks up
+  the river flood zone (GSI hazard map tiles) and the nearest evacuation site
+  (GSI). The profile `road-restriction-check` version 2 sends a report in a
+  flood zone of 3 m or deeper to a person (`urgent`) when the text alone
+  would only be `review`. The model never sees the facts (spike #60); the page
+  lists them with their source.
+- **A chain of decisions** (#66): for reports decided `urgent` or `review`, a
+  second profile (`evacuation-access-check`) asks whether the closure cuts
+  people off from their evacuation site. Facts: the nearest site and the way
+  around on foot (Valhalla, OpenStreetMap). Near a site, with a long way
+  around and no way through on foot, it raises an `Alert` (Smart Data Models)
+  for the site's staff. Its `Decision` entity links step 1
+  (`wasInformedBy`).
+
+Two prepared reports show the chain with the same text: a closed bridge in
+飯田橋三丁目 (+316 m on foot, evacuation site 443 m away: alert) and a street
+in 飯田橋四丁目 (+143 m: no alert).
+
+Decisions follow the Decision model on datamodels.jp
+(https://datamodels.jp/models/decision/Decision/).
 
 ## How it runs
 
 ```mermaid
 flowchart LR
-  Page["Demo page<br/>(GitHub Pages)"] -->|report, poll| API["Demo Worker<br/>(Cloudflare)"]
+  Page["Demo page<br/>(served by the demo Worker)"] -->|report, poll| API["Demo Worker<br/>(Cloudflare)"]
   API -->|create entity| Broker["GeonicDB<br/>(demo tenant)"]
   Broker -->|notification| Bridge["Bridge<br/>(in the demo Worker)"]
-  Bridge -->|decide| PM["Pointsman"]
-  Bridge -->|write check| Broker
+  Bridge -->|decide, with facts| PM["Pointsman"]
+  PM -->|flood zones, evacuation sites, routes| Geo["GSI, Valhalla"]
+  Bridge -->|write check, Decision| Broker
   Bridge -->|urgent / review| GH["GitHub issues<br/>(demo repository)"]
   GH -->|"/publish comment (webhook)"| Bridge
+  Broker -->|"check: urgent / review<br/>(second subscription)"| Bridge
+  Bridge -->|alert| Alert["Alert entity"]
 ```
 
-- **Demo page:** static, next to the landing page (`site/demo/`). It only
-  talks to the demo Worker, never to the broker directly.
+- **Demo page:** static files served by the demo Worker
+  (https://pointsman-demo.geolonia.workers.dev, repository
+  geolonia/pointsman-demo). It only talks to the demo Worker, never to the
+  broker directly.
 - **Demo Worker:** creates entities from the page (checked and limited, see
   below), returns the entities for the maps, and runs the bridge (#47) on
   `/notify`. Broker and Pointsman credentials stay in the Worker.
-- **GeonicDB:** a demo tenant, with one subscription on `RoadRestriction`
-  that sends notifications to the Worker. GeonicDB behaves correctly for the
+- **GeonicDB:** a demo tenant, with two subscriptions on `RoadRestriction`:
+  new reports to `/notify`, and step 1's `urgent` and `review` results to
+  `/notify?route=evacuation` (the chain). GeonicDB behaves correctly for the
   bridge's writes (#41) and supports the shared-secret header
   (`receiverInfo`).
-- **Pointsman:** the production Worker, with the demo profile in the config
-  repository and its own API token, limited to that profile.
+- **Pointsman:** the production Worker, with the demo's two profiles
+  (`road-restriction-check`, `evacuation-access-check`) in the config
+  repository and its own API token, limited to those two profiles.
 - **GitHub:** issues in a public demo repository as the review queue, and a
   webhook back to the Worker for the review comments.
 - **Development:** `wrangler dev` for the Worker against a GeonicDB test
@@ -145,13 +183,8 @@ flowchart LR
 - Issues are only created for prepared reports, or after a person approves
   free text, so the public cannot write into the GitHub repository directly.
 
-## Open points for the next issues
+## Where the open points went
 
-- #47: the bridge as a module the demo Worker can mount, and the `check`
-  property name (aligned with the Decision data model, #52).
-- #48: the GeonicDB demo tenant, the demo repository, the token, Turnstile,
-  the daily reset.
-- #49: the page itself, and the map library.
-- #50: ideas that came up here: write the suggested `regulationCategory` into
-  the entity after a `publish`; show nearby evacuation shelters
-  (`EvacuationShelter`) and mark reports that block the way to one as urgent.
+- #47 (bridge), #48 (environment), #49 (page): done.
+- #50: the ideas list; evacuation sites and the chain became #66.
+- Geocoding for reports with only an address: #65.
