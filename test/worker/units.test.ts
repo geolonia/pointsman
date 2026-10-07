@@ -138,7 +138,7 @@ describe('MemoryProfileStore', () => {
   });
   it('lists profiles with all versions and the latest title', async () => {
     const list = await store.list();
-    expect(list.map((s) => s.id)).toEqual(['deploy-progress', 'issue-triage']);
+    expect(list.map((s) => s.id)).toEqual(['deploy-progress', 'issue-triage', 'road-restriction-check']);
     expect(list[1]).toMatchObject({ version: 2, versions: [1, 2], title: { en: 'Issue triage v2' } });
   });
   it('rejects the same version twice', () => {

@@ -113,7 +113,7 @@ describe('GET /v1/profiles', () => {
     const res = await exports.default.fetch(`${BASE}/v1/profiles`, { headers: auth });
     expect(res.status).toBe(200);
     const { profiles } = await json(res, contract.profileList);
-    expect(profiles.map((p: any) => p.id)).toEqual(['deploy-progress', 'issue-triage']);
+    expect(profiles.map((p: any) => p.id)).toEqual(['deploy-progress', 'issue-triage', 'road-restriction-check']);
     expect(profiles[1]).toMatchObject({ version: 1, versions: [1], title: { en: 'Issue triage' } });
   });
 });

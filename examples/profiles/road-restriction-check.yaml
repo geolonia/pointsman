@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# Example profile for the FIWARE demo (docs/fiware-demo.md): check a reported
+# road restriction before it is published. The input paths read a
+# RoadRestriction entity (datamodels.jp, transportation subject) in
+# normalized NGSI-LD form, as the bridge receives it.
+id: road-restriction-check
+version: 1
+title:
+  en: Road restriction check
+  ja: 通行規制の確認
+description:
+  en: Check a reported road restriction before it is published, and flag reports where people are in danger.
+  ja: 報告された通行規制を公開の前に確認し、人に危険が及んでいる報告に印を付ける。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: road, path: $.roadName.value }
+  - { name: status, path: $.restrictionStatus.value }
+  - { name: status_label, path: $.statusLabel.value }
+  - { name: description, path: $.description.value }
+questions:
+  - name: category
+    type: choice
+    instructions: Which category of the road information legend fits this restriction best?
+    criteria:
+      - { value: closedWeather, description: "Closed because of weather or a disaster: flooding, landslide, fallen trees (通行止(異常気象等))" }
+      - { value: closedConstruction, description: "Closed for roadworks (通行止(工事))" }
+      - { value: closedHeavyVehicle, description: "Closed to large vehicles only (大型通行止)" }
+      - { value: closedWinter, description: "Closed for the winter season (冬期通行止)" }
+      - { value: laneRestriction, description: "Some lanes closed, traffic still passes (車線規制)" }
+      - { value: alternatingOneWay, description: "One lane, directions take turns (片側交互通行)" }
+      - { value: mobileRestriction, description: "A moving restriction, for example road cleaning (移動規制)" }
+      - { value: chainRestriction, description: "Snow chains required (チェーン規制)" }
+      - { value: chainGuidance, description: "Snow chains recommended (チェーン指導)" }
+      - { value: other, description: "None of the above (その他規制)" }
+  - name: status_matches
+    type: noul
+    instructions: Does the given status (closed, limited or open) match what the description says about the road?
+    criteria:
+      true: The description agrees with the status.
+      false: The description says something else, for example the road is passable but the status is closed.
+  - name: danger
+    type: noul
+    instructions: Does the report say that people are in danger or trapped now, or that emergency vehicles cannot pass?
+    criteria:
+      true: Someone may need help now, or emergency access is blocked.
+      false: No one is in danger according to the report.
+  - name: clarity
+    type: score
+    instructions: Is the report clear enough to publish to residents?
+    criteria:
+      - Unclear what happened or where
+      - The place or the cause is unclear
+      - Clear enough, with small gaps
+      - Clear what, where and since when
+policy:
+  rules:
+    - when: "danger.yes >= 0.7"
+      action: urgent
+    - when: "danger.yes < 0.5 and category.p >= 0.85 and status_matches.yes >= 0.8 and clarity.score >= 2"
+      action: publish
+  default: review
