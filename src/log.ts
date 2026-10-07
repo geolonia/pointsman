@@ -2,7 +2,7 @@
 // feedback (corrections) people send for it. Stored in D1; the schema is in
 // migrations/. See docs/decision-log.md.
 
-import type { Answer } from './types';
+import type { Answer, Fact } from './types';
 
 export interface DecisionRecord {
   decision_id: string;
@@ -16,6 +16,8 @@ export interface DecisionRecord {
   /** Index of the matching policy rule; null when the default action applied. */
   rule: number | null;
   answers: Record<string, Answer>;
+  /** Only for profiles with facts: what was looked up, or why it is missing. */
+  facts?: Record<string, Fact>;
   state_hash: string;
   /** Only when the profile sets log.store_state. */
   state?: unknown;
@@ -118,6 +120,7 @@ interface DecisionRow {
   action: string;
   rule: number | null;
   answers: string;
+  facts: string | null;
   state_hash: string;
   state: string | null;
   callback_url: string | null;
@@ -144,6 +147,7 @@ function fromRow(row: DecisionRow): DecisionRecord {
     action: row.action,
     rule: row.rule,
     answers: JSON.parse(row.answers) as Record<string, Answer>,
+    ...(row.facts !== null && { facts: JSON.parse(row.facts) as Record<string, Fact> }),
     state_hash: row.state_hash,
     ...(row.state !== null && { state: JSON.parse(row.state) as unknown }),
     ...(row.callback_url !== null && { callback_url: row.callback_url }),
@@ -186,12 +190,12 @@ export class D1DecisionLog implements DecisionLog {
     await this.db
       .prepare(
         `INSERT INTO decisions (id, created_at, client, ref, profile_id, profile_version, model, action,
-           rule, answers, state_hash, state, callback_url, review_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           rule, answers, facts, state_hash, state, callback_url, review_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         r.decision_id, r.created_at, r.client, r.ref ?? null, r.profile, r.profile_version, r.model,
-        r.action, r.rule, JSON.stringify(r.answers), r.state_hash,
+        r.action, r.rule, JSON.stringify(r.answers), r.facts === undefined ? null : JSON.stringify(r.facts), r.state_hash,
         r.state === undefined ? null : JSON.stringify(r.state), r.callback_url ?? null,
         r.action === 'review' ? 'pending' : null,
       )

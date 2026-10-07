@@ -29,6 +29,36 @@ export interface ScoreQuestion {
 
 export type Question = NoulQuestion | ChoiceQuestion | ScoreQuestion;
 
+/** Kinds of spatial fact; their fields are in FACT_FIELDS (src/policy.ts). */
+export type FactType = 'inside' | 'nearest' | 'detour';
+
+/** A spatial fact a profile asks for (docs/profile-format.md#facts). */
+export interface FactSpec {
+  name: string;
+  type: FactType;
+  /** JSONPath to a GeoJSON geometry in the request state. */
+  at: string;
+  /** Layer id for `inside` and `nearest`, configured per deployment. */
+  layer?: string;
+}
+
+/** A fact as looked up for one decision. */
+export type Fact =
+  | {
+      missing: false;
+      /** Field values; null when the field has no value (for example no nearest feature). */
+      values: Record<string, string | number | boolean | null>;
+      /** Where the value came from, for example the layer's source and its date. */
+      source: string;
+    }
+  | {
+      missing: true;
+      /** no_location, unavailable, timeout or error. */
+      reason: FactMissingReason;
+    };
+
+export type FactMissingReason = 'no_location' | 'unavailable' | 'timeout' | 'error';
+
 export interface Profile {
   id: string;
   version: number;
@@ -38,6 +68,7 @@ export interface Profile {
   fallback_models?: string[];
   input?: { name: string; path: string }[];
   questions: Question[];
+  facts?: FactSpec[];
   mcp?: { visible?: boolean };
   log?: { store_state?: boolean };
   policy: {
@@ -64,4 +95,6 @@ export interface Decision {
   created_at: string;
   /** Index of the policy rule that matched; null when the default action applied. */
   rule: number | null;
+  /** The facts the profile asked for, by name; only for profiles with facts. */
+  facts?: Record<string, Fact>;
 }

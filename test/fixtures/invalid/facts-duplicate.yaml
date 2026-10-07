@@ -1,0 +1,13 @@
+# expect: /facts: duplicate fact name "flood"
+id: facts-duplicate
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+facts:
+  - { name: flood, type: inside, layer: flood, at: $.location }
+  - { name: flood, type: nearest, layer: shelters, at: $.location }
+policy:
+  default: review

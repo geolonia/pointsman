@@ -3,6 +3,7 @@
 
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth';
+import { MockFactProvider, type FactProvider } from './facts';
 import { D1DecisionLog } from './log';
 import { purgeExpired, type OAuthConfig } from './oauth';
 import type { ModelAdapter } from './models/adapter';
@@ -18,6 +19,8 @@ import bundledProfiles from '../generated/profiles.json';
 interface PointsmanEnv {
   PROFILE_SOURCE?: string | undefined;
   MODEL_MODE?: string | undefined;
+  /** "mock" for fixed answers; "off" or unset: no provider, facts are missing. */
+  FACTS_MODE?: string | undefined;
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
   DB?: D1Database | undefined;
@@ -133,6 +136,20 @@ function adaptersByMode(env: PointsmanEnv): (model: string) => ModelAdapter | nu
   }
 }
 
+const mockFacts = new MockFactProvider();
+
+function factsFor(env: PointsmanEnv): FactProvider | undefined {
+  switch (env.FACTS_MODE ?? 'off') {
+    case 'off':
+    case '':
+      return undefined;
+    case 'mock':
+      return mockFacts;
+    default:
+      throw new ConfigError('FACTS_MODE must be "off" or "mock"');
+  }
+}
+
 export function depsFor(env: PointsmanEnv): Deps {
   if (!env.TOKENS) throw new ConfigError('no TOKENS binding');
   if (!env.DB) throw new ConfigError('no DB binding');
@@ -141,6 +158,7 @@ export function depsFor(env: PointsmanEnv): Deps {
     tokens: new KvTokenStore(env.TOKENS),
     log: new D1DecisionLog(env.DB),
     adapterFor: adaptersFor(env),
+    facts: factsFor(env),
     callbacks: { secret: env.CALLBACK_SECRET || undefined, fetch: (url, init) => fetch(url, init) },
     oauth: oauthFor(env),
   };

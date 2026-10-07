@@ -6,8 +6,9 @@
 //   not        := "not" not | "(" or ")" | comparison
 //   comparison := operand ("==" | "!=" | ">=" | ">" | "<=" | "<") operand
 //   operand    := reference | number | string | true | false
-//   reference  := <question name> "." field
+//   reference  := <question name> "." field | "facts." <fact name> "." fact field
 //   field      := value | p | yes | score | probabilities.<option or level>
+//   fact field := missing, or a field of the fact's type (FACT_FIELDS)
 //
 // Strings use single or double quotes. Examples:
 //   team.p >= 0.85
@@ -18,11 +19,18 @@
 // a field the question type does not have, an unknown option, or comparing
 // values of different types fails profile validation, not a request.
 //
+// Facts (docs/profile-format.md#facts) can be missing: a lookup failed, or a
+// field has no value (no nearest feature found). A comparison with a missing
+// value is unknown, and unknown follows three-valued logic (false and
+// unknown = false, true or unknown = true, not unknown = unknown). A rule
+// matches only when its condition is true, so a missing fact never makes a
+// rule match by accident; `facts.<name>.missing == true` is always known.
+//
 // This file is also imported by the profile validator under Node.js, so it
 // uses only TypeScript syntax that Node can strip (no enums, no parameter
 // properties) and imports types only.
 
-import type { Answer, Profile, Question } from './types';
+import type { Answer, Fact, FactSpec, FactType, Profile, Question } from './types';
 
 type Kind = 'number' | 'string' | 'boolean';
 type Value = number | string | boolean;
@@ -30,7 +38,8 @@ type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
 
 type Operand =
   | { kind: Kind; literal: Value }
-  | { kind: Kind; question: string; field: string; key?: string };
+  | { kind: Kind; question: string; field: string; key?: string }
+  | { kind: Kind; fact: string; field: string };
 
 type Node =
   | { type: 'and' | 'or'; left: Node; right: Node }
@@ -79,6 +88,35 @@ const FIELDS: Record<Question['type'], Record<string, Kind>> = {
   score: { value: 'number', p: 'number', score: 'number' },
 };
 
+/**
+ * Fields of each fact type, for rules. Every fact also has `missing`. The
+ * lookup result is checked against this table (src/facts.ts).
+ */
+export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
+  // Inside an area of a layer; rank and class describe it (for example a
+  // flood depth class). Not inside: rank 0, class "".
+  inside: { inside: 'boolean', rank: 'number', class: 'string' },
+  // The nearest feature of a layer. Not found: found false, no distance or name.
+  nearest: { found: 'boolean', distance_m: 'number', name: 'string' },
+  // Extra metres around a closed section. No way around: possible false, no extra_m.
+  detour: { possible: 'boolean', extra_m: 'number' },
+};
+
+/** Reserved prefix of fact references; no question name may start with it. */
+export const FACTS_PREFIX = 'facts.';
+
+function resolveFact(word: string, facts: FactSpec[]): Operand {
+  const rest = word.slice(FACTS_PREFIX.length);
+  // Fact names may contain dots too: longest first, as for questions.
+  const f = [...facts].sort((a, b) => b.name.length - a.name.length).find((x) => rest.startsWith(`${x.name}.`));
+  if (!f) throw new PolicyError(`"${word}" does not refer to a fact of this profile`);
+  const field = rest.slice(f.name.length + 1);
+  if (field === 'missing') return { kind: 'boolean', fact: f.name, field };
+  const kind = Object.hasOwn(FACT_FIELDS[f.type], field) ? FACT_FIELDS[f.type][field] : undefined;
+  if (!kind) throw new PolicyError(`"${word}": ${f.type} facts have missing, ${Object.keys(FACT_FIELDS[f.type]).join(', ')}`);
+  return { kind, fact: f.name, field };
+}
+
 function optionsOf(q: Question): string[] | null {
   if (q.type === 'choice') return q.criteria.map((c) => c.value);
   if (q.type === 'score') return q.criteria.map((_, i) => String(i));
@@ -116,11 +154,13 @@ function resolveReference(word: string, questions: Question[]): Operand {
 class Parser {
   tokens: Token[];
   questions: Question[];
+  facts: FactSpec[];
   pos = 0;
 
-  constructor(tokens: Token[], questions: Question[]) {
+  constructor(tokens: Token[], questions: Question[], facts: FactSpec[]) {
     this.tokens = tokens;
     this.questions = questions;
+    this.facts = facts;
   }
 
   peek(): Token | undefined {
@@ -182,7 +222,7 @@ class Parser {
     this.pos++;
     const right = this.operand();
     if ('literal' in left && 'literal' in right) {
-      throw new PolicyError('a comparison must refer to a question');
+      throw new PolicyError('a comparison must refer to a question or a fact');
     }
     if (left.kind !== right.kind) {
       throw new PolicyError(`cannot compare ${left.kind} with ${right.kind}`);
@@ -213,7 +253,7 @@ class Parser {
       case 'word':
         if (t.v === 'true' || t.v === 'false') return { kind: 'boolean', literal: t.v === 'true' };
         if (['and', 'or', 'not'].includes(t.v)) throw new PolicyError(`unexpected "${t.v}"`);
-        return resolveReference(t.v, this.questions);
+        return t.v.startsWith(FACTS_PREFIX) ? resolveFact(t.v, this.facts) : resolveReference(t.v, this.questions);
       default:
         throw new PolicyError(`unexpected "${t.v}"`);
     }
@@ -222,8 +262,17 @@ class Parser {
 
 // ---- evaluation ----
 
-function valueOf(operand: Operand, answers: Record<string, Answer>): Value {
+/** undefined = unknown (a missing fact, or a fact field without a value). */
+function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Record<string, Fact>): Value | undefined {
   if ('literal' in operand) return operand.literal;
+  if ('fact' in operand) {
+    const f = facts[operand.fact];
+    if (!f) return operand.field === 'missing' ? true : undefined; // never looked up
+    if (operand.field === 'missing') return f.missing;
+    if (f.missing) return undefined;
+    const v = Object.hasOwn(f.values, operand.field) ? f.values[operand.field] : undefined;
+    return v === null ? undefined : v;
+  }
   const a = answers[operand.question];
   if (!a) throw new PolicyError(`no answer for "${operand.question}"`);
   if (operand.field === 'probabilities') {
@@ -235,17 +284,31 @@ function valueOf(operand: Operand, answers: Record<string, Answer>): Value {
   return (a as unknown as Record<string, Value>)[operand.field]!;
 }
 
-function evaluate(node: Node, answers: Record<string, Answer>): boolean {
+/** true, false, or null for unknown (three-valued logic, see the top of the file). */
+function evaluate(node: Node, answers: Record<string, Answer>, facts: Record<string, Fact>): boolean | null {
   switch (node.type) {
-    case 'and':
-      return evaluate(node.left, answers) && evaluate(node.right, answers);
-    case 'or':
-      return evaluate(node.left, answers) || evaluate(node.right, answers);
-    case 'not':
-      return !evaluate(node.operand, answers);
+    case 'and': {
+      const l = evaluate(node.left, answers, facts);
+      if (l === false) return false;
+      const r = evaluate(node.right, answers, facts);
+      if (r === false) return false;
+      return l === true && r === true ? true : null;
+    }
+    case 'or': {
+      const l = evaluate(node.left, answers, facts);
+      if (l === true) return true;
+      const r = evaluate(node.right, answers, facts);
+      if (r === true) return true;
+      return l === false && r === false ? false : null;
+    }
+    case 'not': {
+      const v = evaluate(node.operand, answers, facts);
+      return v === null ? null : !v;
+    }
     case 'cmp': {
-      const l = valueOf(node.left, answers);
-      const r = valueOf(node.right, answers);
+      const l = valueOf(node.left, answers, facts);
+      const r = valueOf(node.right, answers, facts);
+      if (l === undefined || r === undefined) return null;
       if (node.op === '==') return l === r;
       if (node.op === '!=') return l !== r;
       // The parser allows ordering only between numbers (see comparison()).
@@ -264,29 +327,32 @@ function evaluate(node: Node, answers: Record<string, Answer>): boolean {
 // ---- public API ----
 
 export interface CompiledPolicy {
-  /** The action, and the index of the matching rule (null = default). */
-  decide(answers: Record<string, Answer>): { action: string; rule: number | null };
+  /**
+   * The action, and the index of the matching rule (null = default). A rule
+   * matches only when its condition is true, not when it is unknown.
+   */
+  decide(answers: Record<string, Answer>, facts?: Record<string, Fact>): { action: string; rule: number | null };
 }
 
 /** Compile one condition; throws PolicyError with a readable message. */
-export function compileCondition(condition: string, questions: Question[]): Node {
-  return new Parser(tokenize(condition), questions).parse();
+export function compileCondition(condition: string, questions: Question[], facts: FactSpec[] = []): Node {
+  return new Parser(tokenize(condition), questions, facts).parse();
 }
 
 /** Compile all rules of a profile. Throws PolicyError naming the rule. */
-export function compilePolicy(profile: Pick<Profile, 'questions' | 'policy'>): CompiledPolicy {
+export function compilePolicy(profile: Pick<Profile, 'questions' | 'policy' | 'facts'>): CompiledPolicy {
   const rules = (profile.policy.rules ?? []).map((rule, i) => {
     try {
-      return { action: rule.action, when: compileCondition(rule.when, profile.questions) };
+      return { action: rule.action, when: compileCondition(rule.when, profile.questions, profile.facts) };
     } catch (err) {
       if (err instanceof PolicyError) throw new PolicyError(`rule ${i}: ${err.message}`);
       throw err;
     }
   });
   return {
-    decide(answers) {
+    decide(answers, facts = {}) {
       for (const [i, rule] of rules.entries()) {
-        if (evaluate(rule.when, answers)) return { action: rule.action, rule: i };
+        if (evaluate(rule.when, answers, facts) === true) return { action: rule.action, rule: i };
       }
       return { action: profile.policy.default, rule: null };
     },
@@ -294,11 +360,11 @@ export function compilePolicy(profile: Pick<Profile, 'questions' | 'policy'>): C
 }
 
 /** Validation errors for all rules, as [rule index, message]. */
-export function policyErrors(profile: Pick<Profile, 'questions' | 'policy'>): [number, string][] {
+export function policyErrors(profile: Pick<Profile, 'questions' | 'policy' | 'facts'>): [number, string][] {
   const errors: [number, string][] = [];
   for (const [i, rule] of (profile.policy.rules ?? []).entries()) {
     try {
-      compileCondition(rule.when, profile.questions);
+      compileCondition(rule.when, profile.questions, profile.facts);
     } catch (err) {
       if (!(err instanceof PolicyError)) throw err;
       errors.push([i, err.message]);

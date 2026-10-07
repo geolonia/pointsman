@@ -107,3 +107,31 @@ test('CLI exits 2 for a missing path', () => {
   const r = spawnSync(process.execPath, [cli, join(root, 'no-such-dir')], { encoding: 'utf8' });
   assert.equal(r.status, 2, r.stdout + r.stderr);
 });
+
+test('a profile with facts and fact rules is valid', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-facts-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'place-check.yaml');
+  writeFileSync(path, `id: place-check
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: danger, type: noul, instructions: Are people in danger? }
+facts:
+  - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
+  - { name: shelter, type: nearest, layer: gsi-shelters-flood, at: $.location.value }
+  - { name: detour, type: detour, at: $.location.value }
+policy:
+  rules:
+    - when: "facts.flood.rank >= 5 and danger.yes >= 0.4"
+      action: urgent
+    - when: "facts.detour.extra_m >= 300 or facts.shelter.distance_m > 1000"
+      action: review
+    - when: "facts.flood.missing == true"
+      action: review
+  default: auto
+`);
+  assert.deepEqual(validateProfileFile(path), []);
+});

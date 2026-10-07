@@ -1,0 +1,11 @@
+# expect: /questions/1/name: "facts.flood" is reserved for facts
+id: facts-reserved-question
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+  - { name: facts.flood, type: noul, instructions: Flooded? }
+policy:
+  default: review

@@ -1,0 +1,15 @@
+# expect: /policy/rules/0/when: "facts.rain.inside" does not refer to a fact of this profile
+id: facts-unknown-fact
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+facts:
+  - { name: flood, type: inside, layer: flood, at: $.location }
+policy:
+  rules:
+    - when: "facts.rain.inside == true"
+      action: auto
+  default: review
