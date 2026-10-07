@@ -1,0 +1,15 @@
+# expect: /policy/rules/0/when: "facts.flood.distance_m": inside facts have missing, inside, rank, class
+id: facts-wrong-field
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+facts:
+  - { name: flood, type: inside, layer: flood, at: $.location }
+policy:
+  rules:
+    - when: "facts.flood.distance_m > 1"
+      action: auto
+  default: review

@@ -21,6 +21,7 @@ Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
 | `fallback_models` | no | Models to try, in order, when the primary model fails. |
 | `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
 | `questions` | yes | 1 to 64 questions (see below). |
+| `facts` | no | Up to 16 spatial facts to look up for each decision, for rules (see [Facts](#facts)). |
 | `policy` | yes | `rules` (checked in order, first match wins) and a `default` action. |
 | `mcp` | no | `visible: true` lists the profile and allows calling it through MCP (default false, see [mcp.md](mcp.md)). |
 | `log` | no | `store_state: true` keeps the full state in the decision log (default: only a hash, see [decision-log.md](decision-log.md)). |
@@ -140,6 +141,7 @@ A condition compares a question field with a value:
 | `<question>.yes` | `noul` | number: P(yes) |
 | `<question>.score` | `score` | number: weighted level |
 | `<question>.probabilities.<option>` | `choice`, `score` (level index) | number |
+| `facts.<fact>.<field>` | facts (see [Facts](#facts)) | as the field |
 
 - Comparisons: `==`, `!=`, `>=`, `>`, `<=`, `<`. Only numbers can be ordered.
 - Combine with `and`, `or`, `not` and parentheses. `and` binds tighter than `or`.
@@ -150,3 +152,78 @@ Conditions are checked when the profile is validated: a question name that
 does not exist, a field the question type does not have, an option that the
 question does not list, or a comparison of different types fails validation.
 The engine evaluates conditions with its own parser; nothing is run as code.
+
+## Facts
+
+A language model is weak at geometry: given coordinates, it guesses
+distances and areas. Facts are computed by spatial operations instead, and
+rules use them directly, so measurable things stay exact and explainable.
+Background and measurements: [spikes/spatial-facts.md](spikes/spatial-facts.md).
+
+```yaml
+facts:
+  - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
+  - { name: shelter, type: nearest, layer: gsi-shelters-flood, at: $.location.value }
+  - { name: detour, type: detour, at: $.location.value }
+
+policy:
+  rules:
+    - when: "facts.flood.rank >= 5 and danger.yes >= 0.4"
+      action: urgent
+    - when: "facts.detour.extra_m >= 300"
+      action: review
+    - when: "facts.flood.missing == true"
+      action: review
+  default: auto
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | Used in rules as `facts.<name>.<field>`. Same characters as question names. No question may be named `facts` or start with `facts.`. |
+| `type` | `inside`, `nearest` or `detour` (below). |
+| `at` | JSONPath to a GeoJSON `Point` or `LineString` (WGS 84) in the request state, for example `$.location.value` for an NGSI-LD `GeoProperty`. Read from what the client sends, before the `input` mapping. Through MCP, clients send the input fields themselves, so there `at` reads those (for example `$.location`). |
+| `layer` | For `inside` and `nearest`: the layer to look in. Layers are set up per deployment (source, licence, attribution), not in the profile. |
+
+| Type | Fields | Notes |
+|---|---|---|
+| `inside` | `inside` (boolean), `rank` (number), `class` (text) | Inside an area of the layer. `rank` and `class` describe the area, for example a flood depth class. Not inside: `rank` 0, `class` empty. |
+| `nearest` | `found` (boolean), `distance_m` (number), `name` (text) | The nearest feature of the layer. None found: `found` false, no distance or name. |
+| `detour` | `possible` (boolean), `extra_m` (number) | Extra metres around a closed section. Needs a `LineString`. No way around: `possible` false, no `extra_m`. |
+
+Every fact also has `missing` (boolean).
+
+**A missing fact is never guessed.** A lookup can fail: no location in the
+state (`no_location`), no fact provider (`unavailable`), too slow
+(`timeout`, 3 s per fact) or an error (`error`). A comparison with a missing
+fact, or with a field that has no value, is *unknown*, and a rule matches
+only when its condition is true:
+
+- `false and unknown` is false, `true or unknown` is true, `not unknown` is
+  unknown;
+- `facts.<name>.missing == true` is always known: use it to send decisions
+  with missing facts to a person.
+
+The facts are looked up while the model answers. Each decision returns them
+and the decision log keeps them (`facts`):
+
+```json
+"facts": {
+  "flood": { "missing": false, "values": { "inside": true, "rank": 5, "class": "3 to 5 m" }, "source": "…" },
+  "detour": { "missing": true, "reason": "timeout" }
+}
+```
+
+The model does not see the facts. In the spike, facts in the model's input
+raised `danger` even where they were reassuring.
+
+### Fact providers
+
+`FACTS_MODE` in the wrangler config:
+
+| `FACTS_MODE` | Facts |
+|---|---|
+| `off` (default) | none: every fact is missing (`unavailable`) |
+| `mock` | fixed answers for development and tests: inside (rank 1), nearest 250 m, no detour |
+
+Providers for real data (flood zones, evacuation sites, routing) are issue #65.
+

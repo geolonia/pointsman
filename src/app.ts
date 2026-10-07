@@ -7,6 +7,7 @@ import { attempt, type Fetch } from './callbacks';
 import { parseFeedback, parseResolution } from './feedback';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type OAuthConfig, type OAuthEnv } from './oauth';
+import { lookupFacts, type FactProvider } from './facts';
 import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
@@ -23,6 +24,8 @@ export interface Deps {
   callbacks: { secret: string | undefined; fetch: Fetch };
   /** Adapter for a model id, or null when no adapter serves it. */
   adapterFor(model: string): ModelAdapter | null;
+  /** Answers spatial facts (FACTS_MODE); without it, every fact is missing ("unavailable"). */
+  facts?: FactProvider | undefined;
   /** GitHub login for /mcp (src/oauth.ts); without it /mcp takes API tokens only. */
   oauth?: OAuthConfig | undefined;
 }
@@ -280,10 +283,11 @@ const fail = (status: ContentfulStatusCode, code: string, message: string): Deci
 
 /**
  * Decide for one client: scope check, request check, model call (with
- * fallback models), policy, decision log. Used by the REST API and by MCP.
+ * fallback models) and spatial facts, policy, decision log. Used by the
+ * REST API and by MCP.
  */
 export async function makeDecision(
-  { store, adapterFor, log }: Pick<Deps, 'store' | 'adapterFor' | 'log'>,
+  { store, adapterFor, log, facts: factProvider }: Pick<Deps, 'store' | 'adapterFor' | 'log'> & Partial<Pick<Deps, 'facts'>>,
   client: TokenRecord,
   profileId: string,
   raw: unknown,
@@ -318,6 +322,10 @@ export async function makeDecision(
   const served = models.filter((m) => adapterFor(m) !== null);
   if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
 
+  // Facts read the client's data (the `at` paths), not the mapped state.
+  // Looked up while the model answers; lookupFacts never throws.
+  const factsLookup = profile.facts?.length ? lookupFacts(profile.facts, body.state, factProvider) : undefined;
+
   let answers;
   let model;
   for (const m of served) {
@@ -331,11 +339,12 @@ export async function makeDecision(
       console.error(`model error for profile ${profile.id}, model ${m}: ${err.message}`);
     }
   }
+  const facts = factsLookup ? await factsLookup : undefined;
   if (!answers || !model) return fail(502, 'model_error', 'the model did not return a usable answer');
 
   // Profiles are validated before they reach a store, so a PolicyError here
   // means a store holds an unvalidated profile: a 500, like other config errors.
-  const { action, rule } = compilePolicy(profile).decide(answers);
+  const { action, rule } = compilePolicy(profile).decide(answers, facts);
 
   const decision: Decision = {
     decision_id: crypto.randomUUID(),
@@ -347,6 +356,7 @@ export async function makeDecision(
     model,
     created_at: new Date().toISOString(),
     rule,
+    ...(facts && { facts }),
   };
   // Every decision is logged before it is returned. If the log fails, the
   // client gets a 500 and must not act on an unlogged decision.

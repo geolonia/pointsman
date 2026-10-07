@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compileCondition, compilePolicy, policyErrors, PolicyError } from '../../src/policy';
-import type { Answer, Profile, Question } from '../../src/types';
+import type { Answer, Fact, FactSpec, Profile, Question } from '../../src/types';
 
 const questions: Question[] = [
   { name: 'stuck', type: 'noul', instructions: 'Stuck?' },
@@ -159,5 +159,60 @@ describe('invalid conditions', () => {
       { when: 'team.p >', action: 'c' },
     ]));
     expect(errors.map(([i]) => i)).toEqual([0, 2]);
+  });
+});
+
+describe('facts', () => {
+  const facts: FactSpec[] = [
+    { name: 'flood', type: 'inside', layer: 'flood', at: '$.location' },
+    { name: 'shelter', type: 'nearest', layer: 'shelters', at: '$.location' },
+    { name: 'detour', type: 'detour', at: '$.location' },
+  ];
+  const found: Record<string, Fact> = {
+    flood: { missing: false, values: { inside: true, rank: 5, class: '3 to 5 m' }, source: 'gsi' },
+    // No nearest feature: the fields have no value.
+    shelter: { missing: false, values: { found: false, distance_m: null, name: null }, source: 'gsi' },
+    detour: { missing: true, reason: 'timeout' },
+  };
+  const result = (when: string, values = found) =>
+    compilePolicy({ questions, facts, policy: { rules: [{ when, action: 'hit' }], default: 'miss' } }).decide(answers, values).action === 'hit';
+
+  it.each([
+    ['facts.flood.rank >= 5', true],
+    ['facts.flood.inside == true and stuck.yes < 0.5', true],
+    ["facts.flood.class == '3 to 5 m'", true],
+    ['facts.flood.missing == false', true],
+    ['facts.detour.missing == true', true],
+    ['facts.shelter.found == false', true],
+    // Unknown is never true: a missing fact, or a field without a value.
+    ['facts.detour.extra_m >= 0', false],
+    ['facts.detour.extra_m < 0', false],
+    ['not (facts.detour.extra_m >= 300)', false],
+    ['facts.shelter.distance_m <= 500', false],
+    ['facts.shelter.distance_m > 500', false],
+    // Three-valued logic: false and unknown is false; true or unknown is true.
+    ['facts.detour.extra_m >= 300 or facts.flood.rank >= 5', true],
+    ['not (facts.detour.extra_m >= 300 and facts.flood.rank >= 9)', true],
+    ['facts.detour.extra_m >= 300 or stuck.yes > 0.9', false],
+  ])('%s → %s', (when, expected) => {
+    expect(result(when)).toBe(expected);
+  });
+
+  it('treats facts that were never looked up as missing', () => {
+    expect(result('facts.flood.missing == true', {})).toBe(true);
+    expect(result('facts.flood.rank >= 0', {})).toBe(false);
+  });
+
+  it.each([
+    ['facts.rain.inside == true', 'does not refer to a fact of this profile'],
+    ['facts.flood.distance_m > 1', 'inside facts have missing, inside, rank, class'],
+    ['facts.flood.class >= 1', 'cannot compare string with number'],
+    ['facts.flood == true', 'does not refer to a fact of this profile'],
+  ])('refuses %s', (when, message) => {
+    expect(() => compileCondition(when, questions, facts)).toThrow(message);
+  });
+
+  it('refuses fact references in profiles without facts', () => {
+    expect(() => compileCondition('facts.flood.rank >= 1', questions)).toThrow(PolicyError);
   });
 });

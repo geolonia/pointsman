@@ -17,6 +17,7 @@ unlogged decision.
 | `model` | The model that answered |
 | `action`, `rule` | The action, and the index of the policy rule that matched (`NULL` = default) |
 | `answers` | All answers with probabilities (JSON) |
+| `facts` | Only for profiles with facts: each fact as looked up, or why it is missing (JSON, see [profile-format.md](profile-format.md#facts)) |
 | `state_hash` | SHA-256 of the state sent to the model, with object keys sorted |
 | `state` | The state itself, **only** when the profile sets `log.store_state: true` |
 | `callback_url` | For the review queue (#9); not returned by the API |

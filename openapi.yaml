@@ -271,6 +271,7 @@ components:
           description: Index of the policy rule that matched (from 0); null when the default action applied.
           type: [integer, 'null']
           minimum: 0
+        facts: { $ref: '#/components/schemas/Facts' }
     DecisionRecord:
       allOf:
         - $ref: '#/components/schemas/DecisionRecordBase'
@@ -301,6 +302,7 @@ components:
         answers:
           type: object
           additionalProperties: { $ref: '#/components/schemas/Answer' }
+        facts: { $ref: '#/components/schemas/Facts' }
         state_hash: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the state sent to the model (keys sorted). }
         state: { description: 'The state sent to the model. Only when the profile sets log.store_state.' }
         review: { $ref: '#/components/schemas/Review' }
@@ -385,6 +387,35 @@ components:
         by: { type: string }
         correct: { type: object }
         note: { type: string }
+    Facts:
+      description: >-
+        Only for profiles with facts (docs/profile-format.md#facts): each fact the profile asked
+        for, by name, as looked up for this decision, or why it is missing. A rule that needs a
+        missing fact does not match.
+      type: object
+      additionalProperties: { $ref: '#/components/schemas/Fact' }
+    Fact:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [missing, values, source]
+          properties:
+            missing: { const: false }
+            values:
+              description: Field values of the fact type (inside, nearest, detour); null when a field has no value.
+              type: object
+              additionalProperties: { type: [string, number, boolean, 'null'] }
+            source: { type: string, description: Where the value came from. }
+        - type: object
+          additionalProperties: false
+          required: [missing, reason]
+          properties:
+            missing: { const: true }
+            reason:
+              description: >-
+                no_location (no Point or LineString at the fact's path), unavailable (no fact
+                provider configured), timeout, or error.
+              enum: [no_location, unavailable, timeout, error]
     Answer:
       oneOf:
         - $ref: '#/components/schemas/NoulAnswer'

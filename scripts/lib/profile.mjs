@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { parse as parseYaml } from 'yaml';
 // The same condition parser the Worker uses (Node.js strips the types).
-import { policyErrors } from '../../src/policy.ts';
+import { FACTS_PREFIX, policyErrors } from '../../src/policy.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const schemaPath = join(here, '..', '..', 'schema', 'profile-v1.schema.json');
@@ -66,6 +66,15 @@ export function validateProfile(profile, { fileName } = {}) {
   for (const d of duplicates((profile.input ?? []).map(name))) {
     errors.push(`/input: duplicate input name "${d}"`);
   }
+  for (const d of duplicates((profile.facts ?? []).map(name))) {
+    errors.push(`/facts: duplicate fact name "${d}"`);
+  }
+  // Rules refer to facts as facts.<name>.<field>, so no question may use that prefix.
+  profile.questions.forEach((q, i) => {
+    if (q.name === 'facts' || q.name.startsWith(FACTS_PREFIX)) {
+      errors.push(`/questions/${i}/name: "${q.name}" is reserved for facts (facts.<name>.<field>)`);
+    }
+  });
   profile.questions.forEach((q, i) => {
     if (q.type !== 'choice') return;
     for (const d of duplicates(q.criteria.map((c) => c.value))) {

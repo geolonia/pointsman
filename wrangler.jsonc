@@ -18,7 +18,9 @@
     // "kv": profiles from the PROFILES KV namespace.
     "PROFILE_SOURCE": "bundled",
     // "mock": every model id is answered by the mock adapter.
-    "MODEL_MODE": "mock"
+    "MODEL_MODE": "mock",
+    // "mock": fixed spatial facts (src/facts.ts). "off": facts are missing.
+    "FACTS_MODE": "mock"
   },
   // API tokens (see scripts/tokens.mjs). The id is a placeholder: in local
   // development (wrangler dev) KV is simulated, and real deployments set
