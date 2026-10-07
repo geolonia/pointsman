@@ -94,15 +94,18 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrangler.jsonc
 
+      # The engine before the profiles: a new engine reads older profiles, but
+      # the running engine may not understand a new profile (for example one
+      # with facts), and would fail its decisions until the deploy finished.
+      - name: Deploy the engine
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: engine/node_modules/.bin/wrangler deploy --config wrangler.jsonc
+
       # Refuses to change a published id + version; see the script.
       - name: Publish profiles
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node engine/scripts/publish-profiles.mjs --dir profiles --remote --config wrangler.jsonc
-
-      - name: Deploy the engine
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: engine/node_modules/.bin/wrangler deploy --config wrangler.jsonc
