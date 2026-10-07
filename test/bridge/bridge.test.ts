@@ -321,7 +321,7 @@ describe('Decision entities', () => {
     expect(toDecisionEntity(decision, 'urn:x:1', route)).not.toHaveProperty('reviewStatus');
   });
 
-  it('records the spatial facts the rules used, missing ones with the reason', async () => {
+  it('records every fact the profile asks for, missing ones with the reason', async () => {
     const facts = {
       flood: { missing: false as const, values: { inside: true, rank: 4, class: '1 to 3 m' }, source: 'gsi-flood-max' },
       detour: { missing: true as const, reason: 'timeout' },

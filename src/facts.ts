@@ -30,6 +30,11 @@ export class FactError extends Error {
   override name = 'FactError';
 }
 
+/** The provider cannot answer this kind of fact or layer: recorded as "unavailable". */
+export class FactUnavailableError extends FactError {
+  override name = 'FactUnavailableError';
+}
+
 export const FACT_TIMEOUT_MS = 3000;
 const MAX_POSITIONS = 1000;
 const MAX_SOURCE_LENGTH = 200;
@@ -107,7 +112,7 @@ export async function lookupFacts(
     } catch (err) {
       // The message only: errors must not carry the location into the logs.
       console.error(`fact ${spec.name} (${spec.type}): ${err instanceof Error ? err.message : 'lookup failed'}`);
-      return [spec.name, { missing: true, reason: 'error' }];
+      return [spec.name, { missing: true, reason: err instanceof FactUnavailableError ? 'unavailable' : 'error' }];
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
