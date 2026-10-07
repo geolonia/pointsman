@@ -24,7 +24,11 @@ const decision = {
   profile: 'road-restriction-check',
   profile_version: 1,
   model: 'clef-flash',
-  answers: { category: { value: 'closedWeather', p: 0.96 }, danger: { value: false, p: 0.53 } },
+  // As Pointsman answers (src/types.ts Answer).
+  answers: {
+    category: { type: 'choice', value: 'closedWeather', p: 0.96, probabilities: { closedWeather: 0.96, other: 0.04 } },
+    danger: { type: 'noul', value: false, p: 0.53, yes: 0.47 },
+  },
 };
 
 type Call = { method: string; url: string; headers: Headers; body: unknown };
@@ -287,7 +291,10 @@ describe('Decision entities', () => {
       type: 'Decision',
       refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' },
       action: P('publish'),
-      answers: { type: 'JsonProperty', json: [{ name: 'category', value: 'closedWeather', probability: 0.96 }, { name: 'danger', value: false, probability: 0.53 }] },
+      answers: { type: 'JsonProperty', json: [
+        { name: 'category', type: 'choice', value: 'closedWeather', probability: 0.96, probabilities: { closedWeather: 0.96, other: 0.04 } },
+        { name: 'danger', type: 'noul', value: false, probability: 0.53 },
+      ] },
       profile: P('road-restriction-check'),
       profileVersion: P(1),
       policyRule: P('1'),
