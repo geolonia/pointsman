@@ -224,6 +224,27 @@ raised `danger` even where they were reassuring.
 |---|---|
 | `off` (default) | none: every fact is missing (`unavailable`) |
 | `mock` | fixed answers for development and tests: inside (rank 1), nearest 250 m, no detour |
+| `gsi` | public data of the Geospatial Information Authority of Japan (GSI), layers below; no `detour` yet (`unavailable`) |
 
-Providers for real data (flood zones, evacuation sites, routing) are issue #65.
+Layers of `gsi`:
+
+| Layer | Type | Data |
+|---|---|---|
+| `gsi-flood-max` | `inside` | River flood hazard zones for the maximum assumed rainfall (洪水浸水想定区域 想定最大規模), from the hazard map portal's raster tiles at zoom 17. `rank` 1 to 8 and `class` follow the portal's legend: below 0.3 m, below 0.5 m, 0.5 to 1 m, 0.5 to 3 m, 3 to 5 m, 5 to 10 m, 10 to 20 m, 20 m or more. Where a map does not split a class, the wider label is used. A line gets the deepest class along it. |
+| `gsi-shelters-flood` | `nearest` | Designated emergency evacuation sites for floods (指定緊急避難場所, 洪水), GeoJSON tiles. Only sites within 5 km count. |
+
+- Both are free to use, also commercially, with attribution. Each fact's
+  `source` is the attribution text with the data date (for example
+  「ハザードマップポータルサイト」洪水浸水想定区域（想定最大規模）を加工して作成（2025-08-20 時点）);
+  a page that shows a fact shows its `source` too.
+- Tiles are cached for a day, in memory and in the Workers cache. A flood
+  lookup reads one or a few tiles (at most 16). An evacuation site lookup
+  reads the tiles within 5 km: up to four of about 350 KB for a point, up to
+  nine for a long line (about 3 MB with cold caches; fine on Workers Paid).
+- The date in `source` is the oldest date of the tiles that had data, and
+  "日付不明" when one of them has no date.
+- A colour that is not in the legend fails the lookup (`error`) instead of
+  guessing, so a change of the tiles shows up at once.
+
+Routing (`detour`) and geocoding are still open (issue #65).
 

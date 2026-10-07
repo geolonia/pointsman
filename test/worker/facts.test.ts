@@ -186,10 +186,10 @@ describe('decisions with facts', () => {
 describe('FACTS_MODE', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
 
-  it('is off unless set to mock', () => {
+  it('is off unless set, and refuses unknown modes', () => {
     expect(depsFor(base).facts).toBeUndefined();
     expect(depsFor({ ...base, FACTS_MODE: 'off' }).facts).toBeUndefined();
     expect(depsFor({ ...base, FACTS_MODE: 'mock' }).facts).toBeInstanceOf(MockFactProvider);
-    expect(() => depsFor({ ...base, FACTS_MODE: 'gsi' })).toThrow(ConfigError);
+    expect(() => depsFor({ ...base, FACTS_MODE: 'osm' })).toThrow(ConfigError);
   });
 });
