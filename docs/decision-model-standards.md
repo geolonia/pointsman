@@ -75,7 +75,7 @@ because Clef returns a separate `confidence` value that means something else.
 | Smart Data Models `MLModel`, `MLProcessing` (MachineLearning) | No, for the record | Describe the model and the job, not results. `MLModel` could be what `model` points to. |
 | Smart Data Models `Alert`, `Anomaly`, `AIPrediction`, `DataQualityAssessment` | No | Alerts, anomalies, one domain (laser machines), data quality. `Alert` could be what an `urgent` decision creates (#50). |
 | ETSI ISG CIM reports | No model | No report on AI/ML results. GR CIM 017 (digital twins) suggests storing predictions as properties with a confidence and using multi-attribute instances, without names. |
-| NGSI-LD 1.8 `JsonProperty` | **Yes, for `answers`** | A raw JSON value whose keys are not expanded, made for structures like our answers. Needs brokers that support it; Orion-LD does not yet (see below). Queries cannot look inside it, so `action` and the status stay normal properties. |
+| NGSI-LD 1.8 `JsonProperty` | **Yes, for `answers`** | A raw JSON value whose keys are not expanded, made for structures like our answers. Needs brokers that support it; Orion-LD does not yet (see below). Queries can reach inside it only with the `jsonKeys` parameter, which not every broker has, so `action` and the status stay normal properties. In the simplified (key-values) form it is `{"json": …}`. |
 | NGSI-LD `VocabProperty` | Yes, for `reviewStatus` | Values from a fixed vocabulary, as IRIs. |
 | NGSI-LD multi-attribute (`datasetId`) | Yes, optional | One instance per model when several models decide on the same entity. |
 | FIWARE projects (Cosmos, fiware-ml-supermarket, SEDIMARK, DEMETER) | No | Move data, describe marketplace assets, or use ad-hoc entities without probabilities. |
