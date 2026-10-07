@@ -1,7 +1,7 @@
 name: Deploy
 
-# On main: applies database migrations, publishes the profiles to KV and
-# deploys the engine, all with the pinned engine version.
+# On main: applies database migrations, deploys the engine and publishes the
+# profiles to KV, all with the pinned engine version.
 #
 # Needs the repository secrets CLOUDFLARE_API_TOKEN (Workers Scripts, Workers
 # KV Storage and D1: Edit) and CLOUDFLARE_ACCOUNT_ID, in the environment
