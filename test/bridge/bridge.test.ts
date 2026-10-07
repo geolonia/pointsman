@@ -321,6 +321,23 @@ describe('Decision entities', () => {
     expect(toDecisionEntity(decision, 'urn:x:1', route)).not.toHaveProperty('reviewStatus');
   });
 
+  it('records the spatial facts the rules used, missing ones with the reason', async () => {
+    const facts = {
+      flood: { missing: false as const, values: { inside: true, rank: 4, class: '1 to 3 m' }, source: 'gsi-flood-max' },
+      detour: { missing: true as const, reason: 'timeout' },
+    };
+    expect(toDecisionEntity({ ...decision, facts }, 'urn:x:1', route).facts).toEqual({
+      type: 'JsonProperty',
+      json: [
+        { name: 'flood', missing: false, values: { inside: true, rank: 4, class: '1 to 3 m' }, source: 'gsi-flood-max' },
+        { name: 'detour', missing: true, reason: 'timeout' },
+      ],
+    });
+    // A profile without facts: no attribute (an empty JsonProperty would say nothing).
+    expect(toDecisionEntity(decision, 'urn:x:1', route)).not.toHaveProperty('facts');
+    expect(toDecisionEntity({ ...decision, facts: {} }, 'urn:x:1', route)).not.toHaveProperty('facts');
+  });
+
   it('works with a Pointsman that does not return created_at and rule yet', async () => {
     const { created_at: _, rule: __, ...older } = decision;
     const out = toDecisionEntity(older, 'urn:x:1', route);

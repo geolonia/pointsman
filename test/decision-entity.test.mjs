@@ -50,6 +50,19 @@ test('a Decision entity from the bridge matches the data model schema', () => {
   }
 });
 
+test('facts in a Decision entity match the schema, and the schema checks them', () => {
+  const facts = {
+    flood: { missing: false, values: { inside: true, rank: 4, class: '1 to 3 m' }, source: 'gsi-flood-max' },
+    shelter: { missing: false, values: { found: false, distance_m: null, name: null }, source: 'gsi-shelters' },
+    detour: { missing: true, reason: 'timeout' },
+  };
+  const kv = values(toDecisionEntity({ ...decision, facts }, 'urn:ngsi-ld:RoadRestriction:0001', route));
+  assert.ok(validate(kv), JSON.stringify(validate.errors));
+  assert.ok(!validate({ ...kv, facts: [{ name: 'flood', missing: true, reason: 'down' }] }), 'unknown reason');
+  assert.ok(!validate({ ...kv, facts: [{ name: 'flood', missing: false, values: {} }] }), 'source is required');
+  assert.ok(!validate({ ...kv, facts: [] }), 'no empty list');
+});
+
 test('the schema catches what the bridge must not write', () => {
   const kv = values(toDecisionEntity(decision, 'urn:ngsi-ld:RoadRestriction:0001', route));
   assert.ok(!validate({ ...kv, policyRule: '-1' }));

@@ -64,8 +64,9 @@ One property, named in the configuration (here `check`):
 With `"decisionEntity": true` in a route, the bridge also creates one
 `Decision` entity per decision, following the draft data model in
 [docs/data-model/](../docs/data-model/): the answers with their probabilities,
-the profile version, the rule, the model, the time, and how a person takes
-part. Decisions can then be queried across entities, for example all that wait
+the profile version, the rule, the model, the time, how a person takes part,
+and, for profiles with spatial facts, the facts the rules used (`facts`,
+see [docs/profile-format.md](../docs/profile-format.md#facts)). Decisions can then be queried across entities, for example all that wait
 for a person (`type=Decision&q=reviewStatus=="pending"`).
 
 - The entity is created before the property is written; if the broker refuses

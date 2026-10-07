@@ -49,6 +49,20 @@
       }
     ]
   },
+  "facts": {
+    "json": [
+      {
+        "name": "flood",
+        "missing": false,
+        "values": {
+          "inside": true,
+          "rank": 4,
+          "class": "1 to 3 m"
+        },
+        "source": "gsi-flood-max"
+      }
+    ]
+  },
   "profile": "road-restriction-check",
   "profileVersion": 1,
   "policyRule": "default",
