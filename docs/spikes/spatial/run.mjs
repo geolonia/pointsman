@@ -49,7 +49,7 @@ const CASES = [
 ];
 
 /** The facts as short sentences, the way the model reads the rest of the state. */
-export function factsText(f) {
+export function factsText(f, status) {
   const lines = [];
   lines.push(f.flood.inside
     ? `Inside a river flood hazard zone (maximum assumed rainfall); expected depth ${f.flood.depth}.`
@@ -58,7 +58,8 @@ export function factsText(f) {
   lines.push(f.routes.blocked
     ? `${f.routes.blocked} of ${f.routes.checked} walking routes from nearby places to their nearest evacuation site pass this place.`
     : `None of ${f.routes.checked} walking routes from nearby places to their nearest evacuation site pass this place.`);
-  if (f.detour?.extra_m != null) lines.push(f.detour.extra_m > 50 ? `With this section closed, the drive around it is ${f.detour.extra_m} m longer.` : 'With this section closed, cars can go around it without a real detour.');
+  // Only a closed road sends cars around; a lane restriction does not.
+  if (status === 'closed' && f.detour?.extra_m != null) lines.push(f.detour.extra_m > 50 ? `With this section closed, the drive around it is ${f.detour.extra_m} m longer.` : 'With this section closed, cars can go around it without a real detour.');
   if (f.address) lines.push(`Area: ${f.address.area}.`);
   return lines.join(' ');
 }
@@ -80,7 +81,7 @@ const withFactsQuestions = {
 function factRules(f, answers) {
   const deep = ['3 to 5 m', '5 to 10 m', '10 to 20 m', '20 m or more'].includes(f.flood.depth);
   if (deep && answers.danger.yes >= 0.4) return 'urgent (deep flood zone and danger.yes >= 0.4)';
-  const cut = f.routes.routes.some((r) => r.passes && (r.detour_m === Infinity || r.detour_m >= 200));
+  const cut = f.routes.routes.some((r) => r.passes && (r.reachable === false || r.detour_m >= 200));
   if ((f.detour?.extra_m ?? 0) >= 300 || cut) return 'review at least (long way around for cars, or an evacuation route cut)';
   return null;
 }
@@ -97,7 +98,7 @@ for (const c of CASES) {
   }
   const f = cache[c.id];
   const state = { road: c.road, status: c.status, ...(c.status_label && { status_label: c.status_label }), description: c.description };
-  const withFacts = { ...state, place: factsText(f) };
+  const withFacts = { ...state, place: factsText(f, c.status) };
   const run = async (p, s) => {
     const answers = normalizeAnswers(p, { model: MODEL, answers: await ask(p, s, MODEL) });
     return { danger: +answers.danger.yes.toFixed(3), clarity: +answers.clarity.score.toFixed(2), category: answers.category.value, action: policy.decide(answers).action, answers };

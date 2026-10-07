@@ -168,6 +168,8 @@ async function sheltersNear(p) {
     const key = `10/${t.x + dx}/${t.y + dy}`;
     if (!shelterTiles.has(key)) {
       const res = await get(`https://cyberjapandata.gsi.go.jp/xyz/skhb01/${key}.geojson`);
+      // 404: no sites in this tile. Any other failure must not look like "no sites".
+      if (!res.ok && res.status !== 404) throw new Error(`shelter tile ${key}: ${res.status}`);
       shelterTiles.set(key, res.ok ? (await res.json()).features : []);
     }
     found.push(...shelterTiles.get(key));
@@ -197,7 +199,9 @@ async function route(from, to, exclude, costing = 'pedestrian') {
     const res = await get('https://valhalla1.openstreetmap.de/route', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500)); continue; }
     const j = await res.json();
-    if (!res.ok) { if (process.env.DEBUG) console.error(JSON.stringify(j), JSON.stringify(body.exclude_polygons)); return null; } // no route
+    // Valhalla answers 400 with error_code 442 when there is no path; anything else is a failure.
+    if (!res.ok && j.error_code === 442) return null; // no route
+    if (!res.ok) throw new Error(`valhalla: ${res.status} ${j.error_code ?? ''}`);
     return { m: Math.round(j.trip.summary.length * 1000), shape: decodePolyline(j.trip.legs[0].shape) };
   }
   throw new Error('valhalla: rate limited');
@@ -217,19 +221,25 @@ export async function routes(g, list) {
     if (!near) continue;
     const r = await route(from, near.at);
     if (!r) continue;
-    const passes = r.shape.some((p) => toGeometry(p, g) <= 15);
+    // Check the route's segments, not only its vertices: a segment can cross
+    // the closed section between two vertices that are both far from it.
+    const passes = along({ type: 'LineString', coordinates: r.shape }, 5).some((p) => toGeometry(p, g) <= 15);
     let detour_m = null;
+    let reachable = true;
     if (passes) {
       const around = await route(from, near.at, [corridor(points(g), 15)]);
-      detour_m = around ? around.m - r.m : Infinity;
+      // JSON has no Infinity: no way around is reachable: false.
+      if (around) detour_m = around.m - r.m;
+      else reachable = false;
     }
-    out.push({ shelter: near.name, length_m: r.m, passes, detour_m });
+    out.push({ shelter: near.name, length_m: r.m, passes, detour_m, reachable });
   }
   const blocked = out.filter((r) => r.passes);
   return {
     checked: out.length,
     blocked: blocked.length,
-    max_detour_m: blocked.length ? Math.max(...blocked.map((r) => r.detour_m)) : 0,
+    cut_off: blocked.filter((r) => !r.reachable).length,
+    max_detour_m: blocked.length ? Math.max(0, ...blocked.map((r) => r.detour_m ?? 0)) : 0,
     routes: out,
   };
 }

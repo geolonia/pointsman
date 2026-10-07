@@ -64,7 +64,7 @@ The profile's rules made the action. Clef-flash and Clef, on Workers AI.
 | flooded-underpass | 0.43 → 0.40 → 0.60 | 0.06 → 0.10 → 0.60 |
 | car-trapped | 0.96 → 0.95 → 0.87 | 0.98 → 0.98 → 0.94 |
 | status-contradicts | 0.04 → 0.17 → 0.32 | 0.03 → 0.06 → 0.30 |
-| water-pipe-works | 0.02 → 0.05 → 0.17 | 0.01 → 0.04 → 0.31 |
+| water-pipe-works | 0.02 → 0.07 → 0.30 | 0.01 → 0.05 → 0.61 |
 | vague | 0.19 → 0.51 → 0.69 | 0.04 → 0.25 → 0.32 |
 | fallen-tree | 0.17 → 0.53 → 0.74 | 0.06 → 0.15 → 0.77 |
 | water rising, **3 to 5 m zone** | 0.64 → **0.77** → 0.92 | 0.07 → **0.46** → 0.94 |
@@ -79,30 +79,34 @@ The repeated run gave the same answers for every report (both models).
 - **The models read the facts.** In each pair the dangerous place gets the
   higher `danger` (Clef: 0.46 against 0.18 for the flood zone). The grid
   street even goes down with Clef-flash ("cars can go around it").
-- **But facts raise `danger` across the board.** Reports where nothing in the
+- **But facts raise `danger` in most reports.** Reports where nothing in the
   facts is alarming go up too: "vague" from 0.19 to 0.51 (Clef-flash), the
-  report outside any flood zone from 0.64 to 0.70. The model takes "there is
-  information about the place" as a sign of danger.
+  report outside any flood zone from 0.64 to 0.70. The model seems to take
+  "there is information about the place" as a sign of danger. The exceptions
+  are few: "car-trapped" (already near 1) and the grid street with
+  Clef-flash went down a little.
 - **Rewording the question makes it worse.** With the question asking for the
-  facts, almost every report goes up: water pipe works from 0.01 to 0.31
-  (Clef), the grid street to 0.63. The difference between the two places of a
+  facts, almost every report goes up: water pipe works (one lane closed for
+  roadworks) from 0.01 to 0.61 (Clef), the grid street to 0.63. The difference between the two places of a
   pair gets smaller, not bigger.
 - **Actions changed, mostly for the wrong reason.** With facts, Clef-flash
   made both "water rising" reports `urgent`, also the one outside any flood
   zone. With the reworded question, "fallen tree" (crews already on the way)
-  became `urgent` with both models.
+  became `urgent` with both models, and Clef sent the water pipe works to
+  `review`.
 - **The two models disagree a lot without facts** ("water rising": 0.64 and
   0.07), so thresholds tuned for one model do not fit the other. Facts in the
   input would need their own tuning against labelled reports and feedback.
 
-Rules on the facts do what was meant, with no model in between. Two
-examples, checked against the same results:
+Rules on the facts do what was meant. Two examples, checked against the same
+results:
 
-- `flood zone 3 m or deeper and danger.yes >= 0.4` → `urgent`: only the
-  "water rising, 3 to 5 m zone" report (both models, without the reworded
-  question).
-- `car detour >= 300 m, or an evacuation route cut (way around >= 200 m)` →
-  at least `review`: only the bridge.
+- **Facts and an answer together:** `flood zone 3 m or deeper and
+  danger.yes >= 0.4` → `urgent`. The fact part is exact; the answer part
+  still depends on the model. Only the "water rising, 3 to 5 m zone" report
+  (both models, without the reworded question).
+- **Facts only:** `car detour >= 300 m, or an evacuation route cut (way
+  around >= 200 m)` → at least `review`. No model involved: only the bridge.
 
 ## Other findings
 
@@ -126,7 +130,13 @@ examples, checked against the same results:
   better tool.
 - **Routing quirk:** Valhalla drops every road that touches a closed area, so
   a route cannot start on the closed road itself. The spike closes a small
-  box in the middle of the section and starts at its ends.
+  box in the middle of the section and starts at its ends. For a long
+  section this is too little: a route can leave the closed road after the box
+  and come back to it, so the detour is too short. A real provider has to
+  close the whole section and start just outside it.
+- **No flood tile** means no published flood zone there, not "safe": the
+  maps cover the rivers that have been assessed. `inside: false` should be
+  read as "not inside a published zone".
 - **Flood colours:** the depth classes are matched to the MLIT hazard map
   palette (水害ハザードマップ作成の手引き). The tiles do not come with a
   machine-readable legend; all colours in the demo area matched the palette.

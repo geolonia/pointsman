@@ -14,31 +14,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "専修大学",
      "length_m": 544,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "神田一橋中学校",
      "length_m": 364,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "二松学舎大学",
      "length_m": 1085,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "富士見みらい館",
      "length_m": 461,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -51,7 +56,7 @@
    "muni_code": "13101",
    "area": "九段南一丁目"
   },
-  "ms": 4093
+  "ms": 5592
  },
  "car-trapped": {
   "flood": {
@@ -67,31 +72,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "麹町小学校",
      "length_m": 401,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "麹町中学校",
      "length_m": 625,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "麹町中学校",
      "length_m": 711,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "上智大学",
      "length_m": 904,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -100,7 +110,7 @@
    "muni_code": "13101",
    "area": "紀尾井町"
   },
-  "ms": 1962
+  "ms": 2079
  },
  "status-contradicts": {
   "flood": {
@@ -116,31 +126,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "神田一橋中学校",
      "length_m": 869,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "神田一橋中学校",
      "length_m": 1565,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "麹町小学校",
      "length_m": 2726,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "二松学舎大学",
      "length_m": 736,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -149,7 +164,7 @@
    "muni_code": "13101",
    "area": "千代田"
   },
-  "ms": 1609
+  "ms": 1772
  },
  "water-pipe-works": {
   "flood": {
@@ -166,31 +181,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "日本大学経済学部",
      "length_m": 392,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "お茶の水小学校",
      "length_m": 362,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "専修大学",
      "length_m": 204,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "専修大学",
      "length_m": 600,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -203,7 +223,7 @@
    "muni_code": "13101",
    "area": "西神田二丁目"
   },
-  "ms": 3721
+  "ms": 2489
  },
  "vague": {
   "flood": {
@@ -219,31 +239,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "明治大学",
      "length_m": 32,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "神田さくら館",
      "length_m": 293,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "区立スポーツセンター",
      "length_m": 949,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "神田一橋中学校",
      "length_m": 23,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -252,7 +277,7 @@
    "muni_code": "13101",
    "area": "神田小川町三丁目"
   },
-  "ms": 2970
+  "ms": 2557
  },
  "fallen-tree": {
   "flood": {
@@ -269,31 +294,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "泰明小学校",
      "length_m": 1298,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "泰明小学校",
      "length_m": 640,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "泰明小学校",
      "length_m": 237,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "泰明小学校",
      "length_m": 1001,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -302,7 +332,7 @@
    "muni_code": "13101",
    "area": "皇居外苑"
   },
-  "ms": 2868
+  "ms": 3392
  },
  "water-rising/deep": {
   "flood": {
@@ -319,31 +349,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "浅草中学校",
      "length_m": 523,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "中央区立総合スポーツセンター",
      "length_m": 1089,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "中央区立総合スポーツセンター",
      "length_m": 340,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "久松小学校",
      "length_m": 484,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -352,7 +387,7 @@
    "muni_code": "13102",
    "area": "東日本橋一丁目"
   },
-  "ms": 2627
+  "ms": 2394
  },
  "water-rising/dry": {
   "flood": {
@@ -368,31 +403,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "青山いきいきプラザ",
      "length_m": 602,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "六本木中学校",
      "length_m": 839,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "高陵中学校",
      "length_m": 238,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "青南小学校",
      "length_m": 341,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -401,7 +441,7 @@
    "muni_code": "13103",
    "area": "南青山二丁目"
   },
-  "ms": 2679
+  "ms": 2993
  },
  "tree-on-road/bridge": {
   "flood": {
@@ -418,31 +458,36 @@
   "routes": {
    "checked": 4,
    "blocked": 0,
+   "cut_off": 0,
    "max_detour_m": 0,
    "routes": [
     {
      "shelter": "日本大学法学部①",
      "length_m": 962,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "日本大学経済学部",
      "length_m": 227,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "専修大学",
      "length_m": 579,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "日本歯科大学",
      "length_m": 532,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -455,7 +500,7 @@
    "muni_code": "13101",
    "area": "飯田橋三丁目"
   },
-  "ms": 4937
+  "ms": 5141
  },
  "tree-on-road/grid": {
   "flood": {
@@ -472,31 +517,36 @@
   "routes": {
    "checked": 4,
    "blocked": 1,
-   "max_detour_m": -2,
+   "cut_off": 0,
+   "max_detour_m": 0,
    "routes": [
     {
      "shelter": "日本歯科大学",
      "length_m": 922,
      "passes": true,
-     "detour_m": -2
+     "detour_m": -2,
+     "reachable": true
     },
     {
      "shelter": "日本大学法学部①",
      "length_m": 639,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "富士見みらい館",
      "length_m": 7,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     },
     {
      "shelter": "日本歯科大学",
      "length_m": 545,
      "passes": false,
-     "detour_m": null
+     "detour_m": null,
+     "reachable": true
     }
    ]
   },
@@ -509,6 +559,6 @@
    "muni_code": "13101",
    "area": "飯田橋四丁目"
   },
-  "ms": 6067
+  "ms": 5367
  }
 }
