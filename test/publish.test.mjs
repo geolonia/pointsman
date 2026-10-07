@@ -19,7 +19,11 @@ test('publish-profiles: first publish, no-op, immutability, version bump', (t) =
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const profiles = join(dir, 'profiles');
   mkdirSync(profiles);
-  cpSync(join(root, 'examples', 'profiles'), profiles, { recursive: true });
+  // Only these two: the assertions below list them, and more examples may be
+  // added to the folder.
+  for (const name of ['deploy-progress.yaml', 'issue-triage.yaml']) {
+    cpSync(join(root, 'examples', 'profiles', name), join(profiles, name));
+  }
   const config = join(dir, 'wrangler.jsonc');
   writeFileSync(config, JSON.stringify({
     name: 'publish-test',
