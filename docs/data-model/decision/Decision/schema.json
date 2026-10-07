@@ -256,11 +256,11 @@
                 "description": "Why it is missing: no location in the input, no source configured, too slow, or an error"
               }
             },
-            "description": "A fact that could not be looked up; rules that needed it did not match"
+            "description": "A fact that could not be looked up; rules that need it do not match"
           }
         ]
       },
-      "description": "Spatial facts the rules used, computed by spatial operations, not by the model: for example whether the place is inside a flood zone, or the distance to the nearest evacuation site",
+      "description": "Every spatial fact the rule set asks for, as looked up for this decision (whether or not the matching rule used it), computed by spatial operations, not by the model: for example whether the place is inside a flood zone, or the distance to the nearest evacuation site",
       "x-ngsi": {
         "type": "JsonProperty"
       },
