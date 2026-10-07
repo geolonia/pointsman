@@ -268,12 +268,12 @@ async function writeAttribute(id: string, name: string, property: Record<string,
  * sent inline: the model's context URL is not published yet. A test keeps
  * them equal to the file.
  */
-export const DECISION_TERMS: Record<string, string> = {
+export const DECISION_TERMS: Record<string, string | { '@id': string; '@type': '@id' }> = {
   decision: 'https://datamodels.jp/ns/decision/',
   Decision: 'decision:Decision',
   prov: 'http://www.w3.org/ns/prov#',
   dpv: 'https://w3id.org/dpv#',
-  refersTo: 'prov:used',
+  refersTo: { '@id': 'prov:used', '@type': '@id' },
   externalReference: 'decision:externalReference',
   action: 'decision:action',
   answers: 'decision:answers',
@@ -288,7 +288,7 @@ export const DECISION_TERMS: Record<string, string> = {
   reviewedBy: 'decision:reviewedBy',
   reviewedAt: 'decision:reviewedAt',
   corrections: 'decision:corrections',
-  wasInformedBy: 'prov:wasInformedBy',
+  wasInformedBy: { '@id': 'prov:wasInformedBy', '@type': '@id' },
 };
 
 const CORE_CONTEXT = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld';
