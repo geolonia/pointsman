@@ -6,7 +6,10 @@
       "Decision": "decision:Decision",
       "prov": "http://www.w3.org/ns/prov#",
       "dpv": "https://w3id.org/dpv#",
-      "refersTo": "prov:used",
+      "refersTo": {
+        "@id": "prov:used",
+        "@type": "@id"
+      },
       "externalReference": "decision:externalReference",
       "action": "decision:action",
       "answers": "decision:answers",
@@ -21,7 +24,10 @@
       "reviewedBy": "decision:reviewedBy",
       "reviewedAt": "decision:reviewedAt",
       "corrections": "decision:corrections",
-      "wasInformedBy": "prov:wasInformedBy"
+      "wasInformedBy": {
+        "@id": "prov:wasInformedBy",
+        "@type": "@id"
+      }
     }
   ]
 }
