@@ -19,6 +19,9 @@ attributes:
   answers:
     ja: モデルの答え。問いごとに 1 つ、それぞれ確率付き。各要素は name（問いの名前）、type（noul＝はい・いいえ、choice＝選択肢から 1 つ、score＝順序のある段階）、value、probability（value の確率）、choice と score では probabilities（選択肢・段階ごとの確率）
     en: "The model's answers, one per question, each with its probability. Each item has name (the question), type (noul for yes or no, choice for one of a list of options, score for a level on an ordered scale), value, probability (of that value) and, for choice and score, probabilities (per option or level)"
+  facts:
+    ja: 規則の集まりが求めた空間の事実を、この判定のために調べた結果（当たった規則が使ったかどうかは問わない）。モデルではなく空間の演算で求めた値（例 浸水想定区域の中か、最寄りの避難場所までの距離）。各要素は name と missing、求められたときは values（項目ごとの値）と source（出どころ）、求められなかったときは reason（no_location、unavailable、timeout、error）。求められなかった事実を使う規則は当たらない
+    en: "Every spatial fact the rule set asks for, as looked up for this decision (whether or not the matching rule used it), computed by spatial operations, not by the model (for example inside a flood zone, or the distance to the nearest evacuation site). Each item has name and missing, and either values (per field) and source, or, when it could not be looked up, reason (no_location, unavailable, timeout, error). Rules that need a missing fact do not match"
   profile:
     ja: 問いを出し、答えを行動に変えた規則の集まりの ID（Pointsman ではプロファイル）
     en: Id of the rule set that asked the questions and turned the answers into the action (in Pointsman, the profile)

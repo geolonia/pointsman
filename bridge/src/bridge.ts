@@ -215,6 +215,8 @@ interface Decision {
   profile_version: number;
   model: string;
   answers: Record<string, { type?: string; value: unknown; p: number; probabilities?: Record<string, number> }>;
+  /** Spatial facts, for profiles that ask for them (#64). */
+  facts?: Record<string, { missing: false; values: Record<string, unknown>; source: string } | { missing: true; reason: string }>;
   /** Pointsman returns both since #56; older versions do not. */
   created_at?: string;
   rule?: number | null;
@@ -302,6 +304,7 @@ export const DECISION_TERMS: Record<string, string | { '@id': string; '@type': '
   externalReference: 'decision:externalReference',
   action: 'decision:action',
   answers: 'decision:answers',
+  facts: 'decision:facts',
   profile: 'decision:profile',
   profileVersion: 'decision:profileVersion',
   policyRule: 'decision:policyRule',
@@ -346,6 +349,9 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
         ...(a.probabilities && { probabilities: a.probabilities }),
       })),
     },
+    ...(d.facts && Object.keys(d.facts).length > 0 && {
+      facts: { type: 'JsonProperty', json: Object.entries(d.facts).map(([name, f]) => ({ name, ...f })) },
+    }),
     profile: P(d.profile),
     profileVersion: P(d.profile_version),
     ...(rule !== undefined && { policyRule: P(rule) }),

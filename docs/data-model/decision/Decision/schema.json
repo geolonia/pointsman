@@ -189,6 +189,83 @@
       },
       "x-iri": "https://datamodels.jp/ns/decision/answers"
     },
+    "facts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "missing",
+              "values",
+              "source"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Fact name, as in the rule set"
+              },
+              "missing": {
+                "const": false
+              },
+              "values": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "description": "The fact's fields, for example inside, rank and class for an area, or distance_m and name for the nearest feature; null when a field has no value"
+              },
+              "source": {
+                "type": "string",
+                "description": "Where the value came from, for example a layer and its date"
+              }
+            },
+            "description": "A fact that was looked up"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "missing",
+              "reason"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Fact name, as in the rule set"
+              },
+              "missing": {
+                "const": true
+              },
+              "reason": {
+                "enum": [
+                  "no_location",
+                  "unavailable",
+                  "timeout",
+                  "error"
+                ],
+                "description": "Why it is missing: no location in the input, no source configured, too slow, or an error"
+              }
+            },
+            "description": "A fact that could not be looked up; rules that need it do not match"
+          }
+        ]
+      },
+      "description": "Every spatial fact the rule set asks for, as looked up for this decision (whether or not the matching rule used it), computed by spatial operations, not by the model: for example whether the place is inside a flood zone, or the distance to the nearest evacuation site",
+      "x-ngsi": {
+        "type": "JsonProperty"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/facts"
+    },
     "profile": {
       "type": "string",
       "description": "Id of the rule set (in Pointsman: the profile) that asked the questions and turned the answers into the action",

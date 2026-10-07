@@ -13,6 +13,7 @@
       "externalReference": "decision:externalReference",
       "action": "decision:action",
       "answers": "decision:answers",
+      "facts": "decision:facts",
       "profile": "decision:profile",
       "profileVersion": "decision:profileVersion",
       "policyRule": "decision:policyRule",
