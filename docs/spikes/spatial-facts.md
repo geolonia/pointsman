@@ -87,8 +87,10 @@ The repeated run gave the same answers for every report (both models).
   Clef-flash went down a little.
 - **Rewording the question makes it worse.** With the question asking for the
   facts, almost every report goes up: water pipe works (one lane closed for
-  roadworks) from 0.01 to 0.61 (Clef), the grid street to 0.63. The difference between the two places of a
-  pair gets smaller, not bigger.
+  roadworks) from 0.01 to 0.61 (Clef), the grid street to 0.63. The
+  difference between the two places of a pair stays about the same or grows
+  a little, but everything moves up, so harmless reports cross the
+  thresholds too.
 - **Actions changed, mostly for the wrong reason.** With facts, Clef-flash
   made both "water rising" reports `urgent`, also the one outside any flood
   zone. With the reworded question, "fallen tree" (crews already on the way)
