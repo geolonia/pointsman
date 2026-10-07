@@ -26,9 +26,10 @@ So the model stays our own, but most of its parts can use existing terms:
   property for the list of answers, a vocabulary property for status values,
   and multi-attribute instances for several models on one entity.
 - **Regulation and guidelines** (EU AI Act, GDPR, Japan's AI事業者ガイドライン,
-  Digital Agency DS-920) do not define a record format, but together they ask
-  for fields the draft does not have yet: **the reason for the result**
-  (which rule of the policy decided) and **whether a person took part**.
+  Digital Agency DS-920) do not define a record format. Japan's guideline and
+  DS-920 ask for **the reason for the result** in logs (non-binding), and the
+  duties to explain and inform are easier to meet when the record says
+  **whether a person took part**. The draft has neither yet.
 - **Probabilities** have no usable standard. They stay our own attributes.
 
 ## Candidates
@@ -38,7 +39,7 @@ So the model stays our own, but most of its parts can use existing terms:
 | Candidate | Status | Fit | Why |
 |---|---|---|---|
 | **PROV-O** (W3C Recommendation, 2013) | Widely used | **Yes, backbone** | `prov:Activity` with `prov:used` (entity), `prov:endedAtTime`, `prov:wasAssociatedWith` a `prov:SoftwareAgent` (model), `prov:qualifiedAssociation` / `prov:hadPlan` (profile version). `prov:wasInformedBy` links a decision to the one before it in a chain. A review is a second activity by a person; the corrected result points back with `prov:wasRevisionOf`. |
-| **SOSA/SSN** (W3C/OGC Recommendation, 2017; 2023 edition still a Working Draft) | Widely used in IoT; ETSI GR CIM 021 uses it with NGSI-LD | **Partial, as documented equivalents** | A software system can be a sensor, and SOSA's published PROV alignment matches ours term by term: `sosa:hasFeatureOfInterest` ⊑ `prov:used`, `sosa:madeBySensor` ⊑ `prov:wasAssociatedWith`, `sosa:usedProcedure` ⊑ the plan, `sosa:resultTime` ⊑ `prov:endedAtTime`. One observation has one result, so a decision with several answers would be an `ObservationCollection` (only in the 2023 draft), and a question would have to be an "observable property", which is a stretch. Not used as the type; equivalents listed in the model notes. `sosa:Actuation` does not fit the action (it changes a property of a thing, not a workflow). |
+| **SOSA/SSN** (W3C/OGC Recommendation, 2017; 2023 edition still a Working Draft) | Widely used in IoT; ETSI GR CIM 021 uses it with NGSI-LD | **Partial, as documented equivalents** | A software system can be a sensor, and SOSA's published PROV alignment matches ours term by term: `sosa:hasFeatureOfInterest` ⊑ `prov:used`, `sosa:madeBySensor` ⊑ `prov:wasAssociatedWith`, `sosa:usedProcedure` ⊑ the plan, and for the end time `sosa:resultTime` ⊑ `prov:endedAtTime` (2017) or `sosa:endTime` ⊑ `prov:endedAtTime` (2023 draft; there `resultTime` is when the result became available). One observation has one result, so a decision with several answers would be an `ObservationCollection` (only in the 2023 draft), and a question would have to be an "observable property", which is a stretch. Not used as the type; equivalents listed in the model notes. `sosa:Actuation` does not fit the action (it changes a property of a thing, not a workflow). |
 | PROV-ML, ProvONE | Research / scientific workflows | No | About training runs and workflows, not single decisions; no published namespace for PROV-ML. |
 
 ### Human involvement and AI terms
@@ -80,26 +81,47 @@ because Clef returns a separate `confidence` value that means something else.
 | FIWARE projects (Cosmos, fiware-ml-supermarket, SEDIMARK, DEMETER) | No | Move data, describe marketplace assets, or use ad-hoc entities without probabilities. |
 | Digital Agency 地域サービス・データモデル・ガイドブック β版 (2025) | No | Nothing on AI results. |
 
+### Maintenance, licence and use in Japan
+
+For the candidates we take something from. The others are not used, for the
+reasons in the tables above.
+
+| Candidate | Maintained | Adoption | Licence | Use in Japan |
+|---|---|---|---|---|
+| PROV-O | W3C Recommendation (2013), stable, no active work needed | Wide (research data, public sector catalogues, SOSA builds on it) | W3C document licence | General; no country-specific parts |
+| SOSA/SSN | W3C/OGC; 2017 Recommendation, 2023 edition in progress | Wide in IoT; ETSI GR CIM 021 shows it with NGSI-LD | W3C document licence | General; we only document equivalents, so nothing depends on the draft |
+| DPV | W3C Community Group, active (2.3, 2026) | EU compliance tools and research | W3C licence (Community Group report) | Written around EU law (GDPR, AI Act). We use only its general terms for human involvement, which fit Japanese practice (人間の判断の介在) as well |
+| ISO/IEC 22989 | ISO/IEC JTC 1/SC 42, published 2022 | Basis of later AI standards, including ISO/IEC 42001 | Paid standard; we use only its terms | International standard; terms only |
+| NGSI-LD (ETSI GS CIM 009) | ETSI ISG CIM, active (1.8.1, 2024) | FIWARE brokers, and smart city platforms in Japan that use FIWARE, GeonicDB among them | Free to download (ETSI) | Already the format of the entities the bridge reads |
+| Smart Data Models `SMAnalysis` | Smart Data Models, one project (aqua3S) | Small | CC BY 4.0 | Not used; only supports the pattern |
+
 ## What regulation and guidelines ask for
 
 None of these defines a record format. The EU AI Act makes logging a duty only
 for high-risk systems, and lists fields only for remote biometric
 identification. Japan's guideline is non-binding; DS-920 applies to central
-government systems. Together they point to these fields:
+government systems. So the table separates two things:
 
-| Field | Asked for by | In the draft? |
-|---|---|---|
-| Time of the decision | AI Act Art. 12; AI事業者ガイドライン 6)①; DS-920 6.3 | yes, `decidedAt` |
-| Reference to the input | AI Act Art. 12(3)(c) (biometrics); ガイドライン 6)① 入出力 | yes, `refersTo` |
-| The logic used (model, profile version) | GDPR Art. 13–15 (as information); ガイドライン 7)① トレーサビリティ; DS-920 checklist 29 | yes |
-| The output | AI Act Art. 12, 14(4)(c); ガイドライン 6)①; DS-920 6.5 | yes, `answers` |
-| **Reason for the result** | ガイドライン 6)① 判断根拠; DS-920 6.5 判断根拠; AI Act Art. 86 "main elements of the decision" | **no: add the matching policy rule** |
-| The final decision | AI Act Art. 86 | yes, `action`, `finalAction` |
-| **Whether a person took part** | GDPR Art. 22 ("solely automated"); AI Act Art. 26(11); ガイドライン U-7 | **no: add** |
-| Who reviewed, and their correction | AI Act Art. 12(3)(d), 14(4)(d); GDPR Art. 22(3); ガイドライン 3)② 人間の判断の介在 | yes, `reviewedBy`, `corrections` |
-| Contest by the affected person | GDPR Art. 22(3); Council of Europe Convention Art. 14 | no; out of scope for now (a review can record it) |
-| Retention (AI Act: at least six months for high-risk systems) | AI Act Art. 19, 26(6) | not a model field; a deployment setting |
-| Probability | not named anywhere; helps a person interpret the output (AI Act Art. 14(4)) | yes |
+- **Record duty:** a text that asks for this to be logged or recorded.
+- **Design choice:** no text asks for it in a record, but a duty to explain,
+  to inform or to let a person oversee the decision is much easier to meet
+  when the record has it. These fields are our recommendation, not a legal
+  requirement.
+
+| Field | Kind | Source | In the draft? |
+|---|---|---|---|
+| Time of the decision | Record duty | AI Act Art. 12 (high-risk; fields named only for biometrics, 12(3)(a)); ガイドライン 6)① (non-binding); DS-920 6.3 | yes, `decidedAt` |
+| Reference to the input | Record duty | AI Act Art. 12(3)(c) (biometrics only); ガイドライン 6)① 入出力 (non-binding) | yes, `refersTo` |
+| The output | Record duty | ガイドライン 6)① 入出力 (non-binding); DS-920 6.5 (logs of outputs) | yes, `answers` |
+| **Reason for the result** | Record duty (non-binding) and design choice | ガイドライン 6)① 判断根拠 and DS-920 6.5 判断根拠 ask for it in logs; AI Act Art. 86 gives a right to an explanation of the "main elements of the decision" (limited scope), not a record duty | **no: add the matching policy rule** |
+| The logic used (model, profile version) | Design choice | GDPR Art. 13–15 and AI Act Art. 86 ask to inform, not to record; ガイドライン 7)① トレーサビリティ; DS-920 checklist 29 (model cards) | yes |
+| The final decision | Design choice | AI Act Art. 86 (explanation) | yes, `action`, `finalAction` |
+| **Whether a person took part** | Design choice | GDPR Art. 22 (decisions "based solely on automated processing"); AI Act Art. 26(11) and ガイドライン U-7 (tell people AI is used) | **no: add** |
+| Who reviewed | Record duty, biometrics only | AI Act Art. 12(3)(d); otherwise design choice for GDPR Art. 22(3) (human intervention) | yes, `reviewedBy` |
+| A person's correction | Design choice | AI Act Art. 14(4)(d) (ability to override); ガイドライン 3)② 人間の判断の介在 | yes, `corrections` |
+| Contest by the affected person | Design choice | GDPR Art. 22(3); Council of Europe Convention Art. 14 | no; out of scope for now (a review can record it) |
+| Retention | Duty, but not a field | AI Act Art. 19, 26(6): at least six months for high-risk systems; ガイドライン 6)①: each organisation decides | not a model field; a deployment setting |
+| Probability | Design choice | not named anywhere; helps a person interpret the output (AI Act Art. 14(4)(c)) | yes |
 
 Would a road restriction check be high-risk under the AI Act? Only if it acts
 as a safety component in road traffic management (Annex III point 2); a
@@ -143,7 +165,7 @@ not for the data model.
 - ETSI GR CIM 021: https://www.etsi.org/deliver/etsi_gr/CIM/001_099/021/01.01.01_60/gr_CIM021v010101p.pdf
 - EU AI Act (Regulation (EU) 2024/1689), Articles 6, 12, 14, 19, 26, 86, Annex III: https://artificialintelligenceact.eu/
 - GDPR Articles 13–15, 22: https://gdpr-info.eu/
-- AI事業者ガイドライン 第1.1版 (2025-03-28): https://www.soumu.go.jp/main_content/001002576.pdf (第1.2版 of 2026-03-31 exists; not checked)
+- AI事業者ガイドライン 第1.2版 (2026-03-31): https://www.meti.go.jp/shingikai/mono_info_service/ai_shakai_jisso/20260331_report.html (本編, checked; the text on logs in 6)① and on traceability in 7)① is the same as in 第1.1版 of 2025-03-28)
 - AI推進法 (令和7年法律第53号): https://laws.e-gov.go.jp/law/507AC0000000053 (no record duties)
 - Digital Agency DS-920 (2025-05-27): https://www.digital.go.jp/assets/contents/node/basic_page/field_ref_resources/e2a06143-ed29-4f1d-9c31-0f06fca67afc/80419aea/20250527_resources_standard_guidelines_guideline_01.pdf
 - Digital Agency 地域サービス・データモデル・ガイドブック β版: https://www.digital.go.jp/assets/contents/node/basic_page/field_ref_resources/fc97ed25-7bbb-4f5c-8ca5-97b344dc36d7/69e02ec6/20250930_policies_development_management_outline_04.pdf
