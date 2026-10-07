@@ -101,6 +101,12 @@ async function sameSecret(a: string, b: string): Promise<boolean> {
 
 /** Handles `POST /notify`. Any other request gets 404. */
 export async function handleRequest(request: Request, config: BridgeConfig): Promise<Response> {
+  // Also for Workers that build the config themselves: GeonicDB would silently
+  // prefer the token over the key.
+  if (config.broker.token && config.broker.apiKey) {
+    console.error('bridge configuration: broker token and API key are both set');
+    return Response.json({ error: 'bridge is not configured' }, { status: 500 });
+  }
   const url = new URL(request.url);
   if (request.method !== 'POST' || url.pathname !== '/notify') return Response.json({ error: 'not found' }, { status: 404 });
   // The subscription sends the secret in endpoint.receiverInfo.

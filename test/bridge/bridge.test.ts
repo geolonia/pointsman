@@ -246,6 +246,12 @@ describe('configuration', () => {
     await notify([entity()]);
     expect(calls[1]!.headers.get('x-api-key')).toBe(API_KEY);
     expect(calls[1]!.headers.get('authorization')).toBeNull();
+
+    // A Worker that builds the config itself gets the same check.
+    const both = setup();
+    both.config.broker.apiKey = API_KEY;
+    expect((await both.notify([entity()])).status).toBe(500);
+    expect(both.calls).toHaveLength(0);
   });
 
   it('names a missing setting, and refuses plain http except for localhost', () => {
