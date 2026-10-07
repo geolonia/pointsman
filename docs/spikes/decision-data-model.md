@@ -26,6 +26,12 @@ feedback flow:
 
 ## Upstream considered (2026-10-07)
 
+A wider survey, with SOSA/SSN, DPV, NGSI-LD 1.8 property types and what
+regulation asks a decision record to hold, is in
+[../decision-model-standards.md](../decision-model-standards.md) (#51). It
+keeps PROV-O as the backbone and adds fields; the table below is the first,
+shorter check.
+
 | Candidate | Fit | Why |
 |---|---|---|
 | **W3C PROV-O** | **Use for provenance** | A decision is a `prov:Activity` that `prov:used` the entity, was associated with an agent (the model) following a plan (the profile version), and ended at a time. A review is another activity, by a person, that `prov:wasInformedBy` the decision. A W3C Recommendation, general, not tied to one country or product. It says nothing about questions, answers or probabilities, so those stay ours. |
