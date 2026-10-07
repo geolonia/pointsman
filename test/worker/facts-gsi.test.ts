@@ -111,8 +111,9 @@ describe('flood zones', () => {
     expect(missing).toEqual({ values: { inside: false, rank: 0, class: '' }, source: expect.stringContaining('日付不明') });
   });
 
-  it('fail on a colour that is not in the legend, and on server errors', async () => {
+  it('fail on a colour that is not in the legend, even a close one, and on server errors', async () => {
     await expect(lookup(new GsiFactProvider({ fetch: fakeServer(() => png(() => [10, 200, 10, 255])).fetchFn }))).rejects.toThrow(/not in the legend/);
+    await expect(lookup(new GsiFactProvider({ fetch: fakeServer(() => png(() => [255, 183, 186, 255])).fetchFn }))).rejects.toThrow(/not in the legend/);
     const down = (async () => new Response('busy', { status: 503 })) as typeof fetch;
     await expect(lookup(new GsiFactProvider({ fetch: down }))).rejects.toThrow('tile 503');
   });
@@ -128,6 +129,52 @@ describe('flood zones', () => {
     const second = await lookup(new GsiFactProvider({ fetch: server.fetchFn, cache }));
     expect(server.calls).toHaveLength(1);
     expect(second.source).toContain('2025-08-20');
+  });
+
+  it('keep tiles in memory for a day only', async () => {
+    const server = fakeServer(() => png(() => DEEP));
+    let now = Date.parse('2026-10-07T00:00:00Z');
+    const p = new GsiFactProvider({ fetch: server.fetchFn, now: () => now });
+    await lookup(p);
+    now += 23 * 3600_000;
+    await lookup(p);
+    expect(server.calls).toHaveLength(1);
+    now += 2 * 3600_000;
+    await lookup(p);
+    expect(server.calls).toHaveLength(2);
+  });
+
+  it('do not cancel a shared tile load when one lookup gives up', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    // Like a real fetch: an aborted signal fails the request.
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      await gate;
+      init?.signal?.throwIfAborted();
+      return new Response(await png(() => DEEP));
+    }) as typeof fetch;
+    const p = new GsiFactProvider({ fetch: fetchFn });
+    const impatient = new AbortController();
+    const first = p.lookup({ type: 'inside', layer: 'gsi-flood-max', geometry: point }, impatient.signal);
+    const second = lookup(p);
+    impatient.abort();
+    release();
+    expect((await second).values).toMatchObject({ inside: true });
+    expect((await first).values).toMatchObject({ inside: true });
+  });
+
+  it('look at the whole of a long line, up to its end', async () => {
+    // 400 segments of 9 m (more than the 200 places sampled): only the tile at its end is flooded.
+    const coords: [number, number][] = Array.from({ length: 401 }, (_, i) => [139.70 + i * 0.0001, 35.6855]);
+    const end = coords[coords.length - 1]!;
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const m = String(input).match(/\/17\/(\d+)\/(\d+)\.png$/)!;
+      const t = { x: Number(m[1]), y: Number(m[2]) };
+      const lastX = Math.floor(((end[0] + 180) / 360) * 2 ** 17);
+      return new Response(await png(() => (t.x === lastX ? DEEP : NONE)));
+    }) as typeof fetch;
+    const r = await lookup(new GsiFactProvider({ fetch: fetchFn }), { type: 'LineString', coordinates: coords });
+    expect(r.values).toMatchObject({ inside: true, rank: 5 });
   });
 
   it('do not keep a failed tile', async () => {
@@ -149,6 +196,17 @@ describe('evacuation sites', () => {
     const r = await lookup(new GsiFactProvider({ fetch: fakeServer(async () => null, shelters).fetchFn }));
     expect(r.values).toEqual({ found: true, distance_m: 167, name: 'Near school' });
     expect(r.source).toBe('国土地理院 指定緊急避難場所データ（洪水）を加工して作成（2025-08-20 時点）');
+  });
+
+  it('look around the whole of a line, not only its middle', async () => {
+    // A 60 km line over three zoom-10 tiles; the only site is near its west end, two tiles from the middle.
+    const shelters = (x: number) => ({ type: 'FeatureCollection', features: x === 907 ? [site(139.1010, 35.6855, 'West school')] : [] });
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const x = Number(String(input).match(/\/10\/(\d+)\//)![1]);
+      return new Response(JSON.stringify(shelters(x)));
+    }) as typeof fetch;
+    const line: Geometry = { type: 'LineString', coordinates: [[139.10, 35.6855], [139.75, 35.6855]] };
+    expect((await lookup(new GsiFactProvider({ fetch: fetchFn }), line)).values).toMatchObject({ found: true, name: 'West school' });
   });
 
   it('find none farther than 5 km', async () => {

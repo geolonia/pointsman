@@ -11,11 +11,13 @@
 // Tiles are cached for a day: in memory and in the Workers cache.
 
 import { FactError, FactUnavailableError, type FactProvider, type FactQuery, type FactResult, type Geometry, type Position } from './facts';
-import { along, center, distanceTo, offset, tileOf } from './geo';
+import { along, distanceTo, offset, tileOf } from './geo';
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 const TILE_TTL_S = 86_400;
 const MEMORY_TILES = 64;
+/** A tile load is shared, so it has its own limit, longer than one lookup's. */
+const LOAD_TIMEOUT_MS = 10_000;
 
 /** Depth classes by colour, from the portal's legend (shinsui_legend3.png). */
 const FLOOD_CLASSES: { rgb: [number, number, number]; rank: number; class: string }[] = [
@@ -56,17 +58,21 @@ export interface GsiOptions {
   fetch?: typeof fetch;
   /** The Workers cache; leave out to use only memory. */
   cache?: Cache | undefined;
+  /** For tests: the clock for the memory cache. */
+  now?: () => number;
 }
 
 export class GsiFactProvider implements FactProvider {
   private readonly fetchFn: typeof fetch;
   private readonly cache: Cache | undefined;
-  private readonly memory = new Map<string, Promise<Tile<unknown>>>();
+  private readonly memory = new Map<string, { tile: Promise<Tile<unknown>>; until: number }>();
+  private readonly now: () => number;
 
-  constructor({ fetch: fetchFn, cache }: GsiOptions = {}) {
+  constructor({ fetch: fetchFn, cache, now }: GsiOptions = {}) {
     // A wrapper, not fetch itself: Workers refuse an unbound global fetch.
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
     this.cache = cache;
+    this.now = now ?? Date.now;
   }
 
   async lookup(query: FactQuery, signal: AbortSignal): Promise<FactResult> {
@@ -74,17 +80,21 @@ export class GsiFactProvider implements FactProvider {
     const kind = query.layer !== undefined && Object.hasOwn(GSI_LAYERS, query.layer) ? GSI_LAYERS[query.layer as keyof typeof GSI_LAYERS] : undefined;
     if (!kind) throw new FactUnavailableError(`unknown layer "${query.layer}"`);
     if (kind !== query.type) throw new FactError(`layer "${query.layer}" answers ${kind}, not ${query.type}`);
-    return kind === 'inside' ? this.flood(query.geometry, signal) : this.shelters(query.geometry, signal);
+    // No signal for the tiles: a tile load is shared by every lookup that needs
+    // it, so one lookup's time limit must not cancel it for the others. Loads
+    // have their own time limit; lookupFacts stops waiting at the caller's.
+    void signal;
+    return kind === 'inside' ? this.flood(query.geometry) : this.shelters(query.geometry);
   }
 
   /** The deepest class along the geometry, sampled every 15 m (at most 200 places). */
-  private async flood(g: Geometry, signal: AbortSignal): Promise<FactResult> {
+  private async flood(g: Geometry): Promise<FactResult> {
     const places = along(g, 15, 200).map((p) => ({ p, t: tileOf(p, FLOOD.zoom) }));
     const keys = [...new Set(places.map(({ t }) => `${t.x}/${t.y}`))];
     if (keys.length > 16) throw new FactError('geometry spans too many tiles');
     const tiles = new Map(await Promise.all(keys.map(async (k) => {
       const [x, y] = k.split('/').map(Number) as [number, number];
-      return [k, await this.tile(FLOOD.url(FLOOD.zoom, x, y), 'png', signal)] as const;
+      return [k, await this.tile(FLOOD.url(FLOOD.zoom, x, y), 'png')] as const;
     })));
     let worst: (typeof FLOOD_CLASSES)[number] | undefined;
     for (const { t } of places) {
@@ -92,7 +102,7 @@ export class GsiFactProvider implements FactProvider {
       if (!tile.data) continue; // no tile: outside every zone
       const [r, gr, b, a] = (tile.data as Pixels)(t.px, t.py);
       if (a === 0) continue;
-      const c = FLOOD_CLASSES.find((f) => Math.abs(f.rgb[0] - r) <= 6 && Math.abs(f.rgb[1] - gr) <= 6 && Math.abs(f.rgb[2] - b) <= 6);
+      const c = FLOOD_CLASSES.find((f) => f.rgb[0] === r && f.rgb[1] === gr && f.rgb[2] === b);
       // A colour outside the legend means the tiles changed: fail, do not guess.
       if (!c) throw new FactError(`flood tile colour ${r},${gr},${b} is not in the legend`);
       if (!worst || c.rank > worst.rank) worst = c;
@@ -105,17 +115,17 @@ export class GsiFactProvider implements FactProvider {
   }
 
   /** The nearest site within 5 km of the geometry. */
-  private async shelters(g: Geometry, signal: AbortSignal): Promise<FactResult> {
-    const c = center(g);
-    const keys = new Set<string>();
-    for (const [e, n] of [[0, 0], [-1, -1], [-1, 1], [1, -1], [1, 1]] as const) {
-      const t = tileOf(offset(c, e * SHELTERS.radius, n * SHELTERS.radius), SHELTERS.zoom);
-      keys.add(`${t.x}/${t.y}`);
-    }
-    const tiles = await Promise.all([...keys].map((k) => {
-      const [x, y] = k.split('/').map(Number) as [number, number];
-      return this.tile(SHELTERS.url(SHELTERS.zoom, x, y), 'geojson', signal);
-    }));
+  private async shelters(g: Geometry): Promise<FactResult> {
+    // Every tile that touches the geometry's bounding box, 5 km wider on each side.
+    const ps = g.type === 'Point' ? [g.coordinates] : g.coordinates;
+    const lons = ps.map((p) => p[0]);
+    const lats = ps.map((p) => p[1]);
+    const sw = tileOf(offset([Math.min(...lons), Math.min(...lats)], -SHELTERS.radius, -SHELTERS.radius), SHELTERS.zoom);
+    const ne = tileOf(offset([Math.max(...lons), Math.max(...lats)], SHELTERS.radius, SHELTERS.radius), SHELTERS.zoom);
+    if ((ne.x - sw.x + 1) * (sw.y - ne.y + 1) > 9) throw new FactError('geometry spans too many tiles');
+    const urls: string[] = [];
+    for (let x = sw.x; x <= ne.x; x++) for (let y = ne.y; y <= sw.y; y++) urls.push(SHELTERS.url(SHELTERS.zoom, x, y));
+    const tiles = await Promise.all(urls.map((u) => this.tile(u, 'geojson')));
     let best: { d: number; name: string } | undefined;
     for (const tile of tiles) {
       for (const s of (tile.data as Shelter[] | null) ?? []) {
@@ -129,23 +139,26 @@ export class GsiFactProvider implements FactProvider {
     };
   }
 
-  /** A tile, decoded; data null when the server has none (404). */
-  private tile(url: string, format: 'png' | 'geojson', signal: AbortSignal): Promise<Tile<unknown>> {
-    let hit = this.memory.get(url);
-    if (!hit) {
-      hit = this.load(url, format, signal);
-      // A failed load is not kept: the next decision tries again.
-      hit.catch(() => this.memory.delete(url));
-      this.memory.set(url, hit);
-      if (this.memory.size > MEMORY_TILES) this.memory.delete(this.memory.keys().next().value!);
-    }
-    return hit;
+  /** A tile, decoded; data null when the server has none (404). Kept for a day, like the Workers cache. */
+  private tile(url: string, format: 'png' | 'geojson'): Promise<Tile<unknown>> {
+    const now = this.now();
+    const hit = this.memory.get(url);
+    if (hit && hit.until > now) return hit.tile;
+    const entry = { tile: this.load(url, format), until: now + TILE_TTL_S * 1000 };
+    // A failed load is not kept: the next decision tries again.
+    entry.tile.catch(() => {
+      if (this.memory.get(url) === entry) this.memory.delete(url);
+    });
+    this.memory.delete(url); // re-insert at the end: the oldest entry goes first
+    this.memory.set(url, entry);
+    if (this.memory.size > MEMORY_TILES) this.memory.delete(this.memory.keys().next().value!);
+    return entry.tile;
   }
 
-  private async load(url: string, format: 'png' | 'geojson', signal: AbortSignal): Promise<Tile<unknown>> {
+  private async load(url: string, format: 'png' | 'geojson'): Promise<Tile<unknown>> {
     let res = this.cache ? await this.cache.match(url) : undefined;
     if (!res) {
-      res = await this.fetchFn(url, { headers: { 'user-agent': USER_AGENT }, signal });
+      res = await this.fetchFn(url, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) });
       if (res.status === 404) return { data: null, date: '' };
       if (!res.ok) throw new FactError(`tile ${res.status}`);
       if (this.cache) {

@@ -41,21 +41,26 @@ export function center(g: Geometry): Position {
 }
 
 /**
- * Positions along the geometry, about `step` metres apart, at most `max`
- * (a long line gets a larger step).
+ * Positions along the geometry, about `step` metres apart, at most `max`,
+ * always with both ends: a long line gets a larger step, spread over its
+ * whole length.
  */
 export function along(g: Geometry, step: number, max: number): Position[] {
   if (g.type === 'Point') return [g.coordinates];
   const ps = g.coordinates;
-  let length = 0;
-  for (let i = 1; i < ps.length; i++) length += distance(ps[i - 1]!, ps[i]!);
-  const s = Math.max(step, length / Math.max(1, max - 1));
-  const out: Position[] = [ps[0]!];
-  for (let i = 1; i < ps.length && out.length < max; i++) {
-    const a = ps[i - 1]!;
-    const b = ps[i]!;
-    const n = Math.max(1, Math.ceil(distance(a, b) / s));
-    for (let j = 1; j <= n && out.length < max; j++) out.push([a[0] + ((b[0] - a[0]) * j) / n, a[1] + ((b[1] - a[1]) * j) / n]);
+  const lengths = ps.slice(1).map((p, i) => distance(ps[i]!, p));
+  const total = lengths.reduce((s, l) => s + l, 0);
+  const n = Math.max(1, Math.min(max - 1, Math.ceil(total / step)));
+  const out: Position[] = [];
+  let seg = 0;
+  let before = 0; // length of the segments before `seg`
+  for (let k = 0; k <= n; k++) {
+    const at = (total * k) / n;
+    while (seg < lengths.length - 1 && before + lengths[seg]! < at) before += lengths[seg++]!;
+    const a = ps[seg]!;
+    const b = ps[seg + 1]!;
+    const t = lengths[seg]! > 0 ? Math.min(1, Math.max(0, (at - before) / lengths[seg]!)) : 0;
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
   }
   return out;
 }
