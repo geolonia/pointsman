@@ -15,6 +15,7 @@
 //   error, like any other failure; this provider never says possible: false.
 
 import { FactError, type FactResult, type Geometry, type Position } from './facts';
+import type { DetourMode } from './types';
 import { distance, offset } from './geo';
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
@@ -45,7 +46,8 @@ export class ValhallaRouter {
    * The detour fact for a closed section (a LineString). `signal` is the
    * lookup's time limit: once it fires, no further request starts.
    */
-  async detour(g: Geometry, signal?: AbortSignal): Promise<FactResult> {
+  async detour(g: Geometry, signal?: AbortSignal, mode: DetourMode = 'drive'): Promise<FactResult> {
+    const costing = mode === 'walk' ? 'pedestrian' : 'auto';
     if (g.type !== 'LineString') throw new FactError('a detour needs a LineString');
     const ps = g.coordinates;
     const a = ps[0]!;
@@ -74,12 +76,12 @@ export class ValhallaRouter {
     const usable = closures.filter((polys) => polys.every((poly) => !inside(a, poly) && !inside(b, poly)));
     if (usable.length === 0) throw new FactError('section too short to close without closing its ends');
 
-    const direct = await this.route(a, b, undefined, signal);
+    const direct = await this.route(a, b, undefined, costing, signal);
     if (direct === null) throw new FactError('no route along the section itself');
     for (const polygons of usable) {
       let around: number | null;
       try {
-        around = await this.route(a, b, polygons, signal);
+        around = await this.route(a, b, polygons, costing, signal);
       } catch (err) {
         // A server with a lower vertex limit than the default refuses the
         // closure (error 176): try the next, smaller one.
@@ -94,12 +96,12 @@ export class ValhallaRouter {
     throw new FactError('no route with the section closed (no way around, or a closed road edge at an end)');
   }
 
-  /** Driving distance in metres, or null when Valhalla finds no route. */
-  private async route(from: Position, to: Position, exclude: Position[][] | undefined, signal?: AbortSignal): Promise<number | null> {
+  /** Distance in metres by car (`auto`) or on foot (`pedestrian`), or null when Valhalla finds no route. */
+  private async route(from: Position, to: Position, exclude: Position[][] | undefined, costing: 'auto' | 'pedestrian', signal?: AbortSignal): Promise<number | null> {
     signal?.throwIfAborted();
     const body = {
       locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }],
-      costing: 'auto',
+      costing,
       units: 'kilometers',
       ...(exclude && { exclude_polygons: exclude }),
     };

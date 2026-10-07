@@ -70,7 +70,8 @@ describe('lookups', () => {
       flood: { missing: false, values: { inside: true, rank: 1, class: 'mock' }, source: 'mock' },
       detour: { missing: false, values: { possible: true, extra_m: 0 }, source: 'mock' },
     });
-    expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', geometry: line }]);
+    // A detour always says how: by car unless the profile says walk.
+    expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', geometry: line }]);
   });
 
   it('record why a fact is missing, and never throw', async () => {

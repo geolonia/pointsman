@@ -138,6 +138,17 @@ describe('detours', () => {
     expect(bodies).toHaveLength(0);
   });
 
+  it('walk when asked to: pedestrian costing for every request', async () => {
+    const { bodies, router } = server(() => ok(0.24), () => ok(0.4));
+    expect((await router.detour(section, undefined, 'walk')).values).toEqual({ possible: true, extra_m: 160 });
+    expect(bodies.map((b) => b.costing)).toEqual(['pedestrian', 'pedestrian']);
+    // Through the provider, from the profile's mode.
+    const p = server(() => ok(0.24), () => ok(0.3));
+    const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g' }], { g: section }, new GsiFactProvider({ routing: p.router }));
+    expect(facts.walk).toMatchObject({ missing: false, values: { extra_m: 60 } });
+    expect(p.bodies.map((b) => b.costing)).toEqual(['pedestrian', 'pedestrian']);
+  });
+
   it('need a section, not a point', async () => {
     const { router } = server();
     await expect(router.detour({ type: 'Point', coordinates: [139.75, 35.70] })).rejects.toThrow(FactError);
