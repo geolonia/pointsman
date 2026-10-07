@@ -63,7 +63,7 @@ One property, named in the configuration (here `check`):
 
 With `"decisionEntity": true` in a route, the bridge also creates one
 `Decision` entity per decision, following the draft data model in
-[docs/data-model/](../docs/data-model/): the answers with their probabilities,
+[datamodels.jp](https://datamodels.jp/models/decision/Decision/): the answers with their probabilities,
 the profile version, the rule, the model, the time, how a person takes part,
 and, for profiles with spatial facts, every fact the profile asked for, as
 looked up for the decision (`facts`,
