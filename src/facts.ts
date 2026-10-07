@@ -4,7 +4,7 @@
 
 import { resolvePath } from './input';
 import { FACT_FIELDS } from './policy';
-import type { Fact, FactSpec, FactType } from './types';
+import type { DetourMode, Fact, FactSpec, FactType } from './types';
 
 export type Position = [number, number];
 export type Geometry = { type: 'Point'; coordinates: Position } | { type: 'LineString'; coordinates: Position[] };
@@ -12,6 +12,8 @@ export type Geometry = { type: 'Point'; coordinates: Position } | { type: 'LineS
 export interface FactQuery {
   type: FactType;
   layer?: string;
+  /** For `detour`; always set for detours (default drive). */
+  mode?: DetourMode;
   geometry: Geometry;
 }
 
@@ -99,7 +101,12 @@ export async function lookupFacts(
     });
     try {
       const result = await Promise.race([
-        provider.lookup({ type: spec.type, ...(spec.layer !== undefined && { layer: spec.layer }), geometry }, controller.signal),
+        provider.lookup({
+          type: spec.type,
+          ...(spec.layer !== undefined && { layer: spec.layer }),
+          ...(spec.type === 'detour' && { mode: spec.mode ?? 'drive' }),
+          geometry,
+        }, controller.signal),
         timeout,
       ]);
       if (result === 'timeout') {

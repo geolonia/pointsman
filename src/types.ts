@@ -40,7 +40,11 @@ export interface FactSpec {
   at: string;
   /** Layer id for `inside` and `nearest`, configured per deployment. */
   layer?: string;
+  /** For `detour`: by car (`drive`, the default) or on foot (`walk`). */
+  mode?: DetourMode;
 }
+
+export type DetourMode = 'drive' | 'walk';
 
 /** A fact as looked up for one decision. */
 export type Fact =

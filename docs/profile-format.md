@@ -183,12 +183,13 @@ policy:
 | `type` | `inside`, `nearest` or `detour` (below). |
 | `at` | JSONPath to a GeoJSON `Point` or `LineString` (WGS 84) in the request state, for example `$.location.value` for an NGSI-LD `GeoProperty`. Read from what the client sends, before the `input` mapping. Through MCP, clients send the input fields themselves, so there `at` reads those (for example `$.location`). |
 | `layer` | For `inside` and `nearest`: the layer to look in. Layers are set up per deployment (source, licence, attribution), not in the profile. |
+| `mode` | For `detour`: `drive` (default) or `walk`, the way around by car or on foot. |
 
 | Type | Fields | Notes |
 |---|---|---|
 | `inside` | `inside` (boolean), `rank` (number), `class` (text) | Inside an area of the layer. `rank` and `class` describe the area, for example a flood depth class. Not inside: `rank` 0, `class` empty. |
 | `nearest` | `found` (boolean), `distance_m` (number), `name` (text) | The nearest feature of the layer. None found: `found` false, no distance or name. |
-| `detour` | `possible` (boolean), `extra_m` (number) | Extra metres around a closed section. Needs a `LineString`. No way around: `possible` false, no `extra_m`. |
+| `detour` | `possible` (boolean), `extra_m` (number) | Extra metres around a closed section, by car or on foot (`mode`). Needs a `LineString`. No way around: `possible` false, no `extra_m`. |
 
 Every fact also has `missing` (boolean).
 
@@ -250,9 +251,10 @@ Layers of `gsi`:
 
 With `FACTS_ROUTING_URL` (the URL of a [Valhalla](https://github.com/valhalla/valhalla)
 server: https, http only for localhost; no credentials, query or fragment;
-only with `FACTS_MODE=gsi`), `detour` facts are answered: the drive
-between the two ends of the closed section, with and without the section
-(OpenStreetMap data, `source`: © OpenStreetMap contributors).
+only with `FACTS_MODE=gsi`), `detour` facts are answered: the way between
+the two ends of the closed section, with and without the section, by car
+or on foot (`mode`; Valhalla's `auto` and `pedestrian` costing;
+OpenStreetMap data, `source`: © OpenStreetMap contributors).
 
 - The whole section is closed except 20 m at each end, measured along it:
   Valhalla drops every road an exclusion area touches, and a route cannot

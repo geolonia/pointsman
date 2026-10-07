@@ -84,7 +84,7 @@ export class GsiFactProvider implements FactProvider {
     if (query.type === 'detour') {
       if (!this.routing) throw new FactUnavailableError('no routing provider');
       // Routing requests are not shared, so the lookup's time limit stops them.
-      return this.routing.detour(query.geometry, signal);
+      return this.routing.detour(query.geometry, signal, query.mode);
     }
     const kind = query.layer !== undefined && Object.hasOwn(GSI_LAYERS, query.layer) ? GSI_LAYERS[query.layer as keyof typeof GSI_LAYERS] : undefined;
     if (!kind) throw new FactUnavailableError(`unknown layer "${query.layer}"`);
