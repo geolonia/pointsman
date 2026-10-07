@@ -224,7 +224,7 @@ raised `danger` even where they were reassuring.
 |---|---|
 | `off` (default) | none: every fact is missing (`unavailable`) |
 | `mock` | fixed answers for development and tests: inside (rank 1), nearest 250 m, no detour |
-| `gsi` | public data of the Geospatial Information Authority of Japan (GSI), layers below; no `detour` yet (`unavailable`) |
+| `gsi` | public data of the Geospatial Information Authority of Japan (GSI), layers below; `detour` with a routing server (`FACTS_ROUTING_URL`, below), otherwise `unavailable` |
 
 Layers of `gsi`:
 
@@ -246,5 +246,26 @@ Layers of `gsi`:
 - A colour that is not in the legend fails the lookup (`error`) instead of
   guessing, so a change of the tiles shows up at once.
 
-Routing (`detour`) and geocoding are still open (issue #65).
+### Detours
+
+With `FACTS_ROUTING_URL` (the URL of a [Valhalla](https://github.com/valhalla/valhalla)
+server: https, http only for localhost; no credentials, query or fragment;
+only with `FACTS_MODE=gsi`), `detour` facts are answered: the drive
+between the two ends of the closed section, with and without the section
+(OpenStreetMap data, `source`: © OpenStreetMap contributors).
+
+- The whole section is closed except 20 m at each end, measured along it:
+  Valhalla drops every road an exclusion area touches, and a route cannot
+  start on a dropped road. If that finds no route, a small box at the middle
+  closes it instead. No closure may cover either end; a section too short for
+  that is an `error`, not "no way around".
+- Valhalla closes whole road edges, so "no path" with the section closed
+  cannot tell "no way around" from "the road at an end is closed too": it is
+  an `error`, like any other failure. This provider never answers
+  `possible: false`.
+- Sections longer than 5 km are refused (`error`).
+- A server that starts cold (for example on AWS Lambda) can take longer than
+  the 3 s limit for the first lookups: those facts are `timeout`.
+
+Geocoding is still open (issue #65).
 

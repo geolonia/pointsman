@@ -12,6 +12,7 @@
 
 import { FactError, FactUnavailableError, type FactProvider, type FactQuery, type FactResult, type Geometry, type Position } from './facts';
 import { along, distanceTo, offset, tileOf } from './geo';
+import type { ValhallaRouter } from './facts-routing';
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 const TILE_TTL_S = 86_400;
@@ -60,6 +61,8 @@ export interface GsiOptions {
   cache?: Cache | undefined;
   /** For tests: the clock for the memory cache. */
   now?: () => number;
+  /** Answers `detour` facts (FACTS_ROUTING_URL); without it they are unavailable. */
+  routing?: ValhallaRouter | undefined;
 }
 
 export class GsiFactProvider implements FactProvider {
@@ -67,16 +70,22 @@ export class GsiFactProvider implements FactProvider {
   private readonly cache: Cache | undefined;
   private readonly memory = new Map<string, { tile: Promise<Tile<unknown>>; until: number }>();
   private readonly now: () => number;
+  private readonly routing: ValhallaRouter | undefined;
 
-  constructor({ fetch: fetchFn, cache, now }: GsiOptions = {}) {
+  constructor({ fetch: fetchFn, cache, now, routing }: GsiOptions = {}) {
     // A wrapper, not fetch itself: Workers refuse an unbound global fetch.
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
     this.cache = cache;
     this.now = now ?? Date.now;
+    this.routing = routing;
   }
 
   async lookup(query: FactQuery, signal: AbortSignal): Promise<FactResult> {
-    if (query.type === 'detour') throw new FactUnavailableError('no routing provider');
+    if (query.type === 'detour') {
+      if (!this.routing) throw new FactUnavailableError('no routing provider');
+      // Routing requests are not shared, so the lookup's time limit stops them.
+      return this.routing.detour(query.geometry, signal);
+    }
     const kind = query.layer !== undefined && Object.hasOwn(GSI_LAYERS, query.layer) ? GSI_LAYERS[query.layer as keyof typeof GSI_LAYERS] : undefined;
     if (!kind) throw new FactUnavailableError(`unknown layer "${query.layer}"`);
     if (kind !== query.type) throw new FactError(`layer "${query.layer}" answers ${kind}, not ${query.type}`);

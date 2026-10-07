@@ -5,6 +5,7 @@ import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth';
 import { MockFactProvider, type FactProvider } from './facts';
 import { GsiFactProvider } from './facts-gsi';
+import { ValhallaRouter } from './facts-routing';
 import { D1DecisionLog } from './log';
 import { purgeExpired, type OAuthConfig } from './oauth';
 import type { ModelAdapter } from './models/adapter';
@@ -22,6 +23,8 @@ interface PointsmanEnv {
   MODEL_MODE?: string | undefined;
   /** "gsi" for GSI data (Japan), "mock" for fixed answers; "off" or unset: no provider, facts are missing. */
   FACTS_MODE?: string | undefined;
+  /** With FACTS_MODE "gsi": a Valhalla server for detour facts (https). */
+  FACTS_ROUTING_URL?: string | undefined;
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
   DB?: D1Database | undefined;
@@ -138,10 +141,14 @@ function adaptersByMode(env: PointsmanEnv): (model: string) => ModelAdapter | nu
 }
 
 const mockFacts = new MockFactProvider();
-// One per isolate, so its memory cache of tiles is shared between requests.
-let gsiFacts: GsiFactProvider | undefined;
+// One per isolate (and routing URL), so its memory cache of tiles is shared between requests.
+const gsiFacts = new Map<string, GsiFactProvider>();
 
 function factsFor(env: PointsmanEnv): FactProvider | undefined {
+  const routingUrl = env.FACTS_ROUTING_URL || undefined;
+  if (routingUrl && env.FACTS_MODE !== 'gsi') throw new ConfigError('FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
+  const routing = routingUrl ? checkServerUrl(routingUrl) : undefined;
+  if (routing && !routing.ok) throw new ConfigError(`FACTS_ROUTING_URL ${routing.error}`);
   switch (env.FACTS_MODE ?? 'off') {
     case 'off':
     case '':
@@ -149,7 +156,17 @@ function factsFor(env: PointsmanEnv): FactProvider | undefined {
     case 'mock':
       return mockFacts;
     case 'gsi':
-      return (gsiFacts ??= new GsiFactProvider({ cache: typeof caches === 'undefined' ? undefined : caches.default }));
+    {
+      let p = gsiFacts.get(routingUrl ?? '');
+      if (!p) {
+        p = new GsiFactProvider({
+          cache: typeof caches === 'undefined' ? undefined : caches.default,
+          ...(routing?.ok && { routing: new ValhallaRouter(routing.value) }),
+        });
+        gsiFacts.set(routingUrl ?? '', p);
+      }
+      return p;
+    }
     default:
       throw new ConfigError('FACTS_MODE must be "off", "mock" or "gsi"');
   }
