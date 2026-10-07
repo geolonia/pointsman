@@ -112,12 +112,14 @@ describe('a decision', () => {
     const [ask, patch, post] = calls;
     expect(ask).toMatchObject({ method: 'POST', url: 'https://pm.test/v1/decide/road-restriction-check' });
     expect(ask!.headers.get('authorization')).toBe(`Bearer ${PM_TOKEN}`);
+    expect(ask!.headers.get('user-agent')).toMatch(/^pointsman-bridge/);
     expect(ask!.body).toEqual({ state: entity(), ref: 'urn:ngsi-ld:RoadRestriction:1' });
 
     // Single-attribute update first (404: not there yet), then append.
     expect(patch).toMatchObject({ method: 'PATCH', url: 'https://broker.test/ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs/check' });
     expect(post).toMatchObject({ method: 'POST', url: 'https://broker.test/ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs' });
     for (const write of [patch!, post!]) {
+      expect(write.headers.get('user-agent')).toMatch(/^pointsman-bridge/);
       expect(write.headers.get('authorization')).toBe(`Bearer ${BROKER_TOKEN}`);
       expect(write.headers.get('ngsild-tenant')).toBe('demo');
       expect(write.headers.get('link')).toBe('<https://ctx.test/v1.jsonld>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"');
