@@ -4,7 +4,7 @@
 # RoadRestriction entity (datamodels.jp, transportation subject) in
 # normalized NGSI-LD form, as the bridge receives it.
 id: road-restriction-check
-version: 1
+version: 2
 title:
   en: Road restriction check
   ja: 通行規制の確認
@@ -18,6 +18,13 @@ input:
   - { name: status, path: $.restrictionStatus.value }
   - { name: status_label, path: $.statusLabel.value }
   - { name: description, path: $.description.value }
+# Spatial facts: looked up for the report's place (FACTS_MODE, see
+# docs/profile-format.md#facts) and used only by the rules; the model does
+# not see them. With FACTS_MODE "mock" (pnpm dev) every place is inside a
+# flood zone of rank 1.
+facts:
+  - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
+  - { name: shelter, type: nearest, layer: gsi-shelters-flood, at: $.location.value }
 questions:
   - name: category
     type: choice
@@ -57,6 +64,12 @@ policy:
   rules:
     - when: "danger.yes >= 0.7"
       action: urgent
+    # In a river flood zone of 3 m or deeper, a report that may mean danger goes to a person first.
+    - when: "facts.flood.rank >= 5 and danger.yes >= 0.4"
+      action: urgent
+    # Without the flood fact, the rule above cannot be checked: a person looks instead.
+    - when: "facts.flood.missing == true and danger.yes >= 0.4"
+      action: review
     - when: "danger.yes < 0.5 and category.p >= 0.85 and status_matches.yes >= 0.8 and clarity.score >= 2"
       action: publish
   default: review
