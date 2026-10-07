@@ -1,4 +1,5 @@
 // Spike code (docs/spikes/fiware-bridge.md, issue #14); not used by the engine.
+// The maintained bridge is in bridge/ (#47).
 // NGSI-LD subscription -> bridge Worker -> Pointsman -> PATCH back.
 //
 // The broker sends a notification for each changed entity. The bridge asks

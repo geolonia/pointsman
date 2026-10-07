@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build-profiles.mjs && node scripts/build-openapi-validators.mjs",
     "dev": "pnpm build && wrangler dev",
-    "typecheck": "pnpm build && wrangler types && tsc -p tsconfig.json && tsc -p test/worker/tsconfig.json",
+    "typecheck": "pnpm build && wrangler types && tsc -p tsconfig.json && tsc -p test/worker/tsconfig.json && tsc -p test/bridge/tsconfig.json",
     "test": "pnpm test:scripts && pnpm test:worker",
     "test:scripts": "node --test \"test/**/*.test.mjs\"",
     "test:worker": "pnpm build && vitest run",
