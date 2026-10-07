@@ -36,10 +36,13 @@ Pointsman does the first check on every report, within about a second:
 
 And the profile turns the answers into one of three actions:
 
-- **`urgent`**: `danger` is likely (≥ 0.7). A person looks at it now.
+- **`urgent`**: `danger` is likely (≥ 0.7), or the place is in a river flood
+  zone of 3 m or deeper and `danger` is at least 0.4 (a fact rule, version
+  2; see "Spatial facts and the chain"). A person looks at it now.
 - **`publish`**: clear, consistent, confident category, no danger. It goes to
   the public map without waiting.
-- **`review`**: everything else goes to the normal queue.
+- **`review`**: everything else goes to the normal queue, also a report with
+  `danger` at least 0.4 whose flood zone could not be looked up.
 
 The profile is [examples/profiles/road-restriction-check.yaml](../examples/profiles/road-restriction-check.yaml).
 
@@ -160,8 +163,9 @@ flowchart LR
   `/notify?route=evacuation` (the chain). GeonicDB behaves correctly for the
   bridge's writes (#41) and supports the shared-secret header
   (`receiverInfo`).
-- **Pointsman:** the production Worker, with the demo profile in the config
-  repository and its own API token, limited to that profile.
+- **Pointsman:** the production Worker, with the demo's two profiles
+  (`road-restriction-check`, `evacuation-access-check`) in the config
+  repository and its own API token, limited to those two profiles.
 - **GitHub:** issues in a public demo repository as the review queue, and a
   webhook back to the Worker for the review comments.
 - **Development:** `wrangler dev` for the Worker against a GeonicDB test
