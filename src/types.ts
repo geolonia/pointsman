@@ -60,4 +60,8 @@ export interface Decision {
   profile: string;
   profile_version: number;
   model: string;
+  /** When the decision was made (ISO 8601). */
+  created_at: string;
+  /** Index of the policy rule that matched; null when the default action applied. */
+  rule: number | null;
 }

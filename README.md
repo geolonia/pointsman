@@ -44,12 +44,15 @@ curl -s localhost:8787/v1/decide/issue-triage \
   "action": "auto",
   "profile": "issue-triage",
   "profile_version": 1,
-  "model": "mock"
+  "model": "mock",
+  "created_at": "2026-10-07T04:12:30.512Z",
+  "rule": 0
 }
 ```
 
 In every answer, `p` is the probability of `value`. For yes/no questions,
-`yes` is the probability of yes.
+`yes` is the probability of yes. `rule` is the index of the policy rule that
+gave the action (`null` when the default applied).
 
 Decisions are logged with their profile version and model, and can be
 corrected: `GET /v1/decisions/{id}`, `POST /v1/decisions/{id}/feedback`. See
