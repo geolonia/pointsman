@@ -62,7 +62,7 @@ One property, named in the configuration (here `check`):
 ## Decision entities
 
 With `"decisionEntity": true` in a route, the bridge also creates one
-`Decision` entity per decision, following the draft data model in
+`Decision` entity per decision, following the Decision model on
 [datamodels.jp](https://datamodels.jp/models/decision/Decision/): the answers with their probabilities,
 the profile version, the rule, the model, the time, how a person takes part,
 and, for profiles with spatial facts, every fact the profile asked for, as
@@ -78,8 +78,9 @@ for a person (`type=Decision&q=reviewStatus=="pending"`).
   `["review"]`), `dpv:HumanInvolvementForOversight` for the other actions:
   they are taken, and a person can correct them later through Pointsman's
   feedback.
-- The model's terms are sent inline in `@context`, because its context URL is
-  not published yet.
+- `@context` is the model's published context,
+  `https://datamodels.jp/context/decision/v1.jsonld` (`DECISION_CONTEXT`), so
+  the broker must be able to fetch it.
 - It uses NGSI-LD 1.8 `JsonProperty` and `VocabProperty`, which Orion-LD does
   not accept yet (see [docs/decision-model-standards.md](../docs/decision-model-standards.md)).
   Tried with GeonicDB.
