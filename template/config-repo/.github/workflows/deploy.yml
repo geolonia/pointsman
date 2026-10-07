@@ -1,7 +1,7 @@
 name: Deploy
 
-# On main: applies database migrations, publishes the profiles to KV and
-# deploys the engine, all with the pinned engine version.
+# On main: applies database migrations, deploys the engine and publishes the
+# profiles to KV, all with the pinned engine version.
 #
 # Needs the repository secrets CLOUDFLARE_API_TOKEN (Workers Scripts, Workers
 # KV Storage and D1: Edit) and CLOUDFLARE_ACCOUNT_ID, in the environment
@@ -94,15 +94,18 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrangler.jsonc
 
+      # The engine before the profiles: a new engine reads older profiles, but
+      # the running engine may not understand a new profile (for example one
+      # with facts), and would fail its decisions until the deploy finished.
+      - name: Deploy the engine
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: engine/node_modules/.bin/wrangler deploy --config wrangler.jsonc
+
       # Refuses to change a published id + version; see the script.
       - name: Publish profiles
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node engine/scripts/publish-profiles.mjs --dir profiles --remote --config wrangler.jsonc
-
-      - name: Deploy the engine
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: engine/node_modules/.bin/wrangler deploy --config wrangler.jsonc

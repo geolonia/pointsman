@@ -47,7 +47,7 @@ profiles. `scripts/check-public.mjs` checks that in CI.
    - `CLOUDFLARE_ACCOUNT_ID`
 
 6. **Push to `main`.** The deploy workflow applies the database migrations,
-   publishes the profiles and deploys the engine.
+   deploys the engine and publishes the profiles.
 
 7. **Set the callback secret** after the first deploy (once; only needed
    when clients use `callback_url`, see [reviews.md](reviews.md)):
@@ -72,8 +72,11 @@ profiles. `scripts/check-public.mjs` checks that in CI.
   validates the profiles with the pinned engine (so the schema version is
   pinned too), and dry-runs the deploy.
 - **Deploy** (`main`): the same checks, a build and dry run, and only then
-  `wrangler d1 migrations apply`, `publish-profiles.mjs`, `wrangler deploy`.
-  The Cloudflare secrets are given only to these three steps.
+  `wrangler d1 migrations apply`, `wrangler deploy`, `publish-profiles.mjs`.
+  The Cloudflare secrets are given only to these three steps. The engine is
+  deployed before the profiles are published: a new engine reads older
+  profiles, but the running engine may not understand a new profile (for
+  example one with facts) and would fail its decisions in between.
 
 ## Profile versions
 
