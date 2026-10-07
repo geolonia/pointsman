@@ -1,5 +1,7 @@
 # Spike: a `Decision` data model for geolonia/datamodels
 
+> Revised in #52: the current draft is in [../data-model/](../data-model/), built on the survey in [../decision-model-standards.md](../decision-model-standards.md). This page is the first draft, kept for the record.
+
 Issue #16. Question: should a decision result be published as a data model in
 [geolonia/datamodels](https://github.com/geolonia/datamodels), so systems can
 store decisions as NGSI-LD entities?

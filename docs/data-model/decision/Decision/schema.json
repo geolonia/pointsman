@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datamodels.jp/schema/decision/Decision/v1.0.0.json",
+  "title": "Decision",
+  "description": "One automated decision about one entity: the answers of a model to the questions of a rule set, with probabilities, and the resulting action.",
+  "x-version": "1.0.0",
+  "x-license-url": "https://datamodels.jp/LICENSE-CONTENT",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uri",
+      "description": "Entity id (URN)"
+    },
+    "type": {
+      "type": "string",
+      "const": "Decision",
+      "description": "Entity type"
+    },
+    "@context": {
+      "description": "JSON-LD context of the entity, optional: a context URL or a list of context URLs",
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uri"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "minItems": 1
+        }
+      ]
+    },
+    "refersTo": {
+      "type": "string",
+      "format": "uri",
+      "description": "The entity the decision is about (the input). One of refersTo or externalReference is required",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "any"
+      },
+      "x-iri": "http://www.w3.org/ns/prov#used"
+    },
+    "externalReference": {
+      "type": "string",
+      "description": "What the decision is about when it is not an entity in the broker, for example an issue URL",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/externalReference"
+    },
+    "action": {
+      "type": "string",
+      "description": "The action the rules gave: what happens next (for example auto, review, publish, urgent). The values are defined by the rule set",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/action"
+    },
+    "answers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "value",
+              "probability"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Question name, as in the rule set"
+              },
+              "type": {
+                "const": "noul"
+              },
+              "value": {
+                "type": "boolean",
+                "description": "Yes (true) or no (false)"
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Probability of this value, as given by the model"
+              }
+            },
+            "description": "A yes/no answer"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "value",
+              "probability",
+              "probabilities"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Question name, as in the rule set"
+              },
+              "type": {
+                "const": "choice"
+              },
+              "value": {
+                "type": "string",
+                "description": "The chosen option"
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Probability of this value, as given by the model"
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "description": "Probability of each option (choice) or level (score)",
+                "minProperties": 1
+              }
+            },
+            "description": "One option from a list"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "value",
+              "probability",
+              "probabilities"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Question name, as in the rule set"
+              },
+              "type": {
+                "const": "score"
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The most likely level, from 0 (lowest)"
+              },
+              "probability": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Probability of this value, as given by the model"
+              },
+              "probabilities": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "description": "Probability of each option (choice) or level (score)",
+                "minProperties": 1,
+                "propertyNames": {
+                  "pattern": "^(0|[1-9][0-9]*)$"
+                }
+              }
+            },
+            "description": "A level on an ordered scale"
+          }
+        ]
+      },
+      "description": "The model's answers, one per question, each with its probability",
+      "x-ngsi": {
+        "type": "JsonProperty"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/answers"
+    },
+    "profile": {
+      "type": "string",
+      "description": "Id of the rule set (in Pointsman: the profile) that asked the questions and turned the answers into the action",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/profile"
+    },
+    "profileVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version of the rule set",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/profileVersion"
+    },
+    "policyRule": {
+      "description": "Which rule gave the action: its index from 0 as text (\"0\", \"1\", ...), or \"default\" when no rule matched. The reason for the result",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*|default)$",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/policyRule"
+    },
+    "model": {
+      "type": "string",
+      "description": "Id of the model that answered",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/model"
+    },
+    "decidedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the decision was made",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "http://www.w3.org/ns/prov#endedAtTime"
+    },
+    "humanInvolvement": {
+      "type": "string",
+      "enum": [
+        "dpv:HumanInvolvementForVerification",
+        "dpv:HumanInvolvementForOversight",
+        "dpv:HumanInvolvementForDecision",
+        "dpv:HumanNotInvolved"
+      ],
+      "description": "How a person takes part, as a W3C DPV term: dpv:HumanInvolvementForVerification (a person checks before the action is taken), dpv:HumanInvolvementForOversight (the action is taken; a person can check and correct it later), dpv:HumanInvolvementForDecision (a person decides, the answers only inform), dpv:HumanNotInvolved",
+      "x-ngsi": {
+        "type": "VocabProperty"
+      },
+      "x-iri": "https://w3id.org/dpv#hasHumanInvolvement"
+    },
+    "reviewStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "resolved"
+      ],
+      "description": "State of the check by a person: pending or resolved. Absent when no check was asked",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/reviewStatus"
+    },
+    "finalAction": {
+      "type": "string",
+      "description": "The action after the check by a person",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/finalAction"
+    },
+    "reviewedBy": {
+      "type": "string",
+      "description": "Who resolved the check: an account, role or team identifier, not a personal name",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/reviewedBy",
+      "x-personal-data": true
+    },
+    "reviewedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the check was resolved",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/reviewedAt"
+    },
+    "corrections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "value",
+          "by",
+          "at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Question name"
+          },
+          "value": {
+            "type": [
+              "boolean",
+              "string",
+              "integer"
+            ],
+            "description": "The right answer according to a person"
+          },
+          "by": {
+            "type": "string",
+            "description": "Who corrected it: an account or role identifier, not a personal name",
+            "x-personal-data": true
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When"
+          },
+          "note": {
+            "type": "string",
+            "description": "Why, in a sentence"
+          }
+        }
+      },
+      "description": "Answers corrected by a person (the ground truth for measuring the model)",
+      "x-ngsi": {
+        "type": "JsonProperty"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/corrections",
+      "x-personal-data": true
+    },
+    "wasInformedBy": {
+      "type": "string",
+      "format": "uri",
+      "description": "The decision this one followed, in a chain of decisions",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "https://datamodels.jp/ns/decision/Decision"
+      },
+      "x-iri": "http://www.w3.org/ns/prov#wasInformedBy"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "action",
+    "answers",
+    "profile",
+    "profileVersion",
+    "model",
+    "decidedAt"
+  ],
+  "x-model-tags": "decision, AI, provenance",
+  "anyOf": [
+    {
+      "required": [
+        "refersTo"
+      ]
+    },
+    {
+      "required": [
+        "externalReference"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "reviewStatus"
+        ],
+        "properties": {
+          "reviewStatus": {
+            "const": "resolved"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "finalAction",
+          "reviewedBy",
+          "reviewedAt"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "finalAction"
+              ]
+            },
+            {
+              "required": [
+                "reviewedBy"
+              ]
+            },
+            {
+              "required": [
+                "reviewedAt"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

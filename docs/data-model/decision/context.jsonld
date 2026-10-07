@@ -1,0 +1,33 @@
+{
+  "@context": [
+    "https://datamodels.jp/context/common/v1.0.0.jsonld",
+    {
+      "decision": "https://datamodels.jp/ns/decision/",
+      "Decision": "decision:Decision",
+      "prov": "http://www.w3.org/ns/prov#",
+      "dpv": "https://w3id.org/dpv#",
+      "refersTo": {
+        "@id": "prov:used",
+        "@type": "@id"
+      },
+      "externalReference": "decision:externalReference",
+      "action": "decision:action",
+      "answers": "decision:answers",
+      "profile": "decision:profile",
+      "profileVersion": "decision:profileVersion",
+      "policyRule": "decision:policyRule",
+      "model": "decision:model",
+      "decidedAt": "prov:endedAtTime",
+      "humanInvolvement": "dpv:hasHumanInvolvement",
+      "reviewStatus": "decision:reviewStatus",
+      "finalAction": "decision:finalAction",
+      "reviewedBy": "decision:reviewedBy",
+      "reviewedAt": "decision:reviewedAt",
+      "corrections": "decision:corrections",
+      "wasInformedBy": {
+        "@id": "prov:wasInformedBy",
+        "@type": "@id"
+      }
+    }
+  ]
+}
