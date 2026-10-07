@@ -105,7 +105,7 @@ simplified, update the `JsonProperty`, and query the `VocabProperty`.
 |---|---|---|
 | Orion-LD post-1.12.0 (2026-09-25) | **Refused** (400, "Invalid type for attribute") | **Refused** (400) |
 | Scorpio 6.0.2 | Works; the simplified form leaves out the `json` wrapper | Works; same in the simplified form |
-| Stellio 2.38.0 | Works, but after an update a list with one item comes back as an object | Works |
+| Stellio 2.38.0 | Works, but after an update to a list with one item, reading it (normalized form) returns that item as an object instead of a list; the simplified form after an update was not checked | Works |
 | GeonicDB | Works | Works |
 
 Using these types means Orion-LD cannot store the entity until it supports
@@ -177,7 +177,8 @@ not for the data model.
 - ML Schema: http://ml-schema.github.io/documentation/ML%20Schema.html
 - FAIR4ML: https://rda-fair4ml.github.io/FAIR4ML-schema/release/0.1.0/index.html
 - Smart Data Models: https://github.com/smart-data-models (dataModel.SocialMedia, dataModel.MachineLearning, dataModel.Alert, dataModel.PredictiveMaintenance, dataModel.DataQuality)
-- ETSI GS CIM 009 V1.8.1: https://www.etsi.org/deliver/etsi_gs/CIM/001_099/009/01.08.01_60/gs_cim009v010801p.pdf
+- ETSI GS CIM 009 V1.9.1 (2025-07; current version, simplified representation in clause 4.5.4, `jsonKeys`): https://www.etsi.org/deliver/etsi_gs/CIM/001_099/009/01.09.01_60/gs_CIM009v010901p.pdf
+- ETSI GS CIM 009 V1.8.1 (2024-03; the version that added `JsonProperty` and `VocabProperty`): https://www.etsi.org/deliver/etsi_gs/CIM/001_099/009/01.08.01_60/gs_cim009v010801p.pdf
 - ETSI GR CIM 021: https://www.etsi.org/deliver/etsi_gr/CIM/001_099/021/01.01.01_60/gr_CIM021v010101p.pdf
 - EU AI Act (Regulation (EU) 2024/1689), Articles 6, 12, 14, 19, 26, 86, Annex III: https://artificialintelligenceact.eu/
 - GDPR Articles 13–15, 22: https://gdpr-info.eu/
