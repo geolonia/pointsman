@@ -135,7 +135,7 @@ not for the data model.
 - AIRO / VAIR: https://w3id.org/airo, https://w3id.org/vair
 - DQV: https://www.w3.org/TR/vocab-dqv/
 - ISO 19156:2023 / OGC OMS: https://docs.ogc.org/as/20-082r4/20-082r4.html
-- ISO/IEC 22989:2022 (preview): https://cdn.standards.iteh.ai/samples/74296/c4efbadbf1a146d4af6d62fcad09438f/ISO-IEC-22989-2022.pdf
+- ISO/IEC 22989:2022: https://www.iso.org/standard/74296.html (terms checked in the publisher's free preview)
 - ML Schema: http://ml-schema.github.io/documentation/ML%20Schema.html
 - FAIR4ML: https://rda-fair4ml.github.io/FAIR4ML-schema/release/0.1.0/index.html
 - Smart Data Models: https://github.com/smart-data-models (dataModel.SocialMedia, dataModel.MachineLearning, dataModel.Alert, dataModel.PredictiveMaintenance, dataModel.DataQuality)
