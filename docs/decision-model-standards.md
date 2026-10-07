@@ -75,7 +75,7 @@ because Clef returns a separate `confidence` value that means something else.
 | Smart Data Models `MLModel`, `MLProcessing` (MachineLearning) | No, for the record | Describe the model and the job, not results. `MLModel` could be what `model` points to. |
 | Smart Data Models `Alert`, `Anomaly`, `AIPrediction`, `DataQualityAssessment` | No | Alerts, anomalies, one domain (laser machines), data quality. `Alert` could be what an `urgent` decision creates (#50). |
 | ETSI ISG CIM reports | No model | No report on AI/ML results. GR CIM 017 (digital twins) suggests storing predictions as properties with a confidence and using multi-attribute instances, without names. |
-| NGSI-LD 1.8 `JsonProperty` | **Yes, for `answers`** | A raw JSON value whose keys are not expanded, made for structures like our answers. Needs brokers that support NGSI-LD 1.8; to check with GeonicDB, Orion-LD, Scorpio and Stellio (#52). Queries cannot look inside it, so `action` and the status stay normal properties. |
+| NGSI-LD 1.8 `JsonProperty` | **Yes, for `answers`** | A raw JSON value whose keys are not expanded, made for structures like our answers. Needs brokers that support it; Orion-LD does not yet (see below). Queries cannot look inside it, so `action` and the status stay normal properties. |
 | NGSI-LD `VocabProperty` | Yes, for `reviewStatus` | Values from a fixed vocabulary, as IRIs. |
 | NGSI-LD multi-attribute (`datasetId`) | Yes, optional | One instance per model when several models decide on the same entity. |
 | FIWARE projects (Cosmos, fiware-ml-supermarket, SEDIMARK, DEMETER) | No | Move data, describe marketplace assets, or use ad-hoc entities without probabilities. |
@@ -92,8 +92,24 @@ reasons in the tables above.
 | SOSA/SSN | W3C/OGC; 2017 Recommendation, 2023 edition in progress | Wide in IoT; ETSI GR CIM 021 shows it with NGSI-LD | W3C document licence | General; we only document equivalents, so nothing depends on the draft |
 | DPV | W3C Community Group, active (2.3, 2026) | EU compliance tools and research | W3C licence (Community Group report) | Written around EU law (GDPR, AI Act). We use only its general terms for human involvement, which fit Japanese practice (人間の判断の介在) as well |
 | ISO/IEC 22989 | ISO/IEC JTC 1/SC 42, published 2022 | Basis of later AI standards, including ISO/IEC 42001 | Paid standard; we use only its terms | International standard; terms only |
-| NGSI-LD (ETSI GS CIM 009) | ETSI ISG CIM, active (1.8.1, 2024) | FIWARE brokers, and smart city platforms in Japan that use FIWARE, GeonicDB among them | Free to download (ETSI) | Already the format of the entities the bridge reads |
+| NGSI-LD (ETSI GS CIM 009) | ETSI ISG CIM, active (1.9.1, July 2025; `JsonProperty` and `VocabProperty` since 1.8) | FIWARE brokers, and smart city platforms in Japan that use FIWARE, GeonicDB among them | Free to download (ETSI) | Already the format of the entities the bridge reads |
 | Smart Data Models `SMAnalysis` | Smart Data Models, one project (aqua3S) | Small | CC BY 4.0 | Not used; only supports the pattern |
+
+### Broker support for the NGSI-LD 1.8 property types
+
+Checked on 2026-10-07: create an entity with a `JsonProperty` (a list of
+answers) and a `VocabProperty` (a DPV term), read it back normalized and
+simplified, update the `JsonProperty`, and query the `VocabProperty`.
+
+| Broker | `JsonProperty` | `VocabProperty` |
+|---|---|---|
+| Orion-LD post-1.12.0 (2026-09-25) | **Refused** (400, "Invalid type for attribute") | **Refused** (400) |
+| Scorpio 6.0.2 | Works; the simplified form leaves out the `json` wrapper | Works; same in the simplified form |
+| Stellio 2.38.0 | Works, but after an update a list with one item comes back as an object | Works |
+| GeonicDB | Works | Works |
+
+Using these types means Orion-LD cannot store the entity until it supports
+them.
 
 ## What regulation and guidelines ask for
 
