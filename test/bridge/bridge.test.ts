@@ -340,6 +340,26 @@ describe('Decision entities', () => {
     expect(DECISION_TERMS).toEqual(inline);
   });
 
+  it('authenticates the Decision create like every other broker request', async () => {
+    const API_KEY = crypto.randomUUID();
+    const { notify, calls, config } = setup({ route: { decisionEntity: true } });
+    delete config.broker.token;
+    config.broker.apiKey = API_KEY;
+    await notify([entity()]);
+    const create = calls.find((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities')!;
+    expect(create.headers.get('x-api-key')).toBe(API_KEY);
+    expect(create.headers.get('ngsild-tenant')).toBe('demo');
+  });
+
+  it('uses one time for the entity and the property when Pointsman gives none', async () => {
+    const { created_at: _, ...older } = decision;
+    const { notify, calls } = setup({ route: { decisionEntity: true }, pointsman: () => Response.json(older) });
+    await notify([entity()]);
+    const created = calls.find((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities')!.body as { decidedAt: { value: { '@value': string } } };
+    const check = (calls.at(-1)!.body as { check: { observedAt: string } }).check;
+    expect(check.observedAt).toBe(created.decidedAt.value['@value']);
+  });
+
   it('checks the route options', () => {
     expect(parseRoutes(JSON.stringify([{ ...route, decisionEntity: true, reviewActions: ['review', 'urgent'] }]))[0]).toMatchObject({ decisionEntity: true, reviewActions: ['review', 'urgent'] });
     expect(() => parseRoutes(JSON.stringify([{ ...route, decisionEntity: 'yes' }]))).toThrow(/decisionEntity/);

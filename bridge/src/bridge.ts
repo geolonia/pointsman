@@ -179,11 +179,13 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     return { id: entity.id, error: 'unexpected answer from pointsman', retry: true };
   }
 
+  // One time for the entity and the property, when Pointsman gives none (older versions).
+  const decidedAt = new Date();
   // The Decision entity first: the property on the entity points to it, and
   // without it a retry decides again (no input hash written yet).
   let decisionRef: string | undefined;
   if (route.decisionEntity) {
-    const created = await createDecisionEntity(toDecisionEntity(d, entity.id, route), config);
+    const created = await createDecisionEntity(toDecisionEntity(d, entity.id, route, decidedAt), config);
     // 409: a retry of a notification whose entity was created, then the write failed.
     if (!created.ok && created.status !== 409) {
       return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
@@ -191,7 +193,7 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     decisionRef = decisionEntityId(d.decision_id);
   }
 
-  const property = toProperty(d, hash, new Date(), decisionRef);
+  const property = toProperty(d, hash, decidedAt, decisionRef);
   const write = await writeAttribute(entity.id, route.attribute, property, config);
   // Without a successful write the input hash is not stored either, so the
   // next notification decides again: report it as a failure.
@@ -252,6 +254,16 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
   return property;
 }
 
+/** Authentication, tenant and content type: the same for every request to the broker. */
+function brokerHeaders(config: BridgeConfig, contentType: string): Record<string, string> {
+  const { broker } = config;
+  const headers: Record<string, string> = { 'content-type': contentType };
+  if (broker.token) headers.authorization = `Bearer ${broker.token}`;
+  if (broker.apiKey) headers['x-api-key'] = broker.apiKey;
+  if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
+  return headers;
+}
+
 /**
  * Writes one attribute with `PATCH …/attrs/{name}`; the first time, when the
  * attribute does not exist yet (404), appends it with `POST …/attrs`. Not
@@ -261,10 +273,7 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
 async function writeAttribute(id: string, name: string, property: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
   const fetchFn = config.fetch ?? fetch;
   const { broker } = config;
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (broker.token) headers.authorization = `Bearer ${broker.token}`;
-  if (broker.apiKey) headers['x-api-key'] = broker.apiKey;
-  if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
+  const headers = brokerHeaders(config, 'application/json');
   if (broker.context) headers.link = `<${broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const attrs = `${broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}/attrs`;
   const write = await fetchFn(`${attrs}/${encodeURIComponent(name)}`, { method: 'PATCH', headers, body: JSON.stringify(property) });
@@ -344,8 +353,6 @@ async function createDecisionEntity(entity: Record<string, unknown>, config: Bri
   const fetchFn = config.fetch ?? fetch;
   const { broker } = config;
   // The context is in the body, so no Link header.
-  const headers: Record<string, string> = { 'content-type': 'application/ld+json' };
-  if (broker.token) headers.authorization = `Bearer ${broker.token}`;
-  if (broker.tenant) headers['NGSILD-Tenant'] = broker.tenant;
+  const headers = brokerHeaders(config, 'application/ld+json');
   return fetchFn(`${broker.url}/ngsi-ld/v1/entities`, { method: 'POST', headers, body: JSON.stringify(entity) });
 }
