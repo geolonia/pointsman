@@ -345,14 +345,14 @@ export async function makeDecision(
     profile: profile.id,
     profile_version: profile.version,
     model,
+    created_at: new Date().toISOString(),
+    rule,
   };
   // Every decision is logged before it is returned. If the log fails, the
   // client gets a 500 and must not act on an unlogged decision.
   await log.insert({
     ...decision,
-    created_at: new Date().toISOString(),
     client: client.client,
-    rule,
     state_hash: await hashState(state),
     ...(profile.log?.store_state && { state }),
     ...(body.callback_url !== undefined && { callback_url: body.callback_url }),

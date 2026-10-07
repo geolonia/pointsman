@@ -48,7 +48,12 @@ describe('POST /v1/decide/{profile}', () => {
       model: 'mock',
       // Mock: team.p = 0.9, and the rule is team.p >= 0.85.
       action: 'auto',
+      rule: 0,
     });
+    expect(Date.parse(d.created_at)).not.toBeNaN();
+    // The response and the log agree.
+    const logged = await (await exports.default.fetch(`${BASE}/v1/decisions/${d.decision_id}`, { headers: auth })).json<any>();
+    expect(logged).toMatchObject({ created_at: d.created_at, rule: 0 });
     expect(d.answers.team).toMatchObject({ type: 'choice', value: 'backend', p: 0.9 });
     expect(d.answers.urgent).toEqual({ type: 'noul', value: false, p: 0.8, yes: 0.2 });
     expect(d.answers.effort).toMatchObject({ type: 'score', value: 0, p: 0.7 });
@@ -67,6 +72,7 @@ describe('POST /v1/decide/{profile}', () => {
     expect(d.ref).toBeUndefined();
     // Mock: stuck.yes = 0.2, below both rules.
     expect(d.action).toBe('continue');
+    expect(d.rule).toBeNull();
   });
 
   it('serves a given version', async () => {
