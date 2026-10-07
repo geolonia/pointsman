@@ -250,7 +250,7 @@ components:
     Decision:
       type: object
       additionalProperties: false
-      required: [decision_id, answers, action, profile, profile_version, model]
+      required: [decision_id, answers, action, profile, profile_version, model, created_at, rule]
       properties:
         decision_id: { type: string, format: uuid }
         ref: { type: string }
@@ -266,6 +266,11 @@ components:
         model:
           description: The model that answered.
           type: string
+        created_at: { type: string, format: date-time, description: When the decision was made. }
+        rule:
+          description: Index of the policy rule that matched (from 0); null when the default action applied.
+          type: [integer, 'null']
+          minimum: 0
     DecisionRecord:
       allOf:
         - $ref: '#/components/schemas/DecisionRecordBase'
