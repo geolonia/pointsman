@@ -107,7 +107,7 @@ export class GsiFactProvider implements FactProvider {
       if (!c) throw new FactError(`flood tile colour ${r},${gr},${b} is not in the legend`);
       if (!worst || c.rank > worst.rank) worst = c;
     }
-    const date = latest([...tiles.values()].map((t) => t.date));
+    const date = dataDate([...tiles.values()]);
     return {
       values: worst ? { inside: true, rank: worst.rank, class: worst.class } : { inside: false, rank: 0, class: '' },
       source: FLOOD.source(date),
@@ -141,7 +141,7 @@ export class GsiFactProvider implements FactProvider {
     }
     return {
       values: best ? { found: true, distance_m: Math.round(best.d), name: best.name } : { found: false, distance_m: null, name: null },
-      source: SHELTERS.source(latest(tiles.map((t) => t.date))),
+      source: SHELTERS.source(dataDate(tiles)),
     };
   }
 
@@ -192,10 +192,15 @@ export class GsiFactProvider implements FactProvider {
   }
 }
 
-/** The latest of the tiles' dates, or "date unknown". */
-function latest(dates: string[]): string {
-  const known = dates.filter(Boolean).sort();
-  return known.length ? `${known[known.length - 1]} 時点` : '日付不明';
+/**
+ * The date of the data: the oldest date of the tiles that had data, so a
+ * fact is never shown as newer than its oldest part. Unknown when any of
+ * them has no date, or none had data.
+ */
+function dataDate(tiles: Tile<unknown>[]): string {
+  const dates = tiles.filter((t) => t.data !== null).map((t) => t.date);
+  if (dates.length === 0 || dates.some((d) => d === '')) return '日付不明';
+  return `${dates.sort()[0]} 時点`;
 }
 
 function shelterList(bytes: Uint8Array): Shelter[] {

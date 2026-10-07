@@ -105,6 +105,20 @@ describe('flood zones', () => {
     expect(r.source).toBe('「ハザードマップポータルサイト」洪水浸水想定区域（想定最大規模）を加工して作成（2025-08-20 時点）');
   });
 
+  it('date the data by the oldest tile used, and say when a date is unknown', async () => {
+    const line: Geometry = { type: 'LineString', coordinates: [[139.7500, 35.6855], [139.7530, 35.6855]] };
+    const dates = new Map<string, string>();
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      // The first tile asked for is older than the others.
+      if (!dates.has(url)) dates.set(url, dates.size === 0 ? 'Mon, 01 Jul 2024 00:00:00 GMT' : MODIFIED);
+      return new Response(await png(() => DEEP), { headers: { 'last-modified': dates.get(url)! } });
+    }) as typeof fetch;
+    expect((await lookup(new GsiFactProvider({ fetch: fetchFn }), line)).source).toContain('2024-07-01 時点');
+    const undated = (async () => new Response(await png(() => DEEP))) as typeof fetch;
+    expect((await lookup(new GsiFactProvider({ fetch: undated }), line)).source).toContain('日付不明');
+  });
+
   it('are not inside where the tile is transparent or missing', async () => {
     expect((await lookup(new GsiFactProvider({ fetch: fakeServer(() => png(() => NONE)).fetchFn }))).values).toEqual({ inside: false, rank: 0, class: '' });
     const missing = await lookup(new GsiFactProvider({ fetch: fakeServer(async () => null).fetchFn }));

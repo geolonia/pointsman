@@ -238,8 +238,11 @@ Layers of `gsi`:
   「ハザードマップポータルサイト」洪水浸水想定区域（想定最大規模）を加工して作成（2025-08-20 時点）);
   a page that shows a fact shows its `source` too.
 - Tiles are cached for a day, in memory and in the Workers cache. A flood
-  lookup reads one or a few tiles; an evacuation site lookup reads up to four
-  tiles of about 350 KB.
+  lookup reads one or a few tiles (at most 16). An evacuation site lookup
+  reads the tiles within 5 km: up to four of about 350 KB for a point, up to
+  nine for a long line (about 3 MB with cold caches; fine on Workers Paid).
+- The date in `source` is the oldest date of the tiles that had data, and
+  "日付不明" when one of them has no date.
 - A colour that is not in the legend fails the lookup (`error`) instead of
   guessing, so a change of the tiles shows up at once.
 
