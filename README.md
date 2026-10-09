@@ -70,6 +70,10 @@ decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
   issues from a Pointsman decision, or asks for a human review.
 - [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a
   CloudFormation deploy when Pointsman judges it stuck.
+- [FIWARE bridge](bridge/): connects an NGSI-LD context broker to Pointsman.
+  Pointsman itself knows nothing about FIWARE; the bridge subscribes to
+  entities, asks Pointsman, and writes the decisions back to the broker as
+  data. [Why a bridge](bridge/README.md#why-a-bridge) explains the role.
 
 ## API tokens
 

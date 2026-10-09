@@ -5,6 +5,41 @@ one of its input attributes changes, the broker notifies the bridge; the
 bridge asks Pointsman to decide about the entity, and writes the result back
 to the entity as one property.
 
+## Why a bridge
+
+Pointsman and a FIWARE context broker do not speak each other's language:
+
+- **Pointsman knows nothing about FIWARE.** It has a plain HTTP API: send a
+  state, get a decision. It does not know NGSI-LD entities, subscriptions or
+  JSON-LD contexts. This keeps it usable from anywhere, for example a GitHub
+  Action or an MCP client.
+- **A broker cannot use Pointsman on its own.** A subscription can only send
+  a notification to a URL. It cannot turn it into Pointsman's request, and it
+  cannot write the answer back.
+
+The bridge is the FIWARE-specific part in between. It is not a proxy that
+passes requests through. It is a FIWARE connector (an NGSI-LD adapter) that
+both consumes and produces context:
+
+- **In:** it receives the broker's notifications and asks Pointsman, with the
+  profile for the entity type.
+- **Back:** it writes the result into the broker as data other FIWARE apps
+  can use: a property on the entity, and optionally `Decision` and `Task`
+  entities ([datamodels.jp](https://datamodels.jp)).
+- **Its own work:** it skips notifications caused by its own writes, chains
+  decisions, and resolves reviews that a person finishes in the broker or in
+  another app. With a queue, it also retries until a decision is made.
+
+In FIWARE terms it plays a role like an IoT Agent (a translator between a
+system and the broker) combined with a notification consumer such as
+QuantumLeap. It is not a FIWARE Generic Enabler: that is a label for
+components in the FIWARE catalogue.
+
+It runs as its own Cloudflare Worker (this folder), or inside another Worker,
+as in the demo. A city can run it in its own account, next to its broker.
+
+## How it works
+
 ```mermaid
 sequenceDiagram
   participant Broker as Context broker
