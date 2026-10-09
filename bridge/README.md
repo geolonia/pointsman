@@ -172,6 +172,66 @@ names (full IRIs work too):
 Send it with `Link: <https://datamodels.jp/context/decision/v1.jsonld>`, so
 `Decision` and `reviewStatus` are read from the Decision context.
 
+## Work orders from other apps
+
+Apps that manage work as their own `Task` entities, for example Redmine with
+the [GTT FIWARE plugin](https://github.com/gtt-project/redmine_gtt_fiware),
+do not write `Decision` entities. With `BRIDGE_WORK_ORDERS`, the bridge
+reads their completed Tasks as the person's answer:
+
+1. The app subscribes to the entities (for example `RoadRestriction` with
+   `q=check=="review"|check=="urgent"`) and creates its own work order for
+   each, at the entity's location.
+2. When the person closes it, the app publishes it as a `Task` with
+   `refersTo` the entity, `progress` `completed`, and its own status name as
+   `statusLabel`. GTT does this with issue emission in the Task vocabulary.
+3. The bridge maps `statusLabel` to a final action
+   (`BRIDGE_WORK_ORDERS`, for example `{"Published": "publish", "Rejected":
+   "reject"}`). It then writes it to the Decision of the entity's result that
+   waits for a person: `reviewStatus` `resolved`, `finalAction`, `reviewedBy`
+   (`redmine:<instance>#<issue>` for GTT, otherwise the Task's id) and
+   `reviewedAt` (the Task's `dateModified`).
+4. The broker notifies `/reviews` about the Decision, and the steps above do
+   the rest: Pointsman, the entity's result, the bridge's own Task.
+
+Details:
+
+- An unmapped status, a Task that is not completed, and an entity whose
+  result is already resolved or needs no person are skipped.
+- First writer wins: a Decision that is already resolved (by another work
+  order or app) is left alone. Between that read and the write there is a
+  short window (NGSI-LD has no conditional update); if a second writer gets
+  through, `/reviews` sees that the Decision says something other than what
+  Pointsman accepted, reports it and writes nothing.
+- Refused (no retry): a Task id longer than 100 characters (Pointsman's limit
+  for who resolved it), a Task without `dateModified` (the bridge does not make
+  up the time), and an entity with two results waiting for a person at once
+  (for example both steps of a chain): the Task names only the entity, so it
+  is not clear which decision it answers.
+- The bridge's own Tasks are skipped too, recognised by their id
+  (`urn:ngsi-ld:Task:` and 32 hexadecimal digits): other apps must not use
+  that form.
+- Corrections of answers cannot come this way yet.
+- The subscription goes to `/reviews` as well:
+
+```json
+{
+  "type": "Subscription",
+  "entities": [{ "type": "Task" }],
+  "watchedAttributes": ["progress"],
+  "q": "progress==\"completed\"",
+  "jsonldContext": "https://datamodels.jp/context/task/v1.jsonld",
+  "notification": {
+    "format": "normalized",
+    "endpoint": {
+      "uri": "https://<bridge>/reviews",
+      "accept": "application/json",
+      "receiverInfo": [{ "key": "x-bridge-secret", "value": "<NOTIFY_SECRET>" }]
+    }
+  }
+}
+```
+
 ## Chains of decisions
 
 A second route on the same entity type can decide on the first route's
@@ -220,6 +280,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 |---|---|
 | `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first, default `["review"]`), `name` and `informedBy` (for chains, above), `task` (also create Task entities, above) |
 | `POINTSMAN_URL` | Pointsman's base URL |
+| `BRIDGE_WORK_ORDERS` | Optional JSON object: a completed work order's `statusLabel` to the final action, for example `{"Published": "publish"}` (see "Work orders from other apps") |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
 | `BROKER_TENANT` | Optional: sent as `NGSILD-Tenant`. One bridge serves one tenant. |
 | `BROKER_CONTEXT` | Optional: JSON-LD context URL for the writes, when the entity's attribute names are not core terms (for example the datamodels.jp context) |
