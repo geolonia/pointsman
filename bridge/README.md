@@ -123,8 +123,9 @@ API: the app writes the result to the `Decision` entity, and a subscription
 sends it to the bridge's `/reviews`.
 
 - The app sets `reviewStatus` to `resolved`, `finalAction` (for example
-  `publish`), `reviewedBy` (an account or role, not a personal name), and
-  optionally `reviewedAt` and `corrections` (a `JsonProperty` list of
+  `publish`), `reviewedBy` (an account or role, not a personal name),
+  `reviewedAt` (an RFC 3339 date and time; the Decision model requires it
+  with `resolved`), and optionally `corrections` (a `JsonProperty` list of
   `{name, value, by, at}`, as in the Decision model).
 - The bridge resolves the review in Pointsman. For an action Pointsman did
   not queue (only `review` is queued, for example not `urgent`), it sends the

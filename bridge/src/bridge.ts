@@ -527,7 +527,7 @@ function notSentYet(correct: Record<string, unknown>, by: string, feedback: { by
 
 /**
  * A Decision entity a person resolved in the broker (`reviewStatus`
- * "resolved", `finalAction`, `reviewedBy`, optional `corrections`):
+ * "resolved", `finalAction`, `reviewedBy`, `reviewedAt`, optional `corrections`):
  * resolves the review in Pointsman (or sends the corrections as feedback for
  * an action Pointsman did not queue), then writes the final action to the
  * entity's result and completes its Task. Safe to repeat: a resolved review
@@ -547,7 +547,8 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   // the broker refuses could not be fixed by a retry.
   const reviewedAtAttr = decisionAttr(decision, 'reviewedAt');
   const reviewedAt = dateValue(valueOf(reviewedAtAttr));
-  if (reviewedAtAttr && (reviewedAt === undefined || !isDateTime(reviewedAt))) {
+  // Required with "resolved" (Decision model), and the same on every repeat.
+  if (!reviewedAtAttr || reviewedAt === undefined || !isDateTime(reviewedAt)) {
     return { id, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false };
   }
 
@@ -612,13 +613,13 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   const route = candidates.find((r) => r.type === current.type && linked(r)) ?? candidates.find(linked);
   if (!route) return { id, review, written: false };
   const result = current[route.attribute] as Record<string, unknown>;
-  const when = reviewedAt ?? new Date().toISOString();
+  const when = reviewedAt;
   const write = await writeAttribute(target, route.attribute, {
     ...result,
     finalAction: { type: 'Property', value: finalAction },
     reviewedAt: { type: 'Property', value: when },
   }, config);
-  if (!write.ok) return { id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
+  if (!updatedAll(write)) return { id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
   const hash = valueOf(result?.inputHash);
   if (route.task && typeof hash === 'string') {
     const done = await brokerRequest('POST', await taskEntityId(target, route.attribute, hash), config, {

@@ -735,6 +735,7 @@ describe('reviews resolved in the broker', () => {
       'https://datamodels.jp/ns/decision/reviewStatus': P('resolved'),
       'https://datamodels.jp/ns/decision/finalAction': P('reject'),
       'https://datamodels.jp/ns/decision/reviewedBy': P('app:reviewer-1'),
+      'https://datamodels.jp/ns/decision/reviewedAt': P({ '@type': 'DateTime', '@value': '2026-10-09T03:00:00Z' }),
     };
     expect(await (await t.send([full])).json()).toEqual({ handled: [{ id: D, review: 'resolved', written: true }] });
     expect(t.calls[1]!.body).toEqual({ action: 'reject', correct: {}, by: 'app:reviewer-1' });
@@ -798,6 +799,13 @@ describe('reviews resolved in the broker', () => {
     expect(await refused.json()).toMatchObject({ handled: [{ error: 'pointsman answered 400', retry: false }] });
     // A partial update (207) of the Task is not done.
     expect(await (await reviews({ task: 207 }).send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task update: 207' }] });
+    // A partial update (207) of the result does not complete the Task.
+    const partial = reviews({ entity: undefined });
+    const fetchFn = partial.config.fetch!;
+    partial.config.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
+      (init?.method === 'PATCH' ? new Response('{}', { status: 207 }) : fetchFn(input, init))) as typeof fetch;
+    expect(await (await partial.send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker write failed: 207' }] });
+    expect(partial.calls.some((c) => c.url.includes('Task'))).toBe(false);
     // No Task (404) is fine.
     expect(await (await reviews({ task: 404 }).send([resolved()])).json()).toMatchObject({ handled: [{ written: true }] });
   });
@@ -821,7 +829,7 @@ describe('reviews resolved in the broker', () => {
   });
 
   it('refuses a reviewedAt that is not a date and time, before sending anything', async () => {
-    for (const bad of [P('yesterday'), P({ '@type': 'DateTime', '@value': '2026-10-09' }), P(42), P('2026-02-30T03:00:00Z'), P('2026-01-01T24:00:00Z'), P('2026-01-01T10:00:00+25:00')]) {
+    for (const bad of [undefined, P('yesterday'), P({ '@type': 'DateTime', '@value': '2026-10-09' }), P(42), P('2026-02-30T03:00:00Z'), P('2026-01-01T24:00:00Z'), P('2026-01-01T10:00:00+25:00')]) {
       const t = reviews();
       expect(await (await t.send([resolved({ reviewedAt: bad })])).json()).toEqual({ handled: [{ id: D, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false }] });
       expect(t.calls).toHaveLength(0);
