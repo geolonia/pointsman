@@ -116,6 +116,62 @@ a person, without knowing about Pointsman.
 - `@context` is `https://datamodels.jp/context/task/v1.jsonld`
   (`TASK_CONTEXT`).
 
+## Reviews resolved in the broker
+
+A person can resolve a decision in their own FIWARE app, without Pointsman's
+API: the app writes the result to the `Decision` entity, and a subscription
+sends it to the bridge's `/reviews`.
+
+- The app sets `reviewStatus` to `resolved`, `finalAction` (for example
+  `publish`), `reviewedBy` (an account or role, not a personal name),
+  `reviewedAt` (an RFC 3339 date and time; the Decision model requires it
+  with `resolved`), and optionally `corrections` (a `JsonProperty` list of
+  `{name, value, by, at}`, as in the Decision model).
+- The bridge resolves the review in Pointsman. For an action Pointsman did
+  not queue (only `review` is queued, for example not `urgent`), it sends the
+  corrections as feedback instead.
+- Then it writes `finalAction` and `reviewedAt` to the entity's result (for
+  example `check`), and completes the Task, when the entity still has this
+  decision.
+- Safe to repeat: a review Pointsman already has as resolved, or the same
+  feedback from the same person, is not sent again. So a review resolved
+  through Pointsman's API and then written to the Decision does no harm.
+- Who may resolve is decided by the broker's access control: the bridge takes
+  `reviewedBy` as written.
+- Pointsman's resolution counts: if the review is already resolved there
+  with another action, the bridge reports it and writes nothing.
+- Two notifications for the same Decision at the same moment can both send
+  the same corrections as feedback (Pointsman's feedback has no key that
+  makes a repeat harmless); the values are the same.
+- NGSI-LD has no conditional update, so there is a short window: if a new
+  decision is written to the entity between the bridge's read and its write,
+  the review's write puts the older result back. The next change of the
+  inputs decides again.
+
+The subscription, with the Decision context so the notification has short
+names (full IRIs work too):
+
+```json
+{
+  "type": "Subscription",
+  "entities": [{ "type": "Decision" }],
+  "watchedAttributes": ["reviewStatus"],
+  "q": "reviewStatus==\"resolved\"",
+  "jsonldContext": "https://datamodels.jp/context/decision/v1.jsonld",
+  "notification": {
+    "format": "normalized",
+    "endpoint": {
+      "uri": "https://<bridge>/reviews",
+      "accept": "application/json",
+      "receiverInfo": [{ "key": "x-bridge-secret", "value": "<NOTIFY_SECRET>" }]
+    }
+  }
+}
+```
+
+Send it with `Link: <https://datamodels.jp/context/decision/v1.jsonld>`, so
+`Decision` and `reviewStatus` are read from the Decision context.
+
 ## Chains of decisions
 
 A second route on the same entity type can decide on the first route's
