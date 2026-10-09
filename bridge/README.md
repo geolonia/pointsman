@@ -109,7 +109,7 @@ a person, without knowing about Pointsman.
 - Like the Decision entity, it is created before the property is written.
 - The Task follows the latest decision for these input values: one that
   exists already (a retry, or values that came back after a change) is
-  replaced; when a later decision for the same values needs no person, an
+  updated in place (open again, without its old `completedAt`); when a later decision for the same values needs no person, an
   open Task is set to `cancelled`, a done one stays.
 - Apart from that cancel, the bridge does not change `progress`: whoever
   resolves the review sets it to `completed` (or `cancelled`).

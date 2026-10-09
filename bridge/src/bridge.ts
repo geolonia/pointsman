@@ -484,18 +484,24 @@ export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, 
 }
 
 /**
- * Creates the Task, or replaces one with the same id: from a retry, or from
- * earlier input values that came back (A, B, A), where the old Task may be
- * done already and the work is new. Returns the failed response, if any.
+ * Creates the Task, or updates one with the same id in place: from a retry,
+ * or from earlier input values that came back (A, B, A), where the old Task
+ * may be done already and the work is new. In place, so a failure leaves the
+ * old Task as it was; a retry finishes the update. Returns the failed
+ * response, if any.
  */
 async function putTask(task: Record<string, unknown>, config: BridgeConfig): Promise<Response | null> {
-  let created = await createEntity(task, config);
-  if (created.status === 409) {
-    const removed = await brokerRequest('DELETE', task.id as string, config);
+  const created = await createEntity(task, config);
+  if (created.status !== 409) return created.ok ? null : created;
+  const { id, type: _, ...attributes } = task;
+  const updated = await brokerRequest('POST', id as string, config, attributes);
+  if (!updated.ok) return updated;
+  // What the new state does not have: the old completion, an old priority.
+  for (const name of ['completedAt', ...(task.priority ? [] : ['priority'])]) {
+    const removed = await brokerRequest('DELETE', id as string, config, undefined, name);
     if (!removed.ok && removed.status !== 404) return removed;
-    created = await createEntity(task, config);
   }
-  return created.ok ? null : created;
+  return null;
 }
 
 /**
@@ -517,10 +523,11 @@ async function cancelOpenTask(id: string, action: string, config: BridgeConfig):
   return updated.ok ? null : updated;
 }
 
-/** GET or DELETE an entity, or POST attributes to it, with the Task context. */
-function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown): Promise<Response> {
+/** GET an entity, DELETE it or one attribute, or POST attributes to it, with the Task context. */
+function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown, attribute?: string): Promise<Response> {
   const fetchFn = config.fetch ?? fetch;
-  const url = `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}${method === 'POST' ? '/attrs' : ''}`;
+  const path = method === 'POST' ? '/attrs' : attribute ? `/attrs/${encodeURIComponent(attribute)}` : '';
+  const url = `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}${path}`;
   const headers = brokerHeaders(config, 'application/ld+json');
   if (method !== 'POST') {
     delete headers['content-type'];

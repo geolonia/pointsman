@@ -513,7 +513,7 @@ describe('Task entities', () => {
     const tasks = t.calls.filter((c) => (c.body as { type?: string } | undefined)?.type === 'Task').map((c) => (c.body as { id: string }).id);
     const decisions = t.calls.filter((c) => (c.body as { type?: string } | undefined)?.type === 'Decision').map((c) => (c.body as { id: string }).id);
     expect(decisions).toEqual(['urn:ngsi-ld:Decision:d-1', 'urn:ngsi-ld:Decision:d-2']);
-    expect(tasks).toHaveLength(3); // created, 409 on the retry, created again after the delete
+    expect(tasks).toHaveLength(2); // created, then 409 on the retry and updated in place
     expect(new Set(tasks).size).toBe(1);
     expect(store.tasks.size).toBe(1);
   });
@@ -540,10 +540,10 @@ describe('Task entities', () => {
     expect(created[0]!.body).not.toHaveProperty('priority');
   });
 
-  /** A broker that keeps Tasks: 409 for an id it has, DELETE removes, GET reads, POST …/attrs updates. */
+  /** A broker that keeps Tasks: 409 for an id it has, DELETE removes it or an attribute, GET reads, POST …/attrs updates. */
   function taskStore() {
     const tasks = new Map<string, Record<string, unknown>>();
-    const idOf = (url: string) => decodeURIComponent(url.split('/entities/')[1]!.replace(/\/attrs$/, ''));
+    const idOf = (url: string) => decodeURIComponent(url.split('/entities/')[1]!.split('/attrs')[0]!);
     const handler = (c: Call): Response | undefined => {
       const body = c.body as Record<string, unknown> | undefined;
       if (c.url === 'https://broker.test/ngsi-ld/v1/entities' && body?.type === 'Task') {
@@ -554,7 +554,13 @@ describe('Task entities', () => {
       if (!c.url.includes('urn%3Angsi-ld%3ATask%3A')) return undefined;
       const task = tasks.get(idOf(c.url));
       if (!task) return new Response(null, { status: 404 });
-      if (c.method === 'DELETE') { tasks.delete(idOf(c.url)); return new Response(null, { status: 204 }); }
+      if (c.method === 'DELETE') {
+        const attr = c.url.split('/attrs/')[1];
+        if (!attr) tasks.delete(idOf(c.url));
+        else if (!(attr in task)) return new Response(null, { status: 404 });
+        else delete task[attr];
+        return new Response(null, { status: 204 });
+      }
       if (c.method === 'GET') return Response.json(task);
       if (c.method === 'POST') { Object.assign(task, body); return new Response(null, { status: 204 }); }
       return undefined;
@@ -568,17 +574,33 @@ describe('Task entities', () => {
     await t.notify([entity()]);
     const [id] = [...store.tasks.keys()];
     // A person completed it; then the report changed and came back to the same text.
-    store.tasks.get(id!)!.progress = P('completed');
+    Object.assign(store.tasks.get(id!)!, { progress: P('completed'), completedAt: P('2026-10-09T00:00:00Z'), assignee: { type: 'Relationship', object: 'urn:x:team' } });
     const res = await t.notify([entity()]);
     expect(res.status).toBe(200);
-    expect(store.tasks.get(id!)!.progress).toEqual(P('needs-action'));
-    expect(t.calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!))).toEqual([id]);
+    const stored = store.tasks.get(id!)!;
+    expect(stored.progress).toEqual(P('needs-action'));
+    expect(stored).not.toHaveProperty('completedAt');
+    // Updated in place: what an app added stays.
+    expect(stored.assignee).toEqual({ type: 'Relationship', object: 'urn:x:team' });
+    expect(t.calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!))).toEqual([`${id}/attrs/completedAt`]);
   });
 
-  it('reports a Task it cannot replace, and writes no result', async () => {
+  it('drops an old priority the new decision does not have', async () => {
+    let action = 'urgent';
+    const store = taskStore();
+    const t = setup({ pointsman: () => Response.json({ ...decision, action }), route: { task: { actions: ['urgent', 'review'], priority: { urgent: 1 } } }, handler: store.handler });
+    await t.notify([entity()]);
+    const [id] = [...store.tasks.keys()];
+    action = 'review';
+    await t.notify([entity()]);
+    expect(store.tasks.get(id!)).not.toHaveProperty('priority');
+    expect(store.tasks.get(id!)!.statusLabel).toEqual(P('review'));
+  });
+
+  it('reports a Task it cannot update, and writes no result', async () => {
     const t = setup({ pointsman: urgent, route: { task }, handler: (c) => {
       if ((c.body as { type?: string } | undefined)?.type === 'Task') return new Response(null, { status: 409 });
-      if (c.method === 'DELETE') return new Response(null, { status: 503 });
+      if (c.method === 'POST' && c.url.includes('Task')) return new Response(null, { status: 503 });
       return undefined;
     } });
     const res = await t.notify([entity()]);

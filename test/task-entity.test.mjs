@@ -27,7 +27,7 @@ function values(entity) {
 
 const decision = { decision_id: '7d20731d-5cc8-4315-97ba-1576c5466269', action: 'review', profile: 'road-restriction-check', profile_version: 1, model: 'clef-flash', created_at: '2026-07-08T01:46:12.000Z', answers: {} };
 const entity = { id: 'urn:ngsi-ld:RoadRestriction:0001', type: 'RoadRestriction', roadName: { type: 'Property', value: '県道12号' } };
-const ID = 'urn:ngsi-ld:Task:0f3c2a9b6d1e4f5a8b7c6d5e4f3a2b1c';
+const ID = 'urn:ngsi-ld:Task:example-1';
 const options = { actions: ['review', 'urgent'], name: 'roadName', priority: { urgent: 1, review: 5 } };
 
 test('a Task entity from the bridge matches the data model schema', () => {
