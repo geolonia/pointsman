@@ -644,7 +644,7 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
 
 // --- Work orders from other apps (#85) -------------------------------------
 
-type WorkOrderSkip = 'not completed' | 'status not mapped' | 'nothing to resolve' | 'own task';
+type WorkOrderSkip = 'not completed' | 'status not mapped' | 'nothing to resolve' | 'own task' | 'already resolved';
 
 const TASK_NS = 'https://datamodels.jp/ns/task/';
 
@@ -693,11 +693,12 @@ export function parseWorkOrders(json: string): Record<string, string> {
 /**
  * Who resolved it, as an account and not a person: for a Redmine GTT work
  * order (`urn:ngsi-ld:Issue:redmine:<instance>:<issue>`) `redmine:<instance>#<issue>`,
- * otherwise the Task's id.
+ * otherwise the Task's id. Undefined when longer than Pointsman takes (100).
  */
-function workOrderBy(id: string): string {
+function workOrderBy(id: string): string | undefined {
   const gtt = /^urn:ngsi-ld:Issue:redmine:([^:]+):(\d+)$/.exec(id);
-  return (gtt ? `redmine:${gtt[1]}#${gtt[2]}` : id).slice(0, 100);
+  const by = gtt ? `redmine:${gtt[1]}#${gtt[2]}` : id;
+  return by.length <= 100 ? by : undefined;
 }
 
 /**
@@ -713,6 +714,8 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const label = valueOf(taskAttr(task, 'statusLabel'));
   if (typeof label !== 'string' || !Object.hasOwn(mapping, label)) return { id, skipped: 'status not mapped' };
   const finalAction = mapping[label]!;
+  const by = workOrderBy(id);
+  if (by === undefined) return { id, error: 'the Task id is too long to name who resolved it (at most 100 characters)', retry: false };
   // The time the person closed it, from the app: never the bridge's clock.
   const modified = dateValue(valueOf(taskAttr(task, 'dateModified')));
   if (modified === undefined || !isDateTime(modified)) return { id, error: 'dateModified: expected a date and time (RFC 3339)', retry: false };
@@ -751,11 +754,17 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const pending = waiting[0]!;
   const decision = ((current[pending.attribute] as Record<string, unknown>).decision as { object: string }).object;
 
+  // First writer wins: another work order (or app) may have resolved the
+  // Decision since the entity's result was written. Read it, not the result.
+  const seen = await brokerRequest('GET', decision, config, undefined, undefined, DECISION_CONTEXT);
+  if (!seen.ok) return { id, error: `broker read failed: ${seen.status}`, retry: retryable(seen.status) };
+  if (valueOf((await seen.json() as Entity).reviewStatus) === 'resolved') return { id, skipped: 'already resolved' };
+
   const res = await brokerRequest('POST', decision, config, {
     '@context': [DECISION_CONTEXT, CORE_CONTEXT],
     reviewStatus: { type: 'Property', value: 'resolved' },
     finalAction: { type: 'Property', value: finalAction },
-    reviewedBy: { type: 'Property', value: workOrderBy(id) },
+    reviewedBy: { type: 'Property', value: by },
     reviewedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': modified } },
   });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
@@ -848,8 +857,8 @@ async function cancelOpenTask(id: string, action: string, config: BridgeConfig):
 /** 2xx, but not 207: NGSI-LD answers an update with 207 when some attributes were not updated. */
 const updatedAll = (res: Response) => res.ok && res.status !== 207;
 
-/** GET an entity, DELETE it or one attribute, or POST attributes to it, with the Task context. */
-function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown, attribute?: string): Promise<Response> {
+/** GET an entity, DELETE it or one attribute, or POST attributes to it; reads and deletes with the Task context unless another is given. */
+function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown, attribute?: string, context = TASK_CONTEXT): Promise<Response> {
   const fetchFn = config.fetch ?? fetch;
   const path = method === 'POST' ? '/attrs' : attribute ? `/attrs/${encodeURIComponent(attribute)}` : '';
   const url = `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}${path}`;
@@ -857,7 +866,7 @@ function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: Br
   if (method !== 'POST') {
     delete headers['content-type'];
     headers.accept = 'application/json';
-    headers.link = `<${TASK_CONTEXT}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+    headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   }
   return fetchFn(url, { method, headers, ...(body !== undefined && { body: JSON.stringify(body) }) });
 }

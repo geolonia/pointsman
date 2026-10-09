@@ -198,7 +198,10 @@ Details:
 
 - An unmapped status, a Task that is not completed, and an entity whose
   result is already resolved or needs no person are skipped.
-- Refused (no retry): a Task without `dateModified` (the bridge does not make
+- First writer wins: a Decision that is already resolved (by another work
+  order or app) is left alone.
+- Refused (no retry): a Task id longer than 100 characters (Pointsman's limit
+  for who resolved it), a Task without `dateModified` (the bridge does not make
   up the time), and an entity with two results waiting for a person at once
   (for example both steps of a chain): the Task names only the entity, so it
   is not clear which decision it answers.

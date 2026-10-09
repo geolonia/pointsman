@@ -880,14 +880,22 @@ describe('work orders from other apps', () => {
   });
   const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null } = {}) {
+  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string } = {}) {
+    let status = opts.decisionStatus ?? 'pending';
     const t = setup({
       route: { decisionEntity: true, task: { actions: ['review', 'urgent'] }, reviewActions: ['review', 'urgent'] },
       handler: (c) => {
         if (c.method === 'GET' && c.url.includes(encodeURIComponent(R))) {
           return opts.get ? new Response(null, { status: opts.get }) : Response.json(opts.entity ?? { id: R, type: 'RoadRestriction', check: pending });
         }
-        if (c.method === 'POST' && c.url.includes(encodeURIComponent(D))) return new Response(null, { status: opts.post ?? 204 });
+        if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
+          expect(c.headers.get('link')).toContain(DECISION_CONTEXT);
+          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status) });
+        }
+        if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
+          if ((opts.post ?? 204) < 300) status = 'resolved';
+          return new Response(null, { status: opts.post ?? 204 });
+        }
         return undefined;
       },
     });
@@ -971,6 +979,27 @@ describe('work orders from other apps', () => {
     const one = orders({ entity: { id: R, type: 'RoadRestriction', check: { ...pending, finalAction: P('publish') }, evacuation: second } });
     one.config.routes.push({ ...route, name: 'evacuation', attribute: 'evacuation', decisionEntity: true });
     expect(await (await one.send([order()])).json()).toMatchObject({ handled: [{ resolves: 'urn:ngsi-ld:Decision:d-2' }] });
+  });
+
+  it('lets the first work order win, also two in one notification', async () => {
+    const t = orders();
+    const res = await t.send([order(), order({ id: 'urn:ngsi-ld:Issue:redmine:city-a:43', statusLabel: P('Rejected') })]);
+    expect(await res.json()).toEqual({ handled: [
+      { id: W, resolves: D, finalAction: 'publish' },
+      { id: 'urn:ngsi-ld:Issue:redmine:city-a:43', skipped: 'already resolved' },
+    ] });
+    expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    // Resolved by another app before: left alone.
+    const other = orders({ decisionStatus: 'resolved' });
+    expect(await (await other.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+    expect(other.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('refuses a Task id too long to name who resolved it', async () => {
+    const long = `urn:ngsi-ld:Task:${'x'.repeat(90)}`;
+    const t = orders();
+    expect(await (await t.send([order({ id: long })])).json()).toEqual({ handled: [{ id: long, error: 'the Task id is too long to name who resolved it (at most 100 characters)', retry: false }] });
+    expect(t.calls).toHaveLength(0);
   });
 
   it('leaves Tasks alone without a work-order mapping', async () => {
