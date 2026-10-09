@@ -796,6 +796,8 @@ describe('reviews resolved in the broker', () => {
     const refused = await reviews({ resolve: 400 }).send([resolved()]);
     expect(refused.status).toBe(200);
     expect(await refused.json()).toMatchObject({ handled: [{ error: 'pointsman answered 400', retry: false }] });
+    // A partial update (207) of the Task is not done.
+    expect(await (await reviews({ task: 207 }).send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task update: 207' }] });
     // No Task (404) is fine.
     expect(await (await reviews({ task: 404 }).send([resolved()])).json()).toMatchObject({ handled: [{ written: true }] });
   });

@@ -592,7 +592,7 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
       completedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': when } },
     });
     // 404: no Task (an action without one, or made before Tasks).
-    if (!done.ok && done.status !== 404) return { id, error: `broker refused the Task update: ${done.status}`, retry: retryable(done.status) };
+    if (!updatedAll(done) && done.status !== 404) return { id, error: `broker refused the Task update: ${done.status}`, retry: retryable(done.status) };
   }
   return { id, review, written: true };
 }
