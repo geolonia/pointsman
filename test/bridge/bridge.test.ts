@@ -585,6 +585,24 @@ describe('Task entities', () => {
     expect(t.calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!))).toEqual([`${id}/attrs/completedAt`]);
   });
 
+  it('takes a partial update (207) of an existing Task as a failure', async () => {
+    const t = setup({ pointsman: urgent, route: { task }, handler: (c) => {
+      if ((c.body as { type?: string } | undefined)?.type === 'Task') return new Response(null, { status: 409 });
+      if (c.method === 'POST' && c.url.includes('Task')) return Response.json({ updated: ['name'], notUpdated: [{ attributeName: 'progress', reason: 'x' }] }, { status: 207 });
+      return undefined;
+    } });
+    const res = await t.notify([entity()]);
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+    expect(t.calls.some((c) => c.method === 'PATCH')).toBe(false);
+    // The same when cancelling.
+    const c2 = setup({ route: { task }, handler: (c) => {
+      if (c.method === 'GET' && c.url.includes('Task')) return Response.json({ progress: P('needs-action') });
+      if (c.method === 'POST' && c.url.includes('Task')) return new Response('{}', { status: 207 });
+      return undefined;
+    } });
+    expect(await (await c2.notify([entity()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+  });
+
   it('drops an old priority the new decision does not have', async () => {
     let action = 'urgent';
     const store = taskStore();

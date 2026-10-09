@@ -495,7 +495,7 @@ async function putTask(task: Record<string, unknown>, config: BridgeConfig): Pro
   if (created.status !== 409) return created.ok ? null : created;
   const { id, type: _, ...attributes } = task;
   const updated = await brokerRequest('POST', id as string, config, attributes);
-  if (!updated.ok) return updated;
+  if (!updatedAll(updated)) return updated;
   // What the new state does not have: the old completion, an old priority.
   for (const name of ['completedAt', ...(task.priority ? [] : ['priority'])]) {
     const removed = await brokerRequest('DELETE', id as string, config, undefined, name);
@@ -520,8 +520,11 @@ async function cancelOpenTask(id: string, action: string, config: BridgeConfig):
     progress: { type: 'Property', value: 'cancelled' },
     statusLabel: { type: 'Property', value: action },
   });
-  return updated.ok ? null : updated;
+  return updatedAll(updated) ? null : updated;
 }
+
+/** 2xx, but not 207: NGSI-LD answers an update with 207 when some attributes were not updated. */
+const updatedAll = (res: Response) => res.ok && res.status !== 207;
 
 /** GET an entity, DELETE it or one attribute, or POST attributes to it, with the Task context. */
 function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown, attribute?: string): Promise<Response> {
