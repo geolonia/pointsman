@@ -188,7 +188,8 @@ reads their completed Tasks as the person's answer:
 3. The bridge maps `statusLabel` to a final action
    (`BRIDGE_WORK_ORDERS`, for example `{"Published": "publish", "Rejected":
    "reject"}`). It then writes it to the Decision of the entity's result that
-   waits for a person: `reviewStatus` `resolved`, `finalAction`, `reviewedBy`
+   waits for a person, on the type's main route (the one without a name;
+   later steps of a chain keep their own review path): `reviewStatus` `resolved`, `finalAction`, `reviewedBy`
    (`redmine:<instance>#<issue>` for GTT, otherwise the Task's id) and
    `reviewedAt` (the Task's `dateModified`).
 4. The broker notifies `/reviews` about the Decision, and the steps above do
@@ -204,10 +205,8 @@ Details:
   through, `/reviews` sees that the Decision says something other than what
   Pointsman accepted, reports it and writes nothing.
 - Refused (no retry): a Task id longer than 100 characters (Pointsman's limit
-  for who resolved it), a Task without `dateModified` (the bridge does not make
-  up the time), and an entity with two results waiting for a person at once
-  (for example both steps of a chain): the Task names only the entity, so it
-  is not clear which decision it answers.
+  for who resolved it), and a Task without `dateModified` (the bridge does not
+  make up the time).
 - The bridge's own Tasks are skipped too, recognised by their id
   (`urn:ngsi-ld:Task:` and 32 hexadecimal digits): other apps must not use
   that form.
