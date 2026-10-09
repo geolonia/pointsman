@@ -1,7 +1,7 @@
 // The bridge as its own Worker. Another Worker (for example the demo, #48) can
 // import handleRequest from ./bridge.ts and mount it instead.
 
-import { type BridgeConfig, handleRequest, parseRoutes, parseWorkOrders } from './bridge';
+import { type BridgeConfig, type BridgeMessage, handleQueueBatch, handleRequest, parseRoutes, parseWorkOrders } from './bridge';
 
 export interface Env {
   /** JSON list of routes, see bridge/README.md. */
@@ -17,6 +17,8 @@ export interface Env {
   POINTSMAN_TOKEN: string;
   BROKER_TOKEN?: string;
   BROKER_API_KEY?: string;
+  /** Optional queue (producer and consumer), see bridge/README.md "Reliable delivery". */
+  BRIDGE_QUEUE?: Queue<BridgeMessage>;
 }
 
 /** Reads the configuration; throws naming the first missing or invalid setting. */
@@ -35,6 +37,7 @@ export function configFrom(env: Env): BridgeConfig {
   const trim = (u: string) => u.replace(/\/+$/, '');
   return {
     routes: parseRoutes(env.BRIDGE_ROUTES),
+    ...(env.BRIDGE_QUEUE && { queue: env.BRIDGE_QUEUE }),
     ...(env.BRIDGE_WORK_ORDERS && { workOrders: parseWorkOrders(env.BRIDGE_WORK_ORDERS) }),
     notifySecret: env.NOTIFY_SECRET,
     pointsman: { url: trim(env.POINTSMAN_URL), token: env.POINTSMAN_TOKEN },
@@ -60,4 +63,18 @@ export default {
     }
     return handleRequest(request, config);
   },
-} satisfies ExportedHandler<Env>;
+
+  // The queue consumer: runs the bridge for what /notify and /reviews queued.
+  async queue(batch: MessageBatch<BridgeMessage>, env: Env): Promise<void> {
+    let config: BridgeConfig;
+    try {
+      config = configFrom(env);
+    } catch (err) {
+      // Nothing can be handled: retry the whole batch once the configuration is fixed.
+      console.error(`bridge configuration: ${err instanceof Error ? err.message : String(err)}`);
+      batch.retryAll({ delaySeconds: 300 });
+      return;
+    }
+    await handleQueueBatch(batch, config);
+  },
+} satisfies ExportedHandler<Env, BridgeMessage>;
