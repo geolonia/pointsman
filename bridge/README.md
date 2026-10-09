@@ -111,8 +111,8 @@ a person, without knowing about Pointsman.
   exists already (a retry, or values that came back after a change) is
   replaced; when a later decision for the same values needs no person, an
   open Task is set to `cancelled`, a done one stays.
-- The bridge only creates it. Whoever resolves the review sets `progress` to
-  `completed` or `cancelled`.
+- Apart from that cancel, the bridge does not change `progress`: whoever
+  resolves the review sets it to `completed` (or `cancelled`).
 - `@context` is `https://datamodels.jp/context/task/v1.jsonld`
   (`TASK_CONTEXT`).
 

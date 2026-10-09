@@ -462,7 +462,7 @@ export async function taskEntityId(entityId: string, attribute: string, hash: st
  * A Task entity (datamodels.jp Task model) in normalized form: work for a
  * person about the entity, waiting to be done. The action is its status
  * label, the profile its kind. Whoever resolves the review sets `progress`
- * to completed or cancelled.
+ * to completed; the bridge only cancels an open Task (cancelOpenTask).
  */
 export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, id: string, now = new Date()): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
