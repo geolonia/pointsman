@@ -85,6 +85,37 @@ for a person (`type=Decision&q=reviewStatus=="pending"`).
   not accept yet (see [docs/decision-model-standards.md](../docs/decision-model-standards.md)).
   Tried with GeonicDB.
 
+## Task entities
+
+With `"task": {"actions": ["review", "urgent"]}` in a route, the bridge also
+creates a `Task` entity for each decision with one of these actions,
+following the Task model on
+[datamodels.jp](https://datamodels.jp/models/task/Task/). Any app that lists
+tasks from the broker (for example Redmine with GTT) then shows the work for
+a person, without knowing about Pointsman.
+
+- `name`: the action and the text of the attribute named in `task.name` (for
+  example `"roadName"`: `[urgent] 県道12号`), or the entity id.
+- `refersTo`: the entity; `progress` `needs-action`; `statusLabel` the
+  action; `subtype` the profile; `dateCreated` the time of the decision.
+- `priority` from `task.priority`, 1 (highest) to 9, per action, for example
+  `{"urgent": 1, "review": 5}`.
+- Its id is made from the entity id, the route's attribute and the input
+  hash (`taskEntityId`), so a retried notification finds the Task it already
+  created instead of adding a second one (a retry decides again, with a new
+  decision id). From the entity: the result's `inputHash`. The Task model has
+  no attribute for a Decision; the way is Task → `refersTo` → the entity's
+  result → `decision`.
+- Like the Decision entity, it is created before the property is written.
+- The Task follows the latest decision for these input values: one that
+  exists already (a retry, or values that came back after a change) is
+  updated in place (open again, without its old `completedAt`); when a later decision for the same values needs no person, an
+  open Task is set to `cancelled`, a done one stays.
+- Apart from that cancel, the bridge does not change `progress`: whoever
+  resolves the review sets it to `completed` (or `cancelled`).
+- `@context` is `https://datamodels.jp/context/task/v1.jsonld`
+  (`TASK_CONTEXT`).
+
 ## Chains of decisions
 
 A second route on the same entity type can decide on the first route's
@@ -131,7 +162,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 
 | Name | Meaning |
 |---|---|
-| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first, default `["review"]`), `name` and `informedBy` (for chains, below) |
+| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first, default `["review"]`), `name` and `informedBy` (for chains, above), `task` (also create Task entities, above) |
 | `POINTSMAN_URL` | Pointsman's base URL |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
 | `BROKER_TENANT` | Optional: sent as `NGSILD-Tenant`. One bridge serves one tenant. |

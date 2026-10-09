@@ -1,0 +1,60 @@
+{
+  "@context": {
+    "tm": "https://datamodels.jp/ns/task/",
+    "schema": "https://schema.org/",
+    "Task": "tm:Task",
+    "Project": "tm:Project",
+    "Milestone": "tm:Milestone",
+    "assignee": {
+      "@id": "tm:assignee",
+      "@type": "@id"
+    },
+    "author": {
+      "@id": "schema:author",
+      "@type": "@id"
+    },
+    "completedAt": "tm:completedAt",
+    "dateCreated": "https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateCreated",
+    "dateModified": "https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateModified",
+    "due": "tm:due",
+    "end": "tm:end",
+    "estimatedDuration": "tm:estimatedDuration",
+    "externalId": "tm:externalId",
+    "homepage": "schema:url",
+    "identifier": "schema:identifier",
+    "isPrivate": "tm:isPrivate",
+    "isPublic": "tm:isPublic",
+    "keywords": "schema:keywords",
+    "milestone": {
+      "@id": "tm:milestone",
+      "@type": "@id"
+    },
+    "milestoneStatus": "tm:milestoneStatus",
+    "name": "https://uri.etsi.org/ngsi-ld/name",
+    "parent": {
+      "@id": "tm:parent",
+      "@type": "@id"
+    },
+    "percentComplete": "tm:percentComplete",
+    "priority": "tm:priority",
+    "progress": "tm:progress",
+    "project": {
+      "@id": "tm:project",
+      "@type": "@id"
+    },
+    "projectStatus": "tm:projectStatus",
+    "refersTo": {
+      "@id": "tm:refersTo",
+      "@type": "@id"
+    },
+    "relatedTo": {
+      "@id": "tm:relatedTo",
+      "@type": "@id"
+    },
+    "source": "https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/source",
+    "spatialId": "tm:spatialId",
+    "start": "tm:start",
+    "statusLabel": "tm:statusLabel",
+    "subtype": "tm:subtype"
+  }
+}

@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datamodels.jp/schema/common/Geometry/v1.0.0.json",
+  "title": "Geometry",
+  "x-kind": "value",
+  "x-ngsi": {
+    "type": "GeoProperty"
+  },
+  "description": "A GeoJSON geometry (RFC 7946) as the value of a GeoProperty such as location: Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, or a GeometryCollection of these. Positions are longitude, latitude and an optional altitude in WGS 84.",
+  "x-version": "1.0.0",
+  "x-license-url": "https://datamodels.jp/LICENSE-CONTENT",
+  "x-model-tags": "GeoJSON, geometry, location",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/simpleGeometry"
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "geometries"
+      ],
+      "properties": {
+        "type": {
+          "const": "GeometryCollection"
+        },
+        "geometries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/simpleGeometry"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "position": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "simpleGeometry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "coordinates"
+          ],
+          "properties": {
+            "type": {
+              "const": "Point"
+            },
+            "coordinates": {
+              "$ref": "#/$defs/position"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "coordinates"
+          ],
+          "properties": {
+            "type": {
+              "const": "LineString"
+            },
+            "coordinates": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/position"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "coordinates"
+          ],
+          "properties": {
+            "type": {
+              "const": "Polygon"
+            },
+            "coordinates": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "minItems": 4,
+                "items": {
+                  "$ref": "#/$defs/position"
+                },
+                "$comment": "RFC 7946 §3.1.6: a linear ring's first and last positions MUST be identical. JSON Schema has no keyword to compare two elements of a variable-length array, so this cannot be enforced here; the catalog's validator checks it for the catalog's own examples."
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "coordinates"
+          ],
+          "properties": {
+            "type": {
+              "const": "MultiPoint"
+            },
+            "coordinates": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/position"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "coordinates"
+          ],
+          "properties": {
+            "type": {
+              "const": "MultiLineString"
+            },
+            "coordinates": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "$ref": "#/$defs/position"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "coordinates"
+          ],
+          "properties": {
+            "type": {
+              "const": "MultiPolygon"
+            },
+            "coordinates": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "array",
+                  "minItems": 4,
+                  "items": {
+                    "$ref": "#/$defs/position"
+                  },
+                  "$comment": "RFC 7946 §3.1.6: a linear ring's first and last positions MUST be identical. JSON Schema has no keyword to compare two elements of a variable-length array, so this cannot be enforced here; the catalog's validator checks it for the catalog's own examples."
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
