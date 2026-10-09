@@ -802,6 +802,43 @@ describe('reviews resolved in the broker', () => {
     expect(await (await reviews({ task: 404 }).send([resolved()])).json()).toMatchObject({ handled: [{ written: true }] });
   });
 
+  it('writes nothing when Pointsman has the review resolved with another action', async () => {
+    const t = reviews({ record: { review: { status: 'resolved', final_action: 'reject' } } });
+    expect(await (await t.send([resolved()])).json()).toEqual({ handled: [{ id: D, error: 'the review is resolved in Pointsman as reject, not publish', retry: false }] });
+    expect(t.calls.some((c) => c.url.startsWith('https://broker.test/'))).toBe(false);
+    // After a 409 the bridge reads Pointsman's resolution again.
+    let reads = 0;
+    const raced = setup({
+      route: { decisionEntity: true },
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? new Response(null, { status: 409 })
+        : Response.json(++reads === 1 ? { review: { status: 'pending' } } : { review: { status: 'resolved', final_action: 'reject' } })),
+    });
+    const res = await handleRequest(new Request('https://bridge.test/reviews', {
+      method: 'POST', headers: { 'x-bridge-secret': SECRET }, body: JSON.stringify({ type: 'Notification', data: [resolved()] }),
+    }), raced.config);
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'the review is resolved in Pointsman as reject, not publish' }] });
+    expect(reads).toBe(2);
+  });
+
+  it('refuses a reviewedAt that is not a date and time, before sending anything', async () => {
+    for (const bad of [P('yesterday'), P({ '@type': 'DateTime', '@value': '2026-10-09' }), P(42)]) {
+      const t = reviews();
+      expect(await (await t.send([resolved({ reviewedAt: bad })])).json()).toEqual({ handled: [{ id: D, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false }] });
+      expect(t.calls).toHaveLength(0);
+    }
+  });
+
+  it('finds the route whose result links the decision when two routes use the profile', async () => {
+    const t = reviews({ entity: { id: R, type: 'RoadRestriction', check: { ...result, decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:other' } }, recheck: result } });
+    t.config.routes = [
+      { ...route, decisionEntity: true },
+      { ...route, name: 'again', attribute: 'recheck', decisionEntity: true },
+    ];
+    expect(await (await t.send([resolved()])).json()).toEqual({ handled: [{ id: D, review: 'resolved', written: true }] });
+    expect(t.calls.find((c) => c.method === 'GET' && c.url.includes('attrs='))!.url).toContain('?attrs=check,recheck');
+    expect(t.calls.some((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/recheck'))).toBe(true);
+  });
+
   it('needs the secret on /reviews too', async () => {
     const t = reviews();
     const res = await handleRequest(new Request('https://bridge.test/reviews', { method: 'POST', headers: { 'x-bridge-secret': 'wrong' }, body: '{}' }), t.config);

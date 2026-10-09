@@ -481,6 +481,9 @@ function decisionAttr(e: Entity, name: string): Record<string, unknown> | undefi
   return a && typeof a === 'object' && !Array.isArray(a) ? (a as Record<string, unknown>) : undefined;
 }
 
+/** A date and time with a zone, as RFC 3339 writes it. */
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
 /** A DateTime value as a string, from a string or {"@type": "DateTime", "@value": …}. */
 function dateValue(v: unknown): string | undefined {
   if (typeof v === 'string') return v;
@@ -530,7 +533,13 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   }
   const correct = correctionsOf(decisionAttr(decision, 'corrections'));
   if (typeof correct === 'string') return { id, error: correct, retry: false };
-  const reviewedAt = dateValue(valueOf(decisionAttr(decision, 'reviewedAt')));
+  // Checked before anything is sent: after the resolve in Pointsman, a value
+  // the broker refuses could not be fixed by a retry.
+  const reviewedAtAttr = decisionAttr(decision, 'reviewedAt');
+  const reviewedAt = dateValue(valueOf(reviewedAtAttr));
+  if (reviewedAtAttr && (reviewedAt === undefined || !RFC3339.test(reviewedAt) || Number.isNaN(Date.parse(reviewedAt)))) {
+    return { id, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false };
+  }
 
   const fetchFn = config.fetch ?? fetch;
   const decisionId = id.slice('urn:ngsi-ld:Decision:'.length);
@@ -541,7 +550,8 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   });
   const found = await pointsman(`/v1/decisions/${encodeURIComponent(decisionId)}`);
   if (!found.ok) return { id, error: `pointsman answered ${found.status}`, retry: retryable(found.status) };
-  const record = (await found.json()) as { review?: { status?: string }; feedback?: { by?: unknown; correct?: unknown }[] };
+  type Record_ = { review?: { status?: string; final_action?: string }; feedback?: { by?: unknown; correct?: unknown }[] };
+  let record = (await found.json()) as Record_;
 
   let review: ReviewOutcome;
   if (record.review?.status === 'pending') {
@@ -549,6 +559,11 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     // 409: resolved in the meantime, for example from another app.
     if (!res.ok && res.status !== 409) return { id, error: `pointsman answered ${res.status}`, retry: retryable(res.status) };
     review = res.ok ? 'resolved' : 'already resolved';
+    if (!res.ok) {
+      const again = await pointsman(`/v1/decisions/${encodeURIComponent(decisionId)}`);
+      if (!again.ok) return { id, error: `pointsman answered ${again.status}`, retry: retryable(again.status) };
+      record = (await again.json()) as Record_;
+    }
   } else if (record.review) {
     review = 'already resolved';
   } else if (Object.keys(correct).length === 0) {
@@ -560,22 +575,33 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     if (!res.ok) return { id, error: `pointsman answered ${res.status}`, retry: retryable(res.status) };
     review = 'feedback sent';
   }
+  // Pointsman's resolution counts: a Decision that says otherwise (a stale or
+  // competing write) must not put another action on the entity.
+  const recorded = record.review?.final_action;
+  if (review === 'already resolved' && typeof recorded === 'string' && recorded !== finalAction) {
+    return { id, error: `the review is resolved in Pointsman as ${recorded}, not ${finalAction}`, retry: false };
+  }
 
   // The entity's result and its Task, when the entity still has this decision.
+  // More than one route may use the profile: the one whose result links this decision.
   const target = decisionAttr(decision, 'refersTo')?.object;
   const profile = valueOf(decisionAttr(decision, 'profile'));
-  const route = config.routes.find((r) => r.profile === profile && r.decisionEntity);
-  if (!route || typeof target !== 'string') return { id, review, written: false };
+  const candidates = config.routes.filter((r) => r.profile === profile && r.decisionEntity);
+  if (candidates.length === 0 || typeof target !== 'string') return { id, review, written: false };
   const headers = brokerHeaders(config, 'application/json');
   delete headers['content-type'];
   headers.accept = 'application/json';
   if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
-  const got = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${encodeURIComponent(route.attribute)}`, { headers });
+  const attrs = [...new Set(candidates.map((r) => r.attribute))].map(encodeURIComponent).join(',');
+  const got = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
   if (got.status === 404) return { id, review, written: false };
   if (!got.ok) return { id, error: `broker read failed: ${got.status}`, retry: retryable(got.status) };
-  const result = ((await got.json()) as Entity)[route.attribute] as Record<string, unknown> | undefined;
-  // A newer decision replaced this one: its result and Task are not this review's.
-  if ((result?.decision as { object?: unknown } | undefined)?.object !== id) return { id, review, written: false };
+  const current = (await got.json()) as Entity;
+  const linked = (r: Route) => ((current[r.attribute] as { decision?: { object?: unknown } } | undefined)?.decision?.object === id);
+  // None: a newer decision replaced this one; its result and Task are not this review's.
+  const route = candidates.find((r) => r.type === current.type && linked(r)) ?? candidates.find(linked);
+  if (!route) return { id, review, written: false };
+  const result = current[route.attribute] as Record<string, unknown>;
   const when = reviewedAt ?? new Date().toISOString();
   const write = await writeAttribute(target, route.attribute, {
     ...result,

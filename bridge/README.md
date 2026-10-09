@@ -137,6 +137,12 @@ sends it to the bridge's `/reviews`.
   through Pointsman's API and then written to the Decision does no harm.
 - Who may resolve is decided by the broker's access control: the bridge takes
   `reviewedBy` as written.
+- Pointsman's resolution counts: if the review is already resolved there
+  with another action, the bridge reports it and writes nothing.
+- NGSI-LD has no conditional update, so there is a short window: if a new
+  decision is written to the entity between the bridge's read and its write,
+  the review's write puts the older result back. The next change of the
+  inputs decides again.
 
 The subscription, with the Decision context so the notification has short
 names (full IRIs work too):
