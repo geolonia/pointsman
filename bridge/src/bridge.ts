@@ -725,8 +725,11 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const target = taskAttr(task, 'refersTo')?.object;
   if (typeof target !== 'string') return { id, skipped: 'nothing to resolve' };
 
-  // Routes whose result on that entity waits for a person, in configuration order.
-  const candidates = config.routes.filter((r) => r.decisionEntity);
+  // The type's main route (the one without a name): a work order answers the
+  // first decision on the entity. Later steps of a chain (named routes) are
+  // follow-ups with their own review path, and a work order that names only
+  // the entity could not tell them apart.
+  const candidates = config.routes.filter((r) => r.decisionEntity && r.name === undefined);
   if (candidates.length === 0) return { id, skipped: 'nothing to resolve' };
   const fetchFn = config.fetch ?? fetch;
   const headers = brokerHeaders(config, 'application/json');
