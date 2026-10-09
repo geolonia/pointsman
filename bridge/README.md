@@ -100,9 +100,12 @@ a person, without knowing about Pointsman.
   action; `subtype` the profile; `dateCreated` the time of the decision.
 - `priority` from `task.priority`, 1 (highest) to 9, per action, for example
   `{"urgent": 1, "review": 5}`.
-- The Task has the decision's id (`urn:ngsi-ld:Task:<decision id>`, the
-  Decision entity is `urn:ngsi-ld:Decision:<decision id>`): the Task model has
-  no attribute that points to a Decision.
+- Its id is made from the entity id, the route's attribute and the input
+  hash (`taskEntityId`), so a retried notification finds the Task it already
+  created instead of adding a second one (a retry decides again, with a new
+  decision id). From the entity: the result's `inputHash`. The Task model has
+  no attribute for a Decision; the way is Task → `refersTo` → the entity's
+  result → `decision`.
 - Like the Decision entity, it is created before the property is written,
   and a Task that already exists (a retry) is fine.
 - The bridge only creates it. Whoever resolves the review sets `progress` to

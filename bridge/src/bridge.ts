@@ -251,9 +251,11 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     }
     decisionRef = decisionEntityId(d.decision_id);
   }
-  // Also before the property, for the same reason: a retry creates it then.
+  // Also before the property, for the same reason. Its id comes from the
+  // inputs, not the decision: a retry decides again with a new decision id,
+  // and must find the Task it already created (409), not add a second one.
   if (route.task?.actions.includes(d.action)) {
-    const created = await createEntity(toTaskEntity(d, entity, route.task, decidedAt), config);
+    const created = await createEntity(toTaskEntity(d, entity, route.task, await taskEntityId(entity.id, route.attribute, hash), decidedAt), config);
     if (!created.ok && created.status !== 409) {
       return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${created.status}`, retry: retryable(created.status) };
     }
@@ -443,10 +445,15 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
 export const TASK_CONTEXT = 'https://datamodels.jp/context/task/v1.jsonld';
 
 /**
- * The Task for a decision has the decision's id: the Task model has no
- * attribute that points to a Decision, so this is how one finds the other.
+ * The Task's id: one per entity, route attribute and input values (the
+ * `inputHash` of the result), so a retried notification finds the Task it
+ * created. To find it from the entity: the result attribute's `inputHash`.
+ * The Task points to the entity (refersTo), the result to its Decision.
  */
-export const taskEntityId = (decisionId: string) => `urn:ngsi-ld:Task:${decisionId}`;
+export async function taskEntityId(entityId: string, attribute: string, hash: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([entityId, attribute, hash])));
+  return `urn:ngsi-ld:Task:${[...new Uint8Array(digest)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
 
 /**
  * A Task entity (datamodels.jp Task model) in normalized form: work for a
@@ -454,13 +461,14 @@ export const taskEntityId = (decisionId: string) => `urn:ngsi-ld:Task:${decision
  * label, the profile its kind. Whoever resolves the review sets `progress`
  * to completed or cancelled.
  */
-export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, now = new Date()): Record<string, unknown> {
+export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, id: string, now = new Date()): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
   const label = options.name ? valueOf(entity[options.name]) : undefined;
-  const priority = options.priority?.[d.action];
+  // Own keys only: an action named like an Object method is not a priority.
+  const priority = options.priority && Object.hasOwn(options.priority, d.action) ? options.priority[d.action] : undefined;
   return {
     '@context': [TASK_CONTEXT, CORE_CONTEXT],
-    id: taskEntityId(d.decision_id),
+    id,
     type: 'Task',
     name: P(`[${d.action}] ${typeof label === 'string' && label.trim() !== '' ? label.trim() : entity.id}`),
     refersTo: { type: 'Relationship', object: entity.id },

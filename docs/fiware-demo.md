@@ -112,7 +112,7 @@ only what is published.
 
 ## Spatial facts and the chain
 
-Two additions after the first version (October 2026):
+Three additions after the first version (October 2026):
 
 - **Facts in the rules** (#64, #65, #70): for each report, Pointsman looks up
   the river flood zone (GSI hazard map tiles) and the nearest evacuation site
@@ -127,10 +127,10 @@ Two additions after the first version (October 2026):
   around and no way through on foot, it raises an `Alert` (Smart Data Models)
   for the site's staff. Its `Decision` entity links step 1
   (`wasInformedBy`).
-- **Tasks** (#81): each `urgent` or `review` report also becomes a `Task`
-  entity (datamodels.jp Task model) for a person, so any app that lists tasks
-  from the broker shows the work. Resolving the review on GitHub completes
-  or cancels it.
+- **Tasks** (#81, with geolonia/pointsman-demo#17): each `urgent` or
+  `review` report also becomes a `Task` entity (datamodels.jp Task model) for
+  a person, so any app that lists tasks from the broker shows the work. Resolving the review on GitHub marks it
+  completed.
 
 Two prepared reports show the chain with the same text: a closed bridge in
 飯田橋三丁目 (+316 m on foot, evacuation site 443 m away: alert) and a street

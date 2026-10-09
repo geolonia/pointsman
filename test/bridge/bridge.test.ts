@@ -467,9 +467,10 @@ describe('Task entities', () => {
       'POST /ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs',
     ]);
     expect(calls[2]!.headers.get('content-type')).toBe('application/ld+json');
+    const hash = await inputHash(entity(), route.inputs);
     expect(calls[2]!.body).toEqual({
       '@context': [TASK_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
-      id: 'urn:ngsi-ld:Task:d-1',
+      id: await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'check', hash),
       type: 'Task',
       name: P('[urgent] 県道12号'),
       refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' },
@@ -479,7 +480,43 @@ describe('Task entities', () => {
       priority: P(1),
       dateCreated: P({ '@type': 'DateTime', '@value': '2026-07-08T01:46:12.000Z' }),
     });
-    expect(taskEntityId('d-1')).toBe('urn:ngsi-ld:Task:d-1');
+    // Found from the entity: the result's inputHash.
+    expect((calls[4]!.body as { check: { inputHash: unknown } }).check.inputHash).toEqual(P(hash));
+  });
+
+  it('gives the Task an id from the entity, the attribute and the inputs, not from the decision', async () => {
+    const id = await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'check', 'h1');
+    expect(id).toMatch(/^urn:ngsi-ld:Task:[0-9a-f]{32}$/);
+    expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'check', 'h1')).toBe(id);
+    expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'check', 'h2')).not.toBe(id);
+    expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'evacuation', 'h1')).not.toBe(id);
+    expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:2', 'check', 'h1')).not.toBe(id);
+  });
+
+  it('creates the same Task again on a retry, although Pointsman decides with a new id', async () => {
+    let n = 0;
+    let writes = 0;
+    const t = setup({ pointsman: () => Response.json({ ...decision, action: 'urgent', decision_id: `d-${++n}` }), route: { decisionEntity: true, task } });
+    const fetchFn = t.config.fetch!;
+    // The first result write fails after the Task was created.
+    t.config.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PATCH' && ++writes === 1) return new Response(null, { status: 503 });
+      return fetchFn(input, init);
+    }) as typeof fetch;
+    expect((await t.notify([entity()])).status).toBe(502);
+    expect((await t.notify([entity()])).status).toBe(200);
+    const tasks = t.calls.filter((c) => (c.body as { type?: string } | undefined)?.type === 'Task').map((c) => (c.body as { id: string }).id);
+    const decisions = t.calls.filter((c) => (c.body as { type?: string } | undefined)?.type === 'Decision').map((c) => (c.body as { id: string }).id);
+    expect(decisions).toEqual(['urn:ngsi-ld:Decision:d-1', 'urn:ngsi-ld:Decision:d-2']);
+    expect(tasks).toHaveLength(2);
+    expect(tasks[1]).toBe(tasks[0]);
+  });
+
+  it('reads priorities only from the configured actions', async () => {
+    const { notify, calls } = setup({ pointsman: () => Response.json({ ...decision, action: 'constructor' }), route: { task: { actions: ['constructor'], priority: {} } } });
+    await notify([entity()]);
+    const created = calls.find((c) => (c.body as { type?: string } | undefined)?.type === 'Task')!;
+    expect(created.body).not.toHaveProperty('priority');
   });
 
   it('creates no Task for other actions', async () => {
