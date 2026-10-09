@@ -956,6 +956,23 @@ describe('work orders from other apps', () => {
     }
   });
 
+  it('refuses a work order without dateModified, and one that two waiting results could mean', async () => {
+    for (const bad of [undefined, P('later')]) {
+      const t = orders();
+      expect(await (await t.send([order({ dateModified: bad })])).json()).toEqual({ handled: [{ id: W, error: 'dateModified: expected a date and time (RFC 3339)', retry: false }] });
+      expect(t.calls).toHaveLength(0);
+    }
+    const second = { type: 'Property', value: 'review', decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-2' } };
+    const t = orders({ entity: { id: R, type: 'RoadRestriction', check: pending, evacuation: second } });
+    t.config.routes.push({ ...route, name: 'evacuation', attribute: 'evacuation', decisionEntity: true });
+    expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, error: `more than one decision waits on ${R} (check, evacuation); a work order cannot tell which`, retry: false }] });
+    expect(t.calls.some((c) => c.method === 'POST')).toBe(false);
+    // Only one waiting: that one, whichever route it is.
+    const one = orders({ entity: { id: R, type: 'RoadRestriction', check: { ...pending, finalAction: P('publish') }, evacuation: second } });
+    one.config.routes.push({ ...route, name: 'evacuation', attribute: 'evacuation', decisionEntity: true });
+    expect(await (await one.send([order()])).json()).toMatchObject({ handled: [{ resolves: 'urn:ngsi-ld:Decision:d-2' }] });
+  });
+
   it('leaves Tasks alone without a work-order mapping', async () => {
     const t = orders({ workOrders: null });
     expect(await (await t.send([order()])).json()).toEqual({ handled: [] });

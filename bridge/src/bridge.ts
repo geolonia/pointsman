@@ -713,6 +713,9 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const label = valueOf(taskAttr(task, 'statusLabel'));
   if (typeof label !== 'string' || !Object.hasOwn(mapping, label)) return { id, skipped: 'status not mapped' };
   const finalAction = mapping[label]!;
+  // The time the person closed it, from the app: never the bridge's clock.
+  const modified = dateValue(valueOf(taskAttr(task, 'dateModified')));
+  if (modified === undefined || !isDateTime(modified)) return { id, error: 'dateModified: expected a date and time (RFC 3339)', retry: false };
   // The bridge's own Tasks (completed by the bridge itself), whatever input
   // values they were made for: recognised by their id.
   if (OWN_TASK.test(id)) return { id, skipped: 'own task' };
@@ -733,23 +736,27 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   if (!got.ok) return { id, error: `broker read failed: ${got.status}`, retry: retryable(got.status) };
   const current = (await got.json()) as Entity;
 
-  const pending = candidates.find((r) => {
+  const waiting = candidates.filter((r) => {
     if (r.type !== current.type) return false;
     const result = current[r.attribute] as Record<string, unknown> | undefined;
     return typeof valueOf(result) === 'string' && (r.reviewActions ?? ['review']).includes(valueOf(result) as string)
       && valueOf(result?.finalAction) === undefined
       && typeof (result?.decision as { object?: unknown } | undefined)?.object === 'string';
   });
-  if (!pending) return { id, skipped: 'nothing to resolve' };
+  if (waiting.length === 0) return { id, skipped: 'nothing to resolve' };
+  // The Task names only the entity: with two results waiting, it is not clear which one it answers.
+  if (waiting.length > 1) {
+    return { id, error: `more than one decision waits on ${target} (${waiting.map((r) => r.attribute).join(', ')}); a work order cannot tell which`, retry: false };
+  }
+  const pending = waiting[0]!;
   const decision = ((current[pending.attribute] as Record<string, unknown>).decision as { object: string }).object;
 
-  const modified = dateValue(valueOf(taskAttr(task, 'dateModified')));
   const res = await brokerRequest('POST', decision, config, {
     '@context': [DECISION_CONTEXT, CORE_CONTEXT],
     reviewStatus: { type: 'Property', value: 'resolved' },
     finalAction: { type: 'Property', value: finalAction },
     reviewedBy: { type: 'Property', value: workOrderBy(id) },
-    reviewedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': modified && isDateTime(modified) ? modified : new Date().toISOString() } },
+    reviewedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': modified } },
   });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
   return { id, resolves: decision, finalAction };

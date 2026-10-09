@@ -198,6 +198,10 @@ Details:
 
 - An unmapped status, a Task that is not completed, and an entity whose
   result is already resolved or needs no person are skipped.
+- Refused (no retry): a Task without `dateModified` (the bridge does not make
+  up the time), and an entity with two results waiting for a person at once
+  (for example both steps of a chain): the Task names only the entity, so it
+  is not clear which decision it answers.
 - The bridge's own Tasks are skipped too, recognised by their id
   (`urn:ngsi-ld:Task:` and 32 hexadecimal digits): other apps must not use
   that form.
