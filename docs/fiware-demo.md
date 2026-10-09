@@ -127,6 +127,10 @@ Two additions after the first version (October 2026):
   around and no way through on foot, it raises an `Alert` (Smart Data Models)
   for the site's staff. Its `Decision` entity links step 1
   (`wasInformedBy`).
+- **Tasks** (#81): each `urgent` or `review` report also becomes a `Task`
+  entity (datamodels.jp Task model) for a person, so any app that lists tasks
+  from the broker shows the work. Resolving the review on GitHub completes
+  or cancels it.
 
 Two prepared reports show the chain with the same text: a closed bridge in
 飯田橋三丁目 (+316 m on foot, evacuation site 443 m away: alert) and a street
@@ -144,7 +148,7 @@ flowchart LR
   Broker -->|notification| Bridge["Bridge<br/>(in the demo Worker)"]
   Bridge -->|decide, with facts| PM["Pointsman"]
   PM -->|flood zones, evacuation sites, routes| Geo["GSI, Valhalla"]
-  Bridge -->|write check, Decision| Broker
+  Bridge -->|write check, Decision, Task| Broker
   Bridge -->|urgent / review| GH["GitHub issues<br/>(demo repository)"]
   GH -->|"/publish comment (webhook)"| Bridge
   Broker -->|"check: urgent / review<br/>(second subscription)"| Bridge

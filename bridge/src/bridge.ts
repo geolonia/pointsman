@@ -28,6 +28,20 @@ export interface Route {
    * `wasInformedBy` in the Decision entity.
    */
   informedBy?: string;
+  /**
+   * Also create a Task entity (datamodels.jp Task model) for these actions,
+   * so a person's work shows up in any app that lists tasks. See TaskOptions.
+   */
+  task?: TaskOptions;
+}
+
+export interface TaskOptions {
+  /** The actions that create a Task, for example ["review", "urgent"]. */
+  actions: string[];
+  /** An attribute whose text goes into the Task's name (for example a road name). */
+  name?: string;
+  /** Priority per action, 1 (highest) to 9 (lowest), as in RFC 8984. Other actions get none. */
+  priority?: Record<string, number>;
 }
 
 export interface BridgeConfig {
@@ -71,7 +85,7 @@ export function parseRoutes(json: string): Route[] {
   return data.map((r, i) => {
     const where = `bridge routes[${i}]`;
     if (!r || typeof r !== 'object') throw new Error(`${where}: expected an object`);
-    const { type, profile, inputs, attribute, decisionEntity, reviewActions, name, informedBy } = r as Record<string, unknown>;
+    const { type, profile, inputs, attribute, decisionEntity, reviewActions, name, informedBy, task } = r as Record<string, unknown>;
     for (const [name, v] of Object.entries({ type, profile, attribute })) {
       if (typeof v !== 'string' || v === '') throw new Error(`${where}.${name}: expected a non-empty string`);
     }
@@ -90,6 +104,7 @@ export function parseRoutes(json: string): Route[] {
     if (informedBy !== undefined && (typeof informedBy !== 'string' || !(inputs as string[]).includes(informedBy))) {
       throw new Error(`${where}.informedBy: expected one of the inputs`);
     }
+    if (task !== undefined) parseTask(task, `${where}.task`);
     // One unnamed route per type, and every name once.
     const key = name === undefined ? `type:${String(type)}` : `name:${name}`;
     if (seen.has(key)) {
@@ -102,8 +117,26 @@ export function parseRoutes(json: string): Route[] {
       ...(reviewActions !== undefined && { reviewActions }),
       ...(name !== undefined && { name }),
       ...(informedBy !== undefined && { informedBy }),
+      ...(task !== undefined && { task }),
     } as Route;
   });
+}
+
+function parseTask(task: unknown, where: string): void {
+  if (!task || typeof task !== 'object' || Array.isArray(task)) throw new Error(`${where}: expected an object`);
+  const { actions, name, priority, ...rest } = task as Record<string, unknown>;
+  const unknown = Object.keys(rest);
+  if (unknown.length) throw new Error(`${where}: unknown option ${unknown[0]}`);
+  if (!Array.isArray(actions) || actions.length === 0 || !actions.every((x) => typeof x === 'string' && x !== '')) {
+    throw new Error(`${where}.actions: expected a non-empty list of action names`);
+  }
+  if (name !== undefined && (typeof name !== 'string' || name === '')) throw new Error(`${where}.name: expected an attribute name`);
+  if (priority !== undefined) {
+    if (!priority || typeof priority !== 'object' || Array.isArray(priority)) throw new Error(`${where}.priority: expected an object`);
+    for (const [action, p] of Object.entries(priority)) {
+      if (!Number.isInteger(p) || (p as number) < 1 || (p as number) > 9) throw new Error(`${where}.priority.${action}: expected 1 to 9`);
+    }
+  }
 }
 
 /**
@@ -211,12 +244,19 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
   // without it a retry decides again (no input hash written yet).
   let decisionRef: string | undefined;
   if (route.decisionEntity) {
-    const created = await createDecisionEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
+    const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
     // 409: a retry of a notification whose entity was created, then the write failed.
     if (!created.ok && created.status !== 409) {
       return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
     }
     decisionRef = decisionEntityId(d.decision_id);
+  }
+  // Also before the property, for the same reason: a retry creates it then.
+  if (route.task?.actions.includes(d.action)) {
+    const created = await createEntity(toTaskEntity(d, entity, route.task, decidedAt), config);
+    if (!created.ok && created.status !== 409) {
+      return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${created.status}`, retry: retryable(created.status) };
+    }
   }
 
   const property = toProperty(d, hash, decidedAt, decisionRef);
@@ -399,7 +439,40 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
   };
 }
 
-async function createDecisionEntity(entity: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
+/** The published context of the Task model (datamodels.jp). */
+export const TASK_CONTEXT = 'https://datamodels.jp/context/task/v1.jsonld';
+
+/**
+ * The Task for a decision has the decision's id: the Task model has no
+ * attribute that points to a Decision, so this is how one finds the other.
+ */
+export const taskEntityId = (decisionId: string) => `urn:ngsi-ld:Task:${decisionId}`;
+
+/**
+ * A Task entity (datamodels.jp Task model) in normalized form: work for a
+ * person about the entity, waiting to be done. The action is its status
+ * label, the profile its kind. Whoever resolves the review sets `progress`
+ * to completed or cancelled.
+ */
+export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, now = new Date()): Record<string, unknown> {
+  const P = (value: unknown) => ({ type: 'Property', value });
+  const label = options.name ? valueOf(entity[options.name]) : undefined;
+  const priority = options.priority?.[d.action];
+  return {
+    '@context': [TASK_CONTEXT, CORE_CONTEXT],
+    id: taskEntityId(d.decision_id),
+    type: 'Task',
+    name: P(`[${d.action}] ${typeof label === 'string' && label.trim() !== '' ? label.trim() : entity.id}`),
+    refersTo: { type: 'Relationship', object: entity.id },
+    progress: P('needs-action'),
+    statusLabel: P(d.action),
+    subtype: P(d.profile),
+    ...(priority !== undefined && { priority: P(priority) }),
+    dateCreated: P({ '@type': 'DateTime', '@value': d.created_at ?? now.toISOString() }),
+  };
+}
+
+async function createEntity(entity: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
   const fetchFn = config.fetch ?? fetch;
   const { broker } = config;
   // The context is in the body, so no Link header.

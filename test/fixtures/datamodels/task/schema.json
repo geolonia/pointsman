@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datamodels.jp/schema/task/Task/v1.0.0.json",
+  "title": "Task",
+  "description": "A tracked unit of work: a ticket or issue in a tracker, a calendar to-do, a municipal work order. State and priority follow RFC 8984 (JSCalendar); the source system's own status name and kind are kept in statusLabel and subtype. Location may be any geometry.",
+  "x-version": "1.0.0",
+  "x-license-url": "https://datamodels.jp/LICENSE-CONTENT",
+  "x-model-tags": "task management",
+  "x-derived-from": "https://www.rfc-editor.org/rfc/rfc8984.html",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uri",
+      "description": "Entity id (URN)"
+    },
+    "type": {
+      "type": "string",
+      "const": "Task",
+      "description": "Entity type"
+    },
+    "@context": {
+      "description": "JSON-LD context of the entity, optional: a context URL or a list of context URLs",
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uri"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "minItems": 1
+        }
+      ]
+    },
+    "name": {
+      "type": "string",
+      "description": "Name or subject",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://uri.etsi.org/ngsi-ld/name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "http://purl.org/dc/terms/description"
+    },
+    "project": {
+      "type": "string",
+      "format": "uri",
+      "description": "The project this belongs to, when the source system has projects",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "https://datamodels.jp/ns/task/Project"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/project"
+    },
+    "milestone": {
+      "type": "string",
+      "format": "uri",
+      "description": "The milestone (version, release) this is planned for",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "https://datamodels.jp/ns/task/Milestone"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/milestone"
+    },
+    "parent": {
+      "type": "string",
+      "format": "uri",
+      "description": "Parent task (RFC 8984 relatedTo parent)",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "https://datamodels.jp/ns/task/Task"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/parent"
+    },
+    "relatedTo": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "description": "Related tasks. Always an array in the key-values form, even with one target. The kind of relation (blocks, precedes, duplicates) is left to extensions",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "https://datamodels.jp/ns/task/Task",
+        "multi": true
+      },
+      "x-iri": "https://datamodels.jp/ns/task/relatedTo"
+    },
+    "refersTo": {
+      "type": "string",
+      "format": "uri",
+      "description": "The entity this task is about (a report, an asset, a road)",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "any"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/refersTo"
+    },
+    "progress": {
+      "type": "string",
+      "enum": [
+        "needs-action",
+        "in-process",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "description": "Normalised state (RFC 8984 progress: needs-action, in-process, completed, failed, cancelled). When no value fits, leave it out and give the local wording in statusLabel",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/progress"
+    },
+    "statusLabel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The source system's own status name, unchanged (for example \"In progress\", \"Resolved\"). Required when progress is left out",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/statusLabel"
+    },
+    "subtype": {
+      "type": "string",
+      "description": "The source system's kind: tracker, issue type, category",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/subtype"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9,
+      "description": "Priority 0 to 9: 1 highest, 9 lowest, 0 undefined (RFC 8984)",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/priority"
+    },
+    "assignee": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "description": "Assignees: person, organisation or team entities, possibly outside this subject. Always an array in the key-values form, even with one target",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "agent",
+        "multi": true
+      },
+      "x-iri": "https://datamodels.jp/ns/task/assignee"
+    },
+    "author": {
+      "type": "string",
+      "format": "uri",
+      "description": "Creator (a person, organisation or team entity)",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "agent"
+      },
+      "x-iri": "https://schema.org/author"
+    },
+    "start": {
+      "type": "string",
+      "anyOf": [
+        {
+          "format": "date"
+        },
+        {
+          "format": "date-time"
+        }
+      ],
+      "description": "Planned start: a date, or a date and time (RFC 8984 start)",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/start"
+    },
+    "due": {
+      "type": "string",
+      "anyOf": [
+        {
+          "format": "date"
+        },
+        {
+          "format": "date-time"
+        }
+      ],
+      "description": "Due: a date, or a date and time (RFC 8984 due)",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/due"
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When progress became completed",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/completedAt"
+    },
+    "estimatedDuration": {
+      "type": "string",
+      "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+      "description": "Estimated effort as an ISO 8601 duration, e.g. PT1H30M (RFC 8984 estimatedDuration)",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/estimatedDuration"
+    },
+    "percentComplete": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Completion 0 to 100 (RFC 8984 percentComplete)",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/percentComplete"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keywords or labels",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://schema.org/keywords"
+    },
+    "location": {
+      "$ref": "https://datamodels.jp/schema/common/Geometry/v1.0.0.json",
+      "description": "Location as any GeoJSON geometry: point, line, polygon or a collection",
+      "x-ngsi": {
+        "type": "GeoProperty",
+        "model": "https://datamodels.jp/ns/common/Geometry"
+      },
+      "x-iri": "https://uri.etsi.org/ngsi-ld/location"
+    },
+    "spatialId": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Spatial IDs (ZFXY) covering the task. Optional",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/spatialId"
+    },
+    "isPrivate": {
+      "type": "boolean",
+      "description": "true when private; default false",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/isPrivate"
+    },
+    "source": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of this object in the system of record",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/source"
+    },
+    "externalId": {
+      "type": "string",
+      "description": "Identifier in the system of record",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://datamodels.jp/ns/task/externalId"
+    },
+    "dateCreated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation time in the system of record (distinct from the broker attribute createdAt)",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateCreated"
+    },
+    "dateModified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last modification time in the system of record",
+      "x-ngsi": {
+        "type": "Property"
+      },
+      "x-iri": "https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateModified"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "progress"
+      ]
+    },
+    {
+      "required": [
+        "statusLabel"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

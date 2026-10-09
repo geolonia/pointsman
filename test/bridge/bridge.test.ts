@@ -1,7 +1,7 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type Route, DECISION_CONTEXT, DECISION_TERMS, handleRequest, inputHash, parseRoutes, toDecisionEntity } from '../../bridge/src/bridge';
+import { type BridgeConfig, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleRequest, inputHash, parseRoutes, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
@@ -440,3 +440,82 @@ describe('chains of decisions', () => {
   });
 });
 
+
+describe('Task entities', () => {
+  const task = { actions: ['review', 'urgent'], name: 'roadName', priority: { urgent: 1, review: 5 } };
+  const urgent = () => Response.json({ ...decision, action: 'urgent' });
+  const path = (c: Call) => `${c.method} ${c.url.replace(/^https:\/\/[^/]+/, '')}`;
+
+  it('checks the task option', () => {
+    expect(parseRoutes(JSON.stringify([{ ...route, task }]))).toEqual([{ ...route, task }]);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, task: { actions: [] } }]))).toThrow(/task.actions/);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, task: ['review'] }]))).toThrow(/task: expected an object/);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, task: { actions: ['review'], name: '' } }]))).toThrow(/task.name/);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, task: { actions: ['review'], priority: { review: 0 } } }]))).toThrow(/priority.review: expected 1 to 9/);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, task: { actions: ['review'], priority: { review: 1.5 } } }]))).toThrow(/priority.review/);
+    expect(() => parseRoutes(JSON.stringify([{ ...route, task: { actions: ['review'], assignee: 'x' } }]))).toThrow(/unknown option assignee/);
+  });
+
+  it('creates a Task after the Decision entity and before the property, for a listed action', async () => {
+    const { notify, calls } = setup({ pointsman: urgent, route: { decisionEntity: true, task } });
+    expect((await notify([entity()])).status).toBe(200);
+    expect(calls.map(path)).toEqual([
+      'POST /v1/decide/road-restriction-check',
+      'POST /ngsi-ld/v1/entities',
+      'POST /ngsi-ld/v1/entities',
+      'PATCH /ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs/check',
+      'POST /ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1/attrs',
+    ]);
+    expect(calls[2]!.headers.get('content-type')).toBe('application/ld+json');
+    expect(calls[2]!.body).toEqual({
+      '@context': [TASK_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
+      id: 'urn:ngsi-ld:Task:d-1',
+      type: 'Task',
+      name: P('[urgent] 県道12号'),
+      refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' },
+      progress: P('needs-action'),
+      statusLabel: P('urgent'),
+      subtype: P('road-restriction-check'),
+      priority: P(1),
+      dateCreated: P({ '@type': 'DateTime', '@value': '2026-07-08T01:46:12.000Z' }),
+    });
+    expect(taskEntityId('d-1')).toBe('urn:ngsi-ld:Task:d-1');
+  });
+
+  it('creates no Task for other actions', async () => {
+    const { notify, calls } = setup({ route: { decisionEntity: true, task } });
+    await notify([entity()]);
+    expect(calls.filter((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities')).toHaveLength(1);
+  });
+
+  it('works without a Decision entity, and names the Task by the entity id without a name attribute', async () => {
+    const { notify, calls } = setup({ pointsman: urgent, route: { task: { actions: ['urgent'] } } });
+    await notify([entity({ roadName: P('  ') })]);
+    const created = calls.filter((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities');
+    expect(created).toHaveLength(1);
+    expect(created[0]!.body).toMatchObject({ name: P('[urgent] urn:ngsi-ld:RoadRestriction:1') });
+    expect(created[0]!.body).not.toHaveProperty('priority');
+  });
+
+  it('accepts a Task that already exists (a retry)', async () => {
+    const { notify, calls } = setup({ pointsman: urgent, route: { task }, broker: { ENTITIES: 409 } });
+    const res = await notify([entity()]);
+    expect(res.status).toBe(200);
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(true);
+  });
+
+  it('writes no result when the broker refuses the Task, so the retry tries again', async () => {
+    const { notify, calls } = setup({ pointsman: urgent, route: { task }, broker: { ENTITIES: 503 } });
+    const res = await notify([entity()]);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ handled: [{ id: 'urn:ngsi-ld:RoadRestriction:1', decision: 'd-1', error: 'broker refused the Task entity: 503', retry: true }] });
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('reports a Task the broker will never take without asking for a retry', async () => {
+    const { notify } = setup({ pointsman: urgent, route: { task }, broker: { ENTITIES: 400 } });
+    const res = await notify([entity()]);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 400', retry: false }] });
+  });
+});
