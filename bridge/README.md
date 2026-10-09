@@ -139,6 +139,9 @@ sends it to the bridge's `/reviews`.
   `reviewedBy` as written.
 - Pointsman's resolution counts: if the review is already resolved there
   with another action, the bridge reports it and writes nothing.
+- Two notifications for the same Decision at the same moment can both send
+  the same corrections as feedback (Pointsman's feedback has no key that
+  makes a repeat harmless); the values are the same.
 - NGSI-LD has no conditional update, so there is a short window: if a new
   decision is written to the entity between the bridge's read and its write,
   the review's write puts the older result back. The next change of the

@@ -821,10 +821,16 @@ describe('reviews resolved in the broker', () => {
   });
 
   it('refuses a reviewedAt that is not a date and time, before sending anything', async () => {
-    for (const bad of [P('yesterday'), P({ '@type': 'DateTime', '@value': '2026-10-09' }), P(42)]) {
+    for (const bad of [P('yesterday'), P({ '@type': 'DateTime', '@value': '2026-10-09' }), P(42), P('2026-02-30T03:00:00Z'), P('2026-01-01T24:00:00Z'), P('2026-01-01T10:00:00+25:00')]) {
       const t = reviews();
       expect(await (await t.send([resolved({ reviewedAt: bad })])).json()).toEqual({ handled: [{ id: D, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false }] });
       expect(t.calls).toHaveLength(0);
+    }
+  });
+
+  it('accepts RFC 3339 dates and times with fractions and zones', async () => {
+    for (const ok of ['2026-10-09T03:00:00Z', '2026-10-09T12:00:00.123+09:00', '2028-02-29T23:59:59-05:30']) {
+      expect(await (await reviews().send([resolved({ reviewedAt: P(ok) })])).json()).toMatchObject({ handled: [{ written: true }] });
     }
   });
 

@@ -482,7 +482,17 @@ function decisionAttr(e: Entity, name: string): Record<string, unknown> | undefi
 }
 
 /** A date and time with a zone, as RFC 3339 writes it. */
-const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/;
+
+/** RFC 3339, with each part in range: no 30 February, no 24:00 (Date.parse accepts both). */
+function isDateTime(text: string): boolean {
+  const m = RFC3339.exec(text);
+  if (!m) return false;
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number) as [number, number, number, number, number, number];
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  const zoneOk = m[9] === undefined || (Number(m[9]) < 24 && Number(m[10]) < 60);
+  return day.getUTCFullYear() === y && day.getUTCMonth() === mo - 1 && day.getUTCDate() === d && h < 24 && mi < 60 && sec < 60 && zoneOk;
+}
 
 /** A DateTime value as a string, from a string or {"@type": "DateTime", "@value": …}. */
 function dateValue(v: unknown): string | undefined {
@@ -537,7 +547,7 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   // the broker refuses could not be fixed by a retry.
   const reviewedAtAttr = decisionAttr(decision, 'reviewedAt');
   const reviewedAt = dateValue(valueOf(reviewedAtAttr));
-  if (reviewedAtAttr && (reviewedAt === undefined || !RFC3339.test(reviewedAt) || Number.isNaN(Date.parse(reviewedAt)))) {
+  if (reviewedAtAttr && (reviewedAt === undefined || !isDateTime(reviewedAt))) {
     return { id, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false };
   }
 
