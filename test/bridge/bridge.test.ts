@@ -35,7 +35,7 @@ type Call = { method: string; url: string; headers: Headers; body: unknown };
 
 /** A fake broker and Pointsman. `broker` answers writes: a status per method, or a function. */
 function setup(opts: {
-  pointsman?: (body: unknown) => Response;
+  pointsman?: (body: unknown, url: string, method: string) => Response;
   broker?: { PATCH?: number; POST?: number; ENTITIES?: number };
   fail?: 'pointsman';
   route?: Partial<Route>;
@@ -50,7 +50,7 @@ function setup(opts: {
     calls.push({ method, url, headers: new Headers(init?.headers), body });
     if (url.startsWith('https://pm.test/')) {
       if (opts.fail === 'pointsman') throw new Error('connection refused');
-      return opts.pointsman ? opts.pointsman(body) : Response.json(decision);
+      return opts.pointsman ? opts.pointsman(body, url, method) : Response.json(decision);
     }
     const custom = opts.handler?.(calls.at(-1)!);
     if (custom) return custom;
@@ -665,5 +665,144 @@ describe('Task entities', () => {
     const res = await notify([entity()]);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 400', retry: false }] });
+  });
+});
+
+describe('reviews resolved in the broker', () => {
+  const D = 'urn:ngsi-ld:Decision:d-1';
+  const R = 'urn:ngsi-ld:RoadRestriction:1';
+  const hash = 'h-1';
+  const resolved = (extra: Record<string, unknown> = {}) => ({
+    id: D, type: 'Decision',
+    refersTo: { type: 'Relationship', object: R },
+    action: P('review'), profile: P('road-restriction-check'),
+    reviewStatus: P('resolved'), finalAction: P('publish'), reviewedBy: P('app:reviewer-1'),
+    reviewedAt: P({ '@type': 'DateTime', '@value': '2026-10-09T03:00:00.000Z' }),
+    ...extra,
+  });
+  const result = { type: 'Property', value: 'review', inputHash: P(hash), decision: { type: 'Relationship', object: D } };
+
+  /** Pointsman with a decision record; the broker with the entity's result. */
+  function reviews(opts: { record?: Record<string, unknown>; resolve?: number; feedback?: number; entity?: unknown; task?: number; get?: number } = {}) {
+    const t = setup({
+      route: { decisionEntity: true, task: { actions: ['review', 'urgent'] } },
+      pointsman: (_body, url) => {
+        if (url.endsWith('/resolve')) return new Response(opts.resolve === 200 || opts.resolve === undefined ? '{}' : null, { status: opts.resolve ?? 200 });
+        if (url.endsWith('/feedback')) return new Response(null, { status: opts.feedback ?? 204 });
+        return Response.json(opts.record ?? { decision_id: 'd-1', review: { status: 'pending' }, feedback: [] });
+      },
+      handler: (c) => {
+        if (c.method === 'GET' && c.url.includes(encodeURIComponent(R))) {
+          return opts.get ? new Response(null, { status: opts.get }) : Response.json(opts.entity ?? { id: R, type: 'RoadRestriction', check: result });
+        }
+        if (c.url.includes('urn%3Angsi-ld%3ATask%3A')) return new Response(null, { status: opts.task ?? 204 });
+        return undefined;
+      },
+    });
+    const send = (data: unknown[]) => handleRequest(new Request('https://bridge.test/reviews', {
+      method: 'POST', headers: { 'x-bridge-secret': SECRET, 'content-type': 'application/json' }, body: JSON.stringify({ type: 'Notification', data }),
+    }), t.config);
+    return { ...t, send };
+  }
+  const path = (c: Call) => `${c.method} ${c.url.replace(/^https:\/\/[^/]+/, '')}`;
+
+  it('resolves a pending review in Pointsman, writes the final action and completes the Task', async () => {
+    const t = reviews();
+    const res = await t.send([resolved({ corrections: { type: 'JsonProperty', json: [{ name: 'danger', value: true, by: 'app:reviewer-1', at: '2026-10-09T02:59:00Z' }] } })]);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ handled: [{ id: D, review: 'resolved', written: true }] });
+    const task = await taskEntityId(R, 'check', hash);
+    expect(t.calls.map(path)).toEqual([
+      'GET /v1/decisions/d-1',
+      'POST /v1/reviews/d-1/resolve',
+      `GET /ngsi-ld/v1/entities/${encodeURIComponent(R)}?attrs=check`,
+      `PATCH /ngsi-ld/v1/entities/${encodeURIComponent(R)}/attrs/check`,
+      `POST /ngsi-ld/v1/entities/${encodeURIComponent(R)}/attrs`, // the fake broker answers the PATCH with 404
+      `POST /ngsi-ld/v1/entities/${encodeURIComponent(task)}/attrs`,
+    ]);
+    expect(t.calls[1]!.body).toEqual({ action: 'publish', correct: { danger: true }, by: 'app:reviewer-1' });
+    expect(t.calls[1]!.headers.get('authorization')).toBe(`Bearer ${PM_TOKEN}`);
+    expect(t.calls[3]!.body).toEqual({ ...result, finalAction: P('publish'), reviewedAt: P('2026-10-09T03:00:00.000Z') });
+    expect(t.calls[5]!.body).toMatchObject({ progress: P('completed'), statusLabel: P('publish'), completedAt: P({ '@type': 'DateTime', '@value': '2026-10-09T03:00:00.000Z' }) });
+  });
+
+  it('reads full IRIs when the subscription has no context', async () => {
+    const t = reviews();
+    const full = {
+      id: D, type: 'https://datamodels.jp/ns/decision/Decision',
+      'http://www.w3.org/ns/prov#used': { type: 'Relationship', object: R },
+      'https://datamodels.jp/ns/decision/profile': P('road-restriction-check'),
+      'https://datamodels.jp/ns/decision/reviewStatus': P('resolved'),
+      'https://datamodels.jp/ns/decision/finalAction': P('reject'),
+      'https://datamodels.jp/ns/decision/reviewedBy': P('app:reviewer-1'),
+    };
+    expect(await (await t.send([full])).json()).toEqual({ handled: [{ id: D, review: 'resolved', written: true }] });
+    expect(t.calls[1]!.body).toEqual({ action: 'reject', correct: {}, by: 'app:reviewer-1' });
+  });
+
+  it('sends nothing twice: a resolved review, or the same feedback', async () => {
+    const done = reviews({ record: { review: { status: 'resolved' }, feedback: [] } });
+    expect(await (await done.send([resolved()])).json()).toEqual({ handled: [{ id: D, review: 'already resolved', written: true }] });
+    expect(done.calls.some((c) => c.url.endsWith('/resolve'))).toBe(false);
+    // An action Pointsman did not queue (urgent): corrections go in as feedback, once.
+    const corrections = { type: 'JsonProperty', json: [{ name: 'danger', value: false, by: 'x', at: 't' }, { name: 'category', value: 'other', by: 'x', at: 't' }] };
+    const sent = reviews({ record: { feedback: [{ by: 'app:reviewer-1', correct: { category: 'other', danger: false } }] } });
+    expect(await (await sent.send([resolved({ corrections })])).json()).toMatchObject({ handled: [{ review: 'feedback already sent' }] });
+    // Sent one at a time earlier (for example from GitHub comments): nothing new.
+    const apart = reviews({ record: { feedback: [{ by: 'app:reviewer-1', correct: { danger: false } }, { by: 'app:reviewer-1', correct: { category: 'other' } }] } });
+    expect(await (await apart.send([resolved({ corrections })])).json()).toMatchObject({ handled: [{ review: 'feedback already sent' }] });
+    // Only what is new, and only this person's earlier feedback counts.
+    const fresh = reviews({ record: { feedback: [{ by: 'app:reviewer-1', correct: { danger: false } }, { by: 'someone-else', correct: { category: 'other' } }] } });
+    expect(await (await fresh.send([resolved({ corrections })])).json()).toMatchObject({ handled: [{ review: 'feedback sent' }] });
+    expect(fresh.calls.find((c) => c.url.endsWith('/feedback'))!.body).toEqual({ correct: { category: 'other' }, by: 'app:reviewer-1' });
+    const none = reviews({ record: { feedback: [] } });
+    expect(await (await none.send([resolved()])).json()).toMatchObject({ handled: [{ review: 'nothing to send' }] });
+  });
+
+  it('takes a review resolved in the meantime (409) as done', async () => {
+    const t = reviews({ resolve: 409 });
+    expect(await (await t.send([resolved()])).json()).toEqual({ handled: [{ id: D, review: 'already resolved', written: true }] });
+  });
+
+  it('leaves the entity alone when a newer decision replaced this one', async () => {
+    const t = reviews({ entity: { id: R, type: 'RoadRestriction', check: { ...result, decision: { type: 'Relationship', object: 'urn:ngsi-ld:Decision:d-2' } } } });
+    expect(await (await t.send([resolved()])).json()).toEqual({ handled: [{ id: D, review: 'resolved', written: false }] });
+    expect(t.calls.some((c) => c.method === 'PATCH' || c.url.includes('Task'))).toBe(false);
+  });
+
+  it('skips decisions that are not resolved, and other types', async () => {
+    const t = reviews();
+    const res = await t.send([resolved({ reviewStatus: P('pending') }), { ...resolved(), type: 'RoadRestriction' }]);
+    expect(await res.json()).toEqual({ handled: [{ id: D, skipped: 'not resolved' }] });
+    expect(t.calls).toHaveLength(0);
+  });
+
+  it('refuses a resolved Decision without finalAction, reviewedBy or proper corrections, without a retry', async () => {
+    const t = reviews();
+    const res = await t.send([
+      resolved({ finalAction: undefined }),
+      resolved({ reviewedBy: P(' ') }),
+      resolved({ corrections: { type: 'JsonProperty', json: [{ name: 'danger' }] } }),
+    ]);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { handled: { retry: boolean }[] }).handled.map((h) => h.retry)).toEqual([false, false, false]);
+    expect(t.calls).toHaveLength(0);
+  });
+
+  it('asks for a retry when Pointsman or the broker fails, and not when Pointsman refuses', async () => {
+    expect((await reviews({ resolve: 503 }).send([resolved()])).status).toBe(502);
+    expect((await reviews({ get: 500 }).send([resolved()])).status).toBe(502);
+    expect((await reviews({ task: 503 }).send([resolved()])).status).toBe(502);
+    const refused = await reviews({ resolve: 400 }).send([resolved()]);
+    expect(refused.status).toBe(200);
+    expect(await refused.json()).toMatchObject({ handled: [{ error: 'pointsman answered 400', retry: false }] });
+    // No Task (404) is fine.
+    expect(await (await reviews({ task: 404 }).send([resolved()])).json()).toMatchObject({ handled: [{ written: true }] });
+  });
+
+  it('needs the secret on /reviews too', async () => {
+    const t = reviews();
+    const res = await handleRequest(new Request('https://bridge.test/reviews', { method: 'POST', headers: { 'x-bridge-secret': 'wrong' }, body: '{}' }), t.config);
+    expect(res.status).toBe(403);
   });
 });
