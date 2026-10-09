@@ -198,7 +198,9 @@ Details:
 
 - An unmapped status, a Task that is not completed, and an entity whose
   result is already resolved or needs no person are skipped.
-- The bridge's own Tasks are skipped too.
+- The bridge's own Tasks are skipped too, recognised by their id
+  (`urn:ngsi-ld:Task:` and 32 hexadecimal digits): other apps must not use
+  that form.
 - Corrections of answers cannot come this way yet.
 - The subscription goes to `/reviews` as well:
 

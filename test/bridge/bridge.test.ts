@@ -922,11 +922,12 @@ describe('work orders from other apps', () => {
       id: 'urn:ngsi-ld:Task:app-7', type: 'https://datamodels.jp/ns/task/Task',
       'https://datamodels.jp/ns/task/progress': P('completed'), 'https://datamodels.jp/ns/task/statusLabel': P('Rejected'),
       'https://datamodels.jp/ns/task/refersTo': { type: 'Relationship', object: R },
+      'https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateModified': P({ '@type': 'DateTime', '@value': '2026-10-09T06:00:00Z' }),
     };
     expect(await (await t.send([full])).json()).toMatchObject({ handled: [{ resolves: D, finalAction: 'reject' }] });
     const body = t.calls.find((c) => c.method === 'POST')!.body as Record<string, { value: unknown }>;
     expect(body.reviewedBy).toEqual(P('urn:ngsi-ld:Task:app-7'));
-    expect((body.reviewedAt!.value as { '@value': string })['@value']).toMatch(/^\d{4}-\d\d-\d\dT/);
+    expect(body.reviewedAt).toEqual(P({ '@type': 'DateTime', '@value': '2026-10-09T06:00:00Z' }));
   });
 
   it('skips open work orders, unmapped statuses, and entities without a pending decision', async () => {
@@ -946,11 +947,13 @@ describe('work orders from other apps', () => {
     expect(await skip(order(), { entity: { id: R, type: 'RoadRestriction', check: { ...pending, value: 'publish' } } })).toBe('nothing to resolve');
   });
 
-  it('ignores the bridge’s own Task, which it completes itself', async () => {
-    const own = await taskEntityId(R, 'check', 'h-1');
-    const t = orders({ workOrders: { publish: 'publish' } });
-    expect(await (await t.send([order({ id: own, statusLabel: P('publish') })])).json()).toEqual({ handled: [{ id: own, skipped: 'own task' }] });
-    expect(t.calls.some((c) => c.method === 'POST')).toBe(false);
+  it('ignores the bridge’s own Tasks, also ones made for older input values', async () => {
+    for (const hash of ['h-1', 'h-older']) {
+      const own = await taskEntityId(R, 'check', hash);
+      const t = orders({ workOrders: { publish: 'publish' } });
+      expect(await (await t.send([order({ id: own, statusLabel: P('publish') })])).json()).toEqual({ handled: [{ id: own, skipped: 'own task' }] });
+      expect(t.calls).toHaveLength(0);
+    }
   });
 
   it('leaves Tasks alone without a work-order mapping', async () => {
@@ -973,5 +976,7 @@ describe('work orders from other apps', () => {
     expect(() => parseWorkOrders('not json')).toThrow(/not valid JSON/);
     expect(() => parseWorkOrders('{"Published":"Publish"}')).toThrow(/lower case/);
     expect(() => parseWorkOrders('{"Published":1}')).toThrow(/Published/);
+    expect(parseWorkOrders(JSON.stringify({ Done: `a${'b'.repeat(62)}` }))).toEqual({ Done: `a${'b'.repeat(62)}` });
+    expect(() => parseWorkOrders(JSON.stringify({ Done: `a${'b'.repeat(63)}` }))).toThrow(/at most 63/);
   });
 });

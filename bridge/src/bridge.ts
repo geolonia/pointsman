@@ -653,9 +653,16 @@ function isTask(e: unknown): e is Entity {
   return typeof x?.id === 'string' && (x.type === 'Task' || x.type === `${TASK_NS}Task`) && !('deletedAt' in x);
 }
 
+/** Task terms whose IRI is not in the Task namespace (published Task context). */
+const TASK_IRIS: Record<string, string> = {
+  name: 'https://uri.etsi.org/ngsi-ld/name',
+  dateCreated: 'https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateCreated',
+  dateModified: 'https://smart-data-models.github.io/data-models/terms.jsonld#/definitions/dateModified',
+};
+
 /** An attribute of a Task entity, by its short name or its full IRI. */
 function taskAttr(e: Entity, name: string): Record<string, unknown> | undefined {
-  const iri = name === 'name' ? 'https://uri.etsi.org/ngsi-ld/name' : `${TASK_NS}${name}`;
+  const iri = TASK_IRIS[name] ?? `${TASK_NS}${name}`;
   const a = e[name] ?? e[iri];
   return a && typeof a === 'object' && !Array.isArray(a) ? (a as Record<string, unknown>) : undefined;
 }
@@ -675,8 +682,9 @@ export function parseWorkOrders(json: string): Record<string, string> {
     throw new Error('bridge work orders: expected an object of status label to final action');
   }
   for (const [label, action] of Object.entries(data)) {
-    if (typeof action !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(action) || action === 'review') {
-      throw new Error(`bridge work orders.${label}: expected a final action in lower case (not "review")`);
+    // As Pointsman takes it (src/feedback.ts ACTION): at most 63 characters.
+    if (typeof action !== 'string' || !/^[a-z][a-z0-9_-]{0,62}$/.test(action) || action === 'review') {
+      throw new Error(`bridge work orders.${label}: expected a final action in lower case, at most 63 characters (not "review")`);
     }
   }
   return data as Record<string, string>;
@@ -705,6 +713,9 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const label = valueOf(taskAttr(task, 'statusLabel'));
   if (typeof label !== 'string' || !Object.hasOwn(mapping, label)) return { id, skipped: 'status not mapped' };
   const finalAction = mapping[label]!;
+  // The bridge's own Tasks (completed by the bridge itself), whatever input
+  // values they were made for: recognised by their id.
+  if (OWN_TASK.test(id)) return { id, skipped: 'own task' };
   const target = taskAttr(task, 'refersTo')?.object;
   if (typeof target !== 'string') return { id, skipped: 'nothing to resolve' };
 
@@ -722,12 +733,6 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   if (!got.ok) return { id, error: `broker read failed: ${got.status}`, retry: retryable(got.status) };
   const current = (await got.json()) as Entity;
 
-  for (const route of candidates.filter((r) => r.type === current.type)) {
-    const result = current[route.attribute] as Record<string, unknown> | undefined;
-    const hash = valueOf(result?.inputHash);
-    // The bridge's own Task for this result: completed by the bridge itself.
-    if (route.task && typeof hash === 'string' && (await taskEntityId(target, route.attribute, hash)) === id) return { id, skipped: 'own task' };
-  }
   const pending = candidates.find((r) => {
     if (r.type !== current.type) return false;
     const result = current[r.attribute] as Record<string, unknown> | undefined;
@@ -750,6 +755,9 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   return { id, resolves: decision, finalAction };
 }
 
+/** The id form of the bridge's own Tasks (taskEntityId). */
+const OWN_TASK = /^urn:ngsi-ld:Task:[0-9a-f]{32}$/;
+
 /** The published context of the Task model (datamodels.jp). */
 export const TASK_CONTEXT = 'https://datamodels.jp/context/task/v1.jsonld';
 
@@ -760,6 +768,7 @@ export const TASK_CONTEXT = 'https://datamodels.jp/context/task/v1.jsonld';
  * The Task points to the entity (refersTo), the result to its Decision.
  */
 export async function taskEntityId(entityId: string, attribute: string, hash: string): Promise<string> {
+  // OWN_TASK recognises this form; other apps' Tasks must not use it.
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([entityId, attribute, hash])));
   return `urn:ngsi-ld:Task:${[...new Uint8Array(digest)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
 }
