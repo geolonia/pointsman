@@ -1,7 +1,7 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleRequest, inputHash, parseRoutes, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
+import { type BridgeConfig, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleRequest, inputHash, parseRoutes, parseWorkOrders, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
@@ -249,6 +249,11 @@ describe('configuration', () => {
     expect(config.pointsman.url).toBe('https://pm.test');
     expect(config.broker).toEqual({ url: 'https://broker.test' });
     expect(configFrom({ ...env, BROKER_TENANT: 't', BROKER_TOKEN }).broker).toEqual({ url: 'https://broker.test', tenant: 't', token: BROKER_TOKEN });
+    expect(config).not.toHaveProperty('workOrders');
+    expect(configFrom({ ...env, BRIDGE_WORK_ORDERS: '{"Published":"publish"}' }).workOrders).toEqual({ Published: 'publish' });
+    expect(() => configFrom({ ...env, BRIDGE_WORK_ORDERS: '{"Open":"review"}' })).toThrow(/not "review"/);
+    expect(() => configFrom({ ...env, BRIDGE_WORK_ORDERS: '{}' })).toThrow(/work orders/);
+    expect(() => configFrom({ ...env, BRIDGE_WORK_ORDERS: '["publish"]' })).toThrow(/work orders/);
   });
 
   it('sends an API key instead of a token, never both', async () => {
@@ -857,5 +862,116 @@ describe('reviews resolved in the broker', () => {
     const t = reviews();
     const res = await handleRequest(new Request('https://bridge.test/reviews', { method: 'POST', headers: { 'x-bridge-secret': 'wrong' }, body: '{}' }), t.config);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('work orders from other apps', () => {
+  const R = 'urn:ngsi-ld:RoadRestriction:1';
+  const D = 'urn:ngsi-ld:Decision:d-1';
+  const W = 'urn:ngsi-ld:Issue:redmine:city-a:42';
+  const workOrders = { Published: 'publish', Rejected: 'reject' };
+  /** A Redmine GTT issue as GTT emits it in the Task vocabulary. */
+  const order = (extra: Record<string, unknown> = {}) => ({
+    id: W, type: 'Task',
+    name: P('[review] 県道12号'), progress: P('completed'), statusLabel: P('Published'),
+    refersTo: { type: 'Relationship', object: R },
+    dateModified: P({ '@type': 'DateTime', '@value': '2026-10-09T05:00:00Z' }),
+    ...extra,
+  });
+  const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
+
+  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null } = {}) {
+    const t = setup({
+      route: { decisionEntity: true, task: { actions: ['review', 'urgent'] }, reviewActions: ['review', 'urgent'] },
+      handler: (c) => {
+        if (c.method === 'GET' && c.url.includes(encodeURIComponent(R))) {
+          return opts.get ? new Response(null, { status: opts.get }) : Response.json(opts.entity ?? { id: R, type: 'RoadRestriction', check: pending });
+        }
+        if (c.method === 'POST' && c.url.includes(encodeURIComponent(D))) return new Response(null, { status: opts.post ?? 204 });
+        return undefined;
+      },
+    });
+    if (opts.workOrders !== null) t.config.workOrders = opts.workOrders ?? workOrders;
+    const send = (data: unknown[]) => handleRequest(new Request('https://bridge.test/reviews', {
+      method: 'POST', headers: { 'x-bridge-secret': SECRET }, body: JSON.stringify({ type: 'Notification', data }),
+    }), t.config);
+    return { ...t, send };
+  }
+
+  it('resolves the pending decision of the entity a completed work order refers to', async () => {
+    const t = orders();
+    const res = await t.send([order()]);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    expect(t.calls.find((c) => c.method === 'GET')!.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(R)}?attrs=check`);
+    const write = t.calls.find((c) => c.method === 'POST')!;
+    expect(write.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(D)}/attrs`);
+    expect(write.headers.get('content-type')).toBe('application/ld+json');
+    expect(write.body).toEqual({
+      '@context': [DECISION_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
+      reviewStatus: P('resolved'), finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'),
+      reviewedAt: P({ '@type': 'DateTime', '@value': '2026-10-09T05:00:00Z' }),
+    });
+    // Nothing goes to Pointsman here: /reviews does that when the broker notifies the Decision.
+    expect(t.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(false);
+  });
+
+  it('reads full IRIs, and other apps’ ids as reviewedBy', async () => {
+    const t = orders();
+    const full = {
+      id: 'urn:ngsi-ld:Task:app-7', type: 'https://datamodels.jp/ns/task/Task',
+      'https://datamodels.jp/ns/task/progress': P('completed'), 'https://datamodels.jp/ns/task/statusLabel': P('Rejected'),
+      'https://datamodels.jp/ns/task/refersTo': { type: 'Relationship', object: R },
+    };
+    expect(await (await t.send([full])).json()).toMatchObject({ handled: [{ resolves: D, finalAction: 'reject' }] });
+    const body = t.calls.find((c) => c.method === 'POST')!.body as Record<string, { value: unknown }>;
+    expect(body.reviewedBy).toEqual(P('urn:ngsi-ld:Task:app-7'));
+    expect((body.reviewedAt!.value as { '@value': string })['@value']).toMatch(/^\d{4}-\d\d-\d\dT/);
+  });
+
+  it('skips open work orders, unmapped statuses, and entities without a pending decision', async () => {
+    const skip = async (o: Record<string, unknown>, opts: Parameters<typeof orders>[0] = {}) => {
+      const t = orders(opts);
+      const out = (await (await t.send([o])).json()) as { handled: { skipped?: string }[] };
+      expect(t.calls.some((c) => c.method === 'POST')).toBe(false);
+      return out.handled[0]?.skipped;
+    };
+    expect(await skip(order({ progress: P('needs-action') }))).toBe('not completed');
+    expect(await skip(order({ statusLabel: P('Closed') }))).toBe('status not mapped');
+    expect(await skip(order({ statusLabel: P('constructor') }))).toBe('status not mapped');
+    expect(await skip(order({ refersTo: undefined }))).toBe('nothing to resolve');
+    expect(await skip(order(), { get: 404 })).toBe('nothing to resolve');
+    // Resolved already (a repeat), or the result needs no person.
+    expect(await skip(order(), { entity: { id: R, type: 'RoadRestriction', check: { ...pending, finalAction: P('publish') } } })).toBe('nothing to resolve');
+    expect(await skip(order(), { entity: { id: R, type: 'RoadRestriction', check: { ...pending, value: 'publish' } } })).toBe('nothing to resolve');
+  });
+
+  it('ignores the bridge’s own Task, which it completes itself', async () => {
+    const own = await taskEntityId(R, 'check', 'h-1');
+    const t = orders({ workOrders: { publish: 'publish' } });
+    expect(await (await t.send([order({ id: own, statusLabel: P('publish') })])).json()).toEqual({ handled: [{ id: own, skipped: 'own task' }] });
+    expect(t.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('leaves Tasks alone without a work-order mapping', async () => {
+    const t = orders({ workOrders: null });
+    expect(await (await t.send([order()])).json()).toEqual({ handled: [] });
+    expect(t.calls).toHaveLength(0);
+  });
+
+  it('asks for a retry when the broker fails, and not when it refuses', async () => {
+    expect((await orders({ get: 503 }).send([order()])).status).toBe(502);
+    expect((await orders({ post: 503 }).send([order()])).status).toBe(502);
+    const refused = await orders({ post: 400 }).send([order()]);
+    expect(refused.status).toBe(200);
+    expect(await refused.json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 400', retry: false }] });
+    expect(await (await orders({ post: 207 }).send([order()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207' }] });
+  });
+
+  it('checks the mapping', () => {
+    expect(parseWorkOrders('{"Published":"publish","Rejected":"reject"}')).toEqual(workOrders);
+    expect(() => parseWorkOrders('not json')).toThrow(/not valid JSON/);
+    expect(() => parseWorkOrders('{"Published":"Publish"}')).toThrow(/lower case/);
+    expect(() => parseWorkOrders('{"Published":1}')).toThrow(/Published/);
   });
 });

@@ -46,6 +46,12 @@ export interface TaskOptions {
 
 export interface BridgeConfig {
   routes: Route[];
+  /**
+   * Work orders from other apps (#85): a completed `Task` that refers to an
+   * entity resolves the entity's pending decision. Maps the Task's
+   * `statusLabel` (for example a Redmine status name) to the final action.
+   */
+  workOrders?: Record<string, string>;
   /** Shared secret the subscription sends in `x-bridge-secret`. */
   notifySecret: string;
   pointsman: { url: string; token: string };
@@ -66,7 +72,8 @@ export interface BridgeConfig {
 
 /** What happened to one entity of a notification. */
 export type EntityResult =
-  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' }
+  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | WorkOrderSkip }
+  | { id: string; resolves: string; finalAction: string }
   | { id: string; review: ReviewOutcome; written: boolean }
   | { id: string; action: string; decision: string; write: number }
   | { id: string; error: string; retry: boolean; decision?: string };
@@ -195,9 +202,10 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   const results: EntityResult[] = [];
   if (url.pathname === '/reviews') {
     for (const entity of data as Entity[]) {
-      if (!isDecision(entity)) continue;
+      const kind = isDecision(entity) ? 'decision' : config.workOrders && isTask(entity) ? 'task' : null;
+      if (!kind) continue;
       try {
-        results.push(await handleReview(entity, config));
+        results.push(await (kind === 'decision' ? handleReview(entity, config) : handleWorkOrder(entity, config.workOrders!, config)));
       } catch (err) {
         results.push({ id: entity.id, error: err instanceof Error ? err.message : String(err), retry: true });
       }
@@ -632,6 +640,114 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     if (!updatedAll(done) && done.status !== 404) return { id, error: `broker refused the Task update: ${done.status}`, retry: retryable(done.status) };
   }
   return { id, review, written: true };
+}
+
+// --- Work orders from other apps (#85) -------------------------------------
+
+type WorkOrderSkip = 'not completed' | 'status not mapped' | 'nothing to resolve' | 'own task';
+
+const TASK_NS = 'https://datamodels.jp/ns/task/';
+
+function isTask(e: unknown): e is Entity {
+  const x = e as Entity | undefined;
+  return typeof x?.id === 'string' && (x.type === 'Task' || x.type === `${TASK_NS}Task`) && !('deletedAt' in x);
+}
+
+/** An attribute of a Task entity, by its short name or its full IRI. */
+function taskAttr(e: Entity, name: string): Record<string, unknown> | undefined {
+  const iri = name === 'name' ? 'https://uri.etsi.org/ngsi-ld/name' : `${TASK_NS}${name}`;
+  const a = e[name] ?? e[iri];
+  return a && typeof a === 'object' && !Array.isArray(a) ? (a as Record<string, unknown>) : undefined;
+}
+
+/**
+ * Checks the work-order mapping (status label to final action), for example
+ * from a Worker variable.
+ */
+export function parseWorkOrders(json: string): Record<string, string> {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    throw new Error('bridge work orders: not valid JSON');
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0) {
+    throw new Error('bridge work orders: expected an object of status label to final action');
+  }
+  for (const [label, action] of Object.entries(data)) {
+    if (typeof action !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(action) || action === 'review') {
+      throw new Error(`bridge work orders.${label}: expected a final action in lower case (not "review")`);
+    }
+  }
+  return data as Record<string, string>;
+}
+
+/**
+ * Who resolved it, as an account and not a person: for a Redmine GTT work
+ * order (`urn:ngsi-ld:Issue:redmine:<instance>:<issue>`) `redmine:<instance>#<issue>`,
+ * otherwise the Task's id.
+ */
+function workOrderBy(id: string): string {
+  const gtt = /^urn:ngsi-ld:Issue:redmine:([^:]+):(\d+)$/.exec(id);
+  return (gtt ? `redmine:${gtt[1]}#${gtt[2]}` : id).slice(0, 100);
+}
+
+/**
+ * A work order another app completed (for example a Redmine GTT issue,
+ * published as a `Task` that refers to the report): the pending decision on
+ * the entity it refers to is resolved, by writing the result to the Decision
+ * entity. The broker then notifies `/reviews` (see handleReview), which does
+ * the rest. Safe to repeat: a decision already resolved is left alone.
+ */
+async function handleWorkOrder(task: Entity, mapping: Record<string, string>, config: BridgeConfig): Promise<EntityResult> {
+  const id = task.id;
+  if (valueOf(taskAttr(task, 'progress')) !== 'completed') return { id, skipped: 'not completed' };
+  const label = valueOf(taskAttr(task, 'statusLabel'));
+  if (typeof label !== 'string' || !Object.hasOwn(mapping, label)) return { id, skipped: 'status not mapped' };
+  const finalAction = mapping[label]!;
+  const target = taskAttr(task, 'refersTo')?.object;
+  if (typeof target !== 'string') return { id, skipped: 'nothing to resolve' };
+
+  // Routes whose result on that entity waits for a person, in configuration order.
+  const candidates = config.routes.filter((r) => r.decisionEntity);
+  if (candidates.length === 0) return { id, skipped: 'nothing to resolve' };
+  const fetchFn = config.fetch ?? fetch;
+  const headers = brokerHeaders(config, 'application/json');
+  delete headers['content-type'];
+  headers.accept = 'application/json';
+  if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  const attrs = [...new Set(candidates.map((r) => r.attribute))].map(encodeURIComponent).join(',');
+  const got = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
+  if (got.status === 404) return { id, skipped: 'nothing to resolve' };
+  if (!got.ok) return { id, error: `broker read failed: ${got.status}`, retry: retryable(got.status) };
+  const current = (await got.json()) as Entity;
+
+  for (const route of candidates.filter((r) => r.type === current.type)) {
+    const result = current[route.attribute] as Record<string, unknown> | undefined;
+    const hash = valueOf(result?.inputHash);
+    // The bridge's own Task for this result: completed by the bridge itself.
+    if (route.task && typeof hash === 'string' && (await taskEntityId(target, route.attribute, hash)) === id) return { id, skipped: 'own task' };
+  }
+  const pending = candidates.find((r) => {
+    if (r.type !== current.type) return false;
+    const result = current[r.attribute] as Record<string, unknown> | undefined;
+    return typeof valueOf(result) === 'string' && (r.reviewActions ?? ['review']).includes(valueOf(result) as string)
+      && valueOf(result?.finalAction) === undefined
+      && typeof (result?.decision as { object?: unknown } | undefined)?.object === 'string';
+  });
+  if (!pending) return { id, skipped: 'nothing to resolve' };
+  const decision = ((current[pending.attribute] as Record<string, unknown>).decision as { object: string }).object;
+
+  const modified = dateValue(valueOf(taskAttr(task, 'dateModified')));
+  const res = await brokerRequest('POST', decision, config, {
+    '@context': [DECISION_CONTEXT, CORE_CONTEXT],
+    reviewStatus: { type: 'Property', value: 'resolved' },
+    finalAction: { type: 'Property', value: finalAction },
+    reviewedBy: { type: 'Property', value: workOrderBy(id) },
+    reviewedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': modified && isDateTime(modified) ? modified : new Date().toISOString() } },
+  });
+  if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
+  return { id, resolves: decision, finalAction };
 }
 
 /** The published context of the Task model (datamodels.jp). */

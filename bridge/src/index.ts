@@ -1,11 +1,13 @@
 // The bridge as its own Worker. Another Worker (for example the demo, #48) can
 // import handleRequest from ./bridge.ts and mount it instead.
 
-import { type BridgeConfig, handleRequest, parseRoutes } from './bridge';
+import { type BridgeConfig, handleRequest, parseRoutes, parseWorkOrders } from './bridge';
 
 export interface Env {
   /** JSON list of routes, see bridge/README.md. */
   BRIDGE_ROUTES: string;
+  /** Optional JSON object: work-order status label to final action, see bridge/README.md. */
+  BRIDGE_WORK_ORDERS?: string;
   POINTSMAN_URL: string;
   BROKER_URL: string;
   BROKER_TENANT?: string;
@@ -33,6 +35,7 @@ export function configFrom(env: Env): BridgeConfig {
   const trim = (u: string) => u.replace(/\/+$/, '');
   return {
     routes: parseRoutes(env.BRIDGE_ROUTES),
+    ...(env.BRIDGE_WORK_ORDERS && { workOrders: parseWorkOrders(env.BRIDGE_WORK_ORDERS) }),
     notifySecret: env.NOTIFY_SECRET,
     pointsman: { url: trim(env.POINTSMAN_URL), token: env.POINTSMAN_TOKEN },
     broker: {
