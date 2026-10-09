@@ -959,7 +959,8 @@ describe('work orders from other apps', () => {
     for (const hash of ['h-1', 'h-older']) {
       const own = await taskEntityId(R, 'check', hash);
       const t = orders({ workOrders: { publish: 'publish' } });
-      expect(await (await t.send([order({ id: own, statusLabel: P('publish') })])).json()).toEqual({ handled: [{ id: own, skipped: 'own task' }] });
+      // As the bridge completes it: no dateModified.
+      expect(await (await t.send([order({ id: own, statusLabel: P('publish'), dateModified: undefined })])).json()).toEqual({ handled: [{ id: own, skipped: 'own task' }] });
       expect(t.calls).toHaveLength(0);
     }
   });

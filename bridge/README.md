@@ -199,7 +199,10 @@ Details:
 - An unmapped status, a Task that is not completed, and an entity whose
   result is already resolved or needs no person are skipped.
 - First writer wins: a Decision that is already resolved (by another work
-  order or app) is left alone.
+  order or app) is left alone. Between that read and the write there is a
+  short window (NGSI-LD has no conditional update); if a second writer gets
+  through, `/reviews` sees that the Decision says something other than what
+  Pointsman accepted, reports it and writes nothing.
 - Refused (no retry): a Task id longer than 100 characters (Pointsman's limit
   for who resolved it), a Task without `dateModified` (the bridge does not make
   up the time), and an entity with two results waiting for a person at once

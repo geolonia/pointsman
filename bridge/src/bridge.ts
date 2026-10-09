@@ -710,6 +710,9 @@ function workOrderBy(id: string): string | undefined {
  */
 async function handleWorkOrder(task: Entity, mapping: Record<string, string>, config: BridgeConfig): Promise<EntityResult> {
   const id = task.id;
+  // The bridge's own Tasks (completed by the bridge itself, without
+  // dateModified), whatever input values they were made for: by their id, first.
+  if (OWN_TASK.test(id)) return { id, skipped: 'own task' };
   if (valueOf(taskAttr(task, 'progress')) !== 'completed') return { id, skipped: 'not completed' };
   const label = valueOf(taskAttr(task, 'statusLabel'));
   if (typeof label !== 'string' || !Object.hasOwn(mapping, label)) return { id, skipped: 'status not mapped' };
@@ -719,9 +722,6 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   // The time the person closed it, from the app: never the bridge's clock.
   const modified = dateValue(valueOf(taskAttr(task, 'dateModified')));
   if (modified === undefined || !isDateTime(modified)) return { id, error: 'dateModified: expected a date and time (RFC 3339)', retry: false };
-  // The bridge's own Tasks (completed by the bridge itself), whatever input
-  // values they were made for: recognised by their id.
-  if (OWN_TASK.test(id)) return { id, skipped: 'own task' };
   const target = taskAttr(task, 'refersTo')?.object;
   if (typeof target !== 'string') return { id, skipped: 'nothing to resolve' };
 
