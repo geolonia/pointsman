@@ -252,12 +252,15 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     decisionRef = decisionEntityId(d.decision_id);
   }
   // Also before the property, for the same reason. Its id comes from the
-  // inputs, not the decision: a retry decides again with a new decision id,
-  // and must find the Task it already created (409), not add a second one.
-  if (route.task?.actions.includes(d.action)) {
-    const created = await createEntity(toTaskEntity(d, entity, route.task, await taskEntityId(entity.id, route.attribute, hash), decidedAt), config);
-    if (!created.ok && created.status !== 409) {
-      return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${created.status}`, retry: retryable(created.status) };
+  // inputs, not the decision (a retry decides again, with a new decision id),
+  // and the Task always follows the latest decision for these inputs.
+  if (route.task) {
+    const taskId = await taskEntityId(entity.id, route.attribute, hash);
+    const failed = route.task.actions.includes(d.action)
+      ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
+      : await cancelOpenTask(taskId, d.action, config);
+    if (failed) {
+      return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${failed.status}`, retry: retryable(failed.status) };
     }
   }
 
@@ -478,6 +481,53 @@ export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, 
     ...(priority !== undefined && { priority: P(priority) }),
     dateCreated: P({ '@type': 'DateTime', '@value': d.created_at ?? now.toISOString() }),
   };
+}
+
+/**
+ * Creates the Task, or replaces one with the same id: from a retry, or from
+ * earlier input values that came back (A, B, A), where the old Task may be
+ * done already and the work is new. Returns the failed response, if any.
+ */
+async function putTask(task: Record<string, unknown>, config: BridgeConfig): Promise<Response | null> {
+  let created = await createEntity(task, config);
+  if (created.status === 409) {
+    const removed = await brokerRequest('DELETE', task.id as string, config);
+    if (!removed.ok && removed.status !== 404) return removed;
+    created = await createEntity(task, config);
+  }
+  return created.ok ? null : created;
+}
+
+/**
+ * When the decision needs no person, an open Task for the same input values
+ * (from a retry or an earlier decision) is cancelled; a done one stays as it
+ * is. Returns the failed response, if any.
+ */
+async function cancelOpenTask(id: string, action: string, config: BridgeConfig): Promise<Response | null> {
+  const found = await brokerRequest('GET', id, config);
+  if (found.status === 404) return null;
+  if (!found.ok) return found;
+  const progress = (await found.json() as { progress?: { value?: unknown } }).progress?.value;
+  if (progress === 'completed' || progress === 'cancelled' || progress === 'failed') return null;
+  const updated = await brokerRequest('POST', id, config, {
+    '@context': [TASK_CONTEXT, CORE_CONTEXT],
+    progress: { type: 'Property', value: 'cancelled' },
+    statusLabel: { type: 'Property', value: action },
+  });
+  return updated.ok ? null : updated;
+}
+
+/** GET or DELETE an entity, or POST attributes to it, with the Task context. */
+function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown): Promise<Response> {
+  const fetchFn = config.fetch ?? fetch;
+  const url = `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}${method === 'POST' ? '/attrs' : ''}`;
+  const headers = brokerHeaders(config, 'application/ld+json');
+  if (method !== 'POST') {
+    delete headers['content-type'];
+    headers.accept = 'application/json';
+    headers.link = `<${TASK_CONTEXT}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  }
+  return fetchFn(url, { method, headers, ...(body !== undefined && { body: JSON.stringify(body) }) });
 }
 
 async function createEntity(entity: Record<string, unknown>, config: BridgeConfig): Promise<Response> {

@@ -39,6 +39,8 @@ function setup(opts: {
   broker?: { PATCH?: number; POST?: number; ENTITIES?: number };
   fail?: 'pointsman';
   route?: Partial<Route>;
+  /** Answers broker requests first, when it returns a response. */
+  handler?: (c: Call) => Response | undefined;
 } = {}) {
   const calls: Call[] = [];
   const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -50,8 +52,10 @@ function setup(opts: {
       if (opts.fail === 'pointsman') throw new Error('connection refused');
       return opts.pointsman ? opts.pointsman(body) : Response.json(decision);
     }
+    const custom = opts.handler?.(calls.at(-1)!);
+    if (custom) return custom;
     if (url === 'https://broker.test/ngsi-ld/v1/entities') return new Response(null, { status: opts.broker?.ENTITIES ?? 201 });
-    const status = opts.broker?.[method as 'PATCH' | 'POST'] ?? (method === 'PATCH' ? 404 : 204);
+    const status = opts.broker?.[method as 'PATCH' | 'POST'] ?? (method === 'PATCH' || method === 'GET' ? 404 : 204);
     return new Response(status === 204 ? null : 'broker says no', { status });
   }) as typeof fetch;
   const config: BridgeConfig = {
@@ -496,7 +500,8 @@ describe('Task entities', () => {
   it('creates the same Task again on a retry, although Pointsman decides with a new id', async () => {
     let n = 0;
     let writes = 0;
-    const t = setup({ pointsman: () => Response.json({ ...decision, action: 'urgent', decision_id: `d-${++n}` }), route: { decisionEntity: true, task } });
+    const store = taskStore();
+    const t = setup({ pointsman: () => Response.json({ ...decision, action: 'urgent', decision_id: `d-${++n}` }), route: { decisionEntity: true, task }, handler: store.handler });
     const fetchFn = t.config.fetch!;
     // The first result write fails after the Task was created.
     t.config.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -508,8 +513,9 @@ describe('Task entities', () => {
     const tasks = t.calls.filter((c) => (c.body as { type?: string } | undefined)?.type === 'Task').map((c) => (c.body as { id: string }).id);
     const decisions = t.calls.filter((c) => (c.body as { type?: string } | undefined)?.type === 'Decision').map((c) => (c.body as { id: string }).id);
     expect(decisions).toEqual(['urn:ngsi-ld:Decision:d-1', 'urn:ngsi-ld:Decision:d-2']);
-    expect(tasks).toHaveLength(2);
-    expect(tasks[1]).toBe(tasks[0]);
+    expect(tasks).toHaveLength(3); // created, 409 on the retry, created again after the delete
+    expect(new Set(tasks).size).toBe(1);
+    expect(store.tasks.size).toBe(1);
   });
 
   it('reads priorities only from the configured actions', async () => {
@@ -534,11 +540,76 @@ describe('Task entities', () => {
     expect(created[0]!.body).not.toHaveProperty('priority');
   });
 
-  it('accepts a Task that already exists (a retry)', async () => {
-    const { notify, calls } = setup({ pointsman: urgent, route: { task }, broker: { ENTITIES: 409 } });
-    const res = await notify([entity()]);
+  /** A broker that keeps Tasks: 409 for an id it has, DELETE removes, GET reads, POST …/attrs updates. */
+  function taskStore() {
+    const tasks = new Map<string, Record<string, unknown>>();
+    const idOf = (url: string) => decodeURIComponent(url.split('/entities/')[1]!.replace(/\/attrs$/, ''));
+    const handler = (c: Call): Response | undefined => {
+      const body = c.body as Record<string, unknown> | undefined;
+      if (c.url === 'https://broker.test/ngsi-ld/v1/entities' && body?.type === 'Task') {
+        if (tasks.has(body.id as string)) return new Response(null, { status: 409 });
+        tasks.set(body.id as string, body);
+        return new Response(null, { status: 201 });
+      }
+      if (!c.url.includes('urn%3Angsi-ld%3ATask%3A')) return undefined;
+      const task = tasks.get(idOf(c.url));
+      if (!task) return new Response(null, { status: 404 });
+      if (c.method === 'DELETE') { tasks.delete(idOf(c.url)); return new Response(null, { status: 204 }); }
+      if (c.method === 'GET') return Response.json(task);
+      if (c.method === 'POST') { Object.assign(task, body); return new Response(null, { status: 204 }); }
+      return undefined;
+    };
+    return { tasks, handler };
+  }
+
+  it('replaces a Task that exists already, so earlier input values that come back give new work', async () => {
+    const store = taskStore();
+    const t = setup({ pointsman: urgent, route: { task }, handler: store.handler });
+    await t.notify([entity()]);
+    const [id] = [...store.tasks.keys()];
+    // A person completed it; then the report changed and came back to the same text.
+    store.tasks.get(id!)!.progress = P('completed');
+    const res = await t.notify([entity()]);
     expect(res.status).toBe(200);
-    expect(calls.some((c) => c.method === 'PATCH')).toBe(true);
+    expect(store.tasks.get(id!)!.progress).toEqual(P('needs-action'));
+    expect(t.calls.filter((c) => c.method === 'DELETE').map((c) => decodeURIComponent(c.url.split('/entities/')[1]!))).toEqual([id]);
+  });
+
+  it('reports a Task it cannot replace, and writes no result', async () => {
+    const t = setup({ pointsman: urgent, route: { task }, handler: (c) => {
+      if ((c.body as { type?: string } | undefined)?.type === 'Task') return new Response(null, { status: 409 });
+      if (c.method === 'DELETE') return new Response(null, { status: 503 });
+      return undefined;
+    } });
+    const res = await t.notify([entity()]);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 503', retry: true }] });
+    expect(t.calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('cancels an open Task when a later decision for the same inputs needs no person, and leaves a done one', async () => {
+    let action = 'urgent';
+    const store = taskStore();
+    const t = setup({ pointsman: () => Response.json({ ...decision, action }), route: { task }, handler: store.handler });
+    await t.notify([entity()]);
+    const [id] = [...store.tasks.keys()];
+    action = 'publish';
+    expect((await t.notify([entity()])).status).toBe(200);
+    expect(store.tasks.get(id!)).toMatchObject({ progress: P('cancelled'), statusLabel: P('publish') });
+    const update = t.calls.find((c) => c.method === 'POST' && c.url.endsWith('/attrs') && c.url.includes('Task'))!;
+    expect(update.headers.get('content-type')).toBe('application/ld+json');
+    expect((update.body as { '@context': unknown })['@context']).toEqual([TASK_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld']);
+    // Done: stays as it is.
+    store.tasks.get(id!)!.progress = P('completed');
+    await t.notify([entity()]);
+    expect(store.tasks.get(id!)!.progress).toEqual(P('completed'));
+  });
+
+  it('asks for a retry when it cannot read the Task to cancel it', async () => {
+    const t = setup({ route: { task }, handler: (c) => (c.method === 'GET' ? new Response(null, { status: 500 }) : undefined) });
+    const res = await t.notify([entity()]);
+    expect(res.status).toBe(502);
+    expect(t.calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 
   it('writes no result when the broker refuses the Task, so the retry tries again', async () => {

@@ -106,8 +106,11 @@ a person, without knowing about Pointsman.
   decision id). From the entity: the result's `inputHash`. The Task model has
   no attribute for a Decision; the way is Task → `refersTo` → the entity's
   result → `decision`.
-- Like the Decision entity, it is created before the property is written,
-  and a Task that already exists (a retry) is fine.
+- Like the Decision entity, it is created before the property is written.
+- The Task follows the latest decision for these input values: one that
+  exists already (a retry, or values that came back after a change) is
+  replaced; when a later decision for the same values needs no person, an
+  open Task is set to `cancelled`, a done one stays.
 - The bridge only creates it. Whoever resolves the review sets `progress` to
   `completed` or `cancelled`.
 - `@context` is `https://datamodels.jp/context/task/v1.jsonld`
