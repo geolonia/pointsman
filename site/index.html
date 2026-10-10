@@ -30,6 +30,7 @@
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Pointsman home"><img class="logo-dark" src="assets/lockup-on-dark.svg" alt="Pointsman" width="146" height="28"><img class="logo-light" src="assets/lockup.svg" alt="Pointsman" width="146" height="28"></a>
     <nav aria-label="Sections">
+      <a href="#overview">Overview</a>
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
       <a href="#profiles">Profiles</a>
@@ -90,6 +91,31 @@
 }</pre>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="band alt" id="overview">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What it does, in plain words</h2>
+      <p>Many systems receive things that someone must look at first. A resident reports a closed road. A new issue arrives. A deployment seems stuck. Often the case is clear, and the system can act at once. Sometimes it is not clear, and a person should check it. Pointsman makes this first call, and it keeps a record of every call.</p>
+    </div>
+    <ol class="flow flow-wrap flow-3">
+      <li>
+        <h3>It asks fixed questions</h3>
+        <p>Example: a resident reports a fallen tree on a road. What kind of closure is it? Could someone be in danger? An AI answers each question and says how sure it is, for example "danger: yes, 85 %".</p>
+      </li>
+      <li>
+        <h3>People's rules decide</h3>
+        <p>People write the rules, for example: "danger 70 % or more: urgent". The AI does not decide alone. The rules can also use facts from public data, for example whether the place is in a flood zone.</p>
+      </li>
+      <li>
+        <h3>It answers, and keeps a record</h3>
+        <p>The answer is an action, here "urgent". Pointsman saves the questions, the answers and the rule that it used. A person can correct the answers later. So you can see how often the AI was right.</p>
+        <div class="outcomes"><code>publish</code><code class="auto">urgent</code><code>review</code></div>
+      </li>
+    </ol>
+    <p class="note">You can try this example in the <a href="https://pointsman-demo.geolonia.workers.dev">demo</a>. "Review" means: a person checks it.</p>
   </div>
 </section>
 
@@ -222,6 +248,11 @@
         <h3>Deploy watch</h3>
         <p>A GitHub Action that watches a CloudFormation deploy and stops it when Pointsman judges it stuck, instead of waiting for a timeout.</p>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch →</a>
+      </div>
+      <div class="card">
+        <h3>FIWARE bridge</h3>
+        <p>FIWARE is an open standard for smart-city data platforms. The bridge connects such a platform to Pointsman. When data changes, the bridge asks Pointsman. Then it writes the decision back to the platform, so that other apps can use it.</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/bridge">bridge →</a>
       </div>
     </div>
   </div>
