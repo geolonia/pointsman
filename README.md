@@ -3,14 +3,61 @@
 Pointsman sets the switches. Your systems ask a question, Pointsman decides
 which track it goes on, or calls a human when it is not sure.
 
-Pointsman is a model-agnostic decision service. A client sends a state to
-`POST /v1/decide/{profile}`. A decision model (for example Clef or Jev) answers
-the profile's typed questions with probabilities, and the profile's policy turns
-the answers into an action: `auto`, `review`, or a custom one.
-
 Website: https://geolonia.github.io/pointsman/
 
 Status: early proof of concept. See the [PoC milestone](https://github.com/geolonia/pointsman/milestone/1).
+
+## What it does, in plain words
+
+Many systems receive things that someone must look at first. A resident
+reports a closed road. A new issue arrives. A deployment seems stuck. Often
+the case is clear, and the system can act at once. Sometimes it is not
+clear, and a person should check it. Pointsman makes this first call, and it
+keeps a record of every call.
+
+An example from the [demo](https://pointsman-demo.geolonia.workers.dev/?lang=en): a
+resident reports "a fallen tree blocks the road". Pointsman does three
+things:
+
+1. **It asks fixed questions.** What kind of closure is it? Could someone be
+   in danger? Is the report clear? An AI answers each question and says how
+   sure it is, for example "danger: yes, 85 %".
+2. **People's rules decide.** People write the rules, for example "danger
+   70 % or more: urgent" or "clear and consistent: publish". If no rule
+   fits, a person checks the report. The AI does not decide alone. The rules
+   can also use facts from public data, for example whether the place is in
+   a flood zone.
+3. **It answers with an action, and keeps a record.** Here the action is
+   `urgent`. Pointsman saves the questions, the answers, the rule that it
+   used, the profile version, and which AI model answered.
+
+When a person checks a case, they can correct the answers. Pointsman keeps
+the corrections. So you can see how often the AI was right.
+
+Pointsman works with different AI models and with different systems. One
+use of Pointsman, with its questions and rules, is called a **profile**.
+Other systems ask Pointsman over the web (an API). There are ready-made
+clients: for AI agents, for GitHub, and for FIWARE smart-city data
+platforms (the [bridge](bridge/)).
+
+### Words used here
+
+| Word | Meaning |
+|---|---|
+| Profile | One use of Pointsman: its questions and rules. Each change gets a new version number. |
+| Question | Something the AI answers: yes or no, one choice from a list, or a score. Each answer comes with a probability (how sure the AI is). |
+| Model | The AI that answers the questions. You can change it. Pointsman saves which model answered. |
+| Rule | A condition that people write, for example "danger 70 % or more". The first rule that fits gives the action. If none fits, the default action applies. All rules of a profile together are its **policy**. |
+| Action | The result, for example `publish`, `urgent` or `review`. |
+| Review | The action "a person checks it". The person gives the final action and can correct the answers. |
+| Facts | Data about a place that the rules can use, for example flood zones. Pointsman reads them from public data. The AI does not guess them. |
+| FIWARE | Open-source software for smart-city data platforms. It uses NGSI-LD, an open standard for this kind of data (made by ETSI, a European standards body). The [bridge](bridge/) connects such a platform to Pointsman. |
+
+## How a request looks
+
+A client sends a state to `POST /v1/decide/{profile}`. The model answers the
+profile's questions with probabilities, and the profile's policy turns the
+answers into an action: `auto`, `review`, or a custom one.
 
 ## Decision profiles
 
@@ -70,6 +117,10 @@ decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
   issues from a Pointsman decision, or asks for a human review.
 - [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a
   CloudFormation deploy when Pointsman judges it stuck.
+- [FIWARE bridge](bridge/): connects an NGSI-LD context broker to Pointsman.
+  Pointsman itself knows nothing about FIWARE; the bridge subscribes to
+  entities, asks Pointsman, and writes the decisions back to the broker as
+  data. [Why a bridge](bridge/README.md#why-a-bridge) explains the role.
 
 ## API tokens
 

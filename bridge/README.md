@@ -5,6 +5,49 @@ one of its input attributes changes, the broker notifies the bridge; the
 bridge asks Pointsman to decide about the entity, and writes the result back
 to the entity as one property.
 
+## Why a bridge
+
+FIWARE is open-source software for smart-city data platforms. It uses
+NGSI-LD, an open standard for this kind of data and its API (made by ETSI, a
+European standards body). At the center of such a platform is a service
+called a **context broker**. It keeps **entities** and shares them with apps:
+things like a road, a report or a sensor, each with its attributes. Apps can **subscribe** to entities: then the broker sends them a
+message (a **notification**) when an entity changes.
+
+Pointsman and a context broker cannot work together directly:
+
+- **Pointsman knows nothing about FIWARE.** It has a simple web API: you
+  send it some data, and it answers with a decision. This keeps Pointsman
+  usable from anywhere, not only from FIWARE.
+- **The broker cannot use Pointsman alone.** It can only send a notification
+  to a web address. It cannot turn the notification into a question for
+  Pointsman, and it cannot save Pointsman's answer.
+
+The bridge connects the two. It is more than a proxy, which only passes
+messages on:
+
+- **It asks.** It receives the broker's notifications. For each entity, it
+  asks Pointsman with the right profile.
+- **It saves the answer.** It writes the decision back to the broker as
+  data, so other apps can use it: on the entity itself, and if you want, as
+  separate `Decision` and `Task` entities (models from
+  [datamodels.jp](https://datamodels.jp)).
+- **It does the extra work.** It ignores the notifications that its own
+  writes cause. It can chain decisions, one after another. It finishes a
+  review when a person resolves it in the broker or in another app. With a
+  queue, it also tries again until a decision is made.
+
+In FIWARE terms, the bridge is a connector (an NGSI-LD adapter: it speaks
+the NGSI-LD API of the broker). It is similar to an IoT Agent, which connects
+devices to a broker. It is not a FIWARE "Generic Enabler": that is a name
+for the components in the official FIWARE catalogue.
+
+The bridge runs as its own Cloudflare Worker (this folder), or inside
+another Worker, as in the demo. A city can run it in its own account, next
+to its own broker.
+
+## How it works
+
 ```mermaid
 sequenceDiagram
   participant Broker as Context broker

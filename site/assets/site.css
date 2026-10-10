@@ -178,6 +178,8 @@ section.band.alt { background: var(--bg-alt); }
 .flow h3 { font-size: 17px; margin-bottom: 8px; }
 .flow p { color: var(--fg-3); font-size: 15.5px; }
 .flow-wrap { padding: 0; margin: 0; }
+.flow-3 { grid-template-columns: repeat(3, 1fr); }
+.note { margin-top: 28px; color: var(--muted); font-size: 15.5px; }
 .outcomes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .outcomes code { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; }
 .outcomes code.auto { color: var(--go-text); border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
@@ -228,13 +230,19 @@ footer a:hover { color: var(--fg); }
 }
 .phrase { display: inline-block; }
 
-@media (max-width: 900px) {
+/* The menu needs about 950px on one line (Japanese is the widest). */
+header.nav nav a { white-space: nowrap; }
+@media (max-width: 1040px) {
   header.nav nav { display: none; }
+}
+@media (max-width: 900px) {
   .hero { padding: 56px 0 48px; }
   .hero .wrap, .split { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   .grid3 { grid-template-columns: 1fr 1fr; }
   .flow { grid-template-columns: 1fr 1fr; gap: 32px 0; }
   .flow li:nth-child(2)::after { display: none; }
+  .flow-3 { grid-template-columns: minmax(0, 1fr); }
+  .flow-3 li::after { display: none; }
 }
 @media (max-width: 600px) {
   header.nav .wrap { gap: 12px; }

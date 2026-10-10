@@ -31,6 +31,7 @@
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Pointsman ホーム"><img class="logo-dark" src="../assets/lockup-on-dark.svg" alt="Pointsman" width="146" height="28"><img class="logo-light" src="../assets/lockup.svg" alt="Pointsman" width="146" height="28"></a>
     <nav aria-label="セクション">
+      <a href="#overview">概要</a>
       <a href="#features">特長</a>
       <a href="#how">仕組み</a>
       <a href="#profiles">プロファイル</a>
@@ -91,6 +92,31 @@
 }</pre>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="band alt" id="overview">
+  <div class="wrap">
+    <div class="section-head">
+      <h2><span class="phrase">Pointsman が</span><span class="phrase">すること</span></h2>
+      <p>多くのシステムには、まず誰かが確認すべきものが届きます。住民から道路の通行止めの通報が届く。新しい Issue が届く。デプロイが止まっているように見える。はっきりしていて、すぐに対応できることもあれば、はっきりせず、人が確認したほうがよいこともあります。Pointsman は、この最初の判断をします。そして、すべての判断の記録を残します。</p>
+    </div>
+    <ol class="flow flow-wrap flow-3">
+      <li>
+        <h3>決まった質問をする</h3>
+        <p>例として、住民が「倒木で道路がふさがっている」と通報したとします。どんな種類の通行止めか。誰かに危険はあるか。AI が質問ごとに答え、どのくらい確かかも示します。たとえば「危険: あり、85 %」です。</p>
+      </li>
+      <li>
+        <h3>人が書いたルールで決める</h3>
+        <p>ルールは人が書きます。たとえば「危険が 70 % 以上なら urgent（緊急）」です。AI だけで決めることはありません。ルールでは、公開データからの事実も使えます。たとえば、その場所が浸水想定区域にあるかどうかです。</p>
+      </li>
+      <li>
+        <h3>答えを返し、記録を残す</h3>
+        <p>答えはアクションです。この例では urgent です。Pointsman は、質問、答え、使ったルールを保存します。あとで人が答えを直すこともできます。そのため、AI がどのくらい正しかったかが分かります。</p>
+        <div class="outcomes"><code>publish</code><code class="auto">urgent</code><code>review</code></div>
+      </li>
+    </ol>
+    <p class="note">この例は<a href="https://pointsman-demo.geolonia.workers.dev/?lang=ja">デモ</a>で試せます。review は「人が確認する」という意味です。</p>
   </div>
 </section>
 
@@ -223,6 +249,11 @@
         <h3>デプロイの見張り</h3>
         <p>CloudFormation のデプロイを見張る GitHub Action です。タイムアウトを待たずに、Pointsman が止まっていると判断したところで止めます。</p>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch →</a>
+      </div>
+      <div class="card">
+        <h3>FIWARE ブリッジ</h3>
+        <p>FIWARE は、スマートシティのデータ基盤のためのオープンソースのソフトウェア群です。データには NGSI-LD というオープンな標準を使います。ブリッジは、こうしたデータ基盤と Pointsman をつなぎます。データが変わるとブリッジが Pointsman に聞き、その判断をデータ基盤に書き戻します。ほかのアプリもその判断を使えます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/bridge">bridge →</a>
       </div>
     </div>
   </div>
