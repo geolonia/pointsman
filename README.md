@@ -15,7 +15,7 @@ the case is clear, and the system can act at once. Sometimes it is not
 clear, and a person should check it. Pointsman makes this first call, and it
 keeps a record of every call.
 
-An example from the [demo](https://pointsman-demo.geolonia.workers.dev): a
+An example from the [demo](https://pointsman-demo.geolonia.workers.dev/?lang=en): a
 resident reports "a fallen tree blocks the road". Pointsman does three
 things:
 

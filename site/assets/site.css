@@ -230,8 +230,12 @@ footer a:hover { color: var(--fg); }
 }
 .phrase { display: inline-block; }
 
-@media (max-width: 900px) {
+/* The menu needs about 950px on one line (Japanese is the widest). */
+header.nav nav a { white-space: nowrap; }
+@media (max-width: 1040px) {
   header.nav nav { display: none; }
+}
+@media (max-width: 900px) {
   .hero { padding: 56px 0 48px; }
   .hero .wrap, .split { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   .grid3 { grid-template-columns: 1fr 1fr; }
