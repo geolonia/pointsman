@@ -347,10 +347,12 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   broker may send it again. An entity larger than a queue message (about
   120 KB) is handled right away, as without a queue.
 - **Processing:** the Worker's queue consumer runs the bridge for each
-  message. For a decision, it first reads the entity as it is now. So a
-  message delivered twice finds the result it already wrote (input hash),
-  and a change made in the meantime is decided on its latest values. Reviews
-  and work orders are safe to repeat as they are.
+  message. It first reads the entity as it is now. So a message delivered
+  twice finds the result it already wrote (input hash), and a change made in
+  the meantime is handled with its latest values. This also holds for
+  reviews and work orders. Set `max_concurrency` to 1 (as in the example): the
+  consumer then handles one batch at a time, so two messages for the same
+  entity never run at the same moment.
 - **Retries:** a failure a second try may fix is retried after 30 seconds,
   then with the delay doubling up to an hour. With `max_retries` 20 that
   covers about 14 hours. After the last try, the message goes to the

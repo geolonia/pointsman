@@ -299,7 +299,17 @@ export async function handleMessage(message: BridgeMessage, config: BridgeConfig
   const { entity } = message;
   try {
     if (message.path === '/reviews') {
-      return isDecision(entity) ? await handleReview(entity, config) : await handleWorkOrder(entity, config.workOrders ?? {}, config);
+      const decision = isDecision(entity);
+      let current = entity;
+      if (fresh) {
+        // From the queue: the Decision or work order as it is now, read with
+        // its own context so the names match what the handlers expect.
+        const read = await readEntity(entity.id, config, decision ? DECISION_CONTEXT : TASK_CONTEXT);
+        if (read === 'gone') return { id: entity.id, skipped: 'deleted' };
+        if (read instanceof Response) return { id: entity.id, error: `broker read failed: ${read.status}`, retry: retryable(read.status) };
+        current = read;
+      }
+      return decision ? await handleReview(current, config) : await handleWorkOrder(current, config.workOrders ?? {}, config);
     }
     const route = config.routes.find((r) => r.type === entity.type && r.name === message.route);
     if (!route) return { id: entity.id, skipped: 'no route' };
@@ -322,13 +332,13 @@ export async function handleMessage(message: BridgeMessage, config: BridgeConfig
   }
 }
 
-/** An entity as it is now (normalized, the broker context's names), 'gone', or the failed response. */
-async function readEntity(id: string, config: BridgeConfig): Promise<Entity | 'gone' | Response> {
+/** An entity as it is now (normalized, with the given context's names), 'gone', or the failed response. */
+async function readEntity(id: string, config: BridgeConfig, context = config.broker.context): Promise<Entity | 'gone' | Response> {
   const fetchFn = config.fetch ?? fetch;
   const headers = brokerHeaders(config, 'application/json');
   delete headers['content-type'];
   headers.accept = 'application/json';
-  if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  if (context) headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const res = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, { headers });
   if (res.status === 404) return 'gone';
   if (!res.ok) return res;

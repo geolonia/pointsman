@@ -26,6 +26,9 @@
   //     "queue": "pointsman-bridge",
   //     "max_batch_size": 10,
   //     "max_batch_timeout": 1,
+  //     // One batch at a time: two messages for the same entity are then
+  //     // decided one after the other, and the second finds the first's result.
+  //     "max_concurrency": 1,
   //     // With the bridge's delays (30 s doubling to an hour), 20 tries cover about 14 hours.
   //     "max_retries": 20,
   //     "dead_letter_queue": "pointsman-bridge-dlq"

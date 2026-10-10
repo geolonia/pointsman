@@ -1173,6 +1173,23 @@ describe('reliable delivery (queue)', () => {
     expect(r.acked).toBe(true);
   });
 
+  it('handles a queued review with the Decision as it is now', async () => {
+    const D = 'urn:ngsi-ld:Decision:d-1';
+    const now = { id: D, type: 'Decision', refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' }, profile: P('road-restriction-check'),
+      reviewStatus: P('resolved'), finalAction: P('reject'), reviewedBy: P('app:reviewer'), reviewedAt: P('2026-10-10T01:00:00Z') };
+    const t = setup({
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ review: { status: 'pending' } })),
+      handler: (c) => (c.method === 'GET' && c.url.includes(encodeURIComponent(D)) ? Response.json(now) : undefined),
+    });
+    // Queued when it said publish; changed to reject before the consumer ran.
+    const m = message({ path: '/reviews', entity: { ...now, finalAction: P('publish') } });
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.acked).toBe(true);
+    const read = t.calls.find((c) => c.method === 'GET' && c.url.includes(encodeURIComponent(D)))!;
+    expect(read.headers.get('link')).toContain(DECISION_CONTEXT);
+    expect(t.calls.find((c) => c.url.endsWith('/resolve'))!.body).toMatchObject({ action: 'reject' });
+  });
+
   it('caps the delay at an hour', () => {
     expect([1, 2, 3, 7, 8, 20].map(retryDelay)).toEqual([30, 60, 120, 1920, 3600, 3600]);
   });
