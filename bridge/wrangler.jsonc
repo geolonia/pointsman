@@ -16,7 +16,7 @@
     "POINTSMAN_URL": "https://pointsman.example.org",
     "BROKER_URL": "https://broker.example.org",
     "BROKER_CONTEXT": "https://datamodels.jp/context/transportation/v1.jsonld"
-  }
+  },
   // Optional, for reliable delivery (bridge/README.md): create the queues
   // first (`wrangler queues create pointsman-bridge` and
   // `pointsman-bridge-dlq`), then uncomment.

@@ -344,7 +344,8 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   entity on the queue, and answer `202` at once. The broker never sees a
   failure of Pointsman or the bridge, so it never pauses the subscription.
   If the queue does not take the notification, the answer is `502`, and the
-  broker may send it again.
+  broker may send it again. An entity larger than a queue message (about
+  120 KB) is handled right away, as without a queue.
 - **Processing:** the Worker's queue consumer runs the bridge for each
   message. For a decision, it first reads the entity as it is now. So a
   message delivered twice finds the result it already wrote (input hash),

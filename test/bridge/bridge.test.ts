@@ -1,7 +1,7 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, retryDelay, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
+import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
@@ -1075,6 +1075,26 @@ describe('reliable delivery (queue)', () => {
     const many = Array.from({ length: 150 }, (_, i) => ({ ...entity(), id: `urn:ngsi-ld:RoadRestriction:${i}` }));
     expect(await (await notify(t.config, many)).json()).toEqual({ queued: 150 });
     expect(queue.sent.slice(2).map((b) => b.length)).toEqual([100, 50]);
+  });
+
+  it('splits batches by size too (256 KB per sendBatch)', () => {
+    const m = (bytes: number) => ({ bytes });
+    expect(queueBatches([m(100_000), m(100_000), m(100_000)]).map((b) => b.length)).toEqual([2, 1]);
+    expect(queueBatches(Array.from({ length: 101 }, () => m(10))).map((b) => b.length)).toEqual([100, 1]);
+    expect(queueBatches([])).toEqual([]);
+  });
+
+  it('handles an entity too large for one queue message right away', async () => {
+    const t = setup();
+    const queue = fakeQueue();
+    t.config.queue = queue;
+    const big = entity({ description: P('x'.repeat(130_000)) });
+    const res = await notify(t.config, [big, { ...entity(), id: 'urn:ngsi-ld:RoadRestriction:2' }]);
+    // The small one is queued, the large one decided now.
+    expect(queue.sent.flat().map((x) => x.entity.id)).toEqual(['urn:ngsi-ld:RoadRestriction:2']);
+    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(1);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { handled: { id: string }[] }).handled.map((h) => h.id)).toEqual(['urn:ngsi-ld:RoadRestriction:1']);
   });
 
   it('answers 502 when the queue does not take the notification, so the broker sends it again', async () => {

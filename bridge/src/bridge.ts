@@ -225,24 +225,27 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   const messages = (data as Entity[]).filter((entity) => forBridge(path, route, entity, config))
     .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity }));
 
+  let direct = messages;
   if (config.queue) {
     // Queued: answered at once, so the broker never sees a failure of
     // Pointsman or the bridge, and never pauses the subscription (#88).
+    // An entity too large for one queue message is handled right away.
+    const sized = messages.map((body) => ({ body, bytes: messageBytes(body) }));
+    const queued = sized.filter((m) => m.bytes <= QUEUE_MESSAGE_BYTES);
+    direct = sized.filter((m) => m.bytes > QUEUE_MESSAGE_BYTES).map((m) => m.body);
     try {
-      for (let i = 0; i < messages.length; i += QUEUE_BATCH) {
-        await config.queue.sendBatch(messages.slice(i, i + QUEUE_BATCH).map((body) => ({ body })));
-      }
+      for (const batch of queueBatches(queued)) await config.queue.sendBatch(batch.map((m) => ({ body: m.body })));
     } catch (err) {
       // Not queued: the broker may send it again.
       console.error(`bridge queue: ${err instanceof Error ? err.message : String(err)}`);
       return Response.json({ error: 'could not queue the notification' }, { status: 502 });
     }
-    return Response.json({ queued: messages.length }, { status: 202 });
+    if (direct.length === 0) return Response.json({ queued: queued.length }, { status: 202 });
   }
 
   const results: EntityResult[] = [];
   // One entity's failure must not stop the others in the notification.
-  for (const message of messages) results.push(await handleMessage(message, config));
+  for (const message of direct) results.push(await handleMessage(message, config));
   // A failure that may pass on a second try: answer 502, so a broker that
   // retries notifications sends it again. Entities that succeeded are skipped
   // on the retry (input hash). Failures that will not pass (Pointsman refused
@@ -251,8 +254,35 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   return Response.json({ handled: results }, { status: retry ? 502 : 200 });
 }
 
-/** At most this many messages per sendBatch (Cloudflare Queues' limit). */
+/**
+ * Cloudflare Queues' limits: 100 messages and 256 KB per sendBatch, 128 KB
+ * per message. Kept a little lower, for the queue's own envelope.
+ */
 const QUEUE_BATCH = 100;
+const QUEUE_BATCH_BYTES = 250_000;
+const QUEUE_MESSAGE_BYTES = 120_000;
+
+function messageBytes(message: BridgeMessage): number {
+  return new TextEncoder().encode(JSON.stringify(message)).length;
+}
+
+/** Splits messages into sendBatch calls within the count and size limits. */
+export function queueBatches<T extends { bytes: number }>(messages: T[]): T[][] {
+  const batches: T[][] = [];
+  let batch: T[] = [];
+  let bytes = 0;
+  for (const m of messages) {
+    if (batch.length > 0 && (batch.length === QUEUE_BATCH || bytes + m.bytes > QUEUE_BATCH_BYTES)) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(m);
+    bytes += m.bytes;
+  }
+  if (batch.length > 0) batches.push(batch);
+  return batches;
+}
 
 /** Whether the bridge handles this entity of a notification on this path. */
 function forBridge(path: BridgeMessage['path'], routeName: string | undefined, entity: Entity, config: BridgeConfig): boolean {
