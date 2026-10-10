@@ -9,10 +9,9 @@ to the entity as one property.
 
 FIWARE is open-source software for smart-city data platforms. It uses
 NGSI-LD, an open standard for this kind of data and its API (made by ETSI, a
-European standards body). At the center of such a platform is a database
-called a **context broker**. It stores
-**entities**: things like a road, a report or a sensor, each with its
-attributes. Apps can **subscribe** to entities: then the broker sends them a
+European standards body). At the center of such a platform is a service
+called a **context broker**. It keeps **entities** and shares them with apps:
+things like a road, a report or a sensor, each with its attributes. Apps can **subscribe** to entities: then the broker sends them a
 message (a **notification**) when an entity changes.
 
 Pointsman and a context broker cannot work together directly:

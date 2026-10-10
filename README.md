@@ -29,7 +29,7 @@ things:
    a flood zone.
 3. **It answers with an action, and keeps a record.** Here the action is
    `urgent`. Pointsman saves the questions, the answers, the rule that it
-   used, and the versions of everything.
+   used, the profile version, and which AI model answered.
 
 When a person checks a case, they can correct the answers. Pointsman keeps
 the corrections. So you can see how often the AI was right.
