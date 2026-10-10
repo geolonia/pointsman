@@ -66,13 +66,33 @@ export interface BridgeConfig {
     /** JSON-LD context for the writes, when attribute names are not core terms. */
     context?: string;
   };
+  /**
+   * Optional queue (#88): notifications are put on it, one message per
+   * entity, and answered at once; the Worker's queue consumer runs the
+   * bridge (handleQueueBatch). Without it, each notification is handled
+   * within the broker's request.
+   */
+  queue?: BridgeQueue;
   /** For tests; defaults to the global fetch. */
   fetch?: typeof fetch;
 }
 
+/** What the bridge needs of a Cloudflare Queue producer binding. */
+export interface BridgeQueue {
+  sendBatch(messages: { body: BridgeMessage }[]): Promise<unknown>;
+}
+
+/** One queued entity from a notification. */
+export interface BridgeMessage {
+  path: '/notify' | '/reviews';
+  /** The named route (`?route=`), for `/notify`. */
+  route?: string;
+  entity: Entity;
+}
+
 /** What happened to one entity of a notification. */
 export type EntityResult =
-  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | WorkOrderSkip }
+  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | 'no route' | WorkOrderSkip }
   | { id: string; resolves: string; finalAction: string }
   | { id: string; review: ReviewOutcome; written: boolean }
   | { id: string; action: string; decision: string; write: number }
@@ -199,44 +219,171 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   const data = (notification as { data?: unknown })?.data;
   if (!Array.isArray(data)) return Response.json({ error: 'expected a notification with data' }, { status: 400 });
 
-  const results: EntityResult[] = [];
-  if (url.pathname === '/reviews') {
-    for (const entity of data as Entity[]) {
-      const kind = isDecision(entity) ? 'decision' : config.workOrders && isTask(entity) ? 'task' : null;
-      if (!kind) continue;
-      try {
-        results.push(await (kind === 'decision' ? handleReview(entity, config) : handleWorkOrder(entity, config.workOrders!, config)));
-      } catch (err) {
-        results.push({ id: entity.id, error: err instanceof Error ? err.message : String(err), retry: true });
-      }
+  const path = url.pathname as BridgeMessage['path'];
+  // ?route=<name> selects a named route; without it, the type's unnamed route.
+  const route = url.searchParams.get('route') ?? undefined;
+  const messages = (data as Entity[]).filter((entity) => forBridge(path, route, entity, config))
+    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity }));
+
+  let direct = messages;
+  if (config.queue) {
+    // Queued: answered at once, so the broker never sees a failure of
+    // Pointsman or the bridge, and never pauses the subscription (#88).
+    // An entity too large for one queue message is handled right away.
+    const sized = messages.map((body) => ({ body, bytes: messageBytes(body) }));
+    const queued = sized.filter((m) => m.bytes <= QUEUE_MESSAGE_BYTES);
+    direct = sized.filter((m) => m.bytes > QUEUE_MESSAGE_BYTES).map((m) => m.body);
+    try {
+      for (const batch of queueBatches(queued)) await config.queue.sendBatch(batch.map((m) => ({ body: m.body })));
+    } catch (err) {
+      // Not queued: the broker may send it again.
+      console.error(`bridge queue: ${err instanceof Error ? err.message : String(err)}`);
+      return Response.json({ error: 'could not queue the notification' }, { status: 502 });
     }
-    return Response.json({ handled: results }, { status: results.some((r) => 'retry' in r && r.retry) ? 502 : 200 });
+    if (direct.length === 0) return Response.json({ queued: queued.length }, { status: 202 });
   }
 
-  // ?route=<name> selects a named route; without it, the type's unnamed route.
-  const routeName = url.searchParams.get('route') ?? undefined;
-  for (const entity of data as Entity[]) {
-    const route = config.routes.find((r) => r.type === entity?.type && r.name === routeName);
-    if (!route || typeof entity.id !== 'string') continue;
-    // Deleting an entity also notifies (NGSI-LD 1.8: with deletedAt); there is
-    // nothing left to decide about.
-    if ('deletedAt' in entity) {
-      results.push({ id: entity.id, skipped: 'deleted' });
-      continue;
-    }
-    // One entity's failure must not stop the others in the notification.
-    try {
-      results.push(await handleEntity(entity, route, config));
-    } catch (err) {
-      results.push({ id: entity.id, error: err instanceof Error ? err.message : String(err), retry: true });
-    }
-  }
+  const results: EntityResult[] = [];
+  // One entity's failure must not stop the others in the notification.
+  for (const message of direct) results.push(await handleMessage(message, config));
   // A failure that may pass on a second try: answer 502, so a broker that
   // retries notifications sends it again. Entities that succeeded are skipped
   // on the retry (input hash). Failures that will not pass (Pointsman refused
   // the input) are reported but do not ask for a retry.
   const retry = results.some((r) => 'retry' in r && r.retry);
   return Response.json({ handled: results }, { status: retry ? 502 : 200 });
+}
+
+/**
+ * Cloudflare Queues' limits: 100 messages and 256 KB per sendBatch, 128 KB
+ * per message. Kept a little lower, for the queue's own envelope.
+ */
+const QUEUE_BATCH = 100;
+const QUEUE_BATCH_BYTES = 250_000;
+const QUEUE_MESSAGE_BYTES = 120_000;
+
+function messageBytes(message: BridgeMessage): number {
+  return new TextEncoder().encode(JSON.stringify(message)).length;
+}
+
+/** Splits messages into sendBatch calls within the count and size limits. */
+export function queueBatches<T extends { bytes: number }>(messages: T[]): T[][] {
+  const batches: T[][] = [];
+  let batch: T[] = [];
+  let bytes = 0;
+  for (const m of messages) {
+    if (batch.length > 0 && (batch.length === QUEUE_BATCH || bytes + m.bytes > QUEUE_BATCH_BYTES)) {
+      batches.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(m);
+    bytes += m.bytes;
+  }
+  if (batch.length > 0) batches.push(batch);
+  return batches;
+}
+
+/** Whether the bridge handles this entity of a notification on this path. */
+function forBridge(path: BridgeMessage['path'], routeName: string | undefined, entity: Entity, config: BridgeConfig): boolean {
+  if (!entity || typeof entity !== 'object' || typeof entity.id !== 'string') return false;
+  if (path === '/reviews') return isDecision(entity) || (Boolean(config.workOrders) && isTask(entity));
+  return config.routes.some((r) => r.type === entity.type && r.name === routeName);
+}
+
+/**
+ * Handles one entity of a notification. Never throws: a failure is a result
+ * (retry true when a second try may pass).
+ */
+export async function handleMessage(message: BridgeMessage, config: BridgeConfig, { fresh = false } = {}): Promise<EntityResult> {
+  const { entity } = message;
+  try {
+    if (message.path === '/reviews') {
+      const decision = isDecision(entity);
+      let current = entity;
+      if (fresh) {
+        // From the queue: the Decision or work order as it is now, read with
+        // its own context so the names match what the handlers expect.
+        const read = await readEntity(entity.id, config, decision ? DECISION_CONTEXT : TASK_CONTEXT);
+        if (read === 'gone') return { id: entity.id, skipped: 'deleted' };
+        if (read instanceof Response) return { id: entity.id, error: `broker read failed: ${read.status}`, retry: retryable(read.status) };
+        current = read;
+      }
+      return decision ? await handleReview(current, config) : await handleWorkOrder(current, config.workOrders ?? {}, config);
+    }
+    const route = config.routes.find((r) => r.type === entity.type && r.name === message.route);
+    if (!route) return { id: entity.id, skipped: 'no route' };
+    // Deleting an entity also notifies (NGSI-LD 1.8: with deletedAt); there is
+    // nothing left to decide about.
+    if ('deletedAt' in entity) return { id: entity.id, skipped: 'deleted' };
+    let current = entity;
+    if (fresh) {
+      // From the queue: the entity as it is now, not as it was notified. A
+      // message delivered twice then finds the result it already wrote (input
+      // hash), and a change made since is decided on its latest values.
+      const read = await readEntity(entity.id, config);
+      if (read === 'gone') return { id: entity.id, skipped: 'deleted' };
+      if (read instanceof Response) return { id: entity.id, error: `broker read failed: ${read.status}`, retry: retryable(read.status) };
+      current = read;
+    }
+    return await handleEntity(current, route, config);
+  } catch (err) {
+    return { id: entity.id, error: err instanceof Error ? err.message : String(err), retry: true };
+  }
+}
+
+/** An entity as it is now (normalized, with the given context's names), 'gone', or the failed response. */
+async function readEntity(id: string, config: BridgeConfig, context = config.broker.context): Promise<Entity | 'gone' | Response> {
+  const fetchFn = config.fetch ?? fetch;
+  const headers = brokerHeaders(config, 'application/json');
+  delete headers['content-type'];
+  headers.accept = 'application/json';
+  if (context) headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  const res = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, { headers });
+  if (res.status === 404) return 'gone';
+  if (!res.ok) return res;
+  return (await res.json()) as Entity;
+}
+
+/** What the bridge needs of a Cloudflare Queues message. */
+export interface QueuedMessage {
+  body: unknown;
+  attempts: number;
+  ack(): void;
+  retry(options?: { delaySeconds?: number }): void;
+}
+
+/**
+ * The queue consumer (#88): runs the bridge for each message. A failure
+ * that may pass is retried with a growing delay (30 s, 1, 2, 4 ... minutes,
+ * at most an hour); the consumer's max_retries decides when a message goes
+ * to the dead-letter queue. Everything else is acknowledged.
+ */
+export async function handleQueueBatch(batch: { messages: readonly QueuedMessage[] }, config: BridgeConfig): Promise<void> {
+  // The consumer handles messages itself: never queue them again.
+  const direct: BridgeConfig = { ...config };
+  delete direct.queue;
+  for (const message of batch.messages) {
+    const body = message.body as BridgeMessage;
+    if (!body || (body.path !== '/notify' && body.path !== '/reviews') || !body.entity || typeof body.entity.id !== 'string') {
+      console.error('bridge queue: a message without a notified entity; dropped');
+      message.ack();
+      continue;
+    }
+    const result = await handleMessage(body, direct, { fresh: true });
+    if ('retry' in result && result.retry) {
+      console.error(`bridge queue: ${result.id} (attempt ${message.attempts}): ${result.error}`);
+      message.retry({ delaySeconds: retryDelay(message.attempts) });
+    } else {
+      if ('error' in result) console.error(`bridge queue: ${result.id}: ${result.error}`);
+      message.ack();
+    }
+  }
+}
+
+/** Seconds before the next try: 30 s after the first, doubling, at most an hour. */
+export function retryDelay(attempts: number): number {
+  return Math.min(30 * 2 ** Math.max(0, attempts - 1), 3600);
 }
 
 async function handleEntity(entity: Entity, route: Route, config: BridgeConfig): Promise<EntityResult> {

@@ -1,7 +1,7 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleRequest, inputHash, parseRoutes, parseWorkOrders, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
+import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
@@ -1030,5 +1030,178 @@ describe('work orders from other apps', () => {
     expect(() => parseWorkOrders('{"Published":1}')).toThrow(/Published/);
     expect(parseWorkOrders(JSON.stringify({ Done: `a${'b'.repeat(62)}` }))).toEqual({ Done: `a${'b'.repeat(62)}` });
     expect(() => parseWorkOrders(JSON.stringify({ Done: `a${'b'.repeat(63)}` }))).toThrow(/at most 63/);
+  });
+});
+
+describe('reliable delivery (queue)', () => {
+  /** A fake queue producer: keeps what was sent. */
+  function fakeQueue(fail = false) {
+    const sent: BridgeMessage[][] = [];
+    return { sent, sendBatch: async (messages: { body: BridgeMessage }[]) => { if (fail) throw new Error('queue down'); sent.push(messages.map((m) => m.body)); } };
+  }
+  /** A fake queue message: records ack and retry. */
+  function message(body: unknown, attempts = 1) {
+    const m = { body, attempts, acked: false, retried: undefined as number | undefined,
+      ack() { m.acked = true; }, retry(o?: { delaySeconds?: number }) { m.retried = o?.delaySeconds ?? 0; } };
+    return m;
+  }
+  const notify = (config: BridgeConfig, data: unknown[], path = '/notify', secret = SECRET) => handleRequest(new Request(`https://bridge.test${path}`, {
+    method: 'POST', headers: { 'x-bridge-secret': secret }, body: JSON.stringify({ type: 'Notification', data }),
+  }), config);
+
+  it('queues one message per entity and answers 202 at once, after the secret check', async () => {
+    const t = setup();
+    const queue = fakeQueue();
+    t.config.queue = queue;
+    const res = await notify(t.config, [entity(), { ...entity(), id: 'urn:ngsi-ld:RoadRestriction:2' }, { ...entity(), type: 'Other' }]);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ queued: 2 });
+    expect(queue.sent.flat().map((m) => [m.path, m.route, m.entity.id])).toEqual([['/notify', undefined, 'urn:ngsi-ld:RoadRestriction:1'], ['/notify', undefined, 'urn:ngsi-ld:RoadRestriction:2']]);
+    // Nothing is decided at the door.
+    expect(t.calls).toHaveLength(0);
+    expect((await notify(t.config, [entity()], '/notify', 'wrong')).status).toBe(403);
+    expect(queue.sent).toHaveLength(1);
+  });
+
+  it('keeps the route name, queues reviews too, and sends at most 100 per batch', async () => {
+    const t = setup();
+    const queue = fakeQueue();
+    t.config.queue = queue;
+    t.config.routes.push({ ...route, name: 'evacuation', attribute: 'evacuation' });
+    await notify(t.config, [entity()], '/notify?route=evacuation');
+    expect(queue.sent[0]![0]).toMatchObject({ path: '/notify', route: 'evacuation' });
+    await notify(t.config, [{ id: 'urn:ngsi-ld:Decision:d-1', type: 'Decision' }], '/reviews');
+    expect(queue.sent[1]![0]).toMatchObject({ path: '/reviews' });
+    const many = Array.from({ length: 150 }, (_, i) => ({ ...entity(), id: `urn:ngsi-ld:RoadRestriction:${i}` }));
+    expect(await (await notify(t.config, many)).json()).toEqual({ queued: 150 });
+    expect(queue.sent.slice(2).map((b) => b.length)).toEqual([100, 50]);
+  });
+
+  it('splits batches by size too (256 KB per sendBatch)', () => {
+    const m = (bytes: number) => ({ bytes });
+    expect(queueBatches([m(100_000), m(100_000), m(100_000)]).map((b) => b.length)).toEqual([2, 1]);
+    expect(queueBatches(Array.from({ length: 101 }, () => m(10))).map((b) => b.length)).toEqual([100, 1]);
+    expect(queueBatches([])).toEqual([]);
+  });
+
+  it('handles an entity too large for one queue message right away', async () => {
+    const t = setup();
+    const queue = fakeQueue();
+    t.config.queue = queue;
+    const big = entity({ description: P('x'.repeat(130_000)) });
+    const res = await notify(t.config, [big, { ...entity(), id: 'urn:ngsi-ld:RoadRestriction:2' }]);
+    // The small one is queued, the large one decided now.
+    expect(queue.sent.flat().map((x) => x.entity.id)).toEqual(['urn:ngsi-ld:RoadRestriction:2']);
+    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(1);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { handled: { id: string }[] }).handled.map((h) => h.id)).toEqual(['urn:ngsi-ld:RoadRestriction:1']);
+  });
+
+  it('answers 502 when the queue does not take the notification, so the broker sends it again', async () => {
+    const t = setup();
+    t.config.queue = fakeQueue(true);
+    expect((await notify(t.config, [entity()])).status).toBe(502);
+  });
+
+  it('decides on the entity as it is now, and acknowledges', async () => {
+    const now = entity({ description: P('今は通れる') });
+    const t = setup({ handler: (c) => (c.method === 'GET' ? Response.json(now) : undefined) });
+    const m = message({ path: '/notify', entity: entity() });
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.acked).toBe(true);
+    expect(t.calls[0]!.method).toBe('GET');
+    expect(t.calls[0]!.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent('urn:ngsi-ld:RoadRestriction:1')}`);
+    expect(t.calls[0]!.headers.get('link')).toContain('https://ctx.test/v1.jsonld');
+    const decide = t.calls.find((c) => c.url.startsWith('https://pm.test/'))!;
+    expect((decide.body as { state: { description: unknown } }).state.description).toEqual(P('今は通れる'));
+  });
+
+  it('decides a message delivered twice only once', async () => {
+    let stored: Record<string, unknown> | undefined;
+    const t = setup({ handler: (c) => {
+      if (c.method === 'GET') return Response.json(entity(stored ? { check: stored } : {}));
+      if (c.method === 'PATCH' && c.url.endsWith('/attrs/check')) { stored = c.body as Record<string, unknown>; return new Response(null, { status: 204 }); }
+      return undefined;
+    } });
+    const body = { path: '/notify', entity: entity() };
+    await handleQueueBatch({ messages: [message(body), message(body)] }, t.config);
+    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(1);
+  });
+
+  it('retries with a growing delay while Pointsman is down, and decides once it is back', async () => {
+    let down = 3;
+    const t = setup({
+      pointsman: () => (down > 0 ? new Response(null, { status: 503 }) : Response.json(decision)),
+      handler: (c) => (c.method === 'GET' ? Response.json(entity()) : undefined),
+    });
+    const delays: (number | undefined)[] = [];
+    for (let attempts = 1; attempts <= 4; attempts++) {
+      const m = message({ path: '/notify', entity: entity() }, attempts);
+      await handleQueueBatch({ messages: [m] }, t.config);
+      if (m.acked) break;
+      delays.push(m.retried);
+      down -= 1;
+    }
+    expect(delays).toEqual([30, 60, 120]);
+    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(4);
+    expect(t.calls.filter((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/check'))).toHaveLength(1);
+  });
+
+  it('acknowledges what a retry cannot fix, a deleted entity, and a message without an entity', async () => {
+    const refused = setup({ pointsman: () => new Response(null, { status: 400 }), handler: (c) => (c.method === 'GET' ? Response.json(entity()) : undefined) });
+    const r = message({ path: '/notify', entity: entity() });
+    await handleQueueBatch({ messages: [r] }, refused.config);
+    expect(r.acked).toBe(true);
+    const gone = setup();
+    const g = message({ path: '/notify', entity: entity() });
+    await handleQueueBatch({ messages: [g] }, gone.config);
+    expect(g.acked).toBe(true);
+    expect(gone.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(false);
+    const bad = message({ path: '/elsewhere' });
+    await handleQueueBatch({ messages: [bad] }, setup().config);
+    expect(bad.acked).toBe(true);
+  });
+
+  it('retries when the broker read fails, and handles reviews from the queue', async () => {
+    const t = setup({ handler: (c) => (c.method === 'GET' ? new Response(null, { status: 503 }) : undefined) });
+    const m = message({ path: '/notify', entity: entity() }, 2);
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.retried).toBe(60);
+    // A review: resolved Decision without the required fields is refused, so acknowledged.
+    const r = message({ path: '/reviews', entity: { id: 'urn:ngsi-ld:Decision:d-1', type: 'Decision', reviewStatus: P('resolved') } });
+    await handleQueueBatch({ messages: [r] }, setup().config);
+    expect(r.acked).toBe(true);
+  });
+
+  it('handles a queued review with the Decision as it is now', async () => {
+    const D = 'urn:ngsi-ld:Decision:d-1';
+    const now = { id: D, type: 'Decision', refersTo: { type: 'Relationship', object: 'urn:ngsi-ld:RoadRestriction:1' }, profile: P('road-restriction-check'),
+      reviewStatus: P('resolved'), finalAction: P('reject'), reviewedBy: P('app:reviewer'), reviewedAt: P('2026-10-10T01:00:00Z') };
+    const t = setup({
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ review: { status: 'pending' } })),
+      handler: (c) => (c.method === 'GET' && c.url.includes(encodeURIComponent(D)) ? Response.json(now) : undefined),
+    });
+    // Queued when it said publish; changed to reject before the consumer ran.
+    const m = message({ path: '/reviews', entity: { ...now, finalAction: P('publish') } });
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.acked).toBe(true);
+    const read = t.calls.find((c) => c.method === 'GET' && c.url.includes(encodeURIComponent(D)))!;
+    expect(read.headers.get('link')).toContain(DECISION_CONTEXT);
+    expect(t.calls.find((c) => c.url.endsWith('/resolve'))!.body).toMatchObject({ action: 'reject' });
+  });
+
+  it('caps the delay at an hour', () => {
+    expect([1, 2, 3, 7, 8, 20].map(retryDelay)).toEqual([30, 60, 120, 1920, 3600, 3600]);
+  });
+
+  it('never queues again from the consumer', async () => {
+    const queue = fakeQueue();
+    const t = setup({ handler: (c) => (c.method === 'GET' ? Response.json(entity()) : undefined) });
+    t.config.queue = queue;
+    const m = message({ path: '/notify', entity: entity() });
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.acked).toBe(true);
+    expect(queue.sent).toHaveLength(0);
+    expect(t.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(true);
   });
 });

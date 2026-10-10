@@ -328,9 +328,45 @@ also when Pointsman refused the input (a retry would fail the same way). The
 response lists what happened to each entity. Entities that succeeded are
 skipped on a retry because of the input hash.
 
-Whether a broker sends a failed notification again depends on the broker. If
-it does not, the next change of an input decides again. A queue in front of
-the bridge (#50) would make retries certain.
+Whether a broker sends a failed notification again depends on the broker.
+GeonicDB tries for about 5 minutes (4 attempts, then 2 more deliveries 2
+minutes apart), then keeps the notification in its own dead-letter queue.
+After an hour of failures it pauses the subscription (`inactive`), and every
+later notification is lost until someone activates it again (#88). Without
+retries, the next change of an input decides again, but a review or work
+order whose notification was lost stays open.
+
+### Reliable delivery (queue)
+
+With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
+
+- **Arrival:** `/notify` and `/reviews` check the secret, put one message per
+  entity on the queue, and answer `202` at once. The broker never sees a
+  failure of Pointsman or the bridge, so it never pauses the subscription.
+  If the queue does not take the notification, the answer is `502`, and the
+  broker may send it again. An entity larger than a queue message (about
+  120 KB) is handled right away, as without a queue.
+- **Processing:** the Worker's queue consumer runs the bridge for each
+  message. It first reads the entity as it is now. So a message delivered
+  twice finds the result it already wrote (input hash), and a change made in
+  the meantime is handled with its latest values. This also holds for
+  reviews and work orders. Set `max_concurrency` to 1 (as in the example): the
+  consumer then handles one batch at a time, so two messages for the same
+  entity never run at the same moment.
+- **Retries:** a failure a second try may fix is retried after 30 seconds,
+  then with the delay doubling up to an hour. With `max_retries` 20 that
+  covers about 14 hours. After the last try, the message goes to the
+  dead-letter queue (`pointsman-bridge-dlq` in the example). Its messages
+  hold the notified entity and can be sent to the queue again. Failures a
+  retry cannot fix (Pointsman refused the input) are logged and acknowledged.
+- **Setup:** create both queues once
+  (`wrangler queues create pointsman-bridge`, and the same for the
+  dead-letter queue), then add the `queues` block to the Worker's
+  configuration. Without the binding, the bridge works as before.
+
+For a Worker that mounts the bridge itself, pass the producer binding as
+`queue` in the config, and call `handleQueueBatch(batch, config)` from the
+Worker's `queue` handler.
 
 ## Run it
 
