@@ -51,7 +51,7 @@ platforms (the [bridge](bridge/)).
 | Action | The result, for example `publish`, `urgent` or `review`. |
 | Review | The action "a person checks it". The person gives the final action and can correct the answers. |
 | Facts | Data about a place that the rules can use, for example flood zones. Pointsman reads them from public data. The AI does not guess them. |
-| FIWARE | An open standard for smart-city data platforms. The [bridge](bridge/) connects such a platform to Pointsman. |
+| FIWARE | Open-source software for smart-city data platforms. It uses NGSI-LD, an open standard for this kind of data (made by ETSI, a European standards body). The [bridge](bridge/) connects such a platform to Pointsman. |
 
 ## How a request looks
 

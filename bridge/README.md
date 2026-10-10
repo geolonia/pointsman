@@ -7,8 +7,10 @@ to the entity as one property.
 
 ## Why a bridge
 
-FIWARE is an open standard for smart-city data platforms. At the center of
-such a platform is a database called a **context broker**. It stores
+FIWARE is open-source software for smart-city data platforms. It uses
+NGSI-LD, an open standard for this kind of data and its API (made by ETSI, a
+European standards body). At the center of such a platform is a database
+called a **context broker**. It stores
 **entities**: things like a road, a report or a sensor, each with its
 attributes. Apps can **subscribe** to entities: then the broker sends them a
 message (a **notification**) when an entity changes.
@@ -36,8 +38,8 @@ messages on:
   review when a person resolves it in the broker or in another app. With a
   queue, it also tries again until a decision is made.
 
-In FIWARE terms, the bridge is a connector (an NGSI-LD adapter; NGSI-LD is
-the FIWARE data format). It is similar to an IoT Agent, which connects
+In FIWARE terms, the bridge is a connector (an NGSI-LD adapter: it speaks
+the NGSI-LD API of the broker). It is similar to an IoT Agent, which connects
 devices to a broker. It is not a FIWARE "Generic Enabler": that is a name
 for the components in the official FIWARE catalogue.
 
