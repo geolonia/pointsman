@@ -69,19 +69,20 @@ city makes, not something the model decides.
 
 A week later, five of the nine prepared reports missed their expected
 action in one language or both. Each missed one threshold by a little: the
-model's answers had moved. Each text got one sentence that states what the
-report already implied, so the event is the same
+model's answers had moved. Each text got one sentence (added, or for
+日比谷通り rewritten) that states what the report already implied, so the
+event is the same
 (geolonia/pointsman-demo#33):
 
 | Report | Added | Answer that missed | Before → after |
 |---|---|---|---|
 | Flooded underpass (publish) | No one is hurt and no cars are stuck. | danger (must be under 0.5) | Japanese 0.55 → 0.02 |
-| Water pipe works (publish) | Traffic passes in the right lane. | status matches (0.8 or more) | 0.80 → 0.86 Japanese, 0.83 English |
+| Water pipe works (publish) | Traffic passes in the right lane. | status matches (0.8 or more) | 0.795–0.798 → 0.86 Japanese, 0.83 English |
 | Fallen tree, 飯田橋 bridge and street (urgent) | Ambulances cannot get through. | danger (0.7 or more) | English 0.60–0.63 → 0.92 |
-| Fallen tree, 日比谷通り (publish) | Heavy rain and strong wind brought it down. | category (0.85 or more) | Japanese 0.71 → 0.92 |
+| Fallen tree, 日比谷通り (publish) | Heavy rain and strong wind brought it down (first sentence rewritten). | category (0.85 or more) | Japanese 0.71 → 0.92 |
 
 All 18 texts (9 reports, 2 languages) were checked with `pnpm dev:live`.
-Lesson: keep some distance to the thresholds, and check the examples again
+Lesson: keep a margin from the thresholds, and check the examples again
 after a model update.
 
 ## Storyboard
@@ -99,23 +100,24 @@ flood zones are in colour.
    unclear one, someone in danger, and one near an evacuation site. More
    examples are folded away. Everything is in English and Japanese.
 2. **Pointsman decides.** The steps appear one after the other, with the
-   time they took: saved in the data platform, the AI answered four
+   total time: saved in the data platform, the AI answered four
    questions, facts about the place were looked up, the city's rule
    decided. The answers are plain questions with a confidence word ("very
    sure", "unsure") instead of raw probabilities. The facts are marked as
    public data, not AI. The rule is one sentence. The real NGSI-LD data is
-   behind "Show the data (for developers)".
+   behind "Show the data in the data platform (for developers)".
 3. **What happens next.** The outcome in plain words, and the map zooms to
    the report. A `publish` report shows up in the residents' view. Near an
    evacuation site, the second check (the chain) adds its facts and the
    alert. For `review` and `urgent` reports, the visitor who sent the report
-   is "the person on duty": Publish or Reject. Their answer goes to
-   Pointsman and the broker like a review on GitHub (`reviewedBy:
-   demo:visitor`), and the page says why it matters: it shows how often the
-   AI was right.
+   is "the person on duty": Publish or Reject. Their answer goes to the
+   broker, and to Pointsman for `review` reports, like a review on GitHub
+   (marked `reviewedBy` = `demo:visitor`). The page says why it matters: it
+   shows how often the AI was right.
 
-"How it works" explains the four parts (the report, the data platform, the
-bridge, Pointsman) and lists the profile, the bridge and the source, plus
+"How it works" explains the way of a report in four parts (the report, how
+the data platform passes it on through the bridge, Pointsman, the result)
+and lists the profile, the bridge and the source, plus
 the recent reports and the decisions waiting for a person, with the NGSI-LD
 query that finds them. Team members also resolve reviews in the GitHub
 review queue (`/publish`, `/reject`, corrections such as
@@ -185,8 +187,10 @@ flowchart LR
   broker directly.
 - **Demo Worker:** creates entities from the page (checked and limited, see
   below), returns the entities for the maps, and runs the bridge (#47) on
-  `/notify`, through a Cloudflare queue so that no notification is lost
-  (#88; tested with a 3.5-minute outage on 2026-10-15). Broker and Pointsman
+  `/notify`, through a Cloudflare queue (#88): when Pointsman or the broker
+  is down for a while, notifications are retried for about 14 hours, then
+  kept in a dead-letter queue (tested with a 3.5-minute outage on
+  2026-10-15). Broker and Pointsman
   credentials stay in the Worker.
 - **GeonicDB:** a demo tenant, with two subscriptions on `RoadRestriction`:
   new reports to `/notify`, and step 1's `urgent` and `review` results to
@@ -213,7 +217,8 @@ flowchart LR
 - Issues are only created for prepared reports, or after a person approves
   free text, so the public cannot write into the GitHub repository directly.
 - A visitor can decide only a prepared report they sent themselves (with a
-  key the page got when it sent it), and only once.
+  key the page got when it sent it), only while it waits for a person, and
+  only once.
 
 ## Where the open points went
 
