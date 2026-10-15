@@ -113,6 +113,8 @@ export class ValhallaRouter {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
       body: JSON.stringify(body),
+      // A redirect would carry the key to another host: a 3xx is an error.
+      redirect: 'manual',
       signal: signal ? AbortSignal.any([signal, limit]) : limit,
     });
     const json = (await res.json().catch(() => null)) as { trip?: { summary?: { length?: unknown } }; error_code?: unknown } | null;

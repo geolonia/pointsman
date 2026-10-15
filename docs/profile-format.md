@@ -257,7 +257,9 @@ or on foot (`mode`; Valhalla's `auto` and `pedestrian` costing;
 OpenStreetMap data, `source`: © OpenStreetMap contributors).
 A server that needs a key (such as Geolonia's hosted Valhalla) gets it from
 the Worker secret `FACTS_ROUTING_API_KEY`, sent as the `x-api-key` header.
-The key is never logged and never sent to browsers.
+The key is never logged and never sent to browsers. Redirects are not
+followed (they would carry the key to another host): a 3xx answer is an
+`error`.
 
 - The whole section is closed except 20 m at each end, measured along it:
   Valhalla drops every road an exclusion area touches, and a route cannot

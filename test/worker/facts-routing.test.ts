@@ -168,6 +168,7 @@ describe('routing API key', () => {
   const recording = (res: () => Response) => {
     const headers: Headers[] = [];
     const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.redirect).toBe('manual');
       headers.push(new Headers(init?.headers));
       return res();
     }) as typeof fetch;
@@ -190,6 +191,16 @@ describe('routing API key', () => {
   it('a refused key or too many requests is an error with the status, without the key', async () => {
     for (const status of [403, 429]) {
       const { fetchFn } = recording(() => Response.json({ message: 'no' }, { status }));
+      const err = await new ValhallaRouter(URL_, fetchFn, key).detour(section).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(FactError);
+      expect(String((err as Error).message)).toBe(`routing ${status}`);
+      expect(String((err as Error).message)).not.toContain(key);
+    }
+  });
+
+  it('a redirect is not followed: it is an error', async () => {
+    for (const status of [301, 302, 307, 308]) {
+      const { fetchFn } = recording(() => new Response(null, { status, headers: { location: 'https://elsewhere.test/route' } }));
       const err = await new ValhallaRouter(URL_, fetchFn, key).detour(section).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(FactError);
       expect(String((err as Error).message)).toBe(`routing ${status}`);
