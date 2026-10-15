@@ -5,6 +5,11 @@ Every decision is stored in D1 (binding `DB`, schema in
 be written, the client gets a 500 and no decision, so no action is taken on an
 unlogged decision.
 
+The one exception is a **test token** ([README](../README.md#api-tokens)):
+its decisions are made the same way but not stored, and marked
+`"test": true`. They are for checking profiles and examples; nobody acts on
+them, and they never reach the review queue or the accuracy numbers.
+
 ## What is stored
 
 | Column | Meaning |

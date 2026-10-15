@@ -140,8 +140,9 @@ A **test token** (`--test`) is for checking profiles and their examples
 against the real model, for example in a scheduled job. Its decisions are
 made like any other (answers, facts, rules) and marked `"test": true`, but
 they are not logged: they never reach the review queue or the accuracy
-numbers. A test token may only decide (and list its profiles), and gets no
-callbacks.
+numbers. A test token may only decide (and list its profiles) over the REST
+API, not over MCP, and gets no callbacks.
+
 After a revoke, KV can take up to about 60 seconds to stop the token
 everywhere.
 

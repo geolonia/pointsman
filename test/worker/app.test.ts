@@ -156,21 +156,27 @@ describe('test tokens', () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
-  it('get no callbacks', async () => {
-    const { app } = await setup();
+  it('get no callbacks (refused before the model is asked)', async () => {
+    const { app, insert } = await setup();
     const res = await app.request('/v1/decide/deploy-progress', {
       method: 'POST', body: JSON.stringify({ state: 'Deploy has had no event for 40 minutes.', callback_url: 'https://example.com/cb' }), headers: auth,
     }, env);
     await expectError(res, 400, 'invalid_request');
+    expect(insert).not.toHaveBeenCalled();
   });
 
   it('may list their profiles, and do nothing else', async () => {
     const { app } = await setup();
     expect((await app.request('/v1/profiles', { headers: auth }, env)).status).toBe(200);
     const id = crypto.randomUUID();
-    for (const [method, path] of [['GET', '/v1/reviews'], ['GET', `/v1/decisions/${id}`], ['POST', `/v1/decisions/${id}/feedback`], ['POST', `/v1/reviews/${id}/resolve`]] as const) {
+    for (const [method, path] of [
+      ['GET', '/v1/reviews'], ['GET', `/v1/decisions/${id}`], ['POST', `/v1/decisions/${id}/feedback`], ['POST', `/v1/reviews/${id}/resolve`],
+      ['GET', '/v1/decide/deploy-progress'], ['POST', '/v1/decide/deploy-progress/x'],
+    ] as const) {
       await expectError(await app.request(path, { method, headers: auth, ...(method === 'POST' && { body: '{}' }) }, env), 403, 'forbidden');
     }
+    // HEAD answers without a body.
+    expect((await app.request('/v1/profiles', { method: 'HEAD', headers: auth }, env)).status).toBe(403);
   });
 
   it('do not change normal tokens: their decisions are logged and not marked', async () => {

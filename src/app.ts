@@ -6,7 +6,7 @@ import { authenticate, canUse, type TokenRecord, type TokenStore } from './auth'
 import { attempt, type Fetch } from './callbacks';
 import { parseFeedback, parseResolution } from './feedback';
 import { serveMcp } from './mcp';
-import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type OAuthConfig, type OAuthEnv } from './oauth';
+import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
 import { lookupFacts, type FactProvider } from './facts';
 import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } from './log';
@@ -84,7 +84,7 @@ export function createApp(deps: (env: Env) => Deps) {
     c.set('client', record);
     // A test token only decides (and lists its profiles); its decisions are
     // not logged, and it must not read or resolve the logged ones.
-    if (record.test && !(c.req.method === 'POST' && c.req.path.startsWith('/v1/decide/'))
+    if (record.test && !(c.req.method === 'POST' && /^\/v1\/decide\/[^/]+$/.test(c.req.path))
       && !(c.req.method === 'GET' && c.req.path === '/v1/profiles')) {
       return error(403, 'forbidden', 'a test token may only decide');
     }
@@ -241,10 +241,15 @@ export function createApp(deps: (env: Env) => Deps) {
   // MCP (docs/mcp.md): API tokens as for /v1, and, when OAuth is configured,
   // access tokens of people logged in with GitHub. Checked here because /mcp
   // is outside the /v1 middleware.
+  // A test token only decides over the REST API: MCP would let it read
+  // logged decisions (get_decision).
+  const mcpFor = (d: Deps) => (req: Request, caller: Caller) => (caller.kind === 'token' && caller.record.test
+    ? Promise.resolve(error(403, 'forbidden', 'a test token may only decide (POST /v1/decide)'))
+    : serveMcp(req, d, caller));
   app.all('/mcp', async (c) => {
     const d = deps(c.env);
     if (d.oauth) {
-      return serveProtectedMcp(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d.tokens, (req, caller) => serveMcp(req, d, caller));
+      return serveProtectedMcp(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d.tokens, mcpFor(d));
     }
     const record = await authenticate(c.req.header('authorization'), d.tokens);
     if (!record) {
@@ -252,7 +257,7 @@ export function createApp(deps: (env: Env) => Deps) {
       res.headers.set('www-authenticate', 'Bearer');
       return res;
     }
-    return serveMcp(c.req.raw, d, { kind: 'token', record });
+    return mcpFor(d)(c.req.raw, { kind: 'token', record });
   });
 
   // OAuth (src/oauth.ts). Without an OAuth config these routes are not found.
