@@ -16,6 +16,12 @@ export interface TokenRecord {
   /** Profile ids this token may use; ["*"] for all profiles. */
   profiles: string[];
   created_at: string;
+  /**
+   * A test token (scripts/tokens.mjs --test): its decisions are made like
+   * any other (model, facts, rules) but not logged, so they never reach the
+   * review queue or the accuracy numbers. It may only decide.
+   */
+  test?: boolean;
 }
 
 export interface TokenStore {

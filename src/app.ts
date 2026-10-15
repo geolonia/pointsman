@@ -82,6 +82,12 @@ export function createApp(deps: (env: Env) => Deps) {
       return res;
     }
     c.set('client', record);
+    // A test token only decides (and lists its profiles); its decisions are
+    // not logged, and it must not read or resolve the logged ones.
+    if (record.test && !(c.req.method === 'POST' && c.req.path.startsWith('/v1/decide/'))
+      && !(c.req.method === 'GET' && c.req.path === '/v1/profiles')) {
+      return error(403, 'forbidden', 'a test token may only decide');
+    }
     await next();
   });
 
@@ -304,6 +310,9 @@ export async function makeDecision(
 
   const body = parseBody(raw);
   if (typeof body === 'string') return fail(400, 'invalid_request', body);
+  if (client.test && body.callback_url !== undefined) {
+    return fail(400, 'invalid_request', 'a test token gets no callbacks: its decisions are not logged');
+  }
 
   const profile = await store.get(profileId, version);
   if (!profile) return fail(404, 'profile_not_found', 'unknown profile or version');
@@ -358,6 +367,9 @@ export async function makeDecision(
     rule,
     ...(facts && { facts }),
   };
+  // A test token's decisions are not logged (and marked as such): they
+  // check profiles and examples, nobody acts on them.
+  if (client.test) return { ok: true, decision: { ...decision, test: true } };
   // Every decision is logged before it is returned. If the log fails, the
   // client gets a 500 and must not act on an unlogged decision.
   await log.insert({

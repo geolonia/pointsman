@@ -272,6 +272,10 @@ components:
           type: [integer, 'null']
           minimum: 0
         facts: { $ref: '#/components/schemas/Facts' }
+        test:
+          description: Present (true) only for a test token's decision, which is not logged.
+          type: boolean
+          const: true
     DecisionRecord:
       allOf:
         - $ref: '#/components/schemas/DecisionRecordBase'

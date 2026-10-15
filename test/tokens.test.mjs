@@ -23,6 +23,16 @@ test('create prints the token once and passes only its hash to wrangler', () => 
   assert.equal(r.stdout.split(token).length - 1, 1, 'the token is printed exactly once');
 });
 
+test('create --test marks the token as a test token', () => {
+  const r = run('create', '--client', 'examples-check', '--profiles', 'road-restriction-check', '--test', '--local', '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+  const command = r.stdout.split('\n').find((l) => l.startsWith('[dry-run] wrangler'));
+  assert.match(command, /"test":true/);
+  assert.match(r.stdout, /test token: not logged, decide only/);
+  const normal = run('create', '--client', 'demo', '--profiles', '*', '--local', '--dry-run');
+  assert.doesNotMatch(normal.stdout, /"test"/);
+});
+
 test('revoke deletes the key for a hash', () => {
   const hash = 'a'.repeat(64);
   const r = run('revoke', '--hash', hash, '--remote', '--config', 'other.jsonc', '--dry-run');
