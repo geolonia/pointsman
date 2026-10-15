@@ -36,10 +36,13 @@ const SOURCE = '© OpenStreetMap contributors (ODbL), routed with Valhalla';
 export class ValhallaRouter {
   private readonly url: string;
   private readonly fetchFn: typeof fetch;
+  private readonly apiKey: string | undefined;
 
-  constructor(url: string, fetchFn?: typeof fetch) {
+  /** `apiKey` is sent as `x-api-key` (hosted servers such as Geolonia's); never logged. */
+  constructor(url: string, fetchFn?: typeof fetch, apiKey?: string) {
     this.url = url.replace(/\/+$/, '');
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
+    this.apiKey = apiKey || undefined;
   }
 
   /**
@@ -108,10 +111,14 @@ export class ValhallaRouter {
     const limit = AbortSignal.timeout(TIMEOUT_MS);
     const res = await this.fetchFn(`${this.url}/route`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT },
+      headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
       body: JSON.stringify(body),
+      // A redirect would carry the key to another host: a 3xx is an error.
+      redirect: 'manual',
       signal: signal ? AbortSignal.any([signal, limit]) : limit,
     });
+    // Checked before the body: a redirect's body is not Valhalla's answer.
+    if (res.status >= 300 && res.status < 400) throw new FactError(`routing ${res.status}`);
     const json = (await res.json().catch(() => null)) as { trip?: { summary?: { length?: unknown } }; error_code?: unknown } | null;
     if (!res.ok) {
       if (json?.error_code === 442) return null; // no path
