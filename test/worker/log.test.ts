@@ -234,17 +234,19 @@ describe('feedback', () => {
 });
 
 describe('profile stats (GET /v1/stats)', () => {
-  const PROFILE = 'stats-test';
-  async function row(action: string, createdAt: string, review: { status: string; final?: string } | null = null) {
+  const PROFILE = 'deploy-progress';
+  async function row(action: string, createdAt: string, review: { status: string; final?: string } | null = null, profile = PROFILE) {
     const id = crypto.randomUUID();
     await DB.prepare(
       `INSERT INTO decisions (id, created_at, client, profile_id, profile_version, model, action, rule, answers, state_hash, review_status, final_action)
        VALUES (?, ?, 'c', ?, 1, 'mock', ?, NULL, ?, 'h', ?, ?)`,
-    ).bind(id, createdAt, PROFILE, action, JSON.stringify({ danger: { type: 'noul', value: false, p: 0.9, yes: 0.1 } }), review?.status ?? null, review?.final ?? null).run();
+    ).bind(id, createdAt, profile, action, JSON.stringify({ danger: { type: 'noul', value: false, p: 0.9, yes: 0.1 } }), review?.status ?? null, review?.final ?? null).run();
     return id;
   }
 
   it('counts actions, the review queue and corrections in the last days', async () => {
+    // Other tests in this file decide with this profile too: compare with before.
+    const before = await (await call('GET', `/v1/stats/${PROFILE}?days=7`)).json<any>();
     const now = new Date().toISOString();
     await row('publish', now);
     await row('publish', now);
@@ -253,12 +255,17 @@ describe('profile stats (GET /v1/stats)', () => {
     await row('review', now, { status: 'resolved', final: 'publish' });
     const corrected = await row('review', now, { status: 'resolved', final: 'reject' });
     const same = await row('publish', now);
-    // Older than the window: not counted.
-    await row('publish', new Date(Date.now() - 10 * 86_400_000).toISOString());
+    // Older than the window, or another profile: not counted, corrected or not.
+    const old = await row('publish', new Date(Date.now() - 10 * 86_400_000).toISOString());
+    const other = await row('review', now, { status: 'resolved', final: 'reject' }, 'issue-triage');
     const fb = (id: string, value: boolean) => DB.prepare(
       "INSERT INTO feedback (decision_id, created_at, client, by, correct) VALUES (?, ?, 'c', 'p', ?)",
     ).bind(id, now, JSON.stringify({ danger: value })).run();
     await fb(corrected, true);
+    // Two corrections of one decision count once.
+    await fb(corrected, true);
+    await fb(old, true);
+    await fb(other, true);
     // A correction that repeats the model's answer is not counted.
     await fb(same, false);
 
@@ -266,17 +273,23 @@ describe('profile stats (GET /v1/stats)', () => {
     expect(res.status).toBe(200);
     const data = await res.json<any>();
     expect(contract.profileStats(data), JSON.stringify(contract.profileStats.errors)).toBe(true);
-    expect(data).toMatchObject({
-      profile: PROFILE, days: 7, decisions: 7,
-      actions: { publish: 3, urgent: 1, review: 3 },
-      reviews: { pending: 1, resolved: 2, final_actions: { publish: 1, reject: 1 } },
-      corrected: 1,
-    });
+    const diff = (a: Record<string, number>, b: Record<string, number>) =>
+      Object.fromEntries(Object.keys(a).map((k) => [k, a[k]! - (b[k] ?? 0)]).filter(([, v]) => v !== 0));
+    expect(data).toMatchObject({ profile: PROFILE, days: 7 });
+    expect(data.decisions - before.decisions).toBe(7);
+    expect(diff(data.actions, before.actions)).toEqual({ publish: 3, urgent: 1, review: 3 });
+    expect(data.reviews.pending - before.reviews.pending).toBe(1);
+    expect(data.reviews.resolved - before.reviews.resolved).toBe(2);
+    expect(diff(data.reviews.final_actions, before.reviews.final_actions)).toEqual({ publish: 1, reject: 1 });
+    expect(data.corrected - before.corrected).toBe(1);
   });
 
   it('refuses profiles outside the token scope and a bad window', async () => {
     expect((await call('GET', `/v1/stats/${PROFILE}`, undefined, TRIAGE_ONLY)).status).toBe(403);
-    for (const days of ['0', '91', 'x', '7.5']) expect((await call('GET', `/v1/stats/${PROFILE}?days=${days}`)).status).toBe(400);
+    for (const days of ['0', '91', 'x', '7.5', '', '07']) expect((await call('GET', `/v1/stats/${PROFILE}?days=${days}`)).status).toBe(400);
+    for (const days of ['1', '90']) expect((await call('GET', `/v1/stats/${PROFILE}?days=${days}`)).status).toBe(200);
+    // A typo is not a quiet week.
+    expect((await call('GET', '/v1/stats/no-such-profile')).status).toBe(404);
     const data = await (await call('GET', '/v1/stats/issue-triage', undefined, TRIAGE_ONLY)).json<any>();
     expect(data.days).toBe(7);
   });

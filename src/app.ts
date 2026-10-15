@@ -164,6 +164,8 @@ export function createApp(deps: (env: Env) => Deps) {
       return error(400, 'invalid_request', '"days" must be a whole number from 1 to 90');
     }
     const days = Number(daysParam);
+    // Zeros for a typo would look like a quiet week.
+    if (!(await deps(c.env).store.get(profile))) return error(404, 'profile_not_found', 'unknown profile');
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const stats = await deps(c.env).log.stats(profile, since);
     return c.json({ profile, days, since, ...stats });

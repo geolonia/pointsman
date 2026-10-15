@@ -116,7 +116,9 @@ paths:
       description: |
         Counts only, no single decisions or states: decisions per action, the
         review queue (pending, resolved, the final actions people chose), and
-        decisions where a person corrected at least one answer.
+        decisions where a person corrected at least one answer. The window
+        applies to when a decision was made; a later resolution or correction
+        of such a decision counts with it.
       parameters:
         - name: profile
           in: path
@@ -137,6 +139,11 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
           description: The token may not use this profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Unknown profile.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

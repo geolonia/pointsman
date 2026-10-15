@@ -265,7 +265,8 @@ export class D1DecisionLog implements DecisionLog {
       if (r.k === 'pending') stats.reviews.pending += r.n;
       if (r.k === 'resolved') {
         stats.reviews.resolved += r.n;
-        if (r.k2) stats.reviews.final_actions[r.k2] = (stats.reviews.final_actions[r.k2] ?? 0) + r.n;
+        // One row per final action (GROUP BY): assigned, never read back.
+        if (r.k2) stats.reviews.final_actions[r.k2] = r.n;
       }
     }
     return stats;

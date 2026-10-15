@@ -62,7 +62,8 @@ For apps, `GET /v1/stats/{profile}?days=7` gives the same kind of numbers
 without database access, for the profiles the token may use: decisions per
 action, the review queue (pending, resolved, and the final actions people
 chose), and how many decisions a person corrected. Counts only, no single
-decisions. The FIWARE demo shows them on its page.
+decisions. The window applies to when a decision was made: a decision from
+the window that was resolved or corrected later is counted with it.
 
 Notes:
 
