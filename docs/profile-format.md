@@ -255,6 +255,9 @@ only with `FACTS_MODE=gsi`), `detour` facts are answered: the way between
 the two ends of the closed section, with and without the section, by car
 or on foot (`mode`; Valhalla's `auto` and `pedestrian` costing;
 OpenStreetMap data, `source`: © OpenStreetMap contributors).
+A server that needs a key (such as Geolonia's hosted Valhalla) gets it from
+the Worker secret `FACTS_ROUTING_API_KEY`, sent as the `x-api-key` header.
+The key is never logged and never sent to browsers.
 
 - The whole section is closed except 20 m at each end, measured along it:
   Valhalla drops every road an exclusion area touches, and a route cannot
@@ -268,6 +271,9 @@ OpenStreetMap data, `source`: © OpenStreetMap contributors).
 - Sections longer than 5 km are refused (`error`).
 - A server that starts cold (for example on AWS Lambda) can take longer than
   the 3 s limit for the first lookups: those facts are `timeout`.
+- A server that refuses the request (wrong key: 403; too many requests: 429)
+  gives an `error` with that status. There is no retry: a decision does not
+  wait for the server.
 
 Geocoding is still open (issue #65).
 

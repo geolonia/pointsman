@@ -162,6 +162,39 @@ describe('detours', () => {
   });
 });
 
+describe('routing API key', () => {
+  // Built at run time: no key-looking literal in the repository (secret scanning).
+  const key = crypto.randomUUID();
+  const recording = (res: () => Response) => {
+    const headers: Headers[] = [];
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      headers.push(new Headers(init?.headers));
+      return res();
+    }) as typeof fetch;
+    return { headers, fetchFn };
+  };
+
+  it('is sent as x-api-key, and only when set', async () => {
+    const withKey = recording(() => ok(0.24));
+    await new ValhallaRouter(URL_, withKey.fetchFn, key).detour(section).catch(() => {});
+    expect(withKey.headers.length).toBeGreaterThan(0);
+    for (const h of withKey.headers) expect(h.get('x-api-key')).toBe(key);
+    const without = recording(() => ok(0.24));
+    await new ValhallaRouter(URL_, without.fetchFn).detour(section).catch(() => {});
+    for (const h of without.headers) expect(h.has('x-api-key')).toBe(false);
+  });
+
+  it('a refused key or too many requests is an error with the status, without the key', async () => {
+    for (const status of [403, 429]) {
+      const { fetchFn } = recording(() => Response.json({ message: 'no' }, { status }));
+      const err = await new ValhallaRouter(URL_, fetchFn, key).detour(section).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(FactError);
+      expect(String((err as Error).message)).toBe(`routing ${status}`);
+      expect(String((err as Error).message)).not.toContain(key);
+    }
+  });
+});
+
 describe('FACTS_ROUTING_URL', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
 
@@ -176,5 +209,11 @@ describe('FACTS_ROUTING_URL', () => {
     withLogin.username = 'u';
     withLogin.password = crypto.randomUUID();
     expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: withLogin.toString() })).toThrow(ConfigError);
+  });
+
+  it('FACTS_ROUTING_API_KEY needs FACTS_ROUTING_URL', () => {
+    const key = crypto.randomUUID();
+    expect(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_, FACTS_ROUTING_API_KEY: key }).facts).toBeInstanceOf(GsiFactProvider);
+    expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: key })).toThrow(ConfigError);
   });
 });

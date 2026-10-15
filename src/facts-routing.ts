@@ -36,10 +36,13 @@ const SOURCE = '© OpenStreetMap contributors (ODbL), routed with Valhalla';
 export class ValhallaRouter {
   private readonly url: string;
   private readonly fetchFn: typeof fetch;
+  private readonly apiKey: string | undefined;
 
-  constructor(url: string, fetchFn?: typeof fetch) {
+  /** `apiKey` is sent as `x-api-key` (hosted servers such as Geolonia's); never logged. */
+  constructor(url: string, fetchFn?: typeof fetch, apiKey?: string) {
     this.url = url.replace(/\/+$/, '');
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
+    this.apiKey = apiKey || undefined;
   }
 
   /**
@@ -108,7 +111,7 @@ export class ValhallaRouter {
     const limit = AbortSignal.timeout(TIMEOUT_MS);
     const res = await this.fetchFn(`${this.url}/route`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT },
+      headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
       body: JSON.stringify(body),
       signal: signal ? AbortSignal.any([signal, limit]) : limit,
     });

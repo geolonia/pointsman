@@ -25,6 +25,8 @@ interface PointsmanEnv {
   FACTS_MODE?: string | undefined;
   /** With FACTS_MODE "gsi": a Valhalla server for detour facts (https). */
   FACTS_ROUTING_URL?: string | undefined;
+  /** Worker secret: sent as `x-api-key` to the routing server. */
+  FACTS_ROUTING_API_KEY?: string | undefined;
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
   DB?: D1Database | undefined;
@@ -141,7 +143,7 @@ function adaptersByMode(env: PointsmanEnv): (model: string) => ModelAdapter | nu
 }
 
 const mockFacts = new MockFactProvider();
-// One per isolate (and routing URL), so its memory cache of tiles is shared between requests.
+// One per isolate (and routing server), so its memory cache of tiles is shared between requests.
 const gsiFacts = new Map<string, GsiFactProvider>();
 
 function factsFor(env: PointsmanEnv): FactProvider | undefined {
@@ -149,6 +151,8 @@ function factsFor(env: PointsmanEnv): FactProvider | undefined {
   if (routingUrl && env.FACTS_MODE !== 'gsi') throw new ConfigError('FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
   const routing = routingUrl ? checkServerUrl(routingUrl) : undefined;
   if (routing && !routing.ok) throw new ConfigError(`FACTS_ROUTING_URL ${routing.error}`);
+  const routingKey = env.FACTS_ROUTING_API_KEY || undefined;
+  if (routingKey && !routingUrl) throw new ConfigError('FACTS_ROUTING_API_KEY needs FACTS_ROUTING_URL');
   switch (env.FACTS_MODE ?? 'off') {
     case 'off':
     case '':
@@ -157,13 +161,15 @@ function factsFor(env: PointsmanEnv): FactProvider | undefined {
       return mockFacts;
     case 'gsi':
     {
-      let p = gsiFacts.get(routingUrl ?? '');
+      // Keyed by URL and key, so a new key never reuses a router with the old one.
+      const id = JSON.stringify([routingUrl ?? '', routingKey ?? '']);
+      let p = gsiFacts.get(id);
       if (!p) {
         p = new GsiFactProvider({
           cache: typeof caches === 'undefined' ? undefined : caches.default,
-          ...(routing?.ok && { routing: new ValhallaRouter(routing.value) }),
+          ...(routing?.ok && { routing: new ValhallaRouter(routing.value, undefined, routingKey) }),
         });
-        gsiFacts.set(routingUrl ?? '', p);
+        gsiFacts.set(id, p);
       }
       return p;
     }
