@@ -232,3 +232,52 @@ describe('feedback', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('profile stats (GET /v1/stats)', () => {
+  const PROFILE = 'stats-test';
+  async function row(action: string, createdAt: string, review: { status: string; final?: string } | null = null) {
+    const id = crypto.randomUUID();
+    await DB.prepare(
+      `INSERT INTO decisions (id, created_at, client, profile_id, profile_version, model, action, rule, answers, state_hash, review_status, final_action)
+       VALUES (?, ?, 'c', ?, 1, 'mock', ?, NULL, ?, 'h', ?, ?)`,
+    ).bind(id, createdAt, PROFILE, action, JSON.stringify({ danger: { type: 'noul', value: false, p: 0.9, yes: 0.1 } }), review?.status ?? null, review?.final ?? null).run();
+    return id;
+  }
+
+  it('counts actions, the review queue and corrections in the last days', async () => {
+    const now = new Date().toISOString();
+    await row('publish', now);
+    await row('publish', now);
+    await row('urgent', now);
+    await row('review', now, { status: 'pending' });
+    await row('review', now, { status: 'resolved', final: 'publish' });
+    const corrected = await row('review', now, { status: 'resolved', final: 'reject' });
+    const same = await row('publish', now);
+    // Older than the window: not counted.
+    await row('publish', new Date(Date.now() - 10 * 86_400_000).toISOString());
+    const fb = (id: string, value: boolean) => DB.prepare(
+      "INSERT INTO feedback (decision_id, created_at, client, by, correct) VALUES (?, ?, 'c', 'p', ?)",
+    ).bind(id, now, JSON.stringify({ danger: value })).run();
+    await fb(corrected, true);
+    // A correction that repeats the model's answer is not counted.
+    await fb(same, false);
+
+    const res = await call('GET', `/v1/stats/${PROFILE}?days=7`);
+    expect(res.status).toBe(200);
+    const data = await res.json<any>();
+    expect(contract.profileStats(data), JSON.stringify(contract.profileStats.errors)).toBe(true);
+    expect(data).toMatchObject({
+      profile: PROFILE, days: 7, decisions: 7,
+      actions: { publish: 3, urgent: 1, review: 3 },
+      reviews: { pending: 1, resolved: 2, final_actions: { publish: 1, reject: 1 } },
+      corrected: 1,
+    });
+  });
+
+  it('refuses profiles outside the token scope and a bad window', async () => {
+    expect((await call('GET', `/v1/stats/${PROFILE}`, undefined, TRIAGE_ONLY)).status).toBe(403);
+    for (const days of ['0', '91', 'x', '7.5']) expect((await call('GET', `/v1/stats/${PROFILE}?days=${days}`)).status).toBe(400);
+    const data = await (await call('GET', '/v1/stats/issue-triage', undefined, TRIAGE_ONLY)).json<any>();
+    expect(data.days).toBe(7);
+  });
+});

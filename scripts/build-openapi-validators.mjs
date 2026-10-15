@@ -27,6 +27,7 @@ const base = 'https://pointsman.invalid/openapi';
 const responses = {
   decision: { $ref: '#/components/schemas/Decision' },
   decisionRecord: { $ref: '#/components/schemas/DecisionRecord' },
+  profileStats: { $ref: '#/components/schemas/ProfileStats' },
   resolution: { $ref: '#/components/schemas/Resolution' },
   reviewList: api.paths['/v1/reviews'].get.responses['200'].content['application/json'].schema,
   error: { $ref: '#/components/schemas/Error' },
