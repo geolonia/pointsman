@@ -78,7 +78,7 @@ event is the same
 |---|---|---|---|
 | Flooded underpass (publish) | No one is hurt and no cars are stuck. | danger (must be under 0.5) | Japanese 0.55 → 0.02 |
 | Water pipe works (publish) | Traffic passes in the right lane. | status matches (0.8 or more) | 0.795–0.798 → 0.86 Japanese, 0.83 English |
-| Fallen tree, 飯田橋 bridge and street (urgent) | Ambulances cannot get through. | danger (0.7 or more) | English 0.60–0.63 → 0.92 |
+| Fallen tree, 飯田橋 bridge and 飯田橋 street: two reports, same text (urgent) | Ambulances cannot get through. | danger (0.7 or more) | English 0.60–0.63 → 0.92 |
 | Fallen tree, 日比谷通り (publish) | Heavy rain and strong wind brought it down (first sentence rewritten). | category (0.85 or more) | Japanese 0.71 → 0.92 |
 
 All 18 texts (9 reports, 2 languages) were checked with `pnpm dev:live`.
