@@ -111,6 +111,45 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/Error' }
+  /v1/stats/{profile}:
+    get:
+      operationId: getProfileStats
+      summary: What happened to a profile's decisions in the last days
+      description: |
+        Counts only, no single decisions or states: decisions per action, the
+        review queue (pending, resolved, the final actions people chose), and
+        decisions where a person corrected at least one answer. The window
+        applies to when a decision was made; a later resolution or correction
+        of such a decision counts with it.
+      parameters:
+        - name: profile
+          in: path
+          required: true
+          schema: { type: string }
+        - name: days
+          in: query
+          required: false
+          description: The window, from 1 to 90 days back from now (default 7).
+          schema: { type: integer, minimum: 1, maximum: 90, default: 7 }
+      responses:
+        '200':
+          description: The counts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileStats' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The token may not use this profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Unknown profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
   /v1/reviews:
     get:
       operationId: listReviews
@@ -284,6 +323,34 @@ components:
           description: Present (true) only for a test token's decision, which is not logged.
           type: boolean
           const: true
+    ProfileStats:
+      type: object
+      additionalProperties: false
+      required: [profile, days, since, decisions, actions, reviews, corrected]
+      properties:
+        profile: { type: string }
+        days: { type: integer, minimum: 1, maximum: 90 }
+        since: { type: string, format: date-time, description: Decisions made at or after this time are counted. }
+        decisions: { type: integer, minimum: 0 }
+        actions:
+          type: object
+          description: Decisions per action.
+          additionalProperties: { type: integer, minimum: 0 }
+        reviews:
+          type: object
+          additionalProperties: false
+          required: [pending, resolved, final_actions]
+          properties:
+            pending: { type: integer, minimum: 0 }
+            resolved: { type: integer, minimum: 0 }
+            final_actions:
+              type: object
+              description: Resolved reviews per final action.
+              additionalProperties: { type: integer, minimum: 0 }
+        corrected:
+          type: integer
+          minimum: 0
+          description: Decisions where a person corrected at least one answer (as in docs/accuracy.sql).
     DecisionRecord:
       allOf:
         - $ref: '#/components/schemas/DecisionRecordBase'

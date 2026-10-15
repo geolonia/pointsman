@@ -171,7 +171,7 @@ describe('test tokens', () => {
     const id = crypto.randomUUID();
     for (const [method, path] of [
       ['GET', '/v1/reviews'], ['GET', `/v1/decisions/${id}`], ['POST', `/v1/decisions/${id}/feedback`], ['POST', `/v1/reviews/${id}/resolve`],
-      ['GET', '/v1/decide/deploy-progress'], ['POST', '/v1/decide/deploy-progress/x'],
+      ['GET', '/v1/decide/deploy-progress'], ['POST', '/v1/decide/deploy-progress/x'], ['GET', '/v1/stats/deploy-progress'],
     ] as const) {
       await expectError(await app.request(path, { method, headers: auth, ...(method === 'POST' && { body: '{}' }) }, env), 403, 'forbidden');
     }

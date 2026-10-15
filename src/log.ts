@@ -70,8 +70,21 @@ export interface FeedbackRecord {
   note?: string;
 }
 
+/** What happened to a profile's decisions since a time (GET /v1/stats). */
+export interface ProfileStats {
+  decisions: number;
+  /** Decisions per action. */
+  actions: Record<string, number>;
+  /** Decisions that went to the review queue: still pending, resolved, and the final actions people chose. */
+  reviews: { pending: number; resolved: number; final_actions: Record<string, number> };
+  /** Decisions where a person corrected at least one answer (feedback or review). */
+  corrected: number;
+}
+
 export interface DecisionLog {
   insert(record: DecisionRecord): Promise<void>;
+  /** Counts for one profile, decisions made at or after `since` (ISO 8601). */
+  stats(profile: string, since: string): Promise<ProfileStats>;
   get(id: string): Promise<(DecisionRecord & { feedback: FeedbackRecord[] }) | null>;
   addFeedback(decisionId: string, feedback: FeedbackRecord): Promise<void>;
   /** Pending reviews, oldest first, for the given profile ids ("*" = all). */
@@ -226,6 +239,37 @@ export class D1DecisionLog implements DecisionLog {
       .prepare('INSERT INTO feedback (decision_id, created_at, client, by, correct, note) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(decisionId, f.created_at, f.client, f.by, JSON.stringify(f.correct), f.note ?? null)
       .run();
+  }
+
+  async stats(profile: string, since: string): Promise<ProfileStats> {
+    const [actions, reviews, corrected] = await this.db.batch<{ k: string | null; k2?: string | null; n: number }>([
+      this.db.prepare('SELECT action AS k, COUNT(*) AS n FROM decisions WHERE profile_id = ? AND created_at >= ? GROUP BY action').bind(profile, since),
+      this.db.prepare(
+        `SELECT review_status AS k, final_action AS k2, COUNT(*) AS n FROM decisions
+         WHERE profile_id = ? AND created_at >= ? AND review_status IS NOT NULL GROUP BY review_status, final_action`,
+      ).bind(profile, since),
+      // As in docs/accuracy.sql: a correction that changes at least one answer.
+      this.db.prepare(
+        `SELECT NULL AS k, COUNT(DISTINCT d.id) AS n FROM decisions d JOIN feedback f ON f.decision_id = d.id
+         WHERE d.profile_id = ? AND d.created_at >= ? AND EXISTS (
+           SELECT 1 FROM json_each(f.correct) c
+           WHERE c.value IS NOT json_extract(d.answers, '$."' || c.key || '".value'))`,
+      ).bind(profile, since),
+    ]);
+    const stats: ProfileStats = { decisions: 0, actions: {}, reviews: { pending: 0, resolved: 0, final_actions: {} }, corrected: corrected!.results[0]?.n ?? 0 };
+    for (const r of actions!.results) {
+      stats.actions[String(r.k)] = r.n;
+      stats.decisions += r.n;
+    }
+    for (const r of reviews!.results) {
+      if (r.k === 'pending') stats.reviews.pending += r.n;
+      if (r.k === 'resolved') {
+        stats.reviews.resolved += r.n;
+        // One row per final action (GROUP BY): assigned, never read back.
+        if (r.k2) stats.reviews.final_actions[r.k2] = r.n;
+      }
+    }
+    return stats;
   }
 
   async pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]> {

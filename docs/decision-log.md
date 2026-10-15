@@ -63,6 +63,13 @@ The override rate is `overridden / with_feedback`; the feedback rate is
 `with_feedback / decisions`. Group by `action` as well to see whether `auto`
 decisions are wrong more often than the policy threshold suggests.
 
+For apps, `GET /v1/stats/{profile}?days=7` gives the same kind of numbers
+without database access, for the profiles the token may use: decisions per
+action, the review queue (pending, resolved, and the final actions people
+chose), and how many decisions a person corrected. Counts only, no single
+decisions. The window applies to when a decision was made: a decision from
+the window that was resolved or corrected later is counted with it.
+
 Notes:
 
 - Only decisions that someone looked at get feedback. A low feedback rate
