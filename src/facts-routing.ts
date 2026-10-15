@@ -117,6 +117,8 @@ export class ValhallaRouter {
       redirect: 'manual',
       signal: signal ? AbortSignal.any([signal, limit]) : limit,
     });
+    // Checked before the body: a redirect's body is not Valhalla's answer.
+    if (res.status >= 300 && res.status < 400) throw new FactError(`routing ${res.status}`);
     const json = (await res.json().catch(() => null)) as { trip?: { summary?: { length?: unknown } }; error_code?: unknown } | null;
     if (!res.ok) {
       if (json?.error_code === 442) return null; // no path

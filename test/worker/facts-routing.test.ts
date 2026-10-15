@@ -199,12 +199,17 @@ describe('routing API key', () => {
   });
 
   it('a redirect is not followed: it is an error', async () => {
+    // Bodies with Valhalla's "no path" (442) and "too many vertices" (176) codes too.
+    const bodies = [null, { error_code: 442 }, { error_code: 176 }];
     for (const status of [301, 302, 307, 308]) {
-      const { fetchFn } = recording(() => new Response(null, { status, headers: { location: 'https://elsewhere.test/route' } }));
-      const err = await new ValhallaRouter(URL_, fetchFn, key).detour(section).catch((e: unknown) => e);
-      expect(err).toBeInstanceOf(FactError);
-      expect(String((err as Error).message)).toBe(`routing ${status}`);
-      expect(String((err as Error).message)).not.toContain(key);
+      for (const body of bodies) {
+        const headers = { location: 'https://elsewhere.test/route' };
+        const { fetchFn } = recording(() => (body ? Response.json(body, { status, headers }) : new Response(null, { status, headers })));
+        const err = await new ValhallaRouter(URL_, fetchFn, key).detour(section).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(FactError);
+        expect(String((err as Error).message)).toBe(`routing ${status}`);
+        expect(String((err as Error).message)).not.toContain(key);
+      }
     }
   });
 });
