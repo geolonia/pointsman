@@ -182,6 +182,9 @@ describe('routing API key', () => {
     const without = recording(() => ok(0.24));
     await new ValhallaRouter(URL_, without.fetchFn).detour(section).catch(() => {});
     for (const h of without.headers) expect(h.has('x-api-key')).toBe(false);
+    const empty = recording(() => ok(0.24));
+    await new ValhallaRouter(URL_, empty.fetchFn, '').detour(section).catch(() => {});
+    for (const h of empty.headers) expect(h.has('x-api-key')).toBe(false);
   });
 
   it('a refused key or too many requests is an error with the status, without the key', async () => {
@@ -215,5 +218,7 @@ describe('FACTS_ROUTING_URL', () => {
     const key = crypto.randomUUID();
     expect(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_, FACTS_ROUTING_API_KEY: key }).facts).toBeInstanceOf(GsiFactProvider);
     expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: key })).toThrow(ConfigError);
+    // An empty secret counts as unset.
+    expect(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: '' }).facts).toBeInstanceOf(GsiFactProvider);
   });
 });

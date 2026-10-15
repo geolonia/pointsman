@@ -272,8 +272,8 @@ The key is never logged and never sent to browsers.
 - A server that starts cold (for example on AWS Lambda) can take longer than
   the 3 s limit for the first lookups: those facts are `timeout`.
 - A server that refuses the request (wrong key: 403; too many requests: 429)
-  gives an `error` with that status. There is no retry: a decision does not
-  wait for the server.
+  makes the fact `error`; the Worker log shows the status. There is no retry:
+  a decision does not wait for the server.
 
 Geocoding is still open (issue #65).
 
