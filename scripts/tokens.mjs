@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // Create, revoke and list API tokens in the TOKENS KV namespace (via wrangler).
 //
-//   node scripts/tokens.mjs create --client <name> --profiles <id,id|*> (--local|--remote) [--config <file>]
+//   node scripts/tokens.mjs create --client <name> --profiles <id,id|*> [--test] (--local|--remote) [--config <file>]
 //   node scripts/tokens.mjs revoke --hash <sha256> (--local|--remote) [--config <file>]
 //   node scripts/tokens.mjs list (--local|--remote) [--config <file>]
 //
 // `create` prints the token once; only its SHA-256 hash is stored. Keep the
 // token in the client's secret store. Only the hash is passed to wrangler, so
 // the token does not show up in the process list or shell history.
+// --test makes a test token: its decisions are not logged, and it may only
+// decide (for checks of profiles and examples).
 // --dry-run prints what would be written instead of calling wrangler.
 
 import { parseArgs } from 'node:util';
@@ -33,6 +35,7 @@ const { values, positionals } = (() => {
         hash: { type: 'string' },
         config: { type: 'string' },
         local: { type: 'boolean', default: false },
+        test: { type: 'boolean', default: false },
         remote: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
       },
@@ -76,11 +79,11 @@ switch (command) {
 
     const token = newToken();
     const hash = await hashToken(token);
-    const record = { client: values.client, profiles, created_at: new Date().toISOString() };
+    const record = { client: values.client, profiles, created_at: new Date().toISOString(), ...(values.test && { test: true }) };
     const json = JSON.stringify(record);
     // Metadata makes `list` show the client without reading every value.
     wrangler(['put', tokenKey(hash), json, '--metadata', json]);
-    console.log(`client:  ${record.client}\nprofiles: ${profiles.join(',')}\nhash:    ${hash}`);
+    console.log(`client:  ${record.client}${record.test ? ' (test token: not logged, decide only)' : ''}\nprofiles: ${profiles.join(',')}\nhash:    ${hash}`);
     console.log(`\ntoken (shown once, store it as a secret):\n${token}`);
     break;
   }
@@ -95,7 +98,7 @@ switch (command) {
     if (values['dry-run']) break;
     for (const key of JSON.parse(out)) {
       const m = key.metadata ?? {};
-      console.log(`${key.name.slice('token:'.length)}  ${m.client ?? '?'}  ${(m.profiles ?? []).join(',')}  ${m.created_at ?? ''}`);
+      console.log(`${key.name.slice('token:'.length)}  ${m.client ?? '?'}${m.test ? ' (test)' : ''}  ${(m.profiles ?? []).join(',')}  ${m.created_at ?? ''}`);
     }
     break;
   }

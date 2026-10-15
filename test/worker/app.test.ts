@@ -132,3 +132,59 @@ describe('configuration', () => {
     }
   });
 });
+
+describe('test tokens', () => {
+  const TEST_TOKEN = newToken();
+  const auth = { authorization: `Bearer ${TEST_TOKEN}` };
+  async function setup() {
+    const testTokens = new MemoryTokenStore(new Map([
+      [await hashToken(TEST_TOKEN), { client: 'examples-check', profiles: ['deploy-progress'], created_at: '2026-10-15T00:00:00Z', test: true }],
+    ]));
+    const insert = vi.fn(async () => {});
+    const deps: Deps = { callbacks: noCallbacks, store, tokens: testTokens, log: fakeLog({ insert }), adapterFor: () => new MockAdapter() };
+    return { app: createApp(() => deps), insert };
+  }
+
+  it('decide like any token, but nothing is logged and the decision says so', async () => {
+    const { app, insert } = await setup();
+    const res = await app.request('/v1/decide/deploy-progress', { method: 'POST', body, headers: auth }, env);
+    expect(res.status).toBe(200);
+    const data = await res.json<any>();
+    expect(contract.decision(data), JSON.stringify(contract.decision.errors)).toBe(true);
+    expect(data).toMatchObject({ test: true, profile: 'deploy-progress' });
+    expect(typeof data.action).toBe('string');
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('get no callbacks (refused before the model is asked)', async () => {
+    const { app, insert } = await setup();
+    const res = await app.request('/v1/decide/deploy-progress', {
+      method: 'POST', body: JSON.stringify({ state: 'Deploy has had no event for 40 minutes.', callback_url: 'https://example.com/cb' }), headers: auth,
+    }, env);
+    await expectError(res, 400, 'invalid_request');
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('may list their profiles, and do nothing else', async () => {
+    const { app } = await setup();
+    expect((await app.request('/v1/profiles', { headers: auth }, env)).status).toBe(200);
+    const id = crypto.randomUUID();
+    for (const [method, path] of [
+      ['GET', '/v1/reviews'], ['GET', `/v1/decisions/${id}`], ['POST', `/v1/decisions/${id}/feedback`], ['POST', `/v1/reviews/${id}/resolve`],
+      ['GET', '/v1/decide/deploy-progress'], ['POST', '/v1/decide/deploy-progress/x'],
+    ] as const) {
+      await expectError(await app.request(path, { method, headers: auth, ...(method === 'POST' && { body: '{}' }) }, env), 403, 'forbidden');
+    }
+    // HEAD answers without a body.
+    expect((await app.request('/v1/profiles', { method: 'HEAD', headers: auth }, env)).status).toBe(403);
+  });
+
+  it('do not change normal tokens: their decisions are logged and not marked', async () => {
+    const insert = vi.fn(async () => {});
+    const deps: Deps = { callbacks: noCallbacks, store, tokens, log: fakeLog({ insert }), adapterFor: () => new MockAdapter() };
+    const res = await decide(createApp(() => deps));
+    expect(res.status).toBe(200);
+    expect(await res.json<any>()).not.toHaveProperty('test');
+    expect(insert).toHaveBeenCalledOnce();
+  });
+});

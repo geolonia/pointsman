@@ -101,4 +101,6 @@ export interface Decision {
   rule: number | null;
   /** The facts the profile asked for, by name; only for profiles with facts. */
   facts?: Record<string, Fact>;
+  /** Made with a test token: not logged, so the id is unknown to every other endpoint. */
+  test?: true;
 }

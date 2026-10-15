@@ -71,6 +71,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DecisionRecord' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TestToken' }
         '404':
           description: Unknown decision, or one whose profile this token may not use.
           content:
@@ -98,6 +99,7 @@ paths:
         '204': { description: Feedback stored }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TestToken' }
         '404':
           description: Unknown decision, or one whose profile this token may not use.
           content:
@@ -136,7 +138,7 @@ paths:
                       unevaluatedProperties: false
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
-          description: The token may not use this profile.
+          description: The token may not use this profile, or it is a test token (it may only decide).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -166,6 +168,7 @@ paths:
               schema: { $ref: '#/components/schemas/Resolution' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TestToken' }
         '404':
           description: Unknown decision, or one whose profile this token may not use.
           content:
@@ -209,6 +212,11 @@ components:
       scheme: bearer
       description: Per-client API token (`pm_` + 43 characters).
   responses:
+    TestToken:
+      description: A test token, which may only decide.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     Unauthorized:
       description: Missing, malformed, unknown or revoked token.
       headers:
@@ -272,6 +280,10 @@ components:
           type: [integer, 'null']
           minimum: 0
         facts: { $ref: '#/components/schemas/Facts' }
+        test:
+          description: Present (true) only for a test token's decision, which is not logged.
+          type: boolean
+          const: true
     DecisionRecord:
       allOf:
         - $ref: '#/components/schemas/DecisionRecordBase'

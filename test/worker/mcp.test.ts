@@ -6,12 +6,14 @@ import { hashToken, newToken, tokenKey } from '../../src/auth';
 
 const ALL = newToken();
 const DEPLOY_ONLY = newToken();
+const TEST_ONLY = newToken();
 const DB = (env as unknown as { DB: D1Database }).DB;
 
 beforeEach(async () => {
   for (const [token, client, profiles] of [[ALL, 'agent', ['*']], [DEPLOY_ONLY, 'deploy-bot', ['deploy-progress']]] as const) {
     await env.TOKENS.put(tokenKey(await hashToken(token)), JSON.stringify({ client, profiles, created_at: '' }));
   }
+  await env.TOKENS.put(tokenKey(await hashToken(TEST_ONLY)), JSON.stringify({ client: 'examples-check', profiles: ['*'], created_at: '', test: true }));
 });
 
 let nextId = 1;
@@ -113,5 +115,13 @@ describe('/mcp', () => {
     expect(got2.isError).toBe(true);
     expect(got2.text).toContain('unknown decision');
     expect((await call('get_decision', { decision_id: 'not-a-uuid' })).text).toContain('unknown decision');
+  });
+});
+
+describe('test tokens', () => {
+  it('are refused: over MCP they could read logged decisions', async () => {
+    const r = await rpc('tools/list', {}, TEST_ONLY);
+    expect(r.status).toBe(403);
+    expect(r.text).toContain('a test token may only decide');
   });
 });
