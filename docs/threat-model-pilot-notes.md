@@ -85,8 +85,11 @@ effects) did apply and became Q1–Q6.
   backtest routed 16 synthesized cases (routing table in the ignored
   `.threat-model/backtest.md`). It still found one useful thing: the "silence
   floor" (a disclaimer that rests on nothing being promised never closes a
-  security-critical report) applies to the state-size and rate-limit
-  disclaimers, so those escalate until Daniel rules on them.
+  security-critical report) applied to the state-size and rate-limit
+  disclaimers in the pre-acceptance backtest, where both cases escalated for
+  a ruling. After the maintainer answered Q8 and Q17 (2026-10), both
+  disclaimers rest on a maintainer ruling, and the re-run routes both cases
+  to `BY-DESIGN: property-disclaimed`, closed.
 - **Status vocabulary.** The skill expects an accepted model to have zero
   inferred and assumption tags. Here the maintainer accepted every proposed
   answer in one batch, so the model reached *accepted* in one wave; a larger
