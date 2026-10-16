@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:c336cd7c240b23dde13cfb955e08a2f758603019898317d93b87ef9013c2eed1"
-model_status: unratified-draft
+prose_version: "threat-model.md@sha256:b9314ce72e276a936013d55f7991752e0389d1c4bbd62ca47461bf507feab95b"
+model_status: accepted
 triage_policy: strict
-confidence: {documented: 259, maintainer: 0, inferred: 4, assumption: 62}
+confidence: {documented: 259, maintainer: 70, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1)"
@@ -65,12 +65,12 @@ host_side_effects:
     stance: conditional
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, action-triage, action-deploy-watch, config-repo]
     conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com and OAuth client-ID metadata URLs (engine); the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); the Cloudflare API through wrangler (config-repo); all public addresses only"
-    provenance: {kind: inferred, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: child-processes
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, action-triage, config-repo]
     conditions: "grep for child_process/spawn/execFile in src and bridge/src: 0 hits; config-repo scripts call wrangler through scripts/lib/wrangler.mjs"
-    provenance: {kind: assumption, question_id: Q5, rationale: "exhaustive scan of src/ and bridge/src/"}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: child-processes
     stance: present
     components: [action-deploy-watch]
@@ -80,7 +80,7 @@ host_side_effects:
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
     conditions: "configuration comes from Worker bindings and vars only; grep for process.env in src and bridge/src: 0 hits"
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: environment-reads
     stance: present
     components: [action-triage, action-deploy-watch, config-repo]
@@ -90,7 +90,7 @@ host_side_effects:
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
     conditions: "Workers have no filesystem; no fs import in src or bridge/src"
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: filesystem
     stance: present
     components: [action-triage, action-deploy-watch]
@@ -100,7 +100,7 @@ host_side_effects:
     stance: present
     components: [engine-api, engine-callbacks, engine-mcp, engine-facts]
     conditions: "D1 decisions and feedback rows; OAUTH_KV (purge cursor and the OAuth library's grants); the Workers cache for tiles; never TOKENS or PROFILES"
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: redirect-following
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks]
@@ -110,12 +110,12 @@ host_side_effects:
     stance: present
     components: [bridge]
     conditions: "calls to the broker and to Pointsman use the default fetch redirect mode; both URLs are operator-set"
-    provenance: {kind: assumption, question_id: Q6}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: global-state
     stance: conditional
     components: [engine-api, engine-facts, engine-mcp]
     conditions: "module-level caches (profile store, adapters, GSI provider and tile memory cache, OAuth server map) shared within one isolate only"
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - effect: logging
     stance: present
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
@@ -169,7 +169,7 @@ entry_points:
         control_kinds: [size, object-topology]
         obligation_id: rate-limit-at-edge
         caller_must_enforce: "rate-limit and budget at the edge and in the AI Gateway; the engine sets no size or rate limit"
-        provenance: {kind: inferred, question_id: Q8}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: ref
         attacker_controllable: true
         control_kinds: [data]
@@ -197,12 +197,12 @@ entry_points:
         attacker_controllable: false
         control_kinds: [data]
         caller_must_enforce: "none — P-ANSWER-SHAPE"
-        provenance: {kind: assumption, question_id: Q12}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: model-name-workers-ai
         attacker_controllable: false
         control_kinds: [data]
         caller_must_enforce: "none — P-ANSWER-SHAPE"
-        provenance: {kind: assumption, question_id: Q12}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: fact-geometry
         attacker_controllable: true
         control_kinds: [data, size]
@@ -281,7 +281,7 @@ entry_points:
         attacker_controllable: true
         control_kinds: [data]
         caller_must_enforce: "none — P-CALLBACK-SIGNED"
-        provenance: {kind: assumption, question_id: Q9}
+        provenance: {kind: maintainer, date: "2026-10"}
   - id: "GSI tile fetch"
     component: engine-facts
     parameters:
@@ -354,7 +354,7 @@ entry_points:
         attacker_controllable: true
         control_kinds: [data]
         caller_must_enforce: "none — P-OAUTH-ORG-MEMBERSHIP"
-        provenance: {kind: assumption, question_id: Q19}
+        provenance: {kind: maintainer, date: "2026-10"}
   - id: "GET /callback"
     component: engine-mcp
     parameters:
@@ -370,7 +370,7 @@ entry_points:
         attacker_controllable: true
         control_kinds: [data, serialized-state]
         caller_must_enforce: "none — P-OAUTH-ORG-MEMBERSHIP"
-        provenance: {kind: assumption, question_id: Q19}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: github-responses
         attacker_controllable: false
         control_kinds: [data]
@@ -417,18 +417,18 @@ entry_points:
         attacker_controllable: false
         control_kinds: [serialized-state]
         caller_must_enforce: "none — P-BRIDGE-SAFE-TO-REPEAT"
-        provenance: {kind: assumption, question_id: Q20}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: broker-entity-read
         attacker_controllable: true
         control_kinds: [data, collaborator-implementation]
         obligation_id: broker-access-control
         caller_must_enforce: "the broker's access control decides who may write entities, Decision and Task entities"
-        provenance: {kind: assumption, question_id: Q20}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: pointsman-decision
         attacker_controllable: false
         control_kinds: [data]
         caller_must_enforce: "none — P-BRIDGE-SAFE-TO-REPEAT"
-        provenance: {kind: assumption, question_id: Q20}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: bridge-configuration
         attacker_controllable: false
         control_kinds: [serialized-state]
@@ -473,7 +473,7 @@ entry_points:
         attacker_controllable: true
         control_kinds: [data]
         caller_must_enforce: "none — P-WATCH-FAILSAFE"
-        provenance: {kind: assumption, question_id: Q22}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: pointsman-action
         attacker_controllable: false
         control_kinds: [data]
@@ -516,31 +516,31 @@ contract_dimensions:
   - {component: engine-api, dimension: failure-atomicity, status: claimed, conditions: "logged before returned; a failed log is 500 and no decision; a review resolves once", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/decision-log.md; docs/reviews.md"}}
   - {component: engine-api, dimension: recursive-cyclic-topology, status: disclaimed, conditions: "state may be arbitrarily nested; no depth limit promised", property_id: D-STATE-SIZE, provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}}
   - {component: engine-api, dimension: callback-execution, status: claimed, conditions: "policy conditions are parsed and evaluated as data; nothing runs as code", property_id: P-POLICY-NOT-CODE, provenance: {kind: documented, source: "docs/profile-format.md \"nothing is run as code\""}}
-  - {component: engine-api, dimension: serialization-reconstruction, status: claimed, conditions: "plain JSON only; the HTTP model server's model field is not stored", property_id: P-ANSWER-SHAPE, provenance: {kind: assumption, question_id: Q12}}
-  - {component: engine-api, dimension: reference-lifecycle, status: not-applicable, conditions: "stateless per request; module-level caches hold profiles and adapters, not request data", provenance: {kind: assumption, question_id: Q5}}
+  - {component: engine-api, dimension: serialization-reconstruction, status: claimed, conditions: "plain JSON only; the HTTP model server's model field is not stored", property_id: P-ANSWER-SHAPE, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-api, dimension: reference-lifecycle, status: not-applicable, conditions: "stateless per request; module-level caches hold profiles and adapters, not request data", provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: concurrency-reentrancy, status: claimed, conditions: "concurrent resolves of one review: exactly one succeeds", property_id: P-REVIEW-RESOLVED-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A second resolve, also at the same moment, answers 409\""}}
-  - {component: engine-api, dimension: resource-complexity, status: unresolved, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited", question_id: Q8, provenance: {kind: inferred, question_id: Q8}}
-  - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: assumption, question_id: Q7}}
+  - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited; the maintainer chose to disclaim the bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
   # engine-facts
-  - {component: engine-facts, dimension: numeric-domain, status: claimed, conditions: "positions within WGS 84; third coordinate dropped; non-finite refused", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: assumption, question_id: Q10}}
+  - {component: engine-facts, dimension: numeric-domain, status: claimed, conditions: "positions within WGS 84; third coordinate dropped; non-finite refused", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}}
   - {component: engine-facts, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "geometries are flat lists of positions (Point or LineString)", provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}}
   - {component: engine-facts, dimension: callback-execution, status: not-applicable, conditions: "no caller-supplied code; providers are operator-configured", provenance: {kind: documented, source: "docs/profile-format.md \"Fact providers\""}}
-  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: assumption, question_id: Q11}}
+  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\""}}
-  - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: assumption, question_id: Q10}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact, 10 s per tile load", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: assumption, question_id: Q10}}
+  - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact, 10 s per tile load", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
   - {component: engine-callbacks, dimension: numeric-domain, status: claimed, conditions: "at most 6 attempts with fixed delays; Unix-second timestamps", property_id: P-CALLBACK-SIGNED, provenance: {kind: documented, source: "docs/reviews.md \"Callbacks\""}}
   - {component: engine-callbacks, dimension: failure-atomicity, status: disclaimed, conditions: "at least once; a lost 2xx causes a repeat", property_id: D-EXACTLY-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A callback can arrive more than once\""}}
-  - {component: engine-callbacks, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "one POST per attempt; redirects not followed", provenance: {kind: assumption, question_id: Q9}}
-  - {component: engine-callbacks, dimension: callback-execution, status: disclaimed, conditions: "the receiver is whoever the token holder named; the engine signs but does not authenticate the receiver", property_id: D-CALLBACK-ANY-PUBLIC-HOST, provenance: {kind: assumption, question_id: Q9}}
-  - {component: engine-callbacks, dimension: serialization-reconstruction, status: not-applicable, conditions: "the receiver's body is ignored", provenance: {kind: assumption, question_id: Q9}}
-  - {component: engine-callbacks, dimension: reference-lifecycle, status: claimed, conditions: "a callback is claimed with a 60 s lease before an attempt", property_id: P-CALLBACK-SIGNED, provenance: {kind: assumption, question_id: Q5}}
-  - {component: engine-callbacks, dimension: concurrency-reentrancy, status: claimed, conditions: "first delivery and cron retry cannot send the same attempt twice", property_id: P-CALLBACK-SIGNED, provenance: {kind: assumption, question_id: Q5}}
+  - {component: engine-callbacks, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "one POST per attempt; redirects not followed", provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-callbacks, dimension: callback-execution, status: disclaimed, conditions: "the receiver is whoever the token holder named; the engine signs but does not authenticate the receiver", property_id: D-CALLBACK-ANY-PUBLIC-HOST, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-callbacks, dimension: serialization-reconstruction, status: not-applicable, conditions: "the receiver's body is ignored", provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-callbacks, dimension: reference-lifecycle, status: claimed, conditions: "a callback is claimed with a 60 s lease before an attempt", property_id: P-CALLBACK-SIGNED, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-callbacks, dimension: concurrency-reentrancy, status: claimed, conditions: "first delivery and cron retry cannot send the same attempt twice", property_id: P-CALLBACK-SIGNED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-callbacks, dimension: resource-complexity, status: claimed, conditions: "10 s per attempt; at most 50 due callbacks per cron run", property_id: P-CALLBACK-SIGNED, provenance: {kind: documented, source: "docs/reviews.md \"a timeout of 10 seconds\""}}
   - {component: engine-callbacks, dimension: x-prompt-injection, status: not-applicable, conditions: "no model involved", provenance: {kind: documented, source: "docs/reviews.md \"Callbacks\""}}
   - {component: engine-callbacks, dimension: x-probabilistic-result, status: not-applicable, conditions: "the payload carries final answers, not probabilities", provenance: {kind: documented, source: "docs/reviews.md callback example"}}
@@ -549,22 +549,22 @@ contract_dimensions:
   - {component: engine-mcp, dimension: failure-atomicity, status: claimed, conditions: "MCP decisions go through the same checks and log as REST", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/mcp.md \"Decisions through MCP\""}}
   - {component: engine-mcp, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "stateless Streamable HTTP; no sessions", provenance: {kind: documented, source: "docs/mcp.md \"Streamable HTTP, stateless\""}}
   - {component: engine-mcp, dimension: callback-execution, status: disclaimed, conditions: "the OAuth library fetches a client-ID metadata document from a client-named URL; dynamic client registration is open", property_id: D-OPEN-CLIENT-REGISTRATION, provenance: {kind: documented, source: "docs/mcp.md \"MCP clients register themselves\""}}
-  - {component: engine-mcp, dimension: serialization-reconstruction, status: claimed, conditions: "tool inputs validated with zod; grant props stored encrypted by the library", property_id: P-MCP-VISIBILITY, provenance: {kind: assumption, question_id: Q19}}
+  - {component: engine-mcp, dimension: serialization-reconstruction, status: claimed, conditions: "tool inputs validated with zod; grant props stored encrypted by the library", property_id: P-MCP-VISIBILITY, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-mcp, dimension: reference-lifecycle, status: disclaimed, conditions: "membership checked at login only; a removed member keeps access until the grant ends", property_id: D-MEMBERSHIP-AT-LOGIN-ONLY, provenance: {kind: documented, source: "docs/mcp.md \"Membership is checked at login\""}}
-  - {component: engine-mcp, dimension: concurrency-reentrancy, status: not-applicable, conditions: "stateless per request; the OAuth library owns its handles", provenance: {kind: assumption, question_id: Q19}}
-  - {component: engine-mcp, dimension: resource-complexity, status: unresolved, conditions: "no per-person rate limit; expired OAuth records purged 100 at a time", question_id: Q17, provenance: {kind: inferred, question_id: Q17}}
-  - {component: engine-mcp, dimension: x-prompt-injection, status: disclaimed, conditions: "as for engine-api; the MCP caller is often an LLM agent", property_id: D-PROMPT-INJECTION, provenance: {kind: assumption, question_id: Q7}}
+  - {component: engine-mcp, dimension: concurrency-reentrancy, status: not-applicable, conditions: "stateless per request; the OAuth library owns its handles", provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-mcp, dimension: resource-complexity, status: disclaimed, conditions: "no per-person rate limit; expired OAuth records purged 100 at a time", property_id: D-RATE-LIMIT, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-mcp, dimension: x-prompt-injection, status: disclaimed, conditions: "as for engine-api; the MCP caller is often an LLM agent", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-mcp, dimension: x-probabilistic-result, status: disclaimed, conditions: "as for engine-api", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/mcp.md \"Tools\": \"typed answers with probabilities\""}}
   # bridge
   - {component: bridge, dimension: numeric-domain, status: claimed, conditions: "queue messages ≤120 KB, batches ≤100/250 KB; retries 30 s doubling to 1 h; reviewedBy ≤100 characters", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Reliable delivery (queue)\"; \"Work orders from other apps\""}}
   - {component: bridge, dimension: failure-atomicity, status: disclaimed, conditions: "NGSI-LD has no conditional update; a writer can get through between a read and a write", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"NGSI-LD has no conditional update, so there is a short window\""}}
   - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}}
   - {component: bridge, dimension: callback-execution, status: not-applicable, conditions: "the bridge runs no caller code; routes are operator configuration", provenance: {kind: documented, source: "bridge/README.md \"Configuration\""}}
-  - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: assumption, question_id: Q20}}
+  - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: reference-lifecycle, status: claimed, conditions: "Task ids derived from entity id, attribute and input hash; own Tasks recognised by id", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Task entities\""}}
   - {component: bridge, dimension: concurrency-reentrancy, status: disclaimed, conditions: "two simultaneous notifications for one Decision can both send the same feedback; max_concurrency 1 is the operator's job", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"Two notifications for the same Decision at the same moment can both send the same corrections\""}}
-  - {component: bridge, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call and a bounded number of broker calls per entity; oversized entities handled inline", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: assumption, question_id: Q20}}
-  - {component: bridge, dimension: x-prompt-injection, status: disclaimed, conditions: "the whole entity is the state; whoever writes an entity writes the prompt text", property_id: D-PROMPT-INJECTION, provenance: {kind: assumption, question_id: Q7}}
+  - {component: bridge, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call and a bounded number of broker calls per entity; oversized entities handled inline", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: bridge, dimension: x-prompt-injection, status: disclaimed, conditions: "the whole entity is the state; whoever writes an entity writes the prompt text", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: x-probabilistic-result, status: disclaimed, conditions: "probabilities are written to the broker as sub-properties; the action is the value", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "bridge/README.md \"The result on the entity\""}}
   # action-triage
   - {component: action-triage, dimension: numeric-domain, status: claimed, conditions: "label names 1–50 characters; mapping keys ≤100; 30 s timeout", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Inputs\""}}
@@ -575,18 +575,18 @@ contract_dimensions:
   - {component: action-triage, dimension: reference-lifecycle, status: not-applicable, conditions: "no state between runs", provenance: {kind: documented, source: "actions/triage/README.md"}}
   - {component: action-triage, dimension: concurrency-reentrancy, status: not-applicable, conditions: "one run per event", provenance: {kind: documented, source: "actions/triage/README.md"}}
   - {component: action-triage, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call, one GitHub API call", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md"}}
-  - {component: action-triage, dimension: x-prompt-injection, status: disclaimed, conditions: "the issue author writes the prompt text; labels come from the allow-list", property_id: D-PROMPT-INJECTION, provenance: {kind: assumption, question_id: Q7}}
+  - {component: action-triage, dimension: x-prompt-injection, status: disclaimed, conditions: "the issue author writes the prompt text; labels come from the allow-list", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: action-triage, dimension: x-probabilistic-result, status: disclaimed, conditions: "the job summary shows p; the policy threshold decides", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "actions/triage/README.md \"The job summary shows the answers, their probabilities\""}}
   # action-deploy-watch
   - {component: action-deploy-watch, dimension: numeric-domain, status: claimed, conditions: "consecutive ≥1, interval-seconds ≥0.05, kill-after-seconds ≥0; stack names bounded", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Inputs\""}}
   - {component: action-deploy-watch, dimension: failure-atomicity, status: claimed, conditions: "unreachable Pointsman or unreadable stack never cancels", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"If Pointsman cannot be reached, nothing is cancelled\""}}
   - {component: action-deploy-watch, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "a polling loop bounded by the deploy command's lifetime", provenance: {kind: documented, source: "actions/deploy-watch/README.md \"How it decides\""}}
   - {component: action-deploy-watch, dimension: callback-execution, status: not-applicable, conditions: "run is executed with bash -c as written and is a trusted workflow-author input (§1.7)", provenance: {kind: documented, source: "actions/deploy-watch/action.yml run: \"Comes from the workflow, never from event data\""}}
-  - {component: action-deploy-watch, dimension: serialization-reconstruction, status: claimed, conditions: "aws CLI JSON reduced to fixed fields; reasons truncated to 300 characters", property_id: P-WATCH-FAILSAFE, provenance: {kind: assumption, question_id: Q22}}
+  - {component: action-deploy-watch, dimension: serialization-reconstruction, status: claimed, conditions: "aws CLI JSON reduced to fixed fields; reasons truncated to 300 characters", property_id: P-WATCH-FAILSAFE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: action-deploy-watch, dimension: reference-lifecycle, status: claimed, conditions: "own process group; SIGTERM then SIGKILL after kill-after-seconds", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Inputs\": kill-after-seconds"}}
   - {component: action-deploy-watch, dimension: concurrency-reentrancy, status: not-applicable, conditions: "one watcher per job", provenance: {kind: documented, source: "actions/deploy-watch/README.md"}}
   - {component: action-deploy-watch, dimension: resource-complexity, status: claimed, conditions: "at most one Pointsman call per quiet interval", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Rule first\""}}
-  - {component: action-deploy-watch, dimension: x-prompt-injection, status: disclaimed, conditions: "stack event text is the prompt; a steered answer can at most stop a deploy after consecutive cancel answers", property_id: D-PROMPT-INJECTION, provenance: {kind: assumption, question_id: Q22}}
+  - {component: action-deploy-watch, dimension: x-prompt-injection, status: disclaimed, conditions: "stack event text is the prompt; a steered answer can at most stop a deploy after consecutive cancel answers", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: action-deploy-watch, dimension: x-probabilistic-result, status: disclaimed, conditions: "the profile's policy threshold decides cancel", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Pointsman for unclear cases\""}}
   # config-repo
   - {component: config-repo, dimension: numeric-domain, status: claimed, conditions: "engine.json ref is a 40-character SHA; profile version is a positive integer that must increase", property_id: P-PROFILE-VERSION-IMMUTABLE, provenance: {kind: documented, source: "docs/deployment.md \"Profile versions\"; template deploy workflow \"Read engine.json\""}}
@@ -632,7 +632,7 @@ outputs:
         provenance: {kind: documented, source: "migrations/0001_decisions.sql comment \"who corrected it, as given by the client\""}
       - id: state-hash-hides-input
         statement: "that state_hash hides the input from someone who can guess it"
-        provenance: {kind: assumption, question_id: Q16}
+        provenance: {kind: maintainer, date: "2026-10"}
       - id: record-is-tamper-evident
         statement: "that the record is tamper-evident"
         provenance: {kind: documented, source: "docs/deployment.md \"Deployment\" table"}
@@ -711,7 +711,7 @@ outputs:
     downstream_must_not_assume:
       - id: task-name-safe
         statement: "that the Task name or reviewedBy is safe for any grammar; that the result is the latest decision after a race"
-        provenance: {kind: assumption, question_id: Q21}
+        provenance: {kind: maintainer, date: "2026-10"}
   - component: bridge
     channel: bridge-http-response
     taint: constrained
@@ -754,7 +754,7 @@ adversaries:
     capabilities: [write-state-text-and-data, choose-state-size-and-shape, choose-fact-geometry, aim-instructions-at-the-model]
     excluded_capabilities: [hold-a-token, choose-profile-or-rules, choose-callback-url, read-the-decision]
     goals: [wrong-action, resource-exhaustion, smuggle-text-downstream]
-    provenance: {kind: assumption, question_id: Q1}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: token-holder-beyond-scope
     scope: in
     capabilities: [decide, read-own-profile-decisions, feedback, resolve, list-reviews, set-callback-url, many-requests]
@@ -784,31 +784,31 @@ adversaries:
     capabilities: [receive-signed-payloads, answer-any-status, redirect]
     excluded_capabilities: [forge-signature, make-engine-follow-redirect]
     goals: [learn-final-answer, keep-retries-coming]
-    provenance: {kind: assumption, question_id: Q9}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: model-backend
     scope: in
     capabilities: [see-every-state-and-question, answer-anything]
     excluded_capabilities: [name-an-action, change-stored-model-name-http-adapter]
     goals: [wrong-well-formed-answer]
-    provenance: {kind: assumption, question_id: Q12}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: public-data-sources
     scope: in
     capabilities: [serve-tiles-and-routes]
     excluded_capabilities: [inject-anything-but-typed-fact-values]
     goals: [wrong-facts]
-    provenance: {kind: assumption, question_id: Q11}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: broker-entity-writer
     scope: in
     capabilities: [create-and-change-entities, write-decision-entities, write-task-entities]
     excluded_capabilities: [reach-bridge-without-secret-except-through-broker]
     goals: [trigger-decisions, resolve-reviews-under-chosen-name, create-loops]
-    provenance: {kind: assumption, question_id: Q20}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: context-broker
     scope: out
     capabilities: [deliver-notifications, store-entities, redirect]
     excluded_capabilities: []
     goals: []
-    provenance: {kind: assumption, question_id: Q20}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: operator-account-holder-config-main-writer
     scope: out
     capabilities: [deploy, read-and-change-every-store]
@@ -820,7 +820,7 @@ adversaries:
     capabilities: [resolve, correct]
     excluded_capabilities: []
     goals: []
-    provenance: {kind: assumption, question_id: Q14}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: workflow-author
     scope: out
     capabilities: [set-run-stacks-labels-secrets]
@@ -832,7 +832,7 @@ adversaries:
     capabilities: []
     excluded_capabilities: []
     goals: []
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
 
 dependency_policy:
   zero_runtime_dependencies: false
@@ -847,7 +847,7 @@ dependencies:
     outputs_consumed: []
     covered_here: false
     violation_disposition: "OUT-OF-MODEL: dependency-contract"
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: zod
     relied_on_for: "MCP tool input validation"
     relied_on_properties: [schema-validation-correctness]
@@ -856,7 +856,7 @@ dependencies:
     outputs_consumed: []
     covered_here: false
     violation_disposition: "OUT-OF-MODEL: dependency-contract"
-    provenance: {kind: assumption, question_id: Q19}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: "@modelcontextprotocol/server"
     relied_on_for: "MCP protocol handling in stateless Streamable HTTP mode; never authentication"
     relied_on_properties: [protocol-framing-correctness]
@@ -865,7 +865,7 @@ dependencies:
     outputs_consumed: []
     covered_here: false
     violation_disposition: "OUT-OF-MODEL: dependency-contract"
-    provenance: {kind: assumption, question_id: Q19}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: "@cloudflare/workers-oauth-provider"
     relied_on_for: "OAuth 2.1 authorization server: PKCE, consent handles, dynamic client registration, client-ID metadata documents, token issuance and validation, encrypted grant props, purge"
     relied_on_properties: [pkce-enforcement, state-binding, token-validation, grant-encryption]
@@ -883,7 +883,7 @@ dependencies:
     outputs_consumed: []
     covered_here: false
     violation_disposition: "OUT-OF-MODEL: dependency-contract"
-    provenance: {kind: assumption, question_id: Q5}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: workers-ai-clef-models-and-ai-gateway
     relied_on_for: "answering the questions in the documented format; keeping the state confidential beyond the gateway's own logs"
     relied_on_properties: [answer-format, state-confidentiality]
@@ -1015,7 +1015,7 @@ build_flags:
     security_relevant: true
     maintainer_stance: supported
     affects_properties: [{property_id: P-OUTBOUND-PUBLIC-ONLY, effect: preserves}]
-    provenance: {kind: assumption, question_id: Q4}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: profile-log.store_state
     default: "false"
     security_relevant: true
@@ -1116,7 +1116,7 @@ properties_claimed:
     tier: correctness-only
     conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact, 10 s per tile load; exceeding is error or timeout"
     violation_symptoms: [hang, unbounded-allocation]
-    provenance: {kind: assumption, question_id: Q10}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: P-DECISION-LOGGED-FIRST
     kind: integrity
     components: [engine-api, engine-mcp]
@@ -1219,10 +1219,10 @@ properties_claimed:
 properties_disclaimed:
   - id: D-PROMPT-INJECTION
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a design position not yet ratified"
+    conditions: "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)"
     tier: security-critical
     false_friend: false
-    provenance: {kind: assumption, question_id: Q7}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-MODEL-ACCURACY
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
     conditions: "every family that acts on an answer; keep a margin from thresholds; re-check after model updates; basis: stated"
@@ -1237,25 +1237,25 @@ properties_disclaimed:
     provenance: {kind: documented, source: "openapi.yaml DecideRequest.state: \"free text, or any JSON object or array\""}
   - id: D-STATE-SIZE
     components: [engine-api, engine-mcp, bridge]
-    conditions: "size or nesting depth of state; platform and backend limits apply; basis: absence of a statement, never closes a security-critical report"
+    conditions: "size or nesting depth of state; platform and backend limits apply; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound"
     tier: security-critical
     false_friend: false
-    provenance: {kind: documented, source: "openapi.yaml DecideRequest.state has no size constraint"}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CALLBACK-ANY-PUBLIC-HOST
     components: [engine-callbacks]
-    conditions: "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a design position not yet ratified"
+    conditions: "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10)"
     tier: security-critical
     false_friend: true
-    provenance: {kind: assumption, question_id: Q9}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-RATE-LIMIT
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
-    conditions: "per-token or per-client rate limit, quota or budget; the AI Gateway's 600/min is per deployment; basis: absence of a statement, never closes a security-critical report"
+    conditions: "per-token or per-client rate limit, quota or budget; the AI Gateway's 600/min is per deployment; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound"
     tier: security-critical
     false_friend: false
     provenance: {kind: documented, source: "docs/models.md \"rate limit 600 calls per minute\" is the only limit named"}
   - id: D-TOKEN-EXPIRY
     components: [engine-api, engine-mcp]
-    conditions: "token expiry or rotation; basis: absence of a statement"
+    conditions: "token expiry or rotation; basis: a maintainer ruling (2026-10)"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "README \"API tokens\" names create, list and revoke only"}
@@ -1297,16 +1297,16 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\""}
   - id: D-LOG-TAMPER-EVIDENCE
     components: [engine-api]
-    conditions: "plain D1 rows in the operator's account; no signing, chaining or anchoring; the only actor who can alter them is out of scope; basis: absence of a statement"
+    conditions: "plain D1 rows in the operator's account; no signing, chaining or anchoring; the only actor who can alter them is out of scope; basis: a maintainer ruling (2026-10)"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/deployment.md \"Deployment\" table: \"Decision log and feedback | D1 database | your Cloudflare account\""}
   - id: D-STATE-HASH-NOT-PSEUDONYM
     components: [engine-api]
-    conditions: "plain SHA-256 of canonical JSON; equal inputs are linkable and guessable inputs confirmable; basis: a design reading not yet ratified"
+    conditions: "plain SHA-256 of canonical JSON; equal inputs are linkable and guessable inputs confirmable; basis: a maintainer ruling (2026-10)"
     tier: correctness-only
     false_friend: true
-    provenance: {kind: assumption, question_id: Q16}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-STATE-TO-BACKEND
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
     conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; basis: stated"
@@ -1359,7 +1359,7 @@ downstream_responsibilities:
     component: engine-api
     statement: "rate-limit and budget at the edge and in the AI Gateway; the engine does not"
     enforces: [rate-limit-at-edge]
-    provenance: {kind: inferred, question_id: Q17}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: R-REVIEW-PATH
     component: engine-api
     statement: "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default"
@@ -1521,6 +1521,21 @@ known_non_findings:
     conditions: "the flagged values are answers, probabilities, labels or the decision id; the issue title and body are not among them"
     discharged_by: [P-TRIAGE-ALLOWLIST]
     provenance: {kind: documented, source: "actions/triage/triage.mjs header: \"it is never put into a shell command or into the job summary\""}
+
+  - id: KNF-STEERED-ANSWER
+    components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
+    symptom: prompt-injection-steered-answer
+    tool_pattern: "text in the state made the model answer X and the policy acted on that well-formed answer"
+    conditions: "every answer inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set"
+    discharged_by: [D-PROMPT-INJECTION]
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: KNF-CALLBACK-TO-PUBLIC-HOST
+    components: [engine-callbacks]
+    symptom: ssrf-to-public-host
+    tool_pattern: "a token holder can make the engine POST to any public https URL"
+    conditions: "the URL is public and https; the payload is the signed final answer; no private or loopback address reached and no redirect followed"
+    discharged_by: [D-CALLBACK-ANY-PUBLIC-HOST]
+    provenance: {kind: maintainer, date: "2026-10"}
 
 dispositions:
   - VALID

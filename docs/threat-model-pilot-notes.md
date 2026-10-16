@@ -5,8 +5,9 @@ Date: 2026-10-16. The first draft of [`threat-model.md`](../threat-model.md)
 Alpha-Omega `threat-model` plugin, version 1.2.1 at commit `192fd60`
 (https://github.com/alpha-omega-security/threat-model, MIT), in draft-first
 mode: the agent wrote version 1 from the public artifacts and collected the
-questions for the maintainer in §1.18. Nothing has been ratified yet; the
-model's status is *unratified draft* and its triage policy is `strict`.
+questions for the maintainer in §1.18. The maintainer answered all 24
+questions in one batch on 2026-10-16, accepting every proposed answer; the
+model's status is now *accepted* and its triage policy stays `strict`.
 
 ## Time spent
 
@@ -16,13 +17,16 @@ model's status is *unratified draft* and its triage policy is `strict`.
 | Recon and surface pass (every file in `src/`, `bridge/src/`, `actions/`, `scripts/tokens.mjs`, `template/config-repo/`, the docs) | about 15 min | 5,000 lines of source plus docs. |
 | Draft, sidecar, JSON export, validator loop | about 15 min | Three validator rounds; see below. |
 | Backtest | included | Synthesized only: the repository has no advisories and no security-labelled or "by design" issues. |
-| **Total** | **about 40 min** | Plus the maintainer's time for the question waves, still to come. |
+| Maintainer: answer the 24 questions | about 30 min of reading | Answered in one batch on 2026-10-16, every proposed answer accepted. |
+| Apply the wave: promote tags, retire §1.18, add two §1.15 entries, `SECURITY.md`, regenerate the companions | about 15 min | One validator round. |
+| **Total** | **about 55 min agent time, plus the maintainer's reading** | |
 
 The plan expected one to three hours of agent time; the small codebase and
 the thorough docs (every README, `docs/*.md`, `openapi.yaml` and the
 source-file header comments) made it faster. Most claims could be tagged
-**documented** because the docs already state the contract; the validator
-counts 259 documented, 4 inferred and 62 assumption tags.
+**documented** because the docs already state the contract; the first draft
+counted 259 documented, 4 inferred and 62 assumption tags, and after the wave
+259 documented and 70 maintainer (0 inferred, 0 assumption).
 
 ## What the skill's question bank was missing
 
@@ -79,10 +83,10 @@ effects) did apply and became Q1–Q6.
   security-critical report) applies to the state-size and rate-limit
   disclaimers, so those escalate until Daniel rules on them.
 - **Status vocabulary.** The skill expects an accepted model to have zero
-  inferred and assumption tags. For a one-person project the realistic end
-  state is "accepted with a short list of assumptions the maintainer applies
-  under `relaxed`"; the skill supports that through the `relaxed` policy, but
-  only after the wave answers promote the tags.
+  inferred and assumption tags. Here the maintainer accepted every proposed
+  answer in one batch, so the model reached *accepted* in one wave; a larger
+  project would more likely end at "accepted with a short list of
+  assumptions applied under `relaxed`".
 - **The repository's secret scanner** (betterleaks, rule `generic-password`)
   flagged a §1.2 row as a password literal: the word "login" followed by
   two backticked file names in parentheses. It also scans every commit of
@@ -93,10 +97,12 @@ effects) did apply and became Q1–Q6.
   taint, version binding, triage policy have no JSON field); the fields were
   set by hand to the nearest ones.
 
-## Open questions for Daniel (the §1.18 list, summarised)
+## The questions of the first draft and their answers
 
-Answer in waves; the full text with proposed answers is in §1.18 of
-[`threat-model.md`](../threat-model.md).
+All 24 were answered on 2026-10-16 with the proposed answer; the ratified
+claims carry *(maintainer, 2026-10)* in `threat-model.md`, and §1.18 is now
+marked not applicable. The list is kept here as the record of what was
+asked, since the skill deletes answered questions from the model.
 
 **Wave 1 — scope, configuration, side effects**
 
@@ -158,15 +164,15 @@ Answer in waves; the full text with proposed answers is in §1.18 of
 The model describes Pointsman as it is. These came up while reading and
 belong in issues, not in the threat model:
 
-1. `SECURITY.md` with the private reporting channel and a link to the model
-   (Q23).
+1. ~~`SECURITY.md` with the private reporting channel and a link to the model
+   (Q23).~~ Done in this PR.
 2. The bridge's outbound `fetch` to the broker and Pointsman follows
    redirects; the engine's calls use `redirect: 'manual'` (Q6). Hardening.
 3. A size limit on `state` in the engine (Q8), or a documented decision not
    to have one.
 4. Token expiry or rotation (Q17). Hardening.
-5. Once Q7 and Q9 are ratified, add `KNF-STEERED-ANSWER` and
-   `KNF-CALLBACK-TO-PUBLIC-HOST` to §1.15.
+5. ~~Once Q7 and Q9 are ratified, add `KNF-STEERED-ANSWER` and
+   `KNF-CALLBACK-TO-PUBLIC-HOST` to §1.15.~~ Done in this PR.
 6. Upstream to Alpha-Omega: the citation checker's block-comment heuristic
    trips on `'/v1/*'` route strings; a hosted-service dimension set and a
    per-family appendix option for long matrices.

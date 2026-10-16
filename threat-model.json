@@ -6,8 +6,8 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 259,
-    "inferred": 66
+    "documented": 329,
+    "inferred": 0
   },
   "components": [
     {
@@ -261,8 +261,8 @@
       "attacker_controllable": "yes",
       "component": "engine-api",
       "caller_must_enforce": "rate-limit and budget at the edge and in the AI Gateway; the engine sets no size or rate limit",
-      "provenance": "inferred",
-      "source": "open question Q8"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "POST /v1/decide/{profile}",
@@ -306,8 +306,8 @@
       "attacker_controllable": "no",
       "component": "engine-api",
       "caller_must_enforce": "none — P-ANSWER-SHAPE",
-      "provenance": "inferred",
-      "source": "open question Q12"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "POST /v1/decide/{profile}",
@@ -315,8 +315,8 @@
       "attacker_controllable": "no",
       "component": "engine-api",
       "caller_must_enforce": "none — P-ANSWER-SHAPE",
-      "provenance": "inferred",
-      "source": "open question Q12"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "POST /v1/decide/{profile}",
@@ -414,8 +414,8 @@
       "attacker_controllable": "yes",
       "component": "engine-callbacks",
       "caller_must_enforce": "none — P-CALLBACK-SIGNED",
-      "provenance": "inferred",
-      "source": "open question Q9"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "GSI tile fetch",
@@ -495,8 +495,8 @@
       "attacker_controllable": "yes",
       "component": "engine-mcp",
       "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
-      "provenance": "inferred",
-      "source": "open question Q19"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "GET /callback",
@@ -513,8 +513,8 @@
       "attacker_controllable": "yes",
       "component": "engine-mcp",
       "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
-      "provenance": "inferred",
-      "source": "open question Q19"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "/oauth/register, /oauth/token, /.well-known/*",
@@ -576,8 +576,8 @@
       "attacker_controllable": "no",
       "component": "bridge",
       "caller_must_enforce": "none — P-BRIDGE-SAFE-TO-REPEAT",
-      "provenance": "inferred",
-      "source": "open question Q20"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "bridge queue consumer",
@@ -585,8 +585,8 @@
       "attacker_controllable": "yes",
       "component": "bridge",
       "caller_must_enforce": "the broker's access control decides who may write entities, Decision and Task entities",
-      "provenance": "inferred",
-      "source": "open question Q20"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "bridge queue consumer",
@@ -594,8 +594,8 @@
       "attacker_controllable": "no",
       "component": "bridge",
       "caller_must_enforce": "none — P-BRIDGE-SAFE-TO-REPEAT",
-      "provenance": "inferred",
-      "source": "open question Q20"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "bridge queue consumer",
@@ -657,8 +657,8 @@
       "attacker_controllable": "yes",
       "component": "action-deploy-watch",
       "caller_must_enforce": "none — P-WATCH-FAILSAFE",
-      "provenance": "inferred",
-      "source": "open question Q22"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "action-deploy-watch main",
@@ -723,8 +723,8 @@
       "write to the TOKENS or PROFILES namespaces (only the operator's scripts do)",
       "log the state, a token, an API key or a model response"
     ],
-    "provenance": "inferred",
-    "source": "open question Q5 (host side effects) and Q6 (bridge redirects)"
+    "provenance": "documented",
+    "source": "maintainer ruling, 2026-10 (host side effects and bridge redirects)"
   },
   "build_variants": [
     {
@@ -796,8 +796,8 @@
       "default": "present",
       "effect": "preserves P-OUTBOUND-PUBLIC-ONLY",
       "discouraged": false,
-      "provenance": "inferred",
-      "source": "open question Q4"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "name": "profile-log.store_state",
@@ -867,7 +867,7 @@
       "workflow-author",
       "platform-cotenants-network-observers-github"
     ],
-    "provenance": "inferred"
+    "provenance": "documented"
   },
   "properties_provided": [
     {
@@ -939,8 +939,8 @@
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
       "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact, 10 s per tile load; exceeding is error or timeout",
-      "provenance": "inferred",
-      "source": "open question Q10"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "P-DECISION-LOGGED-FIRST",
@@ -1058,10 +1058,10 @@
   "properties_not_provided": [
     {
       "property": "D-PROMPT-INJECTION",
-      "reason": "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a design position not yet ratified",
+      "reason": "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
-      "provenance": "inferred",
-      "source": "open question Q7"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-MODEL-ACCURACY",
@@ -1079,28 +1079,28 @@
     },
     {
       "property": "D-STATE-SIZE",
-      "reason": "size or nesting depth of state; platform and backend limits apply; basis: absence of a statement, never closes a security-critical report",
+      "reason": "size or nesting depth of state; platform and backend limits apply; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound",
       "false_friend": false,
       "provenance": "documented",
-      "source": "openapi.yaml DecideRequest.state has no size constraint"
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-CALLBACK-ANY-PUBLIC-HOST",
-      "reason": "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a design position not yet ratified",
+      "reason": "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10)",
       "false_friend": true,
-      "provenance": "inferred",
-      "source": "open question Q9"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-RATE-LIMIT",
-      "reason": "per-token or per-client rate limit, quota or budget; the AI Gateway's 600/min is per deployment; basis: absence of a statement, never closes a security-critical report",
+      "reason": "per-token or per-client rate limit, quota or budget; the AI Gateway's 600/min is per deployment; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound",
       "false_friend": false,
       "provenance": "documented",
       "source": "docs/models.md \"rate limit 600 calls per minute\" is the only limit named"
     },
     {
       "property": "D-TOKEN-EXPIRY",
-      "reason": "token expiry or rotation; basis: absence of a statement",
+      "reason": "token expiry or rotation; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
       "provenance": "documented",
       "source": "README \"API tokens\" names create, list and revoke only"
@@ -1149,17 +1149,17 @@
     },
     {
       "property": "D-LOG-TAMPER-EVIDENCE",
-      "reason": "plain D1 rows in the operator's account; no signing, chaining or anchoring; the only actor who can alter them is out of scope; basis: absence of a statement",
+      "reason": "plain D1 rows in the operator's account; no signing, chaining or anchoring; the only actor who can alter them is out of scope; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
       "provenance": "documented",
       "source": "docs/deployment.md \"Deployment\" table: \"Decision log and feedback | D1 database | your Cloudflare account\""
     },
     {
       "property": "D-STATE-HASH-NOT-PSEUDONYM",
-      "reason": "plain SHA-256 of canonical JSON; equal inputs are linkable and guessable inputs confirmable; basis: a design reading not yet ratified",
+      "reason": "plain SHA-256 of canonical JSON; equal inputs are linkable and guessable inputs confirmable; basis: a maintainer ruling (2026-10)",
       "false_friend": true,
-      "provenance": "inferred",
-      "source": "open question Q16"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-STATE-TO-BACKEND",
@@ -1337,6 +1337,18 @@
       "why_safe": "Covers action-triage; symptom 'taint-flow-to-sink'. Exact-match conditions (§1.15): the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them.",
       "cites": "properties_provided[21]",
       "suppression": "the flagged values are answers, probabilities, labels or the decision id; the issue title and body are not among them"
+    },
+    {
+      "reported_as": "text in the state made the model answer X and the policy acted on that well-formed answer",
+      "why_safe": "Covers engine-api, engine-mcp, bridge, action-triage, action-deploy-watch; symptom 'prompt-injection-steered-answer'. Exact-match conditions (§1.15): every answer is inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set (either would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`).",
+      "cites": "properties_not_provided[0]",
+      "suppression": "every answer inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set"
+    },
+    {
+      "reported_as": "a token holder can make the engine POST to any public https URL",
+      "why_safe": "Covers engine-callbacks; symptom 'ssrf-to-public-host'. Exact-match conditions (§1.15): the URL is public and https; the payload is the signed final answer; no private or loopback address was reached and no redirect was followed (either would be `VALID` against `P-OUTBOUND-PUBLIC-ONLY`).",
+      "cites": "properties_not_provided[4]",
+      "suppression": "the URL is public and https; the payload is the signed final answer; no private or loopback address reached and no redirect followed"
     }
   ],
   "dispositions": [
@@ -1350,126 +1362,5 @@
     "known_non_finding",
     "model_gap"
   ],
-  "open_questions": [
-    {
-      "claim": "Q1: Roles and the untrusted surface. We believe the untrusted surface is the `state` a client forwards (written by a state author who holds no token), plus everything a token holder can send within its scope; the operator, the Cloudflare account holder and reviewers with a valid token or grant are trusted; co-tenants, side channels and the model's training data are out of this layer.",
-      "field": "description",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q2: Deployment shape. We believe the only supported deployment is one Worker per integrator, deployed from a private config repository; a shared hosted Pointsman serving several integrators is unsupported until it is designed.",
-      "field": "description",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q3: Component carve and the bridge. We believe the bridge, the two Actions and the config-repo template belong in this one model as families; `examples/`, `site/`, `brand/`, `docs/spikes/`, `test/`, the build and check scripts, and the demo repository are out of scope; the bridge does not need a sibling model yet.",
-      "field": "description",
-      "proposed": "yes; revisit the sibling question when a city runs the bridge in its own account."
-    },
-    {
-      "claim": "Q4: Configuration support. We believe `MODEL_MODE=mock`, `PROFILE_SOURCE=bundled`, `FACTS_MODE=mock` and a plain-http model server are dev-only; `FACTS_MODE=off`, no `AI_GATEWAY_ID`, no `CALLBACK_SECRET` and no GitHub login are supported production postures; a deployment that drops `global_fetch_strictly_public` is unsupported.",
-      "field": "build_variants",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q5: Host side effects. We believe the engine fetches only the hosts listed in §1.5 (model backend, GSI, Valhalla, `callback_url`, GitHub, and the OAuth client-ID metadata URL), spawns nothing, reads no environment beyond bindings, and writes only D1, `OAUTH_KV` and the tile cache; the hole is what `@modelcontextprotocol/server` and `@cloudflare/workers-oauth-provider` may fetch on their own. We also believe the module-level caches and the callback claim behave as §1.5 says, and that Hono routes every `/v1/*` request through the token middleware.",
-      "field": "environment",
-      "proposed": "yes, with the metadata-document fetch as the only library-originated outbound call."
-    },
-    {
-      "claim": "Q6: Redirects in the bridge. We believe the bridge follows redirects from the broker and from Pointsman (default `fetch` mode), unlike the engine's outbound calls; since both URLs are operator-set this is a trusted-collaborator edge and not a defect.",
-      "field": "environment",
-      "proposed": "yes, record it; make it a `VALID-HARDENING` candidate rather than a model claim."
-    },
-    {
-      "claim": "Q7: Prompt injection. We believe steering the model's answers through the state is accepted by design: the model's answer is advisory, the typed answer set (`P-ANSWER-SHAPE`), the policy (`P-ACTION-FROM-POLICY`) and the `review` path contain it, and a report that only shows \"I made the model answer X\" is `BY-DESIGN: property-disclaimed`; a state that makes the engine return an answer outside the profile's set, or an action the policy does not produce for the answers, is `VALID`.",
-      "field": "properties_not_provided",
-      "proposed": "yes. Once ratified, add `KNF-STEERED-ANSWER` to §1.15."
-    },
-    {
-      "claim": "Q8: State size. We believe the engine sets no size or depth limit on `state`, and that the project chooses to disclaim this (the platform's body limit, the model backend's limits and edge rate limiting bound it) rather than promise a bound.",
-      "field": "entry_points",
-      "proposed": "disclaim (`D-STATE-SIZE`), with `R-RATE-LIMIT` as the integrator's obligation; alternatively name a limit and it becomes a §1.11 resource property."
-    },
-    {
-      "claim": "Q9: `callback_url`. We believe any public https URL is accepted by design, that redirects are not followed and the receiver's body is ignored, that the payload holds no secret, and that an allow-list is not planned; a report that the engine POSTs a signed decision to a public URL the token holder chose is `BY-DESIGN`.",
-      "field": "entry_points",
-      "proposed": "yes. Once ratified, add `KNF-CALLBACK-TO-PUBLIC-HOST` to §1.15."
-    },
-    {
-      "claim": "Q10: Fact lookup bounds. We believe the bounds in §1.7 (1000 positions, 200 samples, 16 and 9 tiles, 5 km, 3 s per fact, 10 s per tile load) are the intended guarantee, that exceeding them is `error` or `timeout`, and that this is a correctness-only property.",
-      "field": "properties_provided",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q11: Fact data trust. We believe GSI tiles and the Valhalla server are trusted data sources, that an unknown legend colour fails closed, that the shelter list and route lengths are taken as published, and that the engine's own PNG and GeoJSON readers are the only parsers of that data.",
-      "field": "entry_points",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q12: Model backend trust. We believe the model backend is trusted to receive the state and its answers are untrusted data checked for shape; the HTTP adapter stores the configured model name and ignores the server's; Workers AI's reported model name is trusted; a backend that answers a well-formed wrong answer is `D-MODEL-ACCURACY`, not a vulnerability.",
-      "field": "entry_points",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q13: Test tokens at the boundary. We believe a `test: true` decision that a client acts on is the client's fault (`OUT-OF-MODEL: trusted-input` against `R-IGNORE-TEST-DECISIONS`), and that a test token reading or resolving a logged decision, reaching MCP, or receiving a callback would be `VALID` against `P-TEST-TOKEN-ISOLATED`.",
-      "field": "properties_provided",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q14: Reviewer identity. We believe `by` and `resolved_by` are deliberately client-asserted, that the engine authenticates clients and only MCP people as persons, and that a client that lets an unauthenticated person resolve under any name is misusing the API, not finding a bug.",
-      "field": "adversaries",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q15: What the decision log proves. We believe the log proves what the engine received (by hash), which profile version and model answered, which rule fired and when, and for whom (client name); it does not prove the state was true, who wrote it, that the client acted, or that nobody with account access changed it; tamper evidence is disclaimed at correctness-only because the only actor who could tamper is out of scope.",
-      "field": "properties_not_provided",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q16: `state_hash`. We believe `state_hash` is meant to show repeats and is not a pseudonymisation: a plain SHA-256 of canonical JSON lets anyone who can guess the state confirm it.",
-      "field": "properties_not_provided",
-      "proposed": "yes, document it as a false friend."
-    },
-    {
-      "claim": "Q17: Token lifetime and rate limits. We believe tokens have no expiry and the engine has no per-token rate limit or quota, that both are disclaimed for now with edge and gateway limits as the operator's job, and that expiry is a `VALID-HARDENING` candidate rather than a model gap.",
-      "field": "entry_points",
-      "proposed": "disclaim both; keep expiry on the hardening list."
-    },
-    {
-      "claim": "Q18: Scope off-switches. We believe the only two ways to act beyond a single profile scope are a `--profiles '*'` token and an OAuth person (every MCP-visible profile), and that `mcp.visible` is the only per-profile control for people.",
-      "field": "properties_provided",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q19: OAuth client handling. We believe open dynamic client registration and client-ID metadata documents are intended, that the consent page and GitHub membership are the controls, and that PKCE, state binding, consent handles and encrypted grant props are relied on as the OAuth library's contract (`OUT-OF-MODEL: dependency-contract` when the library breaks them).",
-      "field": "entry_points",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q20: Bridge adversary. We believe whoever can write entities, Decision entities or completed Task entities in the broker tenant is the bridge's in-scope adversary, the broker itself is a trusted collaborator, queue messages are the bridge's own, and the broker's access control owns who may trigger decisions and resolve reviews.",
-      "field": "entry_points",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q21: Bridge outputs. We believe everything the bridge writes to the broker comes from the profile's closed answer set and fixed metadata, except the Task `name` (an entity attribute's text), fact `source` strings, and `reviewedBy`/`finalAction` passed through from the resolving app, and that consumers must treat those as data.",
-      "field": "properties_not_provided",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q22: The Actions. We believe `run`, `stacks` and `labels` are trusted workflow-author inputs, that issue text and stack event text are attacker-influenced prompt text, and that a steered `cancel` of a healthy deploy is a correctness issue (`D-MODEL-ACCURACY`, `P-WATCH-FAILSAFE`), not a security one.",
-      "field": "entry_points",
-      "proposed": "yes."
-    },
-    {
-      "claim": "Q23: Version binding and venue. We believe the model should be bound to commit `e1d3591` until the first release tag, revised on the §1.16 triggers, and that a `SECURITY.md` should be added that names the private reporting channel and links this document.",
-      "field": "commit",
-      "proposed": "yes; create `SECURITY.md` in the same pull request that ratifies wave 1."
-    },
-    {
-      "claim": "Q24: Triage policy. We believe `strict` is right while the draft is unratified; after wave 1 and 2 are answered, `relaxed` would let the remaining assumptions close low-blast-radius reports provisionally.",
-      "field": "dispositions",
-      "proposed": "keep `strict` for now."
-    }
-  ]
+  "open_questions": []
 }

@@ -19,15 +19,18 @@
   draft-first mode, `threat-model-authoring`, `threat-model-backtest`,
   `threat-model-sidecar`). No MCP servers were used.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
-  property is reported privately to the maintainer (the repository has no
-  `SECURITY.md` yet; see Q23). A finding that lands in §1.3 or §1.12 is closed
+  property is reported through GitHub's private vulnerability reporting for
+  this repository, as `SECURITY.md` says. A finding that lands in §1.3 or §1.12 is closed
   citing this document.
-- **Status**: unratified draft, 2026-10-16. No question wave has been answered.
-  Closure constraint: an **inferred** claim may escalate a report but never
+- **Status**: accepted, 2026-10-16. The maintainer answered all 24 questions
+  of the first draft in one wave on 2026-10-16 and accepted every proposed
+  answer; the matching claims carry *(maintainer, 2026-10)* and no
+  **inferred** or **assumption** tag remains. Closure constraint: an **inferred** claim may escalate a report but never
   close it, and an **assumption** closes only what the triage policy below
   permits.
-- **Triage policy**: `strict`. An **assumption** behaves like an **inferred**
-  claim: it escalates and never closes. See §1.17.
+- **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). Should an
+  **assumption** be added in a later revision, it escalates and never closes.
+  See §1.17.
 - **Provenance legend**: *(documented, source)* = stated in the named public
   source of this repository; *(maintainer, YYYY-MM)* = confirmed by the
   maintainer in answer to this process; *(assumption, QN)* = a conservative
@@ -36,21 +39,25 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 259 documented / 0 maintainer / 4 inferred / 62 assumption.
+- **Draft confidence**: 259 documented / 70 maintainer / 0 inferred / 0 assumption.
 - **Backtest note**: no historical corpus was available; the backtest routed N synthesized
   cases only (N = 16, a 16-item corpus). The repository has no advisories, no issues labelled
   security, and no issues closed as "by design" or "wontfix". The 16 cases
-  cover all 8 component families and all 8 contract dimensions in 14 clusters.
-  Dispositions: 3 `VALID`, 4 `BY-DESIGN: property-disclaimed` (1 closed, 3
-  escalated), 3 `KNOWN-NON-FINDING` (closed), 4 `OUT-OF-MODEL` (2
-  `trusted-input` escalated, 1 `non-default-build` closed, 1
-  `dependency-contract` escalated), 1 `OUT-OF-MODEL: adversary-not-in-scope`
-  (escalated), 1 `VALID-HARDENING`, 0 `MODEL-GAP`. Fail-safe figure: 0 of 0
-  historically-fixed items route to a closing disposition (there are none).
-  6 of 16 close outright; the other closes escalate because their licensing
-  claim is still an **assumption** or rests on silence. No contradictions,
-  because there is no historical call to contradict. The routing table is in
-  the producer-side file `.threat-model/backtest.md`, which is not committed.
+  cover all 8 component families and all 8 contract dimensions in 14 clusters,
+  and were re-routed after the maintainer's wave of 2026-10-16. Dispositions:
+  3 `VALID`, 6 `KNOWN-NON-FINDING` (closed), 2 `BY-DESIGN: property-disclaimed`
+  (closed), 2 `OUT-OF-MODEL: trusted-input` (closed), 1
+  `OUT-OF-MODEL: non-default-build` (closed), 1
+  `OUT-OF-MODEL: dependency-contract` (closed), 1
+  `OUT-OF-MODEL: adversary-not-in-scope` (closed), 0 `VALID-HARDENING`, 0
+  `MODEL-GAP`. Fail-safe figure: 0 of 0 historically-fixed items route to a
+  closing disposition (there are none). 13 of 16 close outright, every close
+  licensed by a **documented** or **maintainer** claim; the share is high
+  because the maintainer ratified the design positions on prompt steering,
+  callback hosts and state size, not because a disclaimer was widened. No
+  contradictions, because there is no historical call to contradict. The
+  routing table is in the producer-side file `.threat-model/backtest.md`,
+  which is not committed.
 - **Sibling models**: none. The FIWARE bridge, the two GitHub Actions and the
   config-repository template are component families of this model (§1.2).
   The demo repository `geolonia/pointsman-demo` is out of scope (§1.3).
@@ -115,9 +122,9 @@ configuration repository that pins one engine commit and holds the profiles
 *(documented, docs/deployment.md "Deployment" table)*. The integrator in the
 Alpha-Omega sense is the owner of that private repository. A shared,
 multi-tenant hosted Pointsman is not a deployment the project describes;
-this model treats it as unsupported *(assumption, Q2)*.
+this model treats it as unsupported *(maintainer, 2026-10)*.
 
-Roles, as this model uses them *(assumption, Q1)*:
+Roles, as this model uses them *(maintainer, 2026-10)*:
 
 - **State author**: whoever writes the data that ends up in `state`: a
   resident filing a report, a GitHub issue author, a sensor or an app writing
@@ -154,7 +161,7 @@ Roles, as this model uses them *(assumption, Q1)*:
 The bridge shares the engine's release cadence and maintainer but has its own
 adversary model (the broker's writers). This draft keeps it in one model as a
 family, with a question whether it should become a sibling model
-*(assumption, Q3)*.
+*(maintainer, 2026-10)*.
 
 ## 1.3 Out of scope (explicit non-goals)
 
@@ -173,11 +180,11 @@ family, with a question whether it should become a sibling model
   spike documents' titles "Spike:")*. Findings there are
   `OUT-OF-MODEL: unsupported-component`.
 - **The website** (`site/`, `brand/`, the Pages workflow) publishes static
-  pages and holds no secrets or decisions *(assumption, Q3)*.
+  pages and holds no secrets or decisions *(maintainer, 2026-10)*.
 - **Tests and fixtures** (`test/`) and the developer scripts that build or
   check the repository (`scripts/build-profiles.mjs`,
   `build-openapi-validators.mjs`, `check-public.mjs`, `ai-gateway.mjs`) do not
-  run in a deployment *(assumption, Q3)*.
+  run in a deployment *(maintainer, 2026-10)*.
 - **The demo** (`geolonia/pointsman-demo`): its page, its Worker, its
   Turnstile and rate limits are a separate repository with its own limits
   *(documented, docs/fiware-demo.md "Limits for a public demo")*. It is not
@@ -190,13 +197,13 @@ family, with a question whether it should become a sibling model
     `geolonia/pointsman` at the pinned commit *(documented, docs/deployment.md
     "Updating the engine")*.
   - The Cloudflare platform (Workers isolation, KV, D1, Queues, Workers AI,
-    the AI Gateway) is trusted; its faults are its own *(assumption, Q5)*.
+    the AI Gateway) is trusted; its faults are its own *(maintainer, 2026-10)*.
   - Network observers: every documented transport is https (the engine
     refuses plain http for callbacks, model servers and routing servers except
     loopback); TLS is the platform's *(documented, docs/models.md "Model
     server" table; openapi.yaml `DecideRequest.callback_url` pattern)*.
   - Co-tenants on Cloudflare, timing side channels and the model's own
-    training data are out of this model's layer *(assumption, Q1)*.
+    training data are out of this model's layer *(maintainer, 2026-10)*.
   - Correctness of the model's judgement: the project states that answers
     move between model versions and tells integrators to keep a margin from
     their thresholds *(documented, docs/fiware-demo.md "Checked again
@@ -209,7 +216,7 @@ There are three boundaries, one per hop:
 
 1. **Client → engine**: the API token authenticates the client; `state`,
    `ref` and `callback_url` come from the client, and `state` carries data the
-   state author wrote *(documented, README "API tokens"; assumption, Q1)*.
+   state author wrote *(documented, README "API tokens"; maintainer, 2026-10)*.
 2. **Engine → collaborators → engine**: the engine sends the state and the
    questions to the model backend and the geometry to the fact providers, and
    checks what comes back for shape only *(documented, docs/profile-format.md
@@ -239,7 +246,7 @@ Reachability preconditions per family:
 
 - `engine-api`: a finding matters if it is reachable from a request that
   carries a valid token, or from the `state`, `ref` or `callback_url` such a
-  request carries, or from a model backend's response *(assumption, Q1)*. A
+  request carries, or from a model backend's response *(maintainer, 2026-10)*. A
   finding that needs an invalid or missing token to succeed is a finding
   against `P-AUTH-REQUIRED` (§1.11).
 - `engine-facts`: reachable from the geometry at a profile's `at` path in the
@@ -270,8 +277,7 @@ Reachability preconditions per family:
 - **Runtime**: Cloudflare Workers (`compatibility_date` 2026-10-01), one
   isolate per request batch; module-level state (`gsiFacts`, the bundled
   store, the OAuth server map, the GSI tile memory cache) is shared between
-  requests of one isolate and is not shared across isolates *(assumption,
-  Q5)*.
+  requests of one isolate and is not shared across isolates *(maintainer, 2026-10)*.
 - **Storage consistency**: D1 is strongly consistent and holds the decision
   log and the profile-version registry; KV is eventually consistent, so a
   revoked token can work for up to about 60 seconds elsewhere, and a new
@@ -279,7 +285,7 @@ Reachability preconditions per family:
   README "API tokens": "KV can take up to about 60 seconds"; docs/deployment.md
   "Profile versions"; `src/profiles/store.ts` `KvProfileStore` comment)*.
 - **Clock**: the engine uses the Worker's clock for `created_at`,
-  callback timestamps and retry scheduling *(assumption, Q5)*.
+  callback timestamps and retry scheduling *(maintainer, 2026-10)*.
 - **Scheduling**: a cron trigger every five minutes retries due callbacks and
   purges expired OAuth records *(documented, wrangler.jsonc `triggers`
   comment; docs/reviews.md "Callbacks")*.
@@ -288,7 +294,7 @@ Reachability preconditions per family:
   docs/reviews.md "Review queue": "A second resolve, also at the same moment,
   answers 409")*. A callback is claimed before it is sent, so the first
   delivery and the cron retry do not send the same attempt twice
-  *(assumption, Q5)*.
+  *(maintainer, 2026-10)*.
 
 ### No-surprise side-effects inventory
 
@@ -312,7 +318,7 @@ modeled tree.
   only public addresses"; the same flag in `template/config-repo/wrangler.jsonc`
   and `bridge/wrangler.jsonc`)*. The library hole: `@modelcontextprotocol/server`
   and `@cloudflare/workers-oauth-provider` could fetch on the engine's behalf;
-  only the metadata-document fetch is known *(inferred, Q5)*.
+  only the metadata-document fetch is known *(maintainer, 2026-10)*.
 - **Redirects**: the engine's outbound calls to the model server, the
   routing server and the callback receiver use `redirect: 'manual'` and treat
   a 3xx as an error (`src/models/http.ts:97`, `src/facts-routing.ts:117`,
@@ -321,12 +327,12 @@ modeled tree.
   The bridge's calls to the broker and to Pointsman use the default redirect
   mode, so a redirecting broker would receive the broker credentials and the
   entity at the redirect target; the broker URL is operator-set, so this is a
-  trusted-collaborator edge, not an attacker-controlled one *(assumption, Q6)*.
+  trusted-collaborator edge, not an attacker-controlled one *(maintainer, 2026-10)*.
 - **Child processes, environment, filesystem**: none in the engine and the
   bridge. Search:
   `grep -rn "child_process\|spawn(\|execFile\|process\.env\|\beval(\|new Function" src bridge/src`
   — 0 hits. The engine reads its configuration from Worker bindings and
-  vars only *(assumption, Q5)*. `action-deploy-watch` spawns `bash -c <run>`
+  vars only *(maintainer, 2026-10)*. `action-deploy-watch` spawns `bash -c <run>`
   in its own process group and runs the `aws` CLI
   (`actions/deploy-watch/watch.mjs:17,118`); both Actions read `INPUT_*` and
   `GITHUB_*` environment variables and append to `GITHUB_OUTPUT` and
@@ -339,7 +345,7 @@ modeled tree.
   tokens are written by `scripts/tokens.mjs` and profiles by
   `scripts/publish-profiles.mjs`, both run by the operator. Search:
   `grep -rn '\.put(\|\.delete(' src` — hits only in `src/oauth.ts` (OAUTH_KV)
-  and `src/facts-gsi.ts` (cache, memory map) *(assumption, Q5)*.
+  and `src/facts-gsi.ts` (cache, memory map) *(maintainer, 2026-10)*.
 - **Logging**: the engine writes to the Workers log (`observability`
   enabled) through `console.error` in 12 places; by design these messages carry
   the reason, never the state, a token, an API key or a model response
@@ -349,7 +355,7 @@ modeled tree.
   configured with `collect_logs: true`, stores every model call including the
   state *(documented, docs/models.md "Logs hold the state")*.
 - **Global state**: no process-wide mutation beyond the module-level caches
-  named above *(assumption, Q5)*.
+  named above *(maintainer, 2026-10)*.
 
 ## 1.6 Build-time and configuration variants
 
@@ -366,7 +372,7 @@ configuration is in-model even when the configuration is not the default.
 | AI Gateway `collect_logs` | `ai-gateway.json` | `true` | the gateway keeps every model call including the state | supported; voids `P-STATE-NOT-STORED` for the gateway's logs | *(documented, docs/models.md "Logs hold the state")* |
 | `CALLBACK_SECRET` | Worker secret | unset | unset: no callback is ever sent; the callback state says why | supported (callbacks off) | *(documented, docs/reviews.md "Callbacks": "Without that secret, nothing is sent")* |
 | GitHub login (`PUBLIC_URL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ALLOWED_GITHUB_ORGS`, `OAUTH_KV`) | wrangler vars, secret, binding | unset | all set: people may log in to `/mcp`; none: `/mcp` takes API tokens only; some: every request fails with a configuration error | both supported; a partial configuration is refused | *(documented, docs/mcp.md "Setting up GitHub login": "Set all of these or none")* |
-| `global_fetch_strictly_public` | `compatibility_flags` | present in all three wrangler configs | outbound fetches reach only public addresses | required; a deployment without it is unsupported and voids `P-OUTBOUND-PUBLIC-ONLY` | *(assumption, Q4)* |
+| `global_fetch_strictly_public` | `compatibility_flags` | present in all three wrangler configs | outbound fetches reach only public addresses | required; a deployment without it is unsupported and voids `P-OUTBOUND-PUBLIC-ONLY` | *(maintainer, 2026-10)* |
 | `log.store_state: true` | per profile | `false` | stores the full state in D1 instead of only its hash | supported; voids `P-STATE-NOT-STORED` for that profile | *(documented, docs/decision-log.md "What is stored")* |
 | `mcp.visible: true` | per profile | `false` | the profile is listed and callable through MCP, by every logged-in person and by tokens in scope | supported | *(documented, docs/mcp.md "Only profiles that set `mcp.visible: true`")* |
 | Test tokens (`tokens.mjs create --test`) | token record `test: true` | not set | decisions are made but not logged, marked `test: true`; the token may only decide and list profiles over REST | supported | *(documented, README "API tokens")* |
@@ -393,13 +399,13 @@ they are security-relevant.
 | `POST /v1/decide/{profile}` | `{profile}` path | yes (token holder) | resource-name | none — scope checked before the lookup (`P-TOKEN-SCOPE`) | *(documented, docs/decision-log.md "A token sees and corrects only decisions of profiles in its scope")* |
 | `POST /v1/decide/{profile}` | `?version` query | yes (token holder) | data | none — must match `^[1-9][0-9]{0,8}$`, else 400 | *(documented, openapi.yaml `/v1/decide/{profile}` `version` parameter)* |
 | `POST /v1/decide/{profile}` | `state` body field (string, object or array) | **yes, by the state author** through the client | data, size, x-prompt-text | treat it as untrusted data: never put it in a shell, a query or a template; do not include secrets or personal data unless `log.store_state` and gateway logging are intended | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
-| `POST /v1/decide/{profile}` | `state` size and nesting | yes (state author) | size | the engine sets no limit; the platform's request body limit applies; rate-limit at the edge | *(documented, openapi.yaml `DecideRequest.state` has no `maxLength`; inferred, Q8)* |
+| `POST /v1/decide/{profile}` | `state` size and nesting | yes (state author) | size | the engine sets no limit; the platform's request body limit applies; rate-limit at the edge | *(documented, openapi.yaml `DecideRequest.state` has no `maxLength`; maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | `ref` | yes (token holder; often derived from attacker-named things such as an issue number) | data | 1–200 characters; it is logged and returned, so no secrets | *(documented, openapi.yaml `DecideRequest.ref`)* |
 | `POST /v1/decide/{profile}` | `callback_url` | yes (token holder) | resource-name | https only; any public host; refused for test tokens | *(documented, openapi.yaml `DecideRequest.callback_url`; README "A test token ... gets no callbacks")* |
 | `POST /v1/decide/{profile}` | the profile read from the store (questions, rules, `input` paths, `facts`, `log`, `mcp`) | no — authored by the integrator, validated before publication | serialized-state, x-policy-rules | validate with `validate-profiles.mjs`; bump the version | *(documented, docs/deployment.md "Profile versions"; `src/profiles/store.ts` header: "Profiles are validated before they reach a store")* |
 | `POST /v1/decide/{profile}` | the model response (`answers`, `model`) | partly — the model backend is a collaborator; its answers are shaped by the state | collaborator-implementation, data | none — `P-ANSWER-SHAPE` rejects answers that do not fit the profile | *(documented, docs/profile-format.md "Engine answer format")* |
-| `POST /v1/decide/{profile}` | the server-reported `model` name (HTTP model server) | no — the configured name is stored, not the server's field | data | none | *(assumption, Q12)* |
-| `POST /v1/decide/{profile}` | the `model` name reported by Workers AI | no — trusted collaborator | data | none | *(assumption, Q12)* |
+| `POST /v1/decide/{profile}` | the server-reported `model` name (HTTP model server) | no — the configured name is stored, not the server's field | data | none | *(maintainer, 2026-10)* |
+| `POST /v1/decide/{profile}` | the `model` name reported by Workers AI | no — trusted collaborator | data | none | *(maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | geometry at each fact's `at` path | yes (state author, within the client's payload) | data, size | none — `P-FACT-LOOKUP-BOUNDED`; a bad geometry is `no_location` | *(documented, docs/profile-format.md "Facts" table, `at`)* |
 | `GET /v1/decisions/{id}` | `{id}` | yes (token holder) | resource-name | none — must be a UUID and in scope, else 404 | *(documented, docs/decision-log.md "Other decisions answer 404, as if they did not exist")* |
 | `POST /v1/decisions/{id}/feedback` | `correct` | yes (token holder) | data, type-class | none — checked against the decision's profile version | *(documented, docs/decision-log.md "Feedback")* |
@@ -410,7 +416,7 @@ they are security-relevant.
 | `POST /v1/reviews/{id}/resolve` | `correct`, `by`, `note` | yes (token holder) | data, type-class | as for feedback; `by` is recorded as given | *(documented, docs/reviews.md "Review queue")* |
 | cron `scheduled()` | the due callbacks read from D1 | no — the engine's own records | serialized-state | none | *(documented, docs/reviews.md "Retries are run by the Worker's cron trigger")* |
 | outbound callback | the receiver's HTTP status | yes (whoever is at `callback_url`) | data | none — any 2xx is delivered; else retried up to 6 attempts, then `failed` | *(documented, docs/reviews.md "Answer with any 2xx status")* |
-| outbound callback | the receiver's body and redirects | yes | data | none — the body is ignored, a 3xx is an error (`src/callbacks.ts:78`) | *(assumption, Q9)* |
+| outbound callback | the receiver's body and redirects | yes | data | none — the body is ignored, a 3xx is an error (`src/callbacks.ts:78`) | *(maintainer, 2026-10)* |
 | `engine-facts` tile fetch | PNG and GeoJSON tile bytes from GSI | no — public data from a fixed host, decoded by the engine's own PNG and GeoJSON readers | data, serialized-state | none — an unknown legend colour or unreadable tile is `error`, never a guess | *(documented, docs/profile-format.md "A colour that is not in the legend fails the lookup")* |
 | `engine-facts` routing | the Valhalla response (`trip.summary.length`, `error_code`) | no — operator-chosen server over OpenStreetMap data | data | none — a 3xx is an error; a missing length is an error | *(documented, docs/profile-format.md "Detours")* |
 | `/mcp` | `Authorization` header: `pm_` API token or OAuth access token | yes | data | none — API tokens go to the token store, other tokens to the OAuth server (`P-AUTH-REQUIRED`) | *(documented, docs/mcp.md "Authentication")* |
@@ -419,25 +425,25 @@ they are security-relevant.
 | `/mcp` `get_decision` | `decision_id` | yes | resource-name | none — UUID, in scope and MCP-visible, else unknown; `callback_url` and `state` are not shown | *(documented, docs/mcp.md "Tools"; `src/mcp.ts` `get_decision`)* |
 | `/mcp` `submit_feedback` | `decision_id`, `correct`, `note` | yes (a logged-in person) | data, type-class | people only; recorded under their GitHub login | *(documented, docs/mcp.md "Feedback is a person's judgement")* |
 | `GET /authorize` | the OAuth authorization request (client id, redirect URI, PKCE challenge) | yes (any MCP client) | data, resource-name | none — parsed by the OAuth library; the consent page shows the client name and redirect host, marked unverified when self-registered | *(documented, docs/mcp.md "MCP clients register themselves")* |
-| `POST /authorize` | form `handle`, `decision` | yes (the person's browser) | data | none — the library binds the handle to the consent | *(assumption, Q19)* |
+| `POST /authorize` | form `handle`, `decision` | yes (the person's browser) | data | none — the library binds the handle to the consent | *(maintainer, 2026-10)* |
 | `GET /callback` | `code`, `state` from GitHub | yes (whoever reaches the URL) | data | none — `state` resumes the library's upstream flow; `code` is exchanged with PKCE and the client secret; membership is checked before a grant | *(documented, docs/mcp.md "Only active members of the allowed GitHub organizations get in")* |
-| `/oauth/register`, `/oauth/token`, `/.well-known/*` | client metadata, token requests | yes (any MCP client) | data, serialized-state | none — the OAuth library's contract (§1.9) | *(assumption, Q19)* |
+| `/oauth/register`, `/oauth/token`, `/.well-known/*` | client metadata, token requests | yes (any MCP client) | data, serialized-state | none — the OAuth library's contract (§1.9) | *(maintainer, 2026-10)* |
 | `engine-mcp` membership check | GitHub's `/user` and membership responses | no — trusted identity provider | data | none | *(documented, docs/mcp.md "GitHub is only the login step")* |
 | `bridge` `POST /notify`, `POST /reviews` | `x-bridge-secret` header | yes (anyone who can reach the Worker); accepted only when equal to `NOTIFY_SECRET` | data | none — `P-BRIDGE-NOTIFY-SECRET` | *(documented, bridge/README.md "Configuration": "other notifications are refused")* |
 | `bridge` `POST /notify` | `?route` | yes (with the secret) | resource-name | none — must name a configured route | *(documented, bridge/README.md "Chains of decisions")* |
-| `bridge` `POST /notify` | notification `data[]`: entity ids, types and attribute values | yes — written by whoever may write entities in the broker tenant, delivered by the broker | data, size, x-prompt-text | the broker's access control decides who may write; the bridge forwards the whole entity as `state` | *(documented, bridge/README.md "The subscription"; assumption, Q20)* |
+| `bridge` `POST /notify` | notification `data[]`: entity ids, types and attribute values | yes — written by whoever may write entities in the broker tenant, delivered by the broker | data, size, x-prompt-text | the broker's access control decides who may write; the bridge forwards the whole entity as `state` | *(documented, bridge/README.md "The subscription"; maintainer, 2026-10)* |
 | `bridge` `POST /reviews` | a `Decision` entity (`reviewStatus`, `finalAction`, `reviewedBy`, `reviewedAt`, `corrections`) | yes — whoever may write Decision entities | data | the broker's access control; `reviewedBy` is taken as written | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control")* |
 | `bridge` `POST /reviews` | a completed `Task` entity (`progress`, `statusLabel`, `refersTo`, `dateModified`) | yes — whoever may write Task entities | data | the broker's access control; only labels in `BRIDGE_WORK_ORDERS` map to an action | *(documented, bridge/README.md "Work orders from other apps")* |
-| `bridge` queue consumer | queue message bodies | no — written by the bridge's own `/notify` and `/reviews` | serialized-state | none; a malformed message is dropped | *(assumption, Q20)* |
-| `bridge` broker reads | entity JSON from the broker | partly — the broker is trusted; the content is what writers put there | data, collaborator-implementation | none | *(assumption, Q20)* |
-| `bridge` Pointsman calls | the decision JSON | no — Pointsman is the bridge's trusted collaborator; shape-checked | data | none | *(assumption, Q20)* |
+| `bridge` queue consumer | queue message bodies | no — written by the bridge's own `/notify` and `/reviews` | serialized-state | none; a malformed message is dropped | *(maintainer, 2026-10)* |
+| `bridge` broker reads | entity JSON from the broker | partly — the broker is trusted; the content is what writers put there | data, collaborator-implementation | none | *(maintainer, 2026-10)* |
+| `bridge` Pointsman calls | the decision JSON | no — Pointsman is the bridge's trusted collaborator; shape-checked | data | none | *(maintainer, 2026-10)* |
 | `bridge` configuration | `BRIDGE_ROUTES`, `BRIDGE_WORK_ORDERS`, URLs, secrets | no — operator | serialized-state | https URLs; one broker credential, not both | *(documented, bridge/README.md "Configuration")* |
 | `action-triage` | `url`, `token`, `profile`, `labels`, `review-label`, `github-token` inputs | no — workflow author | data, resource-name | `url` https (http on loopback only), no query, fragment or credentials; `labels` is the allow-list | *(documented, actions/triage/README.md "Inputs")* |
 | `action-triage` | `issue.title`, `issue.body` from the event payload | **yes (issue author)** | data, x-prompt-text | none — sent to Pointsman as JSON, never to a shell or the summary (`P-TRIAGE-ALLOWLIST`) | *(documented, actions/triage/README.md "The issue text is sent to Pointsman as JSON data; it is never used in a shell command")* |
 | `action-triage` | Pointsman's decision (`action`, `answers`) | no — trusted collaborator; only mapped answers become labels | data | none | *(documented, actions/triage/README.md "Only labels you list in `labels` are ever applied")* |
 | `action-deploy-watch` | `run`, `stacks` inputs | no — workflow author; `run` is executed with `bash -c` | callback-code, resource-name | set `run` in the workflow; never build it from event data; `stacks` must match `^[A-Za-z][A-Za-z0-9-]{0,127}$` | *(documented, actions/deploy-watch/action.yml `run` description)* |
 | `action-deploy-watch` | `url`, `token`, `profile`, `quiet-minutes`, `interval-seconds`, `consecutive`, `kill-after-seconds`, `cancel-update` | no — workflow author | data, resource-name | as for the triage action | *(documented, actions/deploy-watch/README.md "Inputs")* |
-| `action-deploy-watch` | CloudFormation stack events (`describe-stack-events`) | conditional — the account's own stacks; `ResourceStatusReason` can carry text from templates or AWS | data | none — passed to Pointsman as JSON, truncated to 300 characters per reason | *(assumption, Q22)* |
+| `action-deploy-watch` | CloudFormation stack events (`describe-stack-events`) | conditional — the account's own stacks; `ResourceStatusReason` can carry text from templates or AWS | data | none — passed to Pointsman as JSON, truncated to 300 characters per reason | *(maintainer, 2026-10)* |
 | `action-deploy-watch` | Pointsman's `action` | no — trusted collaborator; only `cancel`, twice in a row by default, stops the deploy | data | none — a failing Pointsman never cancels | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
 | `config-repo` Validate / Deploy workflows | `profiles/*.yaml` | no — pull-request authors are the integrator's own contributors; `main` is protected | serialized-state, x-policy-rules | protect `main`; require the Validate check | *(documented, template/config-repo/README.md "Protect `main`")* |
 | `config-repo` workflows | `engine.json` `ref` | no — the repository is fixed to `geolonia/pointsman` in the workflow; `ref` must be a 40-character SHA | resource-name | change `ENGINE_REPOSITORY` only on purpose | *(documented, docs/deployment.md "Updating the engine")* |
@@ -447,7 +453,7 @@ they are security-relevant.
 ### Size, shape and rate
 
 - `state`: any JSON value or non-empty string; no size or depth limit in the
-  engine *(documented, openapi.yaml `DecideRequest.state`; inferred, Q8)*.
+  engine *(documented, openapi.yaml `DecideRequest.state`; maintainer, 2026-10)*.
 - `ref` ≤ 200, `by` ≤ 100, `note` ≤ 1000 characters; `days` 1–90; reviews
   listed 100 at a time *(documented, openapi.yaml)*.
 - Profiles: 1–64 questions, 2–255 choice options, 2–10 score levels, ≤ 16
@@ -455,7 +461,7 @@ they are security-relevant.
 - Facts: a LineString of at most 1000 positions; a flood lookup reads at most
   16 tiles, a shelter lookup at most 9; a detour section is at most 5 km; 3 s
   per fact, 10 s per tile load; failures are `missing`, never a hang
-  *(assumption, Q10)*.
+  *(maintainer, 2026-10)*.
 - Model calls: 10 s timeout (gateway and HTTP adapter default); fallback
   models are tried in order *(documented, docs/models.md)*.
 - Rate: the engine applies no per-token rate limit or quota; the AI Gateway
@@ -475,29 +481,29 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-api | failure atomicity | claimed | a decision is logged before it is returned; a failed log is a 500 and no decision; a review resolves once or not at all | §1.11 `P-DECISION-LOGGED-FIRST`, `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/decision-log.md; docs/reviews.md)* |
 | engine-api | recursive/cyclic topology | disclaimed | `state` may be arbitrarily nested; the engine neither limits depth nor promises a bound; JSON has no cycles | §1.12 `D-STATE-SIZE` | *(documented, openapi.yaml `DecideRequest.state`)* |
 | engine-api | callback execution | claimed | policy conditions are parsed and evaluated by the engine's own parser; nothing from a profile or a state runs as code | §1.11 `P-POLICY-NOT-CODE` | *(documented, docs/profile-format.md "The engine evaluates conditions with its own parser; nothing is run as code")* |
-| engine-api | serialization/reconstruction | claimed | profiles, tokens and decisions are plain JSON read with `JSON.parse`; no class reconstruction; the `model` field from an HTTP model server is not stored | §1.11 `P-ANSWER-SHAPE` | *(assumption, Q12)* |
-| engine-api | reference lifecycle | N/A — stateless per request; the module-level caches hold profiles and adapters, not request data | — | — | *(assumption, Q5)* |
+| engine-api | serialization/reconstruction | claimed | profiles, tokens and decisions are plain JSON read with `JSON.parse`; no class reconstruction; the `model` field from an HTTP model server is not stored | §1.11 `P-ANSWER-SHAPE` | *(maintainer, 2026-10)* |
+| engine-api | reference lifecycle | N/A — stateless per request; the module-level caches hold profiles and adapters, not request data | — | — | *(maintainer, 2026-10)* |
 | engine-api | concurrency/reentrancy | claimed | concurrent resolves of one review: exactly one succeeds | §1.11 `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/reviews.md "A second resolve, also at the same moment, answers 409")* |
-| engine-api | resource complexity | unresolved | no engine-side limit on the size of `state`; policy evaluation is linear in rules × answers; model and fact calls are time-limited | §1.18 Q8 | *(inferred, Q8)* |
-| engine-api | x-prompt-injection | disclaimed | a state author can steer the answers; they cannot make the engine return an answer outside the profile's types and options, or an action the policy does not produce for those answers | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-ANSWER-SHAPE`, `P-ACTION-FROM-POLICY` | *(assumption, Q7)* |
+| engine-api | resource complexity | disclaimed | no engine-side limit on the size of `state`; policy evaluation is linear in rules × answers; model and fact calls are time-limited; the maintainer chose to disclaim the bound | §1.12 `D-STATE-SIZE` | *(maintainer, 2026-10)* |
+| engine-api | x-prompt-injection | disclaimed | a state author can steer the answers; they cannot make the engine return an answer outside the profile's types and options, or an action the policy does not produce for those answers | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-ANSWER-SHAPE`, `P-ACTION-FROM-POLICY` | *(maintainer, 2026-10)* |
 | engine-api | x-probabilistic-result | disclaimed | `p` is the model's probability of `value`, not a calibrated accuracy; answers move between model versions | §1.12 `D-MODEL-ACCURACY` | *(documented, docs/fiware-demo.md "Checked again (2026-10-15)")* |
-| engine-facts | numeric domain | claimed | positions within WGS 84 ranges; a third coordinate is dropped; non-finite numbers are refused | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(assumption, Q10)* |
+| engine-facts | numeric domain | claimed | positions within WGS 84 ranges; a third coordinate is dropped; non-finite numbers are refused | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
 | engine-facts | failure atomicity | claimed | a failed or slow lookup is recorded as `missing` with a reason; the decision still completes; a missing fact never makes a rule match | §1.11 `P-FACTS-NEVER-GUESSED` | *(documented, docs/profile-format.md "A missing fact is never guessed")* |
 | engine-facts | recursive/cyclic topology | N/A — geometries are flat lists of positions | — | — | *(documented, docs/profile-format.md "Facts" table, `at`: Point or LineString)* |
 | engine-facts | callback execution | N/A — no caller-supplied code; providers are operator-configured | — | — | *(documented, docs/profile-format.md "Fact providers")* |
-| engine-facts | serialization/reconstruction | claimed | tile PNGs are decoded by the engine's own decoder (8-bit, non-interlaced only); GeoJSON tiles are parsed and reduced to point lists; anything else is `error` | §1.11 `P-FACTS-NEVER-GUESSED` | *(assumption, Q11)* |
+| engine-facts | serialization/reconstruction | claimed | tile PNGs are decoded by the engine's own decoder (8-bit, non-interlaced only); GeoJSON tiles are parsed and reduced to point lists; anything else is `error` | §1.11 `P-FACTS-NEVER-GUESSED` | *(maintainer, 2026-10)* |
 | engine-facts | reference lifecycle | claimed | tiles are cached for a day in memory (64 entries) and in the Workers cache; a failed load is not kept | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(documented, docs/profile-format.md "Tiles are cached for a day")* |
-| engine-facts | concurrency/reentrancy | claimed | a tile load is shared between lookups in one isolate and is not cancelled by one lookup's timeout | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(assumption, Q10)* |
-| engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles, ≤ 5 km detour section, 3 s per fact, 10 s per tile load | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(assumption, Q10)* |
+| engine-facts | concurrency/reentrancy | claimed | a tile load is shared between lookups in one isolate and is not cancelled by one lookup's timeout | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
+| engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles, ≤ 5 km detour section, 3 s per fact, 10 s per tile load | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
 | engine-facts | x-prompt-injection | N/A — the model does not see the facts, and facts do not reach the model | — | — | *(documented, docs/profile-format.md "The model does not see the facts")* |
 | engine-facts | x-probabilistic-result | N/A — facts are measured, not estimated | — | — | *(documented, docs/profile-format.md "Facts are computed by spatial operations instead")* |
 | engine-callbacks | numeric domain | claimed | at most 6 attempts with fixed delays (1 min, 5 min, 30 min, 2 h, 12 h); timestamps are Unix seconds | §1.11 `P-CALLBACK-SIGNED` | *(documented, docs/reviews.md "Callbacks")* |
 | engine-callbacks | failure atomicity | disclaimed | delivery is at least once; a lost 2xx causes a repeat | §1.12 `D-EXACTLY-ONCE` | *(documented, docs/reviews.md "A callback can arrive more than once")* |
-| engine-callbacks | recursive/cyclic topology | N/A — one POST per attempt; no redirects are followed | — | — | *(assumption, Q9)* |
-| engine-callbacks | callback execution | disclaimed | the receiver at `callback_url` is whoever the token holder named; the engine does not authenticate the receiver; it signs the payload so the receiver can authenticate the engine | §1.12 `D-CALLBACK-ANY-PUBLIC-HOST` | *(assumption, Q9)* |
-| engine-callbacks | serialization/reconstruction | N/A — the receiver's body is ignored | — | — | *(assumption, Q9)* |
-| engine-callbacks | reference lifecycle | claimed | a callback is claimed with a 60 s lease before an attempt; only the claimant records the outcome | §1.11 `P-CALLBACK-SIGNED` | *(assumption, Q5)* |
-| engine-callbacks | concurrency/reentrancy | claimed | the first delivery and the cron retry cannot send the same attempt twice (the claim) | §1.11 `P-CALLBACK-SIGNED` | *(assumption, Q5)* |
+| engine-callbacks | recursive/cyclic topology | N/A — one POST per attempt; no redirects are followed | — | — | *(maintainer, 2026-10)* |
+| engine-callbacks | callback execution | disclaimed | the receiver at `callback_url` is whoever the token holder named; the engine does not authenticate the receiver; it signs the payload so the receiver can authenticate the engine | §1.12 `D-CALLBACK-ANY-PUBLIC-HOST` | *(maintainer, 2026-10)* |
+| engine-callbacks | serialization/reconstruction | N/A — the receiver's body is ignored | — | — | *(maintainer, 2026-10)* |
+| engine-callbacks | reference lifecycle | claimed | a callback is claimed with a 60 s lease before an attempt; only the claimant records the outcome | §1.11 `P-CALLBACK-SIGNED` | *(maintainer, 2026-10)* |
+| engine-callbacks | concurrency/reentrancy | claimed | the first delivery and the cron retry cannot send the same attempt twice (the claim) | §1.11 `P-CALLBACK-SIGNED` | *(maintainer, 2026-10)* |
 | engine-callbacks | resource complexity | claimed | 10 s per attempt; the cron handles at most 50 due callbacks per run | §1.11 `P-CALLBACK-SIGNED` | *(documented, docs/reviews.md "a timeout of 10 seconds")* |
 | engine-callbacks | x-prompt-injection | N/A — no model involved | — | — | *(documented, docs/reviews.md "Callbacks")* |
 | engine-callbacks | x-probabilistic-result | N/A — the payload carries final answers, not probabilities | — | — | *(documented, docs/reviews.md callback example)* |
@@ -505,21 +511,21 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-mcp | failure atomicity | claimed | MCP decisions go through the same checks and log as REST | §1.11 `P-DECISION-LOGGED-FIRST` | *(documented, docs/mcp.md "Decisions through MCP")* |
 | engine-mcp | recursive/cyclic topology | N/A — stateless Streamable HTTP; no sessions | — | — | *(documented, docs/mcp.md "Streamable HTTP, stateless")* |
 | engine-mcp | callback execution | disclaimed | the OAuth library fetches a client-ID metadata document from the URL the client names; dynamic client registration is open | §1.12 `D-OPEN-CLIENT-REGISTRATION` | *(documented, docs/mcp.md "MCP clients register themselves (dynamic client registration, or a client ID metadata document)")* |
-| engine-mcp | serialization/reconstruction | claimed | tool inputs are validated with zod schemas; grant props are stored encrypted by the library | §1.11 `P-MCP-VISIBILITY` | *(assumption, Q19)* |
+| engine-mcp | serialization/reconstruction | claimed | tool inputs are validated with zod schemas; grant props are stored encrypted by the library | §1.11 `P-MCP-VISIBILITY` | *(maintainer, 2026-10)* |
 | engine-mcp | reference lifecycle | disclaimed | organization membership is checked only at login; a removed member keeps access until the grant ends | §1.12 `D-MEMBERSHIP-AT-LOGIN-ONLY` | *(documented, docs/mcp.md "Membership is checked at login")* |
-| engine-mcp | concurrency/reentrancy | N/A — stateless per request; the OAuth library owns its handles | — | — | *(assumption, Q19)* |
-| engine-mcp | resource complexity | unresolved | no per-person rate limit; the cron purges expired OAuth records 100 at a time | §1.18 Q17 | *(inferred, Q17)* |
-| engine-mcp | x-prompt-injection | disclaimed | as for `engine-api`; the MCP caller is often itself an LLM agent | §1.12 `D-PROMPT-INJECTION` | *(assumption, Q7)* |
+| engine-mcp | concurrency/reentrancy | N/A — stateless per request; the OAuth library owns its handles | — | — | *(maintainer, 2026-10)* |
+| engine-mcp | resource complexity | disclaimed | no per-person rate limit; the cron purges expired OAuth records 100 at a time | §1.12 `D-RATE-LIMIT` | *(maintainer, 2026-10)* |
+| engine-mcp | x-prompt-injection | disclaimed | as for `engine-api`; the MCP caller is often itself an LLM agent | §1.12 `D-PROMPT-INJECTION` | *(maintainer, 2026-10)* |
 | engine-mcp | x-probabilistic-result | disclaimed | as for `engine-api` | §1.12 `D-MODEL-ACCURACY` | *(documented, docs/mcp.md "Tools": "typed answers with probabilities")* |
 | bridge | numeric domain | claimed | queue messages ≤ 120 KB, batches ≤ 100 messages / 250 KB; retries 30 s doubling to 1 h; `reviewedBy` ≤ 100 characters | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(documented, bridge/README.md "Reliable delivery (queue)"; "Work orders from other apps")* |
 | bridge | failure atomicity | disclaimed | NGSI-LD has no conditional update; between a read and a write another writer can get through; the Decision entity is created before the result property so a retry does not decide twice | §1.12 `D-BRIDGE-RACE-WINDOWS` | *(documented, bridge/README.md "Reviews resolved in the broker": "NGSI-LD has no conditional update, so there is a short window")* |
 | bridge | recursive/cyclic topology | claimed | the input hash and attribute-level PATCH keep the bridge's own writes from starting a new decision | §1.11 `P-BRIDGE-LOOP-GUARD` | *(documented, bridge/README.md "How it avoids loops")* |
 | bridge | callback execution | N/A — the bridge runs no caller code; routes are operator configuration | — | — | *(documented, bridge/README.md "Configuration")* |
-| bridge | serialization/reconstruction | claimed | entities are plain JSON; attribute values are read by NGSI-LD kind (`value`, `object`, `languageMap`, `vocab`, `json`); dates are checked as RFC 3339 | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(assumption, Q20)* |
+| bridge | serialization/reconstruction | claimed | entities are plain JSON; attribute values are read by NGSI-LD kind (`value`, `object`, `languageMap`, `vocab`, `json`); dates are checked as RFC 3339 | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(maintainer, 2026-10)* |
 | bridge | reference lifecycle | claimed | a Task's id is derived from entity id, attribute and input hash, so a retry finds the Task it made; the bridge's own Tasks are recognised by id | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(documented, bridge/README.md "Task entities")* |
 | bridge | concurrency/reentrancy | disclaimed | two notifications for the same Decision at the same moment can both send the same feedback; with a queue, `max_concurrency: 1` is the operator's job | §1.12 `D-BRIDGE-RACE-WINDOWS` | *(documented, bridge/README.md "Two notifications for the same Decision at the same moment can both send the same corrections")* |
-| bridge | resource complexity | claimed | one Pointsman call and a bounded number of broker calls per entity; entities larger than a queue message are handled inline | §1.11 `P-BRIDGE-LOOP-GUARD` | *(assumption, Q20)* |
-| bridge | x-prompt-injection | disclaimed | the whole entity is the state; whoever writes an entity writes the prompt text | §1.12 `D-PROMPT-INJECTION` | *(assumption, Q7)* |
+| bridge | resource complexity | claimed | one Pointsman call and a bounded number of broker calls per entity; entities larger than a queue message are handled inline | §1.11 `P-BRIDGE-LOOP-GUARD` | *(maintainer, 2026-10)* |
+| bridge | x-prompt-injection | disclaimed | the whole entity is the state; whoever writes an entity writes the prompt text | §1.12 `D-PROMPT-INJECTION` | *(maintainer, 2026-10)* |
 | bridge | x-probabilistic-result | disclaimed | probabilities are written to the broker as sub-properties for people to read; the action is the value | §1.12 `D-MODEL-ACCURACY` | *(documented, bridge/README.md "The result on the entity")* |
 | action-triage | numeric domain | claimed | label names 1–50 characters; mapping keys ≤ 100 characters; 30 s timeout | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md "Inputs")* |
 | action-triage | failure atomicity | claimed | when Pointsman fails, the review label is added and the step fails; no issue is left unlabelled | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md "Pointsman cannot be reached or fails: the review label, and the step fails")* |
@@ -529,17 +535,17 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | action-triage | reference lifecycle | N/A — no state between runs | — | — | *(documented, actions/triage/README.md)* |
 | action-triage | concurrency/reentrancy | N/A — one run per event | — | — | *(documented, actions/triage/README.md)* |
 | action-triage | resource complexity | claimed | one Pointsman call, one GitHub API call | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md)* |
-| action-triage | x-prompt-injection | disclaimed | the issue author writes the prompt text; the labels an answer can produce come from the allow-list | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-TRIAGE-ALLOWLIST` | *(assumption, Q7)* |
+| action-triage | x-prompt-injection | disclaimed | the issue author writes the prompt text; the labels an answer can produce come from the allow-list | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-TRIAGE-ALLOWLIST` | *(maintainer, 2026-10)* |
 | action-triage | x-probabilistic-result | disclaimed | the job summary shows `p`; the policy threshold decides | §1.12 `D-MODEL-ACCURACY` | *(documented, actions/triage/README.md "The job summary shows the answers, their probabilities")* |
 | action-deploy-watch | numeric domain | claimed | `consecutive` ≥ 1, `interval-seconds` ≥ 0.05, `kill-after-seconds` ≥ 0; stack names bounded | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "Inputs")* |
 | action-deploy-watch | failure atomicity | claimed | an unreachable Pointsman or unreadable stack never cancels; the exit code is the command's, or 1 after a cancel | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
 | action-deploy-watch | recursive/cyclic topology | N/A — a polling loop bounded by the deploy command's lifetime | — | — | *(documented, actions/deploy-watch/README.md "How it decides")* |
 | action-deploy-watch | callback execution | N/A — `run` is executed with `bash -c` as written and is a trusted workflow-author input (§1.7); the Action does not sanitise it |  — | *(documented, actions/deploy-watch/action.yml `run`: "Comes from the workflow, never from event data")* |
-| action-deploy-watch | serialization/reconstruction | claimed | `aws` CLI JSON is parsed and reduced to a fixed set of fields, reasons truncated to 300 characters | §1.11 `P-WATCH-FAILSAFE` | *(assumption, Q22)* |
+| action-deploy-watch | serialization/reconstruction | claimed | `aws` CLI JSON is parsed and reduced to a fixed set of fields, reasons truncated to 300 characters | §1.11 `P-WATCH-FAILSAFE` | *(maintainer, 2026-10)* |
 | action-deploy-watch | reference lifecycle | claimed | the deploy command runs in its own process group; SIGTERM then SIGKILL after `kill-after-seconds` | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "Inputs": `kill-after-seconds`)* |
 | action-deploy-watch | concurrency/reentrancy | N/A — one watcher per job | — | — | *(documented, actions/deploy-watch/README.md)* |
 | action-deploy-watch | resource complexity | claimed | one Pointsman call per quiet interval at most | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "Rule first")* |
-| action-deploy-watch | x-prompt-injection | disclaimed | stack event text is the prompt; a steered answer can at most stop a deploy, after `consecutive` cancel answers | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-WATCH-FAILSAFE` | *(assumption, Q22)* |
+| action-deploy-watch | x-prompt-injection | disclaimed | stack event text is the prompt; a steered answer can at most stop a deploy, after `consecutive` cancel answers | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-WATCH-FAILSAFE` | *(maintainer, 2026-10)* |
 | action-deploy-watch | x-probabilistic-result | disclaimed | the profile's policy threshold decides `cancel` | §1.12 `D-MODEL-ACCURACY` | *(documented, actions/deploy-watch/README.md "Pointsman for unclear cases")* |
 | config-repo | numeric domain | claimed | `engine.json` `ref` must be a 40-character SHA; profile `version` is a positive integer that must increase | §1.11 `P-PROFILE-VERSION-IMMUTABLE` | *(documented, docs/deployment.md "Profile versions"; template deploy workflow "Read engine.json")* |
 | config-repo | failure atomicity | claimed | the deploy stops before any Cloudflare change when config, profiles or the dry run fail; a changed published version stops the publish and writes nothing | §1.11 `P-PROFILE-VERSION-IMMUTABLE` | *(documented, docs/deployment.md "What the workflows do")* |
@@ -566,7 +572,7 @@ docs/profile-format.md "A missing fact is never guessed")*.
 | the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]` | engine-api | constrained as above; `callback_url` is never returned; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API")* |
 | the review list (`GET /v1/reviews`) | engine-api | constrained; `callback_url` and `callback` are stripped | — | *(documented, docs/reviews.md "Review queue")* |
 | stats (`GET /v1/stats/{profile}`) | engine-api | counts only; no single decision, no state | — | *(documented, docs/decision-log.md "Counts only, no single decisions")* |
-| error bodies (`{error: {code, message}}`) | engine-api | assembled from fixed messages; a validation message can name a field, a profile id and version, or an option list from the profile, never the state or a token | — | *(assumption, Q5)* |
+| error bodies (`{error: {code, message}}`) | engine-api | assembled from fixed messages; a validation message can name a field, a profile id and version, or an option list from the profile, never the state or a token | — | *(maintainer, 2026-10)* |
 | the Workers log | engine-api, engine-facts, engine-mcp | reasons only: model name and error message, fact name and reason, decision id for callbacks; no state, token, key or model response | — | *(documented, docs/models.md "Errors and logs never include the request, the response body or the key")* |
 | the model request (state and questions) sent to the backend | engine-api | **the state is forwarded as received**, with the input mapping applied when the profile has one; no sanitisation | that the backend keeps nothing: the AI Gateway logs it when `collect_logs` is on; a model server's retention is its own (`D-STATE-TO-BACKEND`) | *(documented, docs/models.md "Logs hold the state")* |
 | fact queries to GSI and Valhalla | engine-facts | the geometry from the client's state, as coordinates; the Valhalla request carries exclusion polygons derived from it and the operator's API key | that the location is not shared with those hosts | *(documented, docs/profile-format.md "Fact providers", "Detours")* |
@@ -593,11 +599,11 @@ header)*.
 
 | Dependency | Relied on for | Violation triaged | Provenance |
 | --- | --- | --- | --- |
-| `hono` | routing: every `/v1/*` request passes the token middleware before a handler runs; path parameters are what the route says | upstream (`dependency-contract`) when Hono breaks its routing contract; here when the engine registers a route outside the middleware | *(assumption, Q5)* |
-| `zod` | MCP tool input validation (types of `profile`, `state`, `decision_id`, `correct`) | upstream | *(assumption, Q19)* |
-| `@modelcontextprotocol/server` | MCP protocol handling in stateless Streamable HTTP mode; it owns request framing, never authentication (the engine authenticates before calling it) | upstream | *(assumption, Q19)* |
+| `hono` | routing: every `/v1/*` request passes the token middleware before a handler runs; path parameters are what the route says | upstream (`dependency-contract`) when Hono breaks its routing contract; here when the engine registers a route outside the middleware | *(maintainer, 2026-10)* |
+| `zod` | MCP tool input validation (types of `profile`, `state`, `decision_id`, `correct`) | upstream | *(maintainer, 2026-10)* |
+| `@modelcontextprotocol/server` | MCP protocol handling in stateless Streamable HTTP mode; it owns request framing, never authentication (the engine authenticates before calling it) | upstream | *(maintainer, 2026-10)* |
 | `@cloudflare/workers-oauth-provider` | the OAuth 2.1 authorization server: PKCE, consent handles, dynamic client registration, client-ID metadata documents, token issuance and validation, encrypted grant props, purge of expired data | upstream | *(documented, docs/mcp.md "Pointsman is its own OAuth 2.1 authorization server (workers-oauth-provider)")* |
-| Cloudflare Workers platform (isolates, KV, D1, Workers cache, Queues, cron, `global_fetch_strictly_public`) | isolation between deployments, KV and D1 consistency as documented, the public-only fetch restriction | out of scope (§1.3) | *(assumption, Q5)* |
+| Cloudflare Workers platform (isolates, KV, D1, Workers cache, Queues, cron, `global_fetch_strictly_public`) | isolation between deployments, KV and D1 consistency as documented, the public-only fetch restriction | out of scope (§1.3) | *(maintainer, 2026-10)* |
 | Workers AI models `clef` and `clef-flash`, optionally behind the AI Gateway | answering the questions in the documented format; keeping the state confidential beyond the gateway's own logs | the format: here, as `model_error`; confidentiality: `D-STATE-TO-BACKEND` | *(documented, docs/profile-format.md "Model API format")* |
 | an HTTP model server (optional) | the same format at `POST /v1/systemone`; reachable over https | the format: here; the server's conduct: `D-STATE-TO-BACKEND` | *(documented, docs/models.md "Model server")* |
 | GSI tile servers (`disaportaldata.gsi.go.jp`, `cyberjapandata.gsi.go.jp`) | flood hazard zones and evacuation sites as published, with their legend and `last-modified` dates | a changed legend fails closed here; wrong data is `D-FACT-DATA-AS-PUBLISHED` | *(documented, docs/profile-format.md "Layers of `gsi`")* |
@@ -618,24 +624,24 @@ Vendored copies: none; nothing third-party is checked into the tree
 The deployment context is one Worker per integrator on Cloudflare, with the
 integrator's own tokens, profiles and secrets *(documented,
 docs/deployment.md)*. A hosted multi-tenant Pointsman is not in this list
-(§1.3, Q2).
+(§1.3).
 
 | Actor | In scope? | Capabilities held | Capabilities excluded | Goals | Provenance |
 | --- | --- | --- | --- | --- | --- |
-| **State author** (resident, issue author, entity writer, anyone whose text a client forwards) | yes | write the text and data in `state`, including instructions aimed at the model; choose its size and shape; choose the geometry a fact reads | no token; cannot choose the profile, the rules or the callback URL; cannot see the decision unless the client shows it | make the policy pick a wrong action (publish a false report, hide an urgent one, label an issue, cancel a deploy); exhaust the model budget; smuggle text into downstream systems | *(assumption, Q1)* |
-| **Token holder beyond its scope** (a compromised or over-curious client) | yes | everything a token allows for its profiles: decide, read, feedback, resolve, list reviews, set `callback_url`; many requests | no access to other profiles' decisions or existence; cannot read `callback_url` or tokens; cannot write profiles or tokens | read other profiles' decisions; resolve reviews it should not; make the engine POST to a host of its choice; run up the bill | *(documented, docs/decision-log.md "A token sees and corrects only decisions of profiles in its scope"; assumption, Q1)* |
+| **State author** (resident, issue author, entity writer, anyone whose text a client forwards) | yes | write the text and data in `state`, including instructions aimed at the model; choose its size and shape; choose the geometry a fact reads | no token; cannot choose the profile, the rules or the callback URL; cannot see the decision unless the client shows it | make the policy pick a wrong action (publish a false report, hide an urgent one, label an issue, cancel a deploy); exhaust the model budget; smuggle text into downstream systems | *(maintainer, 2026-10)* |
+| **Token holder beyond its scope** (a compromised or over-curious client) | yes | everything a token allows for its profiles: decide, read, feedback, resolve, list reviews, set `callback_url`; many requests | no access to other profiles' decisions or existence; cannot read `callback_url` or tokens; cannot write profiles or tokens | read other profiles' decisions; resolve reviews it should not; make the engine POST to a host of its choice; run up the bill | *(documented, docs/decision-log.md "A token sees and corrects only decisions of profiles in its scope"; maintainer, 2026-10)* |
 | **Unauthenticated network client** | yes | send any request to any route | no valid token or grant | bypass authentication; abuse the OAuth routes; find profiles | *(documented, README "Every request needs `Authorization: Bearer <token>`")* |
 | **MCP client / agent** (self-registered OAuth client, or an agent with a token) | yes | register a client with any name and metadata URL; drive a person through consent; call tools in scope | no grant without the person's consent and GitHub membership; API tokens' scopes apply | obtain a grant under a misleading name; make an agent act on a steered decision | *(documented, docs/mcp.md "MCP clients register themselves")* |
 | **Logged-in person** (active member of an allowed GitHub organization) | yes, as a limited actor | decide and read on every MCP-visible profile; submit feedback in their own name | profiles without `mcp.visible`; REST routes; tokens | pollute feedback; read decisions of visible profiles they were not meant to see | *(documented, docs/mcp.md "People may use every MCP-visible profile")* |
-| **Callback receiver** (whoever is at `callback_url`) | yes | receive signed payloads; answer any status; redirect | cannot forge a signature without `CALLBACK_SECRET`; cannot make the engine follow a redirect | learn the final answer; keep retries coming | *(documented, docs/reviews.md "Callbacks"; assumption, Q9)* |
-| **Model backend** (Workers AI, AI Gateway, model server) | yes, as a collaborator | see every state and question; answer anything | cannot name an action; cannot change the stored model name (HTTP adapter) | with a malformed answer: nothing; with a well-formed wrong answer: a wrong action (`D-MODEL-ACCURACY`) | *(assumption, Q12)* |
-| **Public data sources** (GSI, Valhalla/OSM) | yes, as collaborators | serve tiles and routes | cannot inject anything but fact values of the documented types | wrong facts | *(assumption, Q11)* |
-| **Broker entity writer** (bridge) | yes | create and change entities, Decision and Task entities within the broker's access control | cannot reach the bridge without the shared secret except through the broker | trigger decisions, resolve reviews under a chosen `reviewedBy`, create loops | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control"; assumption, Q20)* |
-| **Context broker** (bridge) | no — trusted collaborator | deliver notifications, store entities, redirect | — | — | *(assumption, Q20)* |
+| **Callback receiver** (whoever is at `callback_url`) | yes | receive signed payloads; answer any status; redirect | cannot forge a signature without `CALLBACK_SECRET`; cannot make the engine follow a redirect | learn the final answer; keep retries coming | *(documented, docs/reviews.md "Callbacks"; maintainer, 2026-10)* |
+| **Model backend** (Workers AI, AI Gateway, model server) | yes, as a collaborator | see every state and question; answer anything | cannot name an action; cannot change the stored model name (HTTP adapter) | with a malformed answer: nothing; with a well-formed wrong answer: a wrong action (`D-MODEL-ACCURACY`) | *(maintainer, 2026-10)* |
+| **Public data sources** (GSI, Valhalla/OSM) | yes, as collaborators | serve tiles and routes | cannot inject anything but fact values of the documented types | wrong facts | *(maintainer, 2026-10)* |
+| **Broker entity writer** (bridge) | yes | create and change entities, Decision and Task entities within the broker's access control | cannot reach the bridge without the shared secret except through the broker | trigger decisions, resolve reviews under a chosen `reviewedBy`, create loops | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control"; maintainer, 2026-10)* |
+| **Context broker** (bridge) | no — trusted collaborator | deliver notifications, store entities, redirect | — | — | *(maintainer, 2026-10)* |
 | **Operator / integrator, Cloudflare account holder, config-repo `main` writer** | no — has already won | deploy, read and change every store | — | — | *(documented, docs/deployment.md "Deployment" table)* |
-| **Reviewer with a valid token or grant** | no — trusted for the profiles they reach | resolve, correct | — | — | *(assumption, Q14)* |
+| **Reviewer with a valid token or grant** | no — trusted for the profiles they reach | resolve, correct | — | — | *(maintainer, 2026-10)* |
 | **Workflow author** (Actions) | no — trusted | set `run`, `stacks`, `labels`, secrets | — | — | *(documented, actions/deploy-watch/action.yml `run`)* |
-| **Cloudflare platform, co-tenants, network observers, GitHub as identity provider** | no | — | — | — | *(assumption, Q5)* |
+| **Cloudflare platform, co-tenants, network observers, GitHub as identity provider** | no | — | — | — | *(maintainer, 2026-10)* |
 
 ## 1.11 Security properties the project provides
 
@@ -663,8 +669,8 @@ what voids it.
   exist")*. Voided by: a token created with `--profiles '*'`
   (`src/auth.ts:93`, `record.profiles.includes('*')`), and a person logged in
   through OAuth, whose scope is `['*']` over MCP-visible profiles
-  (`src/mcp.ts:24`). Both are documented behaviour; the question is whether
-  both are intended as the only two off-switches (Q18).
+  (`src/mcp.ts:24`). Both are documented behaviour, and the maintainer confirmed them as the
+  only two off-switches *(maintainer, 2026-10)*.
 - **`P-TOKEN-HASHED`** — only the SHA-256 hash of a token is stored; the
   token is 32 random bytes and is printed once; a leaked `TOKENS` namespace
   does not yield usable tokens. Symptom: `info-leak`. Tier:
@@ -723,8 +729,8 @@ what voids it.
   geometry: at most 1000 positions, 200 samples, 16 flood tiles, 9 shelter
   tiles, a 5 km detour section, 3 s per fact and 10 s per tile load;
   exceeding a bound is `error` or `timeout`, never a hang. Symptom: `hang`,
-  `unbounded-allocation`. Tier: correctness-only (unratified; see Q10).
-  *(assumption, Q10)*. Voided by: nothing found. Search:
+  `unbounded-allocation`. Tier: correctness-only.
+  *(maintainer, 2026-10)*. Voided by: nothing found. Search:
   `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" src/facts.ts src/facts-gsi.ts src/facts-routing.ts`
   — the limits at `src/facts.ts:41`, `src/facts-gsi.ts:103`, `src/facts-gsi.ts:140`,
   `src/facts-routing.ts:28`.
@@ -791,7 +797,7 @@ what voids it.
   template/config-repo/wrangler.jsonc comment: "Outgoing fetches (review
   callbacks, OAuth client metadata) reach only public addresses")*. Voided
   by: removing `global_fetch_strictly_public` from the deployment's
-  `compatibility_flags` (§1.6, Q4).
+  `compatibility_flags` (§1.6).
 - **`P-MCP-VISIBILITY`** — through MCP, only profiles with `mcp.visible: true`
   that are in the caller's scope are listed or callable; every other profile,
   and every decision of such a profile, looks unknown; `get_decision` never
@@ -859,7 +865,7 @@ carries its status; `VALID` takes none.
 | --- | --- | --- | --- | --- | --- |
 | A crafted `state` makes the engine return an action that no rule of the profile names | `POST /v1/decide` body `state` | to be the state author | `x-unauthorized-action` | `VALID` | `P-ACTION-FROM-POLICY`, `P-ANSWER-SHAPE` |
 | A revoked token still works for about 40 seconds at another location | `Authorization` header | a token that was just revoked | `x-authentication-bypass` (stale) | `KNOWN-NON-FINDING` **(closed)** | `KNF-REVOKED-TOKEN-60S` |
-| A 50 MB `state` body makes the Worker exceed its limits | `POST /v1/decide` body size | a token | `unbounded-allocation` | `BY-DESIGN: property-disclaimed` **(escalated)** | `D-STATE-SIZE`, documented absence on silence; the silence floor sends it to the maintainer (Q8) |
+| A 50 MB `state` body makes the Worker exceed its limits | `POST /v1/decide` body size | a token | `unbounded-allocation` | `BY-DESIGN: property-disclaimed` **(closed)** | `D-STATE-SIZE`, a maintainer ruling (2026-10) to disclaim the bound rather than promise one |
 | The `run` input of deploy-watch is passed to `bash -c` unsanitised | `actions/deploy-watch` `run` | to write the workflow | `x-command-injection` | `OUT-OF-MODEL: trusted-input` **(closed)** | §1.7 row for `run`, *(documented, action.yml)* |
 
 ## 1.12 Security properties the project does *not* provide
@@ -870,21 +876,21 @@ statement. A disclaimer on absence never closes a security-critical report.
 
 | ID | The project does not provide | Conditions / boundary | Tier | False friend? | Provenance |
 | --- | --- | --- | --- | --- | --- |
-| `D-PROMPT-INJECTION` | resistance to prompt injection: a state author can steer the model's answers with text aimed at the model | the answers only, on `engine-api`, `engine-mcp`, `bridge`, `action-triage`, `action-deploy-watch`; the action stays what the policy produces for those answers (`P-ACTION-FROM-POLICY`), the answers stay inside the profile's types and options (`P-ANSWER-SHAPE`), and `review` sends the case to a person. Basis: a design position, not yet ratified | security-critical | no | *(assumption, Q7)* |
+| `D-PROMPT-INJECTION` | resistance to prompt injection: a state author can steer the model's answers with text aimed at the model | the answers only, on `engine-api`, `engine-mcp`, `bridge`, `action-triage`, `action-deploy-watch`; the action stays what the policy produces for those answers (`P-ACTION-FROM-POLICY`), the answers stay inside the profile's types and options (`P-ANSWER-SHAPE`), and `review` sends the case to a person. Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
 | `D-MODEL-ACCURACY` | that a well-formed answer is right, that `p` is a calibrated accuracy, or that answers stay the same across model updates | every family that acts on an answer; the project tells integrators to keep a margin from thresholds and to re-check examples after a model update. Basis: stated | correctness-only | yes: `p` looks like accuracy and is the model's probability | *(documented, docs/fiware-demo.md "Lesson: keep a margin from the thresholds, and check the examples again after a model update"; docs/models.md "The decider's probabilities run lower than Clef-flash's")* |
 | `D-STATE-CONTENT` | validation of the content of `state` beyond its JSON type and the profile's input mapping; no sanitisation, normalisation or schema check | `engine-api`, `engine-mcp`; the profile's `input` paths select fields, they do not validate them. Basis: stated | correctness-only | no | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
-| `D-STATE-SIZE` | a limit on the size or nesting depth of `state`, or a bound on the work a large state causes in the model call | `engine-api`, `engine-mcp`, `bridge` (the entity is the state); the platform's request limit and the model backend's own limits apply. Basis: absence of a statement, so it never closes a security-critical report | security-critical | no | *(documented, openapi.yaml `DecideRequest.state` has no size constraint; inferred, Q8)* |
-| `D-CALLBACK-ANY-PUBLIC-HOST` | an allow-list of callback hosts or authentication of the receiver: a token holder can make the engine POST a signed decision payload to any public https URL | `engine-callbacks`; the payload is the final answer, never a token or secret; private addresses are refused (`P-OUTBOUND-PUBLIC-ONLY`); redirects are not followed. Basis: a design position, not yet ratified | security-critical | yes: https ≠ "the receiver is who the integrator meant" | *(assumption, Q9)* |
-| `D-RATE-LIMIT` | a per-token or per-client rate limit, quota or budget in the engine | every family; the AI Gateway's 600 calls/min is per deployment; edge rate limiting is the operator's (`R-RATE-LIMIT`). Basis: absence of a statement, so it never closes a security-critical report | security-critical | no | *(documented, docs/models.md "rate limit 600 calls per minute" is the only limit named; inferred, Q17)* |
-| `D-TOKEN-EXPIRY` | token expiry or rotation; a token lives until revoked | `engine-api`, `engine-mcp`. Basis: absence of a statement | correctness-only | no | *(documented, README "API tokens" names create, list and revoke only; inferred, Q17)* |
+| `D-STATE-SIZE` | a limit on the size or nesting depth of `state`, or a bound on the work a large state causes in the model call | `engine-api`, `engine-mcp`, `bridge` (the entity is the state); the platform's request limit and the model backend's own limits apply. Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, openapi.yaml `DecideRequest.state` has no size constraint; maintainer, 2026-10)* |
+| `D-CALLBACK-ANY-PUBLIC-HOST` | an allow-list of callback hosts or authentication of the receiver: a token holder can make the engine POST a signed decision payload to any public https URL | `engine-callbacks`; the payload is the final answer, never a token or secret; private addresses are refused (`P-OUTBOUND-PUBLIC-ONLY`); redirects are not followed. Basis: a maintainer ruling (2026-10) | security-critical | yes: https ≠ "the receiver is who the integrator meant" | *(maintainer, 2026-10)* |
+| `D-RATE-LIMIT` | a per-token or per-client rate limit, quota or budget in the engine | every family; the AI Gateway's 600 calls/min is per deployment; edge rate limiting is the operator's (`R-RATE-LIMIT`). Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, docs/models.md "rate limit 600 calls per minute" is the only limit named; maintainer, 2026-10)* |
+| `D-TOKEN-EXPIRY` | token expiry or rotation; a token lives until revoked | `engine-api`, `engine-mcp`. Basis: a maintainer ruling (2026-10) | correctness-only | no | *(documented, README "API tokens" names create, list and revoke only; maintainer, 2026-10)* |
 | `D-REVOCATION-IMMEDIATE` | immediate revocation: a revoked token can keep working for up to about 60 seconds in other locations | `engine-api`, `engine-mcp` API tokens. Basis: stated | correctness-only | no | *(documented, README "After a revoke, KV can take up to about 60 seconds to stop the token everywhere")* |
 | `D-MEMBERSHIP-AT-LOGIN-ONLY` | continuous checking of GitHub organization membership: a person removed from the organization keeps MCP access until their grant ends, at most 7 days | `engine-mcp`. Basis: stated | security-critical | no | *(documented, docs/mcp.md "someone removed from the organization keeps access until then")* |
 | `D-OPEN-CLIENT-REGISTRATION` | vetting of MCP clients: any client can register itself or name a client-ID metadata document; the consent page shows its name as unverified | `engine-mcp`; the person's consent and GitHub membership are the controls. Basis: stated | correctness-only | yes: a client name on the consent page ≠ a verified publisher | *(documented, docs/mcp.md "MCP clients register themselves"; `src/oauth.ts` `consentPage`: "its name is not verified")* |
 | `D-PERSON-SCOPE` | per-person profile scopes: every logged-in person may use every MCP-visible profile | `engine-mcp`. Basis: stated | correctness-only | no | *(documented, docs/mcp.md "People may use every MCP-visible profile")* |
 | `D-REVIEWER-IDENTITY` | verification of who a person is: `by` in feedback and `resolved_by` in a resolution are strings the client asserts; the engine authenticates the client's token, not the person; `reviewedBy` on a broker-resolved review is taken as written | `engine-api`, `bridge`; people on MCP are the exception: their GitHub login is recorded. Basis: stated | security-critical | yes: a name in the log ≠ an authenticated person | *(documented, migrations/0001_decisions.sql comment "who corrected it, as given by the client"; bridge/README.md "the bridge takes `reviewedBy` as written")* |
 | `D-LOG-TRUTH` | that the decision log proves anything beyond what the engine saw and did: it records that client C sent a state with hash H to profile P version V, that model M answered A, that rule R gave action X at time T; it does not record that the state was true, who the state author was, or that the client acted on the decision | `engine-api`, `engine-mcp`. Basis: stated (the stored columns) | correctness-only | yes: an audit log ≠ proof of the facts it was given | *(documented, docs/decision-log.md "What is stored")* |
-| `D-LOG-TAMPER-EVIDENCE` | tamper evidence for the decision log: rows are plain D1 rows in the operator's account, without signing, hash chaining or external anchoring | `engine-api`; the only adversary who can alter it is out of scope (§1.3). Basis: absence of a statement | correctness-only | no | *(documented, docs/deployment.md "Deployment" table: "Decision log and feedback | D1 database | your Cloudflare account"; migrations/ hold no integrity columns)* |
-| `D-STATE-HASH-NOT-PSEUDONYM` | pseudonymisation through `state_hash`: it is a plain SHA-256 of the canonical JSON, so equal inputs are linkable and a party who can guess the state can confirm it from the hash | `engine-api`; the hash exists to show that the same input was decided twice. Basis: a design reading, not yet ratified | correctness-only | yes: a hash ≠ anonymisation | *(assumption, Q16)* |
+| `D-LOG-TAMPER-EVIDENCE` | tamper evidence for the decision log: rows are plain D1 rows in the operator's account, without signing, hash chaining or external anchoring | `engine-api`; the only adversary who can alter it is out of scope (§1.3). Basis: a maintainer ruling (2026-10) | correctness-only | no | *(documented, docs/deployment.md "Deployment" table: "Decision log and feedback | D1 database | your Cloudflare account"; migrations/ hold no integrity columns)* |
+| `D-STATE-HASH-NOT-PSEUDONYM` | pseudonymisation through `state_hash`: it is a plain SHA-256 of the canonical JSON, so equal inputs are linkable and a party who can guess the state can confirm it from the hash | `engine-api`; the hash exists to show that the same input was decided twice. Basis: a maintainer ruling (2026-10) | correctness-only | yes: a hash ≠ anonymisation | *(maintainer, 2026-10)* |
 | `D-STATE-TO-BACKEND` | confidentiality of the state beyond the engine: the state goes to the model backend as sent; the AI Gateway keeps it in its logs when `collect_logs` is on; a model server's retention is its own | `engine-api`, `engine-mcp`, `bridge`, both Actions. Basis: stated | security-critical | no | *(documented, docs/models.md "Logs hold the state ... Set `collect_logs: false` when inputs must not be kept")* |
 | `D-FACT-DATA-AS-PUBLISHED` | correctness or freshness of public data: a fact is what GSI publishes and what Valhalla routes over OpenStreetMap, dated by the tiles' `last-modified`; the engine checks shape and legend, not truth | `engine-facts`. Basis: stated | correctness-only | no | *(documented, docs/profile-format.md "Layers of `gsi`", "Detours")* |
 | `D-EXACTLY-ONCE` | exactly-once callback delivery: a callback can arrive more than once when a 2xx answer is lost | `engine-callbacks`. Basis: stated | correctness-only | no | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
@@ -923,7 +929,7 @@ the receivers must do for §1.5–§1.11 to hold.
 - **`R-PRIVATE-CONFIG`** — keep the config repository private, protect `main`,
   require the Validate check, and keep `global_fetch_strictly_public` in
   `wrangler.jsonc` *(documented, template/config-repo/README.md "Protect
-  `main`"; assumption, Q4)*.
+  `main`"; maintainer, 2026-10)*.
 - **`R-SCOPED-TOKENS`** — give every client its own token limited to the
   profiles it needs; use `--profiles '*'` only for administration; store the
   token as a secret and revoke it on a leak *(documented, README "API
@@ -931,7 +937,7 @@ the receivers must do for §1.5–§1.11 to hold.
   profiles")*.
 - **`R-RATE-LIMIT`** — rate-limit and budget at the edge (Cloudflare WAF or
   rate-limiting rules) and in the AI Gateway; the engine does not
-  (`D-RATE-LIMIT`) *(inferred, Q17)*.
+  (`D-RATE-LIMIT`) *(maintainer, 2026-10)*.
 - **`R-REVIEW-PATH`** — treat `review` as a required human step: route
   `review` decisions to people, choose rule thresholds with a margin, re-check
   the profile's examples after a model update, and never make a consequential
@@ -1017,9 +1023,9 @@ One line each in this draft; expand before publication.
 
 Every entry is discharged by a claim in this document, matched on the
 behaviour of the code, scoped to named components, and carries its own
-provenance. Entries whose discharging claim is still an **assumption** are
-not listed here; Q7 and Q9 name the candidates that would join this table
-once ratified.
+provenance. `KNF-STEERED-ANSWER` and `KNF-CALLBACK-TO-PUBLIC-HOST` joined the
+table when the maintainer ratified the design positions behind them
+(2026-10).
 
 | ID | Components | Symptom / attack class | What gets reported | Conditions for an exact match | Discharged by | Provenance |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1029,6 +1035,8 @@ once ratified.
 | `KNF-CALLBACK-DUPLICATE` | engine-callbacks | duplicate delivery | "the same callback arrived twice" | the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical | `D-EXACTLY-ONCE` | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
 | `KNF-STATE-IN-GATEWAY-LOGS` | engine-api, engine-mcp | information disclosure | "the full state is visible in the AI Gateway logs although the decision log stores only a hash" | the deployment sets `AI_GATEWAY_ID` and the gateway has `collect_logs: true` | `D-STATE-TO-BACKEND` | *(documented, docs/models.md "Logs hold the state")* |
 | `KNF-TRIAGE-TAINT-TO-SUMMARY` | action-triage | taint flow to a sink | "untrusted issue text flows from the event payload to `GITHUB_STEP_SUMMARY` or `GITHUB_OUTPUT`" | the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them | `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/triage.mjs header: "it is never put into a shell command or into the job summary")* |
+| `KNF-STEERED-ANSWER` | engine-api, engine-mcp, bridge, action-triage, action-deploy-watch | prompt injection, steered answer | "text in the state made the model answer X" and the policy acted on that well-formed answer | every answer is inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set (either would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`) | `D-PROMPT-INJECTION` | *(maintainer, 2026-10)* |
+| `KNF-CALLBACK-TO-PUBLIC-HOST` | engine-callbacks | server-side request forgery to a public host | "a token holder can make the engine POST to any public https URL" | the URL is public and https; the payload is the signed final answer; no private or loopback address was reached and no redirect was followed (either would be `VALID` against `P-OUTBOUND-PUBLIC-ONLY`) | `D-CALLBACK-ANY-PUBLIC-HOST` | *(maintainer, 2026-10)* |
 
 ## 1.16 Conditions that would change this model
 
@@ -1106,197 +1114,7 @@ Report both, as `DISPOSITION (status)`. An escalated finding is not a
 
 ## 1.18 Open questions for the maintainers
 
-Every **inferred** and **assumption** tag above maps to one of these. Each
-states the proposed answer the draft already applies. Answer in waves; "Q3
-yes, Q4 no, because …" is enough.
-
-### Wave 1 — scope, intended use, configuration, side effects
-
-- **Q1** — Roles and the untrusted surface. We believe the untrusted surface is
-  the `state` a client forwards (written by a state author who holds no
-  token), plus everything a token holder can send within its scope; the
-  operator, the Cloudflare account holder and reviewers with a valid token or
-  grant are trusted; co-tenants, side channels and the model's training data
-  are out of this layer.
-  - Proposed answer: yes.
-  - Lands in: §1.2, §1.4, §1.7, §1.10; licenses
-    `OUT-OF-MODEL: adversary-not-in-scope` for operator-level reports.
-- **Q2** — Deployment shape. We believe the only supported deployment is one
-  Worker per integrator, deployed from a private config repository; a shared
-  hosted Pointsman serving several integrators is unsupported until it is
-  designed.
-  - Proposed answer: yes.
-  - Lands in: §1.2, §1.3, §1.10.
-- **Q3** — Component carve and the bridge. We believe the bridge, the two
-  Actions and the config-repo template belong in this one model as families;
-  `examples/`, `site/`, `brand/`, `docs/spikes/`, `test/`, the build and check
-  scripts, and the demo repository are out of scope; the bridge does not need
-  a sibling model yet.
-  - Proposed answer: yes; revisit the sibling question when a city runs the
-    bridge in its own account.
-  - Lands in: §1.2, §1.3; licenses `OUT-OF-MODEL: unsupported-component`.
-- **Q4** — Configuration support. We believe `MODEL_MODE=mock`,
-  `PROFILE_SOURCE=bundled`, `FACTS_MODE=mock` and a plain-http model server
-  are dev-only; `FACTS_MODE=off`, no `AI_GATEWAY_ID`, no `CALLBACK_SECRET` and
-  no GitHub login are supported production postures; a deployment that drops
-  `global_fetch_strictly_public` is unsupported.
-  - Proposed answer: yes.
-  - Lands in: §1.6, §1.11 `P-OUTBOUND-PUBLIC-ONLY`, §1.13; licenses
-    `OUT-OF-MODEL: non-default-build`.
-- **Q5** — Host side effects. We believe the engine fetches only the hosts
-  listed in §1.5 (model backend, GSI, Valhalla, `callback_url`, GitHub, and
-  the OAuth client-ID metadata URL), spawns nothing, reads no environment
-  beyond bindings, and writes only D1, `OAUTH_KV` and the tile cache; the hole
-  is what `@modelcontextprotocol/server` and `@cloudflare/workers-oauth-provider`
-  may fetch on their own. We also believe the module-level caches and the
-  callback claim behave as §1.5 says, and that Hono routes every `/v1/*`
-  request through the token middleware.
-  - Proposed answer: yes, with the metadata-document fetch as the only
-    library-originated outbound call.
-  - Lands in: §1.5, §1.8 (error bodies), §1.9, §1.11 `P-CALLBACK-SIGNED`
-    (claim).
-- **Q6** — Redirects in the bridge. We believe the bridge follows redirects
-  from the broker and from Pointsman (default `fetch` mode), unlike the
-  engine's outbound calls; since both URLs are operator-set this is a
-  trusted-collaborator edge and not a defect.
-  - Proposed answer: yes, record it; make it a `VALID-HARDENING` candidate
-    rather than a model claim.
-  - Lands in: §1.5.
-
-### Wave 2 — the state, the model and the facts
-
-- **Q7** — Prompt injection. We believe steering the model's answers through
-  the state is accepted by design: the model's answer is advisory, the typed
-  answer set (`P-ANSWER-SHAPE`), the policy (`P-ACTION-FROM-POLICY`) and the
-  `review` path contain it, and a report that only shows "I made the model
-  answer X" is `BY-DESIGN: property-disclaimed`; a state that makes the
-  engine return an answer outside the profile's set, or an action the policy
-  does not produce for the answers, is `VALID`.
-  - Proposed answer: yes. Once ratified, add `KNF-STEERED-ANSWER` to §1.15.
-  - Lands in: §1.12 `D-PROMPT-INJECTION`, §1.7 `x-prompt-injection` rows,
-    §1.15.
-- **Q8** — State size. We believe the engine sets no size or depth limit on
-  `state`, and that the project chooses to disclaim this (the platform's body
-  limit, the model backend's limits and edge rate limiting bound it) rather
-  than promise a bound.
-  - Proposed answer: disclaim (`D-STATE-SIZE`), with `R-RATE-LIMIT` as the
-    integrator's obligation; alternatively name a limit and it becomes a
-    §1.11 resource property.
-  - Lands in: §1.7 (engine-api resource row), §1.12.
-- **Q9** — `callback_url`. We believe any public https URL is accepted by
-  design, that redirects are not followed and the receiver's body is ignored,
-  that the payload holds no secret, and that an allow-list is not planned;
-  a report that the engine POSTs a signed decision to a public URL the token
-  holder chose is `BY-DESIGN`.
-  - Proposed answer: yes. Once ratified, add `KNF-CALLBACK-TO-PUBLIC-HOST`
-    to §1.15.
-  - Lands in: §1.7, §1.12 `D-CALLBACK-ANY-PUBLIC-HOST`, §1.15.
-- **Q10** — Fact lookup bounds. We believe the bounds in §1.7 (1000 positions,
-  200 samples, 16 and 9 tiles, 5 km, 3 s per fact, 10 s per tile load) are the
-  intended guarantee, that exceeding them is `error` or `timeout`, and that
-  this is a correctness-only property.
-  - Proposed answer: yes.
-  - Lands in: §1.11 `P-FACT-LOOKUP-BOUNDED`, §1.7 engine-facts rows.
-- **Q11** — Fact data trust. We believe GSI tiles and the Valhalla server are
-  trusted data sources, that an unknown legend colour fails closed, that the
-  shelter list and route lengths are taken as published, and that the
-  engine's own PNG and GeoJSON readers are the only parsers of that data.
-  - Proposed answer: yes.
-  - Lands in: §1.7, §1.9, §1.10, §1.12 `D-FACT-DATA-AS-PUBLISHED`.
-- **Q12** — Model backend trust. We believe the model backend is trusted to
-  receive the state and its answers are untrusted data checked for shape;
-  the HTTP adapter stores the configured model name and ignores the server's;
-  Workers AI's reported model name is trusted; a backend that answers a
-  well-formed wrong answer is `D-MODEL-ACCURACY`, not a vulnerability.
-  - Proposed answer: yes.
-  - Lands in: §1.7, §1.9, §1.10.
-
-### Wave 3 — tokens, people and the log
-
-- **Q13** — Test tokens at the boundary. We believe a `test: true` decision
-  that a client acts on is the client's fault (`OUT-OF-MODEL: trusted-input`
-  against `R-IGNORE-TEST-DECISIONS`), and that a test token reading or
-  resolving a logged decision, reaching MCP, or receiving a callback would be
-  `VALID` against `P-TEST-TOKEN-ISOLATED`.
-  - Proposed answer: yes.
-  - Lands in: §1.11, §1.13, §1.17.
-- **Q14** — Reviewer identity. We believe `by` and `resolved_by` are
-  deliberately client-asserted, that the engine authenticates clients and
-  only MCP people as persons, and that a client that lets an unauthenticated
-  person resolve under any name is misusing the API, not finding a bug.
-  - Proposed answer: yes.
-  - Lands in: §1.10, §1.12 `D-REVIEWER-IDENTITY`, §1.13.
-- **Q15** — What the decision log proves. We believe the log proves what the
-  engine received (by hash), which profile version and model answered, which
-  rule fired and when, and for whom (client name); it does not prove the
-  state was true, who wrote it, that the client acted, or that nobody with
-  account access changed it; tamper evidence is disclaimed at
-  correctness-only because the only actor who could tamper is out of scope.
-  - Proposed answer: yes.
-  - Lands in: §1.8, §1.12 `D-LOG-TRUTH`, `D-LOG-TAMPER-EVIDENCE`.
-- **Q16** — `state_hash`. We believe `state_hash` is meant to show repeats
-  and is not a pseudonymisation: a plain SHA-256 of canonical JSON lets
-  anyone who can guess the state confirm it.
-  - Proposed answer: yes, document it as a false friend.
-  - Lands in: §1.12 `D-STATE-HASH-NOT-PSEUDONYM`.
-- **Q17** — Token lifetime and rate limits. We believe tokens have no expiry
-  and the engine has no per-token rate limit or quota, that both are
-  disclaimed for now with edge and gateway limits as the operator's job, and
-  that expiry is a `VALID-HARDENING` candidate rather than a model gap.
-  - Proposed answer: disclaim both; keep expiry on the hardening list.
-  - Lands in: §1.7 (engine-mcp resource row), §1.12 `D-RATE-LIMIT`,
-    `D-TOKEN-EXPIRY`, §1.13 `R-RATE-LIMIT`.
-- **Q18** — Scope off-switches. We believe the only two ways to act beyond a
-  single profile scope are a `--profiles '*'` token and an OAuth person (every
-  MCP-visible profile), and that `mcp.visible` is the only per-profile
-  control for people.
-  - Proposed answer: yes.
-  - Lands in: §1.11 `P-TOKEN-SCOPE`, `P-MCP-VISIBILITY`, §1.12
-    `D-PERSON-SCOPE`.
-
-### Wave 4 — MCP and OAuth, the bridge, the Actions, meta
-
-- **Q19** — OAuth client handling. We believe open dynamic client
-  registration and client-ID metadata documents are intended, that the
-  consent page and GitHub membership are the controls, and that PKCE, state
-  binding, consent handles and encrypted grant props are relied on as the
-  OAuth library's contract (`OUT-OF-MODEL: dependency-contract` when the
-  library breaks them).
-  - Proposed answer: yes.
-  - Lands in: §1.7, §1.9, §1.12 `D-OPEN-CLIENT-REGISTRATION`.
-- **Q20** — Bridge adversary. We believe whoever can write entities,
-  Decision entities or completed Task entities in the broker tenant is the
-  bridge's in-scope adversary, the broker itself is a trusted collaborator,
-  queue messages are the bridge's own, and the broker's access control owns
-  who may trigger decisions and resolve reviews.
-  - Proposed answer: yes.
-  - Lands in: §1.7, §1.10, §1.12 `D-BRIDGE-BROKER-ACCESS-CONTROL`.
-- **Q21** — Bridge outputs. We believe everything the bridge writes to the
-  broker comes from the profile's closed answer set and fixed metadata,
-  except the Task `name` (an entity attribute's text), fact `source` strings,
-  and `reviewedBy`/`finalAction` passed through from the resolving app, and
-  that consumers must treat those as data.
-  - Proposed answer: yes.
-  - Lands in: §1.8.
-- **Q22** — The Actions. We believe `run`, `stacks` and `labels` are trusted
-  workflow-author inputs, that issue text and stack event text are
-  attacker-influenced prompt text, and that a steered `cancel` of a healthy
-  deploy is a correctness issue (`D-MODEL-ACCURACY`, `P-WATCH-FAILSAFE`), not
-  a security one.
-  - Proposed answer: yes.
-  - Lands in: §1.7, §1.10, §1.11 `P-WATCH-FAILSAFE`, §1.12.
-- **Q23** — Version binding and venue. We believe the model should be bound
-  to commit `e1d3591` until the first release tag, revised on the §1.16
-  triggers, and that a `SECURITY.md` should be added that names the private
-  reporting channel and links this document.
-  - Proposed answer: yes; create `SECURITY.md` in the same pull request that
-    ratifies wave 1.
-  - Lands in: §1.1, §1.16.
-- **Q24** — Triage policy. We believe `strict` is right while the draft is
-  unratified; after wave 1 and 2 are answered, `relaxed` would let the
-  remaining assumptions close low-blast-radius reports provisionally.
-  - Proposed answer: keep `strict` for now.
-  - Lands in: §1.1, §1.17.
+Not applicable — the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires.
 
 ## 1.19 Machine-readable companions
 
