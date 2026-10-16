@@ -1,0 +1,193 @@
+# Threat-model pilot: lessons from the first run
+
+Date: 2026-10-16. The first draft of [`threat-model.md`](../threat-model.md)
+(with `threat-model.yaml` and `threat-model.json`) was produced with the
+Alpha-Omega `threat-model` plugin, version 1.2.1 at commit `192fd60`
+(https://github.com/alpha-omega-security/threat-model, MIT), in draft-first
+mode: the agent wrote version 1 from the public artifacts and collected the
+questions for the maintainer in §1.18. Nothing has been ratified yet; the
+model's status is *unratified draft* and its triage policy is `strict`.
+
+## Time spent
+
+| Phase | Agent wall time | Notes |
+|---|---|---|
+| Install the skill, read its references | about 10 min | The `/plugin` commands were not available in the session, so the skills were copied into `.claude/skills/` (not committed). |
+| Recon and surface pass (every file in `src/`, `bridge/src/`, `actions/`, `scripts/tokens.mjs`, `template/config-repo/`, the docs) | about 15 min | 5,000 lines of source plus docs. |
+| Draft, sidecar, JSON export, validator loop | about 15 min | Three validator rounds; see below. |
+| Backtest | included | Synthesized only: the repository has no advisories and no security-labelled or "by design" issues. |
+| **Total** | **about 40 min** | Plus the maintainer's time for the question waves, still to come. |
+
+The plan expected one to three hours of agent time; the small codebase and
+the thorough docs (every README, `docs/*.md`, `openapi.yaml` and the
+source-file header comments) made it faster. Most claims could be tagged
+**documented** because the docs already state the contract; the validator
+counts 259 documented, 4 inferred and 62 assumption tags.
+
+## What the skill's question bank was missing
+
+The bank (`question-bank.md`) is written for in-process libraries. None of
+its 39 questions covers the things that decide this model. The questions
+below were written for Pointsman in the bank's own style (a proposed answer
+to confirm or correct) and are candidates for a Geolonia extension of the
+bank, for hosted services and LLM-in-the-loop systems:
+
+| Area | Pointsman question | Generic form for the extension |
+|---|---|---|
+| Attacker-controlled input to an LLM prompt | Q7 (prompt injection accepted by design; what still counts as `VALID`) | "We believe steering the model's output through untrusted input is accepted; the contract is the typed output set and the policy. Which outputs would be a vulnerability?" |
+| Model output as untrusted input to a policy | Q12 (backend answers are shape-checked data; the server-reported model name is not trusted) | "We believe the model backend is a collaborator whose answers are untrusted data and which is trusted with the input's confidentiality." |
+| Client-supplied outbound URL | Q9 (`callback_url`: any public https host, no allow-list, no redirects) | "We believe the service POSTs to any public URL a client names, signs the payload, and refuses private addresses and redirects." |
+| Per-client credentials and their scope | Q13, Q17, Q18 (test tokens, no expiry or rate limit, the two scope off-switches) | "We believe credentials have no expiry and no quota, and that these are the only ways to exceed a scope." |
+| Public data as facts | Q10, Q11 (bounded lookups; data taken as published) | "We believe external data sources are trusted for content and checked for shape, and that lookups do bounded work for any client geometry." |
+| MCP endpoint and OAuth | Q18, Q19 (people get every visible profile; open client registration; what the OAuth library is trusted for) | "We believe dynamic client registration is open and the consent page plus the identity provider are the controls." |
+| A separate component family with its own adversary (the bridge) | Q3, Q20, Q21 (one model or a sibling; who can write to the broker) | "We believe whoever can write to the upstream system is the in-scope adversary of the connector, and the upstream system itself is trusted." |
+| What an audit log proves | Q14, Q15, Q16 (client-asserted reviewer names; no tamper evidence; `state_hash` is not a pseudonym) | "We believe the log proves what the service saw and did, not that its inputs were true or who the person behind a client was." |
+| Deployment shape and multi-tenancy | Q2 (one Worker per integrator; a shared hosted service is unsupported) | "We believe one deployment serves one integrator; a shared instance is out of scope until designed." |
+| Request size | Q8 (no engine-side size limit on the state) | "We believe the service sets no body-size limit and leaves it to the platform and the edge." |
+
+The bank's wave-1 items (scope, intended use, configuration support, side
+effects) did apply and became Q1–Q6.
+
+## What did not fit a hosted service
+
+- **Length.** The output structure wants 3 to 8 pages. A service with eight
+  component families (engine API, facts, callbacks, MCP and OAuth, bridge,
+  two Actions, config repository) needs a contract-dimension matrix of
+  8 families × 10 dimensions and an input table of 58 rows. The draft is
+  about 19,000 words and the validator warns about it. For a service, a
+  per-family appendix for the matrix and the input table, with the prose
+  sections kept short, would read better. The skill has no such option.
+- **The dimensions.** Four of the eight required dimensions (recursive
+  topology, serialization/reconstruction, reference lifecycle, concurrency)
+  are mostly "not applicable" for a stateless request handler. Two
+  project-specific dimensions had to be added: `x-prompt-injection` and
+  `x-probabilistic-result`. A hosted-service profile of the skill would
+  replace the library dimensions with authentication, authorization, outbound
+  calls, data retention and rate limits.
+- **Roles.** The skill's client / operator / peer split works, but the
+  interesting actor here is the *state author*, who holds no credential and
+  reaches the service only through a client. The bank has no question for
+  "the person behind the data your authenticated client forwards".
+- **The validator's code-citation check** treats `'/v1/*'` in Hono's route
+  string as the start of a block comment, so every `src/app.ts:<line>`
+  citation after line 77 was rejected as "comment text". The draft cites those
+  lines in words instead. Worth an upstream issue.
+- **The backtest** needs a history of reports. Pointsman has none, so the
+  backtest routed 16 synthesized cases (routing table in the ignored
+  `.threat-model/backtest.md`). It still found one useful thing: the "silence
+  floor" (a disclaimer that rests on nothing being promised never closes a
+  security-critical report) applies to the state-size and rate-limit
+  disclaimers, so those escalate until Daniel rules on them.
+- **Status vocabulary.** The skill expects an accepted model to have zero
+  inferred and assumption tags. For a one-person project the realistic end
+  state is "accepted with a short list of assumptions the maintainer applies
+  under `relaxed`"; the skill supports that through the `relaxed` policy, but
+  only after the wave answers promote the tags.
+- **The repository's secret scanner** (betterleaks, rule `generic-password`)
+  flagged a §1.2 row as a password literal: the word "login" followed by
+  two backticked file names in parentheses. It also scans every commit of
+  the PR, so a reworded line only passes once the original commit is gone
+  from the branch (a squash before the PR is marked ready). A threat model names credentials and login flows all the
+  time; expect a false positive or two and reword rather than suppress.
+- **The JSON export** cannot express where Q21, Q23 and Q24 land (output
+  taint, version binding, triage policy have no JSON field); the fields were
+  set by hand to the nearest ones.
+
+## Open questions for Daniel (the §1.18 list, summarised)
+
+Answer in waves; the full text with proposed answers is in §1.18 of
+[`threat-model.md`](../threat-model.md).
+
+**Wave 1 — scope, configuration, side effects**
+
+- Q1 Roles: the state author is the untrusted surface, token holders are
+  trusted for their profiles, the operator is trusted. Proposed: yes.
+- Q2 One Worker per integrator; a shared hosted Pointsman is unsupported.
+  Proposed: yes.
+- Q3 One model with eight families; demo, examples, site, spikes, tests out.
+  Proposed: yes.
+- Q4 `mock`, `bundled`, plain-http model server are dev-only; dropping
+  `global_fetch_strictly_public` is unsupported. Proposed: yes.
+- Q5 Side effects: only the listed outbound hosts, no spawning, no env reads,
+  writes only D1, `OAUTH_KV` and the tile cache. Proposed: yes.
+- Q6 The bridge follows redirects from the broker and Pointsman (the engine
+  does not). Proposed: record it; hardening candidate.
+
+**Wave 2 — state, model, facts**
+
+- Q7 Prompt injection is accepted by design; the typed answer set and the
+  policy are the contract. Proposed: yes.
+- Q8 No engine-side size limit on `state`. Proposed: disclaim; edge limits.
+- Q9 `callback_url`: any public https host, signed payload, no allow-list.
+  Proposed: yes.
+- Q10 Fact lookup bounds are the guarantee (correctness-only). Proposed: yes.
+- Q11 GSI and Valhalla are trusted data; shape and legend checked, not truth.
+  Proposed: yes.
+- Q12 The model backend is trusted with the state; its answers are data; the
+  HTTP server's model name is ignored. Proposed: yes.
+
+**Wave 3 — tokens, people, the log**
+
+- Q13 A client acting on a `test: true` decision is the client's fault.
+  Proposed: yes.
+- Q14 `by` and `resolved_by` are client-asserted by design. Proposed: yes.
+- Q15 The log proves what the engine saw and did, not truth or identity; no
+  tamper evidence (correctness-only). Proposed: yes.
+- Q16 `state_hash` is not a pseudonymisation. Proposed: yes, document it.
+- Q17 No token expiry, no per-token rate limit; disclaimed, expiry a
+  hardening candidate. Proposed: disclaim.
+- Q18 The only scope off-switches are `--profiles '*'` and OAuth people.
+  Proposed: yes.
+
+**Wave 4 — MCP, bridge, Actions, meta**
+
+- Q19 Open client registration is intended; the OAuth library's contract is
+  relied on. Proposed: yes.
+- Q20 The bridge's adversary is whoever can write to the broker tenant; the
+  broker is trusted. Proposed: yes.
+- Q21 Bridge outputs are closed-set except Task names, fact sources and
+  pass-through review fields. Proposed: yes.
+- Q22 Action inputs `run`, `stacks`, `labels` are trusted; a steered deploy
+  cancel is a correctness issue. Proposed: yes.
+- Q23 Bind to commit `e1d3591`; add `SECURITY.md` linking the model.
+  Proposed: yes.
+- Q24 Keep `strict` until waves 1 and 2 are answered. Proposed: strict.
+
+## Candidate issues (not in the model)
+
+The model describes Pointsman as it is. These came up while reading and
+belong in issues, not in the threat model:
+
+1. `SECURITY.md` with the private reporting channel and a link to the model
+   (Q23).
+2. The bridge's outbound `fetch` to the broker and Pointsman follows
+   redirects; the engine's calls use `redirect: 'manual'` (Q6). Hardening.
+3. A size limit on `state` in the engine (Q8), or a documented decision not
+   to have one.
+4. Token expiry or rotation (Q17). Hardening.
+5. Once Q7 and Q9 are ratified, add `KNF-STEERED-ANSWER` and
+   `KNF-CALLBACK-TO-PUBLIC-HOST` to §1.15.
+6. Upstream to Alpha-Omega: the citation checker's block-comment heuristic
+   trips on `'/v1/*'` route strings; a hosted-service dimension set and a
+   per-family appendix option for long matrices.
+7. For `geolonia/skills`: the question-bank extension in the table above.
+
+## Files
+
+- `threat-model.md` — the prose model (canonical).
+- `threat-model.yaml` — the sidecar (`threat-model-sidecar/v2`), bound to the
+  prose by SHA-256.
+- `threat-model.json` — the flat export (`schema.json`, spec 1).
+- `.threat-model/backtest.md` — producer-side routing table, ignored by git.
+- The skill itself lives in `.claude/skills/` in the working tree and is not
+  committed; reinstall it with `/plugin marketplace add
+  alpha-omega-security/threat-model` and `/plugin install
+  threat-model@threat-model`, or copy the `skills/` folder from the plugin
+  repository.
+
+To re-validate after a change (needs Python with PyYAML and a checkout of the
+plugin repository):
+
+```bash
+python tests/harness/validate_model.py threat-model.md threat-model.yaml --json-report threat-model.json --source-root .
+```

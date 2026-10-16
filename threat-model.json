@@ -1,0 +1,1475 @@
+{
+  "spec_version": 1,
+  "repository": "https://github.com/geolonia/pointsman",
+  "commit": "e1d3591e1b2f6c782f2941e4477923fd88e2addc",
+  "date": "2026-10-16",
+  "scope_subpath": null,
+  "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
+  "confidence": {
+    "documented": 259,
+    "inferred": 66
+  },
+  "components": [
+    {
+      "name": "engine-api",
+      "entry_points": [
+        "v1-auth-middleware",
+        "GET /v1/profiles",
+        "POST /v1/decide/{profile}",
+        "GET /v1/decisions/{id}",
+        "POST /v1/decisions/{id}/feedback",
+        "GET /v1/stats/{profile}",
+        "GET /v1/reviews",
+        "POST /v1/reviews/{id}/resolve"
+      ],
+      "touches": [
+        "network",
+        "global_state"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "README \"API\""
+    },
+    {
+      "name": "engine-facts",
+      "entry_points": [
+        "GSI tile fetch",
+        "Valhalla route request"
+      ],
+      "touches": [
+        "network",
+        "global_state"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Facts\""
+    },
+    {
+      "name": "engine-callbacks",
+      "entry_points": [
+        "cron scheduled()",
+        "outbound callback POST"
+      ],
+      "touches": [
+        "network"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Callbacks\""
+    },
+    {
+      "name": "engine-mcp",
+      "entry_points": [
+        "/mcp",
+        "/mcp list_profiles",
+        "/mcp decide",
+        "/mcp get_decision",
+        "/mcp submit_feedback",
+        "GET /authorize",
+        "POST /authorize",
+        "GET /callback",
+        "/oauth/register, /oauth/token, /.well-known/*"
+      ],
+      "touches": [
+        "network",
+        "global_state"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "docs/mcp.md"
+    },
+    {
+      "name": "bridge",
+      "entry_points": [
+        "bridge POST /notify",
+        "bridge POST /reviews",
+        "bridge queue consumer"
+      ],
+      "touches": [
+        "network"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "bridge/README.md \"Why a bridge\""
+    },
+    {
+      "name": "action-triage",
+      "entry_points": [
+        "action-triage run"
+      ],
+      "touches": [
+        "filesystem",
+        "network",
+        "env"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "actions/triage/README.md"
+    },
+    {
+      "name": "action-deploy-watch",
+      "entry_points": [
+        "action-deploy-watch main"
+      ],
+      "touches": [
+        "filesystem",
+        "network",
+        "env",
+        "child_processes"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "actions/deploy-watch/README.md"
+    },
+    {
+      "name": "config-repo",
+      "entry_points": [
+        "config-repo workflows",
+        "scripts/tokens.mjs"
+      ],
+      "touches": [
+        "network",
+        "env"
+      ],
+      "in_scope": true,
+      "provenance": "documented",
+      "source": "docs/deployment.md \"Set up\""
+    }
+  ],
+  "out_of_scope": [
+    {
+      "item": "examples-site-spikes-tests-tooling",
+      "reason": "example profiles (bundled only in the dev config), the website, spikes, tests and developer scripts do not run in a deployment, per §1.3",
+      "provenance": "documented",
+      "source": "README \"Decision profiles\": \"This repository holds only example profiles\""
+    },
+    {
+      "item": "pointsman-demo",
+      "reason": "separate repository geolonia/pointsman-demo with its own limits, per §1.3",
+      "provenance": "documented",
+      "source": "docs/fiware-demo.md \"How it runs\""
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "component": "engine-api",
+      "boundary": "`engine-api`: a finding matters if it is reachable from a request that carries a valid token, or from the `state`, `ref` or `callback_url` such a request carries, or from a model backend's response. A finding that needs an invalid or missing token to succeed is a finding against `P-AUTH-REQUIRED` (§1.11).",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response"
+    },
+    {
+      "component": "engine-facts",
+      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response.",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response"
+    },
+    {
+      "component": "engine-callbacks",
+      "boundary": "`engine-callbacks`: reachable from `callback_url` and from the receiver's response.",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from callback_url or from the receiver's response"
+    },
+    {
+      "component": "engine-mcp",
+      "boundary": "`engine-mcp`: reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login (consent page, client registration, GitHub callback).",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login"
+    },
+    {
+      "component": "bridge",
+      "boundary": "**Engine → downstream**: the decision, the decision record and the signed callback are the engine's outputs; the client, the bridge, the Actions and the broker act on them (§1.8).",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response"
+    },
+    {
+      "component": "action-triage",
+      "boundary": "`action-triage`: reachable from the issue title and body in the event payload, or from Pointsman's response.",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from the issue title and body in the event payload, or from Pointsman's response"
+    },
+    {
+      "component": "action-deploy-watch",
+      "boundary": "`action-deploy-watch`: reachable from CloudFormation stack events or from Pointsman's response. The `run` command and the stack names come from the workflow and are trusted.",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from CloudFormation stack events or from Pointsman's response; run and stacks are trusted workflow inputs"
+    },
+    {
+      "component": "config-repo",
+      "boundary": "`config-repo`: reachable from a pull request to the config repository or from the operator's own command line; both are trusted authors (§1.7).",
+      "provenance": "inferred",
+      "reachability_precondition": "reachable from a pull request to the config repository or from the operator's command line; both are trusted authors"
+    }
+  ],
+  "entry_points": [
+    {
+      "entry_point": "v1-auth-middleware",
+      "parameter": "authorization-header",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-AUTH-REQUIRED",
+      "provenance": "documented",
+      "source": "README \"API tokens\""
+    },
+    {
+      "entry_point": "v1-auth-middleware",
+      "parameter": "token-record",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "keep TOKENS writable only by operators",
+      "provenance": "documented",
+      "source": "docs/deployment.md \"Deployment\" table"
+    },
+    {
+      "entry_point": "GET /v1/profiles",
+      "parameter": "none-beyond-token",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE",
+      "provenance": "documented",
+      "source": "openapi.yaml /v1/profiles"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "profile",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"A token sees and corrects only decisions of profiles in its scope\""
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "version",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE",
+      "provenance": "documented",
+      "source": "openapi.yaml /v1/decide/{profile} version parameter"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "state",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "treat state as untrusted data: never in a shell, query or template; no secrets or personal data unless log.store_state and gateway logging are intended",
+      "provenance": "documented",
+      "source": "openapi.yaml DecideRequest.state"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "state-size",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "rate-limit and budget at the edge and in the AI Gateway; the engine sets no size or rate limit",
+      "provenance": "inferred",
+      "source": "open question Q8"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "ref",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "1–200 characters; it is logged and returned, so no secrets",
+      "provenance": "documented",
+      "source": "openapi.yaml DecideRequest.ref"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "callback_url",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "https only; any public host; refused for test tokens",
+      "provenance": "documented",
+      "source": "openapi.yaml DecideRequest.callback_url"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "profile-content",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "validate with validate-profiles.mjs; bump the version on every change",
+      "provenance": "documented",
+      "source": "docs/deployment.md \"Profile versions\""
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "model-response",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-ANSWER-SHAPE",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Engine answer format\""
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "model-name-http-server",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-ANSWER-SHAPE",
+      "provenance": "inferred",
+      "source": "open question Q12"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "model-name-workers-ai",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-ANSWER-SHAPE",
+      "provenance": "inferred",
+      "source": "open question Q12"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "fact-geometry",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-FACT-LOOKUP-BOUNDED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Facts\" table, at"
+    },
+    {
+      "entry_point": "GET /v1/decisions/{id}",
+      "parameter": "id",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"Other decisions answer 404, as if they did not exist\""
+    },
+    {
+      "entry_point": "POST /v1/decisions/{id}/feedback",
+      "parameter": "correct",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-ANSWER-SHAPE",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"Feedback\""
+    },
+    {
+      "entry_point": "POST /v1/decisions/{id}/feedback",
+      "parameter": "by-and-note",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "if who resolved matters, authenticate the person in the client and put an account identifier in by",
+      "provenance": "documented",
+      "source": "migrations/0001_decisions.sql comment \"who corrected it, as given by the client\""
+    },
+    {
+      "entry_point": "GET /v1/stats/{profile}",
+      "parameter": "profile-and-days",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE",
+      "provenance": "documented",
+      "source": "openapi.yaml /v1/stats/{profile}"
+    },
+    {
+      "entry_point": "GET /v1/reviews",
+      "parameter": "profile",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Review queue\""
+    },
+    {
+      "entry_point": "POST /v1/reviews/{id}/resolve",
+      "parameter": "action",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "lower-case name, not review; it is the final action the client will act on",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"action is the final action\""
+    },
+    {
+      "entry_point": "POST /v1/reviews/{id}/resolve",
+      "parameter": "correct-by-note",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "if who resolved matters, authenticate the person in the client and put an account identifier in by",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Review queue\""
+    },
+    {
+      "entry_point": "cron scheduled()",
+      "parameter": "due-callbacks",
+      "attacker_controllable": "no",
+      "component": "engine-callbacks",
+      "caller_must_enforce": "none — P-CALLBACK-SIGNED",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Retries are run by the Worker's cron trigger\""
+    },
+    {
+      "entry_point": "outbound callback POST",
+      "parameter": "receiver-status",
+      "attacker_controllable": "yes",
+      "component": "engine-callbacks",
+      "caller_must_enforce": "none — P-CALLBACK-SIGNED",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Answer with any 2xx status\""
+    },
+    {
+      "entry_point": "outbound callback POST",
+      "parameter": "receiver-body-and-redirects",
+      "attacker_controllable": "yes",
+      "component": "engine-callbacks",
+      "caller_must_enforce": "none — P-CALLBACK-SIGNED",
+      "provenance": "inferred",
+      "source": "open question Q9"
+    },
+    {
+      "entry_point": "GSI tile fetch",
+      "parameter": "tile-bytes",
+      "attacker_controllable": "no",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"A colour that is not in the legend fails the lookup\""
+    },
+    {
+      "entry_point": "Valhalla route request",
+      "parameter": "routing-response",
+      "attacker_controllable": "no",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Detours\""
+    },
+    {
+      "entry_point": "/mcp",
+      "parameter": "authorization-header",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-AUTH-REQUIRED",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Authentication\""
+    },
+    {
+      "entry_point": "/mcp list_profiles",
+      "parameter": "none",
+      "attacker_controllable": "no",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-MCP-VISIBILITY",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Tools\""
+    },
+    {
+      "entry_point": "/mcp decide",
+      "parameter": "profile-state-ref",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "treat state as untrusted data: never in a shell, query or template; no secrets or personal data unless log.store_state and gateway logging are intended",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Decisions through MCP\""
+    },
+    {
+      "entry_point": "/mcp get_decision",
+      "parameter": "decision_id",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-MCP-VISIBILITY",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Tools\""
+    },
+    {
+      "entry_point": "/mcp submit_feedback",
+      "parameter": "decision_id-correct-note",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-MCP-VISIBILITY",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Feedback is a person's judgement\""
+    },
+    {
+      "entry_point": "GET /authorize",
+      "parameter": "oauth-authorization-request",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"MCP clients register themselves\""
+    },
+    {
+      "entry_point": "POST /authorize",
+      "parameter": "handle-and-decision",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
+      "provenance": "inferred",
+      "source": "open question Q19"
+    },
+    {
+      "entry_point": "GET /callback",
+      "parameter": "code-and-state",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Only active members of the allowed GitHub organizations get in\""
+    },
+    {
+      "entry_point": "/oauth/register, /oauth/token, /.well-known/*",
+      "parameter": "client-metadata-and-token-requests",
+      "attacker_controllable": "yes",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
+      "provenance": "inferred",
+      "source": "open question Q19"
+    },
+    {
+      "entry_point": "/oauth/register, /oauth/token, /.well-known/*",
+      "parameter": "github-responses",
+      "attacker_controllable": "no",
+      "component": "engine-mcp",
+      "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"GitHub is only the login step\""
+    },
+    {
+      "entry_point": "bridge POST /notify",
+      "parameter": "x-bridge-secret",
+      "attacker_controllable": "yes",
+      "component": "bridge",
+      "caller_must_enforce": "none — P-BRIDGE-NOTIFY-SECRET",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Configuration\": \"other notifications are refused\""
+    },
+    {
+      "entry_point": "bridge POST /notify",
+      "parameter": "route",
+      "attacker_controllable": "yes",
+      "component": "bridge",
+      "caller_must_enforce": "none — P-BRIDGE-NOTIFY-SECRET",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Chains of decisions\""
+    },
+    {
+      "entry_point": "bridge POST /notify",
+      "parameter": "notification-entities",
+      "attacker_controllable": "yes",
+      "component": "bridge",
+      "caller_must_enforce": "the broker's access control decides who may write entities, Decision and Task entities",
+      "provenance": "documented",
+      "source": "bridge/README.md \"The subscription\""
+    },
+    {
+      "entry_point": "bridge POST /reviews",
+      "parameter": "decision-entity",
+      "attacker_controllable": "yes",
+      "component": "bridge",
+      "caller_must_enforce": "the broker's access control decides who may write entities, Decision and Task entities",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Who may resolve is decided by the broker's access control\""
+    },
+    {
+      "entry_point": "bridge POST /reviews",
+      "parameter": "completed-task-entity",
+      "attacker_controllable": "yes",
+      "component": "bridge",
+      "caller_must_enforce": "the broker's access control decides who may write entities, Decision and Task entities",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Work orders from other apps\""
+    },
+    {
+      "entry_point": "bridge queue consumer",
+      "parameter": "queue-message",
+      "attacker_controllable": "no",
+      "component": "bridge",
+      "caller_must_enforce": "none — P-BRIDGE-SAFE-TO-REPEAT",
+      "provenance": "inferred",
+      "source": "open question Q20"
+    },
+    {
+      "entry_point": "bridge queue consumer",
+      "parameter": "broker-entity-read",
+      "attacker_controllable": "yes",
+      "component": "bridge",
+      "caller_must_enforce": "the broker's access control decides who may write entities, Decision and Task entities",
+      "provenance": "inferred",
+      "source": "open question Q20"
+    },
+    {
+      "entry_point": "bridge queue consumer",
+      "parameter": "pointsman-decision",
+      "attacker_controllable": "no",
+      "component": "bridge",
+      "caller_must_enforce": "none — P-BRIDGE-SAFE-TO-REPEAT",
+      "provenance": "inferred",
+      "source": "open question Q20"
+    },
+    {
+      "entry_point": "bridge queue consumer",
+      "parameter": "bridge-configuration",
+      "attacker_controllable": "no",
+      "component": "bridge",
+      "caller_must_enforce": "https URLs; one broker credential, not both; a strong NOTIFY_SECRET",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Configuration\""
+    },
+    {
+      "entry_point": "action-triage run",
+      "parameter": "workflow-inputs",
+      "attacker_controllable": "no",
+      "component": "action-triage",
+      "caller_must_enforce": "set url, token, profile, labels, review-label in the workflow; never from event data; pin by full SHA",
+      "provenance": "documented",
+      "source": "actions/triage/README.md \"Inputs\""
+    },
+    {
+      "entry_point": "action-triage run",
+      "parameter": "issue-title-and-body",
+      "attacker_controllable": "yes",
+      "component": "action-triage",
+      "caller_must_enforce": "none — P-TRIAGE-ALLOWLIST",
+      "provenance": "documented",
+      "source": "actions/triage/README.md \"The issue text is sent to Pointsman as JSON data; it is never used in a shell command\""
+    },
+    {
+      "entry_point": "action-triage run",
+      "parameter": "pointsman-decision",
+      "attacker_controllable": "no",
+      "component": "action-triage",
+      "caller_must_enforce": "none — P-TRIAGE-ALLOWLIST",
+      "provenance": "documented",
+      "source": "actions/triage/README.md \"Only labels you list in labels are ever applied\""
+    },
+    {
+      "entry_point": "action-deploy-watch main",
+      "parameter": "run-and-stacks",
+      "attacker_controllable": "no",
+      "component": "action-deploy-watch",
+      "caller_must_enforce": "set url, token, profile, labels, review-label in the workflow; never from event data; pin by full SHA",
+      "provenance": "documented",
+      "source": "actions/deploy-watch/action.yml run: \"Comes from the workflow, never from event data\""
+    },
+    {
+      "entry_point": "action-deploy-watch main",
+      "parameter": "other-inputs",
+      "attacker_controllable": "no",
+      "component": "action-deploy-watch",
+      "caller_must_enforce": "set url, token, profile, labels, review-label in the workflow; never from event data; pin by full SHA",
+      "provenance": "documented",
+      "source": "actions/deploy-watch/README.md \"Inputs\""
+    },
+    {
+      "entry_point": "action-deploy-watch main",
+      "parameter": "stack-events",
+      "attacker_controllable": "yes",
+      "component": "action-deploy-watch",
+      "caller_must_enforce": "none — P-WATCH-FAILSAFE",
+      "provenance": "inferred",
+      "source": "open question Q22"
+    },
+    {
+      "entry_point": "action-deploy-watch main",
+      "parameter": "pointsman-action",
+      "attacker_controllable": "no",
+      "component": "action-deploy-watch",
+      "caller_must_enforce": "none — P-WATCH-FAILSAFE",
+      "provenance": "documented",
+      "source": "actions/deploy-watch/README.md \"If Pointsman cannot be reached, nothing is cancelled\""
+    },
+    {
+      "entry_point": "config-repo workflows",
+      "parameter": "profiles-yaml",
+      "attacker_controllable": "no",
+      "component": "config-repo",
+      "caller_must_enforce": "protect main; require the Validate check",
+      "provenance": "documented",
+      "source": "template/config-repo/README.md \"Protect main\""
+    },
+    {
+      "entry_point": "config-repo workflows",
+      "parameter": "engine-json-ref",
+      "attacker_controllable": "no",
+      "component": "config-repo",
+      "caller_must_enforce": "change ENGINE_REPOSITORY only on purpose",
+      "provenance": "documented",
+      "source": "docs/deployment.md \"Updating the engine\""
+    },
+    {
+      "entry_point": "config-repo workflows",
+      "parameter": "wrangler-config-and-secrets",
+      "attacker_controllable": "no",
+      "component": "config-repo",
+      "caller_must_enforce": "placeholders refused; secrets only in the three Cloudflare steps; deploy only through the template's workflows",
+      "provenance": "documented",
+      "source": "docs/deployment.md \"What the workflows do\""
+    },
+    {
+      "entry_point": "scripts/tokens.mjs",
+      "parameter": "cli-arguments",
+      "attacker_controllable": "no",
+      "component": "config-repo",
+      "caller_must_enforce": "one token per client limited to its profiles; --profiles '*' only on purpose; store the printed token as a secret",
+      "provenance": "documented",
+      "source": "README \"API tokens\""
+    }
+  ],
+  "environment": {
+    "assumes": [
+      "Cloudflare Workers runtime, one Worker per integrator; module-level caches shared within one isolate only",
+      "D1 is strongly consistent (decision log, profile-version registry); KV is eventually consistent (tokens, profiles; about 60 s)",
+      "a cron trigger every five minutes retries callbacks and purges expired OAuth records",
+      "the Worker's clock for created_at, callback timestamps and retries",
+      "global_fetch_strictly_public limits every outbound fetch to public addresses"
+    ],
+    "does_not": [
+      "spawn child processes (engine and bridge; the deploy-watch Action does: bash and the aws CLI)",
+      "read environment variables beyond Worker bindings and vars (the Actions read INPUT_* and GITHUB_*)",
+      "touch a filesystem (the Actions append to GITHUB_OUTPUT and the step summary)",
+      "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com and OAuth client-ID metadata URLs (engine), or the broker and Pointsman (bridge)",
+      "follow redirects on outbound calls that carry a key or the state (engine); the bridge does follow them",
+      "write to the TOKENS or PROFILES namespaces (only the operator's scripts do)",
+      "log the state, a token, an API key or a model response"
+    ],
+    "provenance": "inferred",
+    "source": "open question Q5 (host side effects) and Q6 (bridge redirects)"
+  },
+  "build_variants": [
+    {
+      "name": "PROFILE_SOURCE=bundled",
+      "default": "bundled (dev config); kv (template)",
+      "effect": "voids P-PROFILE-VERSION-IMMUTABLE",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "README \"Development\": \"wrangler.jsonc in this repository is for development only\""
+    },
+    {
+      "name": "MODEL_MODE=mock",
+      "default": "mock (dev config); workers-ai (template)",
+      "effect": "narrows P-ACTION-FROM-POLICY",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/models.md \"MODEL_MODE\" table: \"development and tests\""
+    },
+    {
+      "name": "FACTS_MODE",
+      "default": "off",
+      "effect": "preserves P-FACTS-NEVER-GUESSED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Fact providers\" table"
+    },
+    {
+      "name": "MODEL_SERVER_URL-plain-http",
+      "default": "unset",
+      "effect": "narrows P-SECRETS-NOT-LOGGED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/models.md \"Model server\" table"
+    },
+    {
+      "name": "AI_GATEWAY_ID",
+      "default": "set in the template",
+      "effect": "narrows P-STATE-NOT-STORED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/models.md \"Workers AI and AI Gateway\""
+    },
+    {
+      "name": "ai-gateway-collect_logs",
+      "default": "true",
+      "effect": "voids P-STATE-NOT-STORED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/models.md \"Logs hold the state\""
+    },
+    {
+      "name": "CALLBACK_SECRET",
+      "default": "unset",
+      "effect": "preserves P-CALLBACK-SIGNED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Without that secret, nothing is sent\""
+    },
+    {
+      "name": "github-login-settings",
+      "default": "unset",
+      "effect": "preserves P-OAUTH-ORG-MEMBERSHIP",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Set all of these or none\""
+    },
+    {
+      "name": "global_fetch_strictly_public",
+      "default": "present",
+      "effect": "preserves P-OUTBOUND-PUBLIC-ONLY",
+      "discouraged": false,
+      "provenance": "inferred",
+      "source": "open question Q4"
+    },
+    {
+      "name": "profile-log.store_state",
+      "default": "false",
+      "effect": "voids P-STATE-NOT-STORED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"What is stored\""
+    },
+    {
+      "name": "profile-mcp.visible",
+      "default": "false",
+      "effect": "narrows P-MCP-VISIBILITY",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Only profiles that set mcp.visible: true\""
+    },
+    {
+      "name": "test-token",
+      "default": "not set",
+      "effect": "voids P-DECISION-LOGGED-FIRST",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "README \"API tokens\""
+    },
+    {
+      "name": "bridge-BRIDGE_QUEUE",
+      "default": "unset",
+      "effect": "preserves P-BRIDGE-SAFE-TO-REPEAT",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "bridge/README.md \"Reliable delivery (queue)\""
+    },
+    {
+      "name": "bridge-broker-credential",
+      "default": "unset",
+      "effect": "preserves P-BRIDGE-NOTIFY-SECRET",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "bridge/README.md \"Configuration\" secrets table"
+    },
+    {
+      "name": "action-cancel-update",
+      "default": "true",
+      "effect": "no effect on claimed properties",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "actions/deploy-watch/README.md \"Inputs\""
+    }
+  ],
+  "adversaries": {
+    "in_scope": [
+      "state-author",
+      "token-holder-beyond-scope",
+      "unauthenticated-network-client",
+      "mcp-client-or-agent",
+      "logged-in-person",
+      "callback-receiver",
+      "model-backend",
+      "public-data-sources",
+      "broker-entity-writer"
+    ],
+    "out_of_scope": [
+      "context-broker",
+      "operator-account-holder-config-main-writer",
+      "reviewer-with-valid-token-or-grant",
+      "workflow-author",
+      "platform-cotenants-network-observers-github"
+    ],
+    "provenance": "inferred"
+  },
+  "properties_provided": [
+    {
+      "property": "P-AUTH-REQUIRED",
+      "violation_symptom": "x-authentication-bypass",
+      "severity_tier": "security",
+      "conditions": "every /v1/* and /mcp request; a valid API token or, on /mcp, a valid OAuth access token",
+      "provenance": "documented",
+      "source": "README \"API tokens\": \"Every request needs Authorization: Bearer <token>\""
+    },
+    {
+      "property": "P-TOKEN-SCOPE",
+      "violation_symptom": "x-authorization-bypass, info-leak",
+      "severity_tier": "security",
+      "conditions": "a token with a profile list; scope checked before the profile lookup; voided by --profiles '*' tokens and OAuth people",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"A token sees and corrects only decisions of profiles in its scope\""
+    },
+    {
+      "property": "P-TOKEN-HASHED",
+      "violation_symptom": "info-leak",
+      "severity_tier": "security",
+      "conditions": "tokens created by scripts/tokens.mjs: 32 random bytes, SHA-256 stored, printed once",
+      "provenance": "documented",
+      "source": "README \"API tokens\": \"Only a SHA-256 hash of each token is stored\""
+    },
+    {
+      "property": "P-TEST-TOKEN-ISOLATED",
+      "violation_symptom": "x-unlogged-decision-acted-on, info-leak",
+      "severity_tier": "security",
+      "conditions": "a token record with test: true",
+      "provenance": "documented",
+      "source": "README \"API tokens\": \"A test token may only decide (and list its profiles) over the REST API, not over MCP, and gets no callbacks\""
+    },
+    {
+      "property": "P-ANSWER-SHAPE",
+      "violation_symptom": "bad-data-accepted",
+      "severity_tier": "security",
+      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Engine answer format\": \"Answers that do not fit the profile ... are rejected with a model_error\""
+    },
+    {
+      "property": "P-ACTION-FROM-POLICY",
+      "violation_symptom": "x-unauthorized-action",
+      "severity_tier": "security",
+      "conditions": "the first true rule over typed answers and facts, else the default; unknown comparisons never match",
+      "provenance": "documented",
+      "source": "README \"People's rules decide ... The AI does not decide alone\""
+    },
+    {
+      "property": "P-POLICY-NOT-CODE",
+      "violation_symptom": "x-code-execution",
+      "severity_tier": "security",
+      "conditions": "profile conditions parsed and evaluated as data; compiled at validation time",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"The engine evaluates conditions with its own parser; nothing is run as code\""
+    },
+    {
+      "property": "P-FACTS-NEVER-GUESSED",
+      "violation_symptom": "bad-data-accepted, wrong-output",
+      "severity_tier": "security",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; the model never sees facts",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"A missing fact is never guessed\""
+    },
+    {
+      "property": "P-FACT-LOOKUP-BOUNDED",
+      "violation_symptom": "hang, unbounded-allocation",
+      "severity_tier": "correctness",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact, 10 s per tile load; exceeding is error or timeout",
+      "provenance": "inferred",
+      "source": "open question Q10"
+    },
+    {
+      "property": "P-DECISION-LOGGED-FIRST",
+      "violation_symptom": "x-unlogged-decision, integrity-bypass",
+      "severity_tier": "security",
+      "conditions": "every decision with a normal token; voided by test tokens by design",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"Every decision is stored in D1 ... before it is returned\""
+    },
+    {
+      "property": "P-PROFILE-VERSION-IMMUTABLE",
+      "violation_symptom": "integrity-bypass",
+      "severity_tier": "security",
+      "conditions": "profiles published through the template's Deploy workflow; D1 registration of content hashes; the engine pinned by commit",
+      "provenance": "documented",
+      "source": "docs/deployment.md \"Profile versions\": \"A published version never changes\""
+    },
+    {
+      "property": "P-STATE-NOT-STORED",
+      "violation_symptom": "info-leak",
+      "severity_tier": "security",
+      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"By default only the hash of the state is kept\""
+    },
+    {
+      "property": "P-SECRETS-NOT-LOGGED",
+      "violation_symptom": "info-leak",
+      "severity_tier": "security",
+      "conditions": "the engine's own logs, errors and responses; outbound calls with keys refuse redirects",
+      "provenance": "documented",
+      "source": "docs/models.md \"Errors and logs never include ... the key\""
+    },
+    {
+      "property": "P-REVIEW-RESOLVED-ONCE",
+      "violation_symptom": "data-race, x-double-resolution",
+      "severity_tier": "correctness",
+      "conditions": "a pending review; concurrent or repeated resolves answer 409",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"A review can be resolved once\""
+    },
+    {
+      "property": "P-CALLBACK-SIGNED",
+      "violation_symptom": "integrity-bypass",
+      "severity_tier": "security",
+      "conditions": "CALLBACK_SECRET set; every attempt signed and timestamped; claimed before sending; at most 6 attempts",
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""
+    },
+    {
+      "property": "P-OUTBOUND-PUBLIC-ONLY",
+      "violation_symptom": "x-ssrf",
+      "severity_tier": "security",
+      "conditions": "global_fetch_strictly_public present in the deployment's compatibility_flags",
+      "provenance": "documented",
+      "source": "wrangler.jsonc comment: \"Outgoing fetches (review callbacks, OAuth client metadata) reach only public addresses\""
+    },
+    {
+      "property": "P-MCP-VISIBILITY",
+      "violation_symptom": "x-authorization-bypass, info-leak",
+      "severity_tier": "security",
+      "conditions": "profiles with mcp.visible: true in the caller's scope; others look unknown; get_decision strips callback_url and state",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Only profiles that set mcp.visible: true are listed or callable through MCP\""
+    },
+    {
+      "property": "P-OAUTH-ORG-MEMBERSHIP",
+      "violation_symptom": "x-authentication-bypass",
+      "severity_tier": "security",
+      "conditions": "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request",
+      "provenance": "documented",
+      "source": "docs/mcp.md \"Only active members of the allowed GitHub organizations get in\""
+    },
+    {
+      "property": "P-BRIDGE-NOTIFY-SECRET",
+      "violation_symptom": "x-authentication-bypass",
+      "severity_tier": "security",
+      "conditions": "x-bridge-secret equals NOTIFY_SECRET, compared in constant time; only /notify and /reviews exist",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Configuration\": \"other notifications are refused\""
+    },
+    {
+      "property": "P-BRIDGE-LOOP-GUARD",
+      "violation_symptom": "x-decision-loop",
+      "severity_tier": "correctness",
+      "conditions": "the subscription delivers the result attribute; attribute-level PATCH",
+      "provenance": "documented",
+      "source": "bridge/README.md \"How it avoids loops\""
+    },
+    {
+      "property": "P-BRIDGE-SAFE-TO-REPEAT",
+      "violation_symptom": "wrong-output",
+      "severity_tier": "correctness",
+      "conditions": "a notification handled twice; a review already resolved; feedback already sent",
+      "provenance": "documented",
+      "source": "bridge/README.md \"Safe to repeat\""
+    },
+    {
+      "property": "P-TRIAGE-ALLOWLIST",
+      "violation_symptom": "x-command-injection, x-unlisted-label",
+      "severity_tier": "security",
+      "conditions": "labels only from the allow-list and only for action auto; issue text never in a shell or the summary",
+      "provenance": "documented",
+      "source": "actions/triage/README.md \"Only labels you list in labels are ever applied\""
+    },
+    {
+      "property": "P-WATCH-FAILSAFE",
+      "violation_symptom": "x-unwarranted-cancel",
+      "severity_tier": "correctness",
+      "conditions": "consecutive cancel answers while quiet; an unreachable Pointsman never cancels",
+      "provenance": "documented",
+      "source": "actions/deploy-watch/README.md \"Cancel only when sure\""
+    }
+  ],
+  "properties_not_provided": [
+    {
+      "property": "D-PROMPT-INJECTION",
+      "reason": "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a design position not yet ratified",
+      "false_friend": false,
+      "provenance": "inferred",
+      "source": "open question Q7"
+    },
+    {
+      "property": "D-MODEL-ACCURACY",
+      "reason": "every family that acts on an answer; keep a margin from thresholds; re-check after model updates; basis: stated",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "docs/fiware-demo.md \"Lesson: keep a margin from the thresholds, and check the examples again after a model update\""
+    },
+    {
+      "property": "D-STATE-CONTENT",
+      "reason": "content of state beyond JSON type and the input mapping; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "openapi.yaml DecideRequest.state: \"free text, or any JSON object or array\""
+    },
+    {
+      "property": "D-STATE-SIZE",
+      "reason": "size or nesting depth of state; platform and backend limits apply; basis: absence of a statement, never closes a security-critical report",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "openapi.yaml DecideRequest.state has no size constraint"
+    },
+    {
+      "property": "D-CALLBACK-ANY-PUBLIC-HOST",
+      "reason": "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a design position not yet ratified",
+      "false_friend": true,
+      "provenance": "inferred",
+      "source": "open question Q9"
+    },
+    {
+      "property": "D-RATE-LIMIT",
+      "reason": "per-token or per-client rate limit, quota or budget; the AI Gateway's 600/min is per deployment; basis: absence of a statement, never closes a security-critical report",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/models.md \"rate limit 600 calls per minute\" is the only limit named"
+    },
+    {
+      "property": "D-TOKEN-EXPIRY",
+      "reason": "token expiry or rotation; basis: absence of a statement",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "README \"API tokens\" names create, list and revoke only"
+    },
+    {
+      "property": "D-REVOCATION-IMMEDIATE",
+      "reason": "a revoked API token can work for up to about 60 seconds elsewhere; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "README \"After a revoke, KV can take up to about 60 seconds to stop the token everywhere\""
+    },
+    {
+      "property": "D-MEMBERSHIP-AT-LOGIN-ONLY",
+      "reason": "a removed member keeps MCP access until the grant ends, at most 7 days; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/mcp.md \"someone removed from the organization keeps access until then\""
+    },
+    {
+      "property": "D-OPEN-CLIENT-REGISTRATION",
+      "reason": "any client can register or name a metadata document; the consent page shows its name as unverified; basis: stated",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "docs/mcp.md \"MCP clients register themselves\""
+    },
+    {
+      "property": "D-PERSON-SCOPE",
+      "reason": "every logged-in person may use every MCP-visible profile; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/mcp.md \"People may use every MCP-visible profile\""
+    },
+    {
+      "property": "D-REVIEWER-IDENTITY",
+      "reason": "by, resolved_by and reviewedBy are client-asserted; the client's token is authenticated, not the person; MCP people are the exception; basis: stated",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "migrations/0001_decisions.sql comment \"who corrected it, as given by the client\"; bridge/README.md \"the bridge takes reviewedBy as written\""
+    },
+    {
+      "property": "D-LOG-TRUTH",
+      "reason": "the log records what the engine saw and did, not that the state was true, who wrote it, or that the client acted; basis: stated (the stored columns)",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"What is stored\""
+    },
+    {
+      "property": "D-LOG-TAMPER-EVIDENCE",
+      "reason": "plain D1 rows in the operator's account; no signing, chaining or anchoring; the only actor who can alter them is out of scope; basis: absence of a statement",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/deployment.md \"Deployment\" table: \"Decision log and feedback | D1 database | your Cloudflare account\""
+    },
+    {
+      "property": "D-STATE-HASH-NOT-PSEUDONYM",
+      "reason": "plain SHA-256 of canonical JSON; equal inputs are linkable and guessable inputs confirmable; basis: a design reading not yet ratified",
+      "false_friend": true,
+      "provenance": "inferred",
+      "source": "open question Q16"
+    },
+    {
+      "property": "D-STATE-TO-BACKEND",
+      "reason": "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""
+    },
+    {
+      "property": "D-FACT-DATA-AS-PUBLISHED",
+      "reason": "facts are what GSI publishes and what Valhalla routes over OpenStreetMap; shape and legend are checked, not truth; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Layers of gsi\", \"Detours\""
+    },
+    {
+      "property": "D-EXACTLY-ONCE",
+      "reason": "a callback can arrive more than once when a 2xx is lost; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/reviews.md \"A callback can arrive more than once if your 2xx answer is lost\""
+    },
+    {
+      "property": "D-BRIDGE-BROKER-ACCESS-CONTROL",
+      "reason": "whoever may write entities, Decision or completed Task entities in the tenant can trigger decisions, resolve reviews and name reviewedBy; the broker's access control owns this; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "bridge/README.md \"Who may resolve is decided by the broker's access control\""
+    },
+    {
+      "property": "D-BRIDGE-RACE-WINDOWS",
+      "reason": "NGSI-LD has no conditional update; a newer decision can be overwritten by an older result; two simultaneous notifications can send the same feedback twice; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "bridge/README.md \"NGSI-LD has no conditional update, so there is a short window\""
+    },
+    {
+      "property": "D-BRIDGE-DELIVERY",
+      "reason": "retry of a failed notification depends on the broker; without a queue a lost notification leaves a review or work order open; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "bridge/README.md \"Whether a broker sends a failed notification again depends on the broker\""
+    }
+  ],
+  "attack_classes": [
+    "wrong-action",
+    "resource-exhaustion",
+    "smuggle-text-downstream",
+    "read-other-profiles",
+    "resolve-reviews-illegitimately",
+    "ssrf-to-public-host",
+    "run-up-the-bill",
+    "authentication-bypass",
+    "oauth-abuse",
+    "profile-discovery",
+    "misleading-grant",
+    "act-on-steered-decision",
+    "pollute-feedback",
+    "read-visible-profiles-decisions",
+    "learn-final-answer",
+    "keep-retries-coming",
+    "wrong-well-formed-answer",
+    "wrong-facts",
+    "trigger-decisions",
+    "resolve-reviews-under-chosen-name",
+    "create-loops"
+  ],
+  "downstream_responsibilities": [
+    "keep the config repository private, protect main, require the Validate check, keep global_fetch_strictly_public",
+    "one token per client limited to its profiles; --profiles '*' only for administration; store as a secret; revoke on a leak",
+    "rate-limit and budget at the edge and in the AI Gateway; the engine does not",
+    "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default",
+    "never act on a decision marked test: true; keep test tokens out of production clients",
+    "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
+    "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
+    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept",
+    "set CALLBACK_SECRET before clients use callback_url; without it no callback is sent",
+    "a GitHub App with only Organization → Members: Read-only installed on every allowed organization; all five settings or none; accept the 7-day lag or clear OAUTH_KV",
+    "set mcp.visible: true only on profiles every member of the allowed organizations may use",
+    "if who resolved a review matters, authenticate the person in the client and put an account identifier, not a free name, in by",
+    "a strong NOTIFY_SECRET in receiverInfo; a token limited to the bridge's profiles; broker access control for writers; the result attribute included in notifications; max_concurrency 1 with a queue; one bridge per tenant",
+    "pin by full commit SHA; set run, stacks and labels in the workflow, never from event data; minimal job permissions; the token as a secret",
+    "run tokens.mjs with --remote only on purpose and keep the printed token out of history and logs; deploy only through the template's workflows"
+  ],
+  "known_misuse": [
+    {
+      "pattern": "acting on a test: true decision as if it were logged",
+      "why_unsafe": "Acting on a `test: true` decision as if it were logged (`R-IGNORE-TEST-DECISIONS`).",
+      "instead": "check the test field; keep test tokens out of production clients"
+    },
+    {
+      "pattern": "reading p as the model's accuracy and setting thresholds without a margin",
+      "why_unsafe": "Reading `p` as \"the model is 90 % accurate\" and setting thresholds without a margin (`D-MODEL-ACCURACY`).",
+      "instead": "treat p as the model's probability; keep a margin; re-check examples after model updates"
+    },
+    {
+      "pattern": "citing the decision log as proof that a report was true or that a named person resolved it",
+      "why_unsafe": "Citing the decision log as proof that a report was true or that a named person resolved it (`D-LOG-TRUTH`, `D-REVIEWER-IDENTITY`).",
+      "instead": "treat the log as the engine's record; authenticate people in the client"
+    },
+    {
+      "pattern": "one --profiles '*' token shared by every client",
+      "why_unsafe": "Using one `--profiles '*'` token for every client, so the log cannot tell clients apart and a leak exposes every profile (`R-SCOPED-TOKENS`).",
+      "instead": "one scoped token per client"
+    },
+    {
+      "pattern": "building deploy-watch's run or stacks from issue or pull-request text",
+      "why_unsafe": "Building deploy-watch's `run` or `stacks` from issue or pull-request text (`R-ACTION-INPUTS`).",
+      "instead": "set them in the workflow only"
+    },
+    {
+      "pattern": "a callback receiver that acts without checking the signature and timestamp, or that is not idempotent",
+      "why_unsafe": "A callback receiver that acts on the payload without checking the signature and timestamp, or that is not idempotent (`R-VERIFY-CALLBACK`).",
+      "instead": "verify the HMAC and timestamp; dedupe on decision_id"
+    },
+    {
+      "pattern": "a subscription that limits notification.attributes to the inputs so the result attribute never arrives and every notification decides again",
+      "why_unsafe": "A bridge subscription that limits `notification.attributes` to the inputs, so the result attribute never arrives and every notification decides again (`R-BRIDGE-SUBSCRIPTION`).",
+      "instead": "leave notification.attributes unset or include the result attribute"
+    },
+    {
+      "pattern": "mcp.visible: true on a profile whose questions or decisions are not for every organization member",
+      "why_unsafe": "Setting `mcp.visible: true` on a profile whose questions or decisions are not for every organization member (`R-MCP-VISIBLE`).",
+      "instead": "keep such profiles token-only"
+    },
+    {
+      "pattern": "putting secrets or identifying free text into ref",
+      "why_unsafe": "Putting secrets or an identifying free text into `ref` (`R-STATE-IS-DATA`).",
+      "instead": "use an opaque reference such as an issue URL"
+    },
+    {
+      "pattern": "sending personal data in state with the AI Gateway's logs on and no retention decision",
+      "why_unsafe": "Sending personal data in `state` with the AI Gateway's logs on and no retention decision (`R-DATA-MINIMISATION`).",
+      "instead": "set collect_logs: false or decide retention first"
+    },
+    {
+      "pattern": "making a consequential action the policy's default so a missing fact or a steered answer falls through to it",
+      "why_unsafe": "Making a consequential action (`publish`, `cancel`) the policy's default action, so a missing fact or a steered answer falls through to it (`R-REVIEW-PATH`).",
+      "instead": "default to review"
+    }
+  ],
+  "known_non_findings": [
+    {
+      "reported_as": "API tokens are hashed with plain SHA-256 instead of a slow password hash",
+      "why_safe": "Covers engine-api, config-repo; symptom 'credential-storage-weakness'. Exact-match conditions (§1.15): the report concerns `TOKENS` records written by `scripts/tokens.mjs`; the token in question is a `pm_` token of 32 random bytes.",
+      "cites": "properties_provided[2]",
+      "suppression": "TOKENS records written by scripts/tokens.mjs; the token is a pm_ token of 32 random bytes"
+    },
+    {
+      "reported_as": "a revoked token still works for up to a minute",
+      "why_safe": "Covers engine-api, engine-mcp; symptom 'stale-authentication'. Exact-match conditions (§1.15): the token was revoked through `scripts/tokens.mjs revoke` less than about 60 seconds before the accepted request.",
+      "cites": "properties_not_provided[7]",
+      "suppression": "revoked through scripts/tokens.mjs revoke less than about 60 seconds before the accepted request"
+    },
+    {
+      "reported_as": "a person removed from the GitHub organization can still use MCP",
+      "why_safe": "Covers engine-mcp; symptom 'stale-authorization'. Exact-match conditions (§1.15): the grant was issued while the person was an active member; less than 7 days have passed; no new login happened.",
+      "cites": "properties_not_provided[8]",
+      "suppression": "grant issued while an active member; less than 7 days passed; no new login"
+    },
+    {
+      "reported_as": "the same callback arrived twice",
+      "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
+      "cites": "properties_not_provided[17]",
+      "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
+    },
+    {
+      "reported_as": "the full state is visible in the AI Gateway logs although the decision log stores only a hash",
+      "why_safe": "Covers engine-api, engine-mcp; symptom 'information-disclosure'. Exact-match conditions (§1.15): the deployment sets `AI_GATEWAY_ID` and the gateway has `collect_logs: true`.",
+      "cites": "properties_not_provided[15]",
+      "suppression": "AI_GATEWAY_ID set and collect_logs: true"
+    },
+    {
+      "reported_as": "untrusted issue text flows from the event payload to GITHUB_STEP_SUMMARY or GITHUB_OUTPUT",
+      "why_safe": "Covers action-triage; symptom 'taint-flow-to-sink'. Exact-match conditions (§1.15): the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them.",
+      "cites": "properties_provided[21]",
+      "suppression": "the flagged values are answers, probabilities, labels or the decision id; the issue title and body are not among them"
+    }
+  ],
+  "dispositions": [
+    "valid",
+    "valid_hardening",
+    "out_of_model_trusted_input",
+    "out_of_model_adversary",
+    "out_of_model_unsupported_component",
+    "out_of_model_non_default_build",
+    "by_design_disclaimed",
+    "known_non_finding",
+    "model_gap"
+  ],
+  "open_questions": [
+    {
+      "claim": "Q1: Roles and the untrusted surface. We believe the untrusted surface is the `state` a client forwards (written by a state author who holds no token), plus everything a token holder can send within its scope; the operator, the Cloudflare account holder and reviewers with a valid token or grant are trusted; co-tenants, side channels and the model's training data are out of this layer.",
+      "field": "description",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q2: Deployment shape. We believe the only supported deployment is one Worker per integrator, deployed from a private config repository; a shared hosted Pointsman serving several integrators is unsupported until it is designed.",
+      "field": "description",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q3: Component carve and the bridge. We believe the bridge, the two Actions and the config-repo template belong in this one model as families; `examples/`, `site/`, `brand/`, `docs/spikes/`, `test/`, the build and check scripts, and the demo repository are out of scope; the bridge does not need a sibling model yet.",
+      "field": "description",
+      "proposed": "yes; revisit the sibling question when a city runs the bridge in its own account."
+    },
+    {
+      "claim": "Q4: Configuration support. We believe `MODEL_MODE=mock`, `PROFILE_SOURCE=bundled`, `FACTS_MODE=mock` and a plain-http model server are dev-only; `FACTS_MODE=off`, no `AI_GATEWAY_ID`, no `CALLBACK_SECRET` and no GitHub login are supported production postures; a deployment that drops `global_fetch_strictly_public` is unsupported.",
+      "field": "build_variants",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q5: Host side effects. We believe the engine fetches only the hosts listed in §1.5 (model backend, GSI, Valhalla, `callback_url`, GitHub, and the OAuth client-ID metadata URL), spawns nothing, reads no environment beyond bindings, and writes only D1, `OAUTH_KV` and the tile cache; the hole is what `@modelcontextprotocol/server` and `@cloudflare/workers-oauth-provider` may fetch on their own. We also believe the module-level caches and the callback claim behave as §1.5 says, and that Hono routes every `/v1/*` request through the token middleware.",
+      "field": "environment",
+      "proposed": "yes, with the metadata-document fetch as the only library-originated outbound call."
+    },
+    {
+      "claim": "Q6: Redirects in the bridge. We believe the bridge follows redirects from the broker and from Pointsman (default `fetch` mode), unlike the engine's outbound calls; since both URLs are operator-set this is a trusted-collaborator edge and not a defect.",
+      "field": "environment",
+      "proposed": "yes, record it; make it a `VALID-HARDENING` candidate rather than a model claim."
+    },
+    {
+      "claim": "Q7: Prompt injection. We believe steering the model's answers through the state is accepted by design: the model's answer is advisory, the typed answer set (`P-ANSWER-SHAPE`), the policy (`P-ACTION-FROM-POLICY`) and the `review` path contain it, and a report that only shows \"I made the model answer X\" is `BY-DESIGN: property-disclaimed`; a state that makes the engine return an answer outside the profile's set, or an action the policy does not produce for the answers, is `VALID`.",
+      "field": "properties_not_provided",
+      "proposed": "yes. Once ratified, add `KNF-STEERED-ANSWER` to §1.15."
+    },
+    {
+      "claim": "Q8: State size. We believe the engine sets no size or depth limit on `state`, and that the project chooses to disclaim this (the platform's body limit, the model backend's limits and edge rate limiting bound it) rather than promise a bound.",
+      "field": "entry_points",
+      "proposed": "disclaim (`D-STATE-SIZE`), with `R-RATE-LIMIT` as the integrator's obligation; alternatively name a limit and it becomes a §1.11 resource property."
+    },
+    {
+      "claim": "Q9: `callback_url`. We believe any public https URL is accepted by design, that redirects are not followed and the receiver's body is ignored, that the payload holds no secret, and that an allow-list is not planned; a report that the engine POSTs a signed decision to a public URL the token holder chose is `BY-DESIGN`.",
+      "field": "entry_points",
+      "proposed": "yes. Once ratified, add `KNF-CALLBACK-TO-PUBLIC-HOST` to §1.15."
+    },
+    {
+      "claim": "Q10: Fact lookup bounds. We believe the bounds in §1.7 (1000 positions, 200 samples, 16 and 9 tiles, 5 km, 3 s per fact, 10 s per tile load) are the intended guarantee, that exceeding them is `error` or `timeout`, and that this is a correctness-only property.",
+      "field": "properties_provided",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q11: Fact data trust. We believe GSI tiles and the Valhalla server are trusted data sources, that an unknown legend colour fails closed, that the shelter list and route lengths are taken as published, and that the engine's own PNG and GeoJSON readers are the only parsers of that data.",
+      "field": "entry_points",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q12: Model backend trust. We believe the model backend is trusted to receive the state and its answers are untrusted data checked for shape; the HTTP adapter stores the configured model name and ignores the server's; Workers AI's reported model name is trusted; a backend that answers a well-formed wrong answer is `D-MODEL-ACCURACY`, not a vulnerability.",
+      "field": "entry_points",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q13: Test tokens at the boundary. We believe a `test: true` decision that a client acts on is the client's fault (`OUT-OF-MODEL: trusted-input` against `R-IGNORE-TEST-DECISIONS`), and that a test token reading or resolving a logged decision, reaching MCP, or receiving a callback would be `VALID` against `P-TEST-TOKEN-ISOLATED`.",
+      "field": "properties_provided",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q14: Reviewer identity. We believe `by` and `resolved_by` are deliberately client-asserted, that the engine authenticates clients and only MCP people as persons, and that a client that lets an unauthenticated person resolve under any name is misusing the API, not finding a bug.",
+      "field": "adversaries",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q15: What the decision log proves. We believe the log proves what the engine received (by hash), which profile version and model answered, which rule fired and when, and for whom (client name); it does not prove the state was true, who wrote it, that the client acted, or that nobody with account access changed it; tamper evidence is disclaimed at correctness-only because the only actor who could tamper is out of scope.",
+      "field": "properties_not_provided",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q16: `state_hash`. We believe `state_hash` is meant to show repeats and is not a pseudonymisation: a plain SHA-256 of canonical JSON lets anyone who can guess the state confirm it.",
+      "field": "properties_not_provided",
+      "proposed": "yes, document it as a false friend."
+    },
+    {
+      "claim": "Q17: Token lifetime and rate limits. We believe tokens have no expiry and the engine has no per-token rate limit or quota, that both are disclaimed for now with edge and gateway limits as the operator's job, and that expiry is a `VALID-HARDENING` candidate rather than a model gap.",
+      "field": "entry_points",
+      "proposed": "disclaim both; keep expiry on the hardening list."
+    },
+    {
+      "claim": "Q18: Scope off-switches. We believe the only two ways to act beyond a single profile scope are a `--profiles '*'` token and an OAuth person (every MCP-visible profile), and that `mcp.visible` is the only per-profile control for people.",
+      "field": "properties_provided",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q19: OAuth client handling. We believe open dynamic client registration and client-ID metadata documents are intended, that the consent page and GitHub membership are the controls, and that PKCE, state binding, consent handles and encrypted grant props are relied on as the OAuth library's contract (`OUT-OF-MODEL: dependency-contract` when the library breaks them).",
+      "field": "entry_points",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q20: Bridge adversary. We believe whoever can write entities, Decision entities or completed Task entities in the broker tenant is the bridge's in-scope adversary, the broker itself is a trusted collaborator, queue messages are the bridge's own, and the broker's access control owns who may trigger decisions and resolve reviews.",
+      "field": "entry_points",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q21: Bridge outputs. We believe everything the bridge writes to the broker comes from the profile's closed answer set and fixed metadata, except the Task `name` (an entity attribute's text), fact `source` strings, and `reviewedBy`/`finalAction` passed through from the resolving app, and that consumers must treat those as data.",
+      "field": "properties_not_provided",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q22: The Actions. We believe `run`, `stacks` and `labels` are trusted workflow-author inputs, that issue text and stack event text are attacker-influenced prompt text, and that a steered `cancel` of a healthy deploy is a correctness issue (`D-MODEL-ACCURACY`, `P-WATCH-FAILSAFE`), not a security one.",
+      "field": "entry_points",
+      "proposed": "yes."
+    },
+    {
+      "claim": "Q23: Version binding and venue. We believe the model should be bound to commit `e1d3591` until the first release tag, revised on the §1.16 triggers, and that a `SECURITY.md` should be added that names the private reporting channel and links this document.",
+      "field": "commit",
+      "proposed": "yes; create `SECURITY.md` in the same pull request that ratifies wave 1."
+    },
+    {
+      "claim": "Q24: Triage policy. We believe `strict` is right while the draft is unratified; after wave 1 and 2 are answered, `relaxed` would let the remaining assumptions close low-blast-radius reports provisionally.",
+      "field": "dispositions",
+      "proposed": "keep `strict` for now."
+    }
+  ]
+}
