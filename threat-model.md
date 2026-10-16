@@ -8,7 +8,7 @@
 - **Version binding**: commit `e1d3591e1b2f6c782f2941e4477923fd88e2addc` on
   `main` (2026-10-16). The repository has no release tags, so the model is
   bound to the commit. A report against a later commit is triaged against the
-  model as it stood at that commit, not against this draft.
+  model as it stood at that commit, not against this model.
 - **Date / author**: 2026-10-16, drafted for the maintainer, Daniel Kastl, who
   ratifies the claims in §1.18.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -40,6 +40,10 @@
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
 - **Draft confidence**: 259 documented / 70 maintainer / 0 inferred / 0 assumption.
+  Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
+  parenthesised tag, by its first kind, so a combined tag such as
+  *(documented, source; maintainer, 2026-10)* counts once as documented; the
+  tags in this header and its legend are not counted.
 - **Backtest note**: no historical corpus was available; the backtest routed N synthesized
   cases only (N = 16, a 16-item corpus). The repository has no advisories, no issues labelled
   security, and no issues closed as "by design" or "wontfix". The 16 cases
@@ -56,8 +60,9 @@
   because the maintainer ratified the design positions on prompt steering,
   callback hosts and state size, not because a disclaimer was widened. No
   contradictions, because there is no historical call to contradict. The
-  routing table is in the producer-side file `.threat-model/backtest.md`,
-  which is not committed.
+  routing table is producer-side (`.threat-model/backtest.md`, ignored by
+  git) and not in the repository, as the skill asks; the figures here are
+  the only published part, so a reviewer cannot recheck them from the tree.
 - **Sibling models**: none. The FIWARE bridge, the two GitHub Actions and the
   config-repository template are component families of this model (§1.2).
   The demo repository `geolonia/pointsman-demo` is out of scope (§1.3).
@@ -347,7 +352,8 @@ modeled tree.
   `grep -rn '\.put(\|\.delete(' src` — hits only in `src/oauth.ts` (OAUTH_KV)
   and `src/facts-gsi.ts` (cache, memory map) *(maintainer, 2026-10)*.
 - **Logging**: the engine writes to the Workers log (`observability`
-  enabled) through `console.error` in 12 places; by design these messages carry
+  enabled) through `console.error` and `console.log` in 5 places in `src/`
+  (and the bridge in 7 places in `bridge/src/`); by design these messages carry
   the reason, never the state, a token, an API key or a model response
   *(documented, README "API tokens": "They never appear in logs, responses or
   the decision log"; docs/models.md "Model server": "Errors and logs never
@@ -384,7 +390,7 @@ configuration is in-model even when the configuration is not the default.
 
 ### Per-input-operand trust table
 
-Coverage: 58 rows cover all 7 REST routes, the `/mcp` endpoint with its 4
+Coverage: 56 rows cover all 7 REST routes, the `/mcp` endpoint with its 4
 tools, the 7 OAuth routes (grouped), the bridge's 2 routes and queue
 consumer, both Actions, and the config repository's inputs. Every route in
 `src/app.ts` has at least one row. Headers and indirect inputs (model
@@ -772,8 +778,9 @@ what voids it.
   Tier: security-critical. *(documented, docs/models.md "Errors and logs never
   include ... the key"; docs/profile-format.md "The key is never logged and
   never sent to browsers")*. Voided by: nothing found. Search:
-  `grep -rn "console\.\(log\|error\)" src` — 12 hits, each logging a message
-  built from an error's `message`, a name or a count.
+  `grep -rn "console\.\(log\|error\)" src` — 5 hits (4 `console.error`, 1
+  `console.log`), each logging a message built from an error's `message`, a
+  name or a count; `bridge/src` adds 7 of the same kind.
 - **`P-REVIEW-RESOLVED-ONCE`** — a pending review resolves exactly once; a
   concurrent or repeated resolve answers 409; the correction is stored as
   feedback in the same transaction only when the resolve succeeded. Symptom:
@@ -845,7 +852,9 @@ what voids it.
   *(documented, actions/triage/README.md "Only labels you list in `labels` are
   ever applied. The issue text is sent to Pointsman as JSON data; it is never
   used in a shell command")*. Voided by: nothing. Search:
-  `grep -n "child_process\|exec" actions/triage/triage.mjs` — 0 hits.
+  `grep -n "child_process\|exec" actions/triage/triage.mjs` — 1 hit,
+  `MAPPING.exec(line)` at `actions/triage/triage.mjs:59`, a `RegExp` method,
+  not process execution; there is no `child_process` import.
 - **`P-WATCH-FAILSAFE`** — the deploy-watch Action stops a deploy only after
   `consecutive` (default 2) `cancel` answers in a row while no stack event
   arrived for `quiet-minutes`; an unreachable or failing Pointsman, or an
@@ -1123,12 +1132,16 @@ Not applicable — the maintainer answered all 24 questions of the first draft i
 repository root. Authority order: prose > yaml > json. The YAML records the
 SHA-256 of the exact prose bytes it was derived from; the JSON is a lossy
 export bound only by commit and date and is never a triage input. Regenerate
-both whenever this file changes.
+both whenever this file changes. The JSON's `trust_boundaries` are
+hand-completed after export: the plugin's exporter cannot read §1.4's tags
+and labels every boundary `inferred`, so the published JSON carries
+`documented` with the maintainer ruling as its source, matching §1.4.
 
 ## Appendix: prior security-policy back-map
 
-Not applicable — the repository has no `SECURITY.md` and no prior document
-that states a threat model; the statements mined for this draft come from the
+Not applicable — the repository had no `SECURITY.md` and no prior document
+that states a threat model at the bound commit `e1d3591`; the change that
+adds this model adds a `SECURITY.md` derived from it; the statements mined for this draft come from the
 README, `docs/`, `bridge/README.md`, the Actions' READMEs, `openapi.yaml`,
 `wrangler.jsonc` comments and source-file header comments, each cited inline.
 

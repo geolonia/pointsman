@@ -154,50 +154,58 @@
     {
       "component": "engine-api",
       "boundary": "`engine-api`: a finding matters if it is reachable from a request that carries a valid token, or from the `state`, `ref` or `callback_url` such a request carries, or from a model backend's response. A finding that needs an invalid or missing token to succeed is a finding against `P-AUTH-REQUIRED` (§1.11).",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "engine-facts",
       "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response.",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "engine-callbacks",
       "boundary": "`engine-callbacks`: reachable from `callback_url` and from the receiver's response.",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from callback_url or from the receiver's response"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from callback_url or from the receiver's response",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "engine-mcp",
       "boundary": "`engine-mcp`: reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login (consent page, client registration, GitHub callback).",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "bridge",
-      "boundary": "**Engine → downstream**: the decision, the decision record and the signed callback are the engine's outputs; the client, the bridge, the Actions and the broker act on them (§1.8).",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response"
+      "boundary": "`bridge`: reachable from a notification that carries the shared secret, from the entity bodies in it, from a queue message, or from a broker or Pointsman response; the broker's entity writers are the untrusted side, the broker itself and Pointsman are trusted collaborators",
+      "provenance": "documented",
+      "reachability_precondition": "reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "action-triage",
       "boundary": "`action-triage`: reachable from the issue title and body in the event payload, or from Pointsman's response.",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from the issue title and body in the event payload, or from Pointsman's response"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from the issue title and body in the event payload, or from Pointsman's response",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "action-deploy-watch",
       "boundary": "`action-deploy-watch`: reachable from CloudFormation stack events or from Pointsman's response. The `run` command and the stack names come from the workflow and are trusted.",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from CloudFormation stack events or from Pointsman's response; run and stacks are trusted workflow inputs"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from CloudFormation stack events or from Pointsman's response; run and stacks are trusted workflow inputs",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "config-repo",
       "boundary": "`config-repo`: reachable from a pull request to the config repository or from the operator's own command line; both are trusted authors (§1.7).",
-      "provenance": "inferred",
-      "reachability_precondition": "reachable from a pull request to the config repository or from the operator's command line; both are trusted authors"
+      "provenance": "documented",
+      "reachability_precondition": "reachable from a pull request to the config repository or from the operator's command line; both are trusted authors",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     }
   ],
   "entry_points": [

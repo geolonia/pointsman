@@ -26,7 +26,9 @@ the thorough docs (every README, `docs/*.md`, `openapi.yaml` and the
 source-file header comments) made it faster. Most claims could be tagged
 **documented** because the docs already state the contract; the first draft
 counted 259 documented, 4 inferred and 62 assumption tags, and after the wave
-259 documented and 70 maintainer (0 inferred, 0 assumption).
+259 documented and 70 maintainer (0 inferred, 0 assumption), counted as
+the validator counts: one per parenthesised tag by its first kind, so a
+combined documented-and-maintainer tag counts once as documented.
 
 ## What the skill's question bank was missing
 
@@ -57,8 +59,9 @@ effects) did apply and became Q1–Q6.
 - **Length.** The output structure wants 3 to 8 pages. A service with eight
   component families (engine API, facts, callbacks, MCP and OAuth, bridge,
   two Actions, config repository) needs a contract-dimension matrix of
-  8 families × 10 dimensions and an input table of 58 rows. The draft is
-  about 19,000 words and the validator warns about it. For a service, a
+  8 families × 10 dimensions and an input table of 56 rows. The accepted
+  model is about 17,700 words (`wc -w`; the first draft was about 19,000)
+  and the validator warns about it. For a service, a
   per-family appendix for the matrix and the input table, with the prose
   sections kept short, would read better. The skill has no such option.
 - **The dimensions.** Four of the eight required dimensions (recursive
@@ -73,9 +76,11 @@ effects) did apply and became Q1–Q6.
   reaches the service only through a client. The bank has no question for
   "the person behind the data your authenticated client forwards".
 - **The validator's code-citation check** treats `'/v1/*'` in Hono's route
-  string as the start of a block comment, so every `src/app.ts:<line>`
-  citation after line 77 was rejected as "comment text". The draft cites those
-  lines in words instead. Worth an upstream issue.
+  string as the start of a block comment, so `src/app.ts:<line>` citations
+  between line 77 and the next `*/` in the file were rejected as "comment
+  text" (lines 89, 264, 269 and 271); those four are cited in words. Lines
+  further down (365, 394, 401) resolve and are cited numerically. Worth an
+  upstream issue.
 - **The backtest** needs a history of reports. Pointsman has none, so the
   backtest routed 16 synthesized cases (routing table in the ignored
   `.threat-model/backtest.md`). It still found one useful thing: the "silence
@@ -88,14 +93,18 @@ effects) did apply and became Q1–Q6.
   project would more likely end at "accepted with a short list of
   assumptions applied under `relaxed`".
 - **The repository's secret scanner** (betterleaks, rule `generic-password`)
-  flagged a §1.2 row as a password literal: the word "login" followed by
-  two backticked file names in parentheses. It also scans every commit of
-  the PR, so a reworded line only passes once the original commit is gone
-  from the branch (a squash before the PR is marked ready). A threat model names credentials and login flows all the
-  time; expect a false positive or two and reword rather than suppress.
-- **The JSON export** cannot express where Q21, Q23 and Q24 land (output
-  taint, version binding, triage policy have no JSON field); the fields were
-  set by hand to the nearest ones.
+  flagged the §1.2 component-family row for the MCP endpoint as a password
+  literal: the word "login" followed by two backticked file names in
+  parentheses. The row was reworded to "GitHub OAuth" with the file names
+  joined by "and". The scanner also reads every commit of the pull request,
+  so the branch was squashed to one commit before the check passed. A threat
+  model names credentials and login flows all the time; expect a false
+  positive or two and reword rather than suppress.
+- **The JSON export** needs hand completion: the exporter labelled every
+  `trust_boundaries` entry `inferred` (it cannot read §1.4's tags) and gave
+  the bridge the wrong boundary text, and before the wave it could not place
+  three open questions. The `description`, `environment` and
+  `trust_boundaries` fields are set by a small script after each export.
 
 ## The questions of the first draft and their answers
 
@@ -184,7 +193,9 @@ belong in issues, not in the threat model:
 - `threat-model.yaml` — the sidecar (`threat-model-sidecar/v2`), bound to the
   prose by SHA-256.
 - `threat-model.json` — the flat export (`schema.json`, spec 1).
-- `.threat-model/backtest.md` — producer-side routing table, ignored by git.
+- `.threat-model/backtest.md` — producer-side routing table, ignored by git
+  and not in the repository, as the skill asks; only the aggregate figures in
+  §1.1 are published.
 - The skill itself lives in `.claude/skills/` in the working tree and is not
   committed; reinstall it with `/plugin marketplace add
   alpha-omega-security/threat-model` and `/plugin install
