@@ -22,8 +22,14 @@ export interface DecisionRecord {
   /** Only when the profile sets log.store_state. */
   state?: unknown;
   callback_url?: string;
-  /** Set for decisions with action "review". */
+  /** Set for decisions whose action a person checks (the profile's people_check). */
   review?: Review;
+  /** For profiles with requires: what the rules read from each required decision, at decide time. */
+  requires?: Record<string, RequiredSnapshot>;
+  /** A repeated request with this key from the same client gets this decision again. */
+  idempotency_key?: string;
+  /** Digest of the request: profile and version, state, ref, decisions. */
+  request_digest?: string;
   /** Set when the decision has a callback_url and a callback was due. */
   callback?: CallbackState;
 }
@@ -34,8 +40,21 @@ export interface FinalAnswer {
   source: 'model' | 'human';
 }
 
+/** One required decision as it was used (docs/decision-chains.md "What is logged"). */
+export interface RequiredSnapshot {
+  decision: string;
+  profile: string;
+  profile_version: number;
+  action: string;
+  outcome: string;
+  reviewed: boolean;
+  /** Every value the rules read from it, by path; null = unknown. */
+  read: Record<string, string | number | boolean | null>;
+}
+
 export interface Review {
-  status: 'pending' | 'resolved';
+  /** superseded: a newer decision replaced it while the review was open. */
+  status: 'pending' | 'resolved' | 'superseded';
   resolved_at?: string;
   resolved_by?: string;
   final_action?: string;
@@ -76,7 +95,7 @@ export interface ProfileStats {
   /** Decisions per action. */
   actions: Record<string, number>;
   /** Decisions that went to the review queue: still pending, resolved, and the final actions people chose. */
-  reviews: { pending: number; resolved: number; final_actions: Record<string, number> };
+  reviews: { pending: number; resolved: number; superseded: number; final_actions: Record<string, number> };
   /** Decisions where a person corrected at least one answer (feedback or review). */
   corrected: number;
 }
@@ -91,6 +110,15 @@ export interface DecisionLog {
   pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]>;
   /** Resolve a pending review. False when it is not pending (any more). */
   resolve(decisionId: string, resolution: Resolution): Promise<boolean>;
+  /** The decision a client made with this idempotency key, if any. */
+  byIdempotencyKey(client: string, key: string): Promise<DecisionRecord | null>;
+  /** The newest decision of a profile for a ref and client, if any. */
+  latestFor(profile: string, ref: string, client: string): Promise<DecisionRecord | null>;
+  /**
+   * Mark the open reviews of older decisions (same profile, ref and client,
+   * made before `before`) as superseded. Returns their ids.
+   */
+  supersede(profile: string, ref: string, client: string, before: string): Promise<string[]>;
   /** Decisions whose callback is pending and due at or before `now`. */
   dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]>;
   /**
@@ -146,6 +174,9 @@ interface DecisionRow {
   callback_attempts: number;
   callback_last_error: string | null;
   callback_next_at: string | null;
+  requires: string | null;
+  idempotency_key: string | null;
+  request_digest: string | null;
 }
 
 function fromRow(row: DecisionRow): DecisionRecord {
@@ -173,6 +204,9 @@ function fromRow(row: DecisionRow): DecisionRecord {
         ...(row.final_answers !== null && { final_answers: JSON.parse(row.final_answers) as Record<string, FinalAnswer> }),
       },
     }),
+    ...(row.requires !== null && { requires: JSON.parse(row.requires) as Record<string, RequiredSnapshot> }),
+    ...(row.idempotency_key !== null && { idempotency_key: row.idempotency_key }),
+    ...(row.request_digest !== null && { request_digest: row.request_digest }),
     ...(row.callback_status !== null && {
       callback: {
         status: row.callback_status as CallbackState['status'],
@@ -203,16 +237,43 @@ export class D1DecisionLog implements DecisionLog {
     await this.db
       .prepare(
         `INSERT INTO decisions (id, created_at, client, ref, profile_id, profile_version, model, action,
-           rule, answers, facts, state_hash, state, callback_url, review_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           rule, answers, facts, state_hash, state, callback_url, review_status, requires, idempotency_key, request_digest)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         r.decision_id, r.created_at, r.client, r.ref ?? null, r.profile, r.profile_version, r.model,
         r.action, r.rule, JSON.stringify(r.answers), r.facts === undefined ? null : JSON.stringify(r.facts), r.state_hash,
         r.state === undefined ? null : JSON.stringify(r.state), r.callback_url ?? null,
-        r.action === 'review' ? 'pending' : null,
+        // The caller decides whether a person checks it (the profile's people_check).
+        r.review?.status === 'pending' ? 'pending' : null,
+        r.requires === undefined ? null : JSON.stringify(r.requires), r.idempotency_key ?? null, r.request_digest ?? null,
       )
       .run();
+  }
+
+  async byIdempotencyKey(client: string, key: string): Promise<DecisionRecord | null> {
+    const row = await this.db.prepare('SELECT * FROM decisions WHERE client = ? AND idempotency_key = ?').bind(client, key).first<DecisionRow>();
+    return row ? fromRow(row) : null;
+  }
+
+  async latestFor(profile: string, ref: string, client: string): Promise<DecisionRecord | null> {
+    const row = await this.db
+      .prepare('SELECT * FROM decisions WHERE profile_id = ? AND ref = ? AND client = ? ORDER BY created_at DESC, id DESC LIMIT 1')
+      .bind(profile, ref, client)
+      .first<DecisionRow>();
+    return row ? fromRow(row) : null;
+  }
+
+  async supersede(profile: string, ref: string, client: string, before: string): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(
+        `UPDATE decisions SET review_status = 'superseded'
+         WHERE profile_id = ? AND ref = ? AND client = ? AND created_at < ? AND review_status = 'pending'
+         RETURNING id`,
+      )
+      .bind(profile, ref, client, before)
+      .run<{ id: string }>();
+    return results.map((r) => r.id);
   }
 
   async get(id: string) {
@@ -256,13 +317,14 @@ export class D1DecisionLog implements DecisionLog {
            WHERE c.value IS NOT json_extract(d.answers, '$."' || c.key || '".value'))`,
       ).bind(profile, since),
     ]);
-    const stats: ProfileStats = { decisions: 0, actions: {}, reviews: { pending: 0, resolved: 0, final_actions: {} }, corrected: corrected!.results[0]?.n ?? 0 };
+    const stats: ProfileStats = { decisions: 0, actions: {}, reviews: { pending: 0, resolved: 0, superseded: 0, final_actions: {} }, corrected: corrected!.results[0]?.n ?? 0 };
     for (const r of actions!.results) {
       stats.actions[String(r.k)] = r.n;
       stats.decisions += r.n;
     }
     for (const r of reviews!.results) {
       if (r.k === 'pending') stats.reviews.pending += r.n;
+      if (r.k === 'superseded') stats.reviews.superseded += r.n;
       if (r.k === 'resolved') {
         stats.reviews.resolved += r.n;
         // One row per final action (GROUP BY): assigned, never read back.

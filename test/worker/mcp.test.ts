@@ -3,6 +3,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
+import { D1DecisionLog } from '../../src/log';
 
 const ALL = newToken();
 const DEPLOY_ONLY = newToken();
@@ -115,6 +116,36 @@ describe('/mcp', () => {
     expect(got2.isError).toBe(true);
     expect(got2.text).toContain('unknown decision');
     expect((await call('get_decision', { decision_id: 'not-a-uuid' })).text).toContain('unknown decision');
+  });
+
+  it('answers a repeated idempotency_key with the logged decision', async () => {
+    const args = { profile: 'issue-triage', state: { title: 'T' }, ref: 'mcp:2', idempotency_key: `mcp-${crypto.randomUUID()}` };
+    const a = JSON.parse((await call('decide', args)).text);
+    const b = JSON.parse((await call('decide', args)).text);
+    expect(b.decision_id).toBe(a.decision_id);
+    const conflict = await call('decide', { ...args, state: { title: 'Other' } });
+    expect(conflict.isError).toBe(true);
+    expect(conflict.text).toContain('idempotency_conflict');
+    const unchained = await call('decide', { profile: 'issue-triage', state: { title: 'T' }, ref: 'mcp:3', decisions: { x: crypto.randomUUID() } });
+    expect(unchained.isError).toBe(true);
+    expect(unchained.text).toContain('requires no decisions');
+  });
+
+  it('hides required decisions of profiles that are not MCP-visible, and the request digest', async () => {
+    const visible = JSON.parse((await call('decide', { profile: 'issue-triage', state: { title: 'T' }, ref: 'mcp:4' })).text);
+    const snap = (decision: string, profile: string) => ({ decision, profile, profile_version: 1, action: 'auto', outcome: 'auto', reviewed: false, read: {} });
+    const id = crypto.randomUUID();
+    // Written directly: no bundled MCP-visible profile has requires.
+    await new D1DecisionLog(DB).insert({
+      decision_id: id, ref: 'mcp:4', answers: visible.answers, action: 'auto', profile: 'issue-triage', profile_version: 1,
+      model: 'mock', created_at: new Date().toISOString(), rule: null, client: 'agent', state_hash: '0'.repeat(64),
+      requires: { seen: snap(visible.decision_id, 'issue-triage'), unseen: snap(crypto.randomUUID(), 'deploy-progress') },
+      idempotency_key: 'k', request_digest: '1'.repeat(64),
+    });
+    const record = JSON.parse((await call('get_decision', { decision_id: id })).text);
+    expect(record.requires.seen.decision).toBe(visible.decision_id);
+    expect(record.requires.unseen).toEqual({ decision: null });
+    expect(record.request_digest).toBeUndefined();
   });
 });
 

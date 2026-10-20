@@ -12,7 +12,8 @@ import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
-import { compilePolicy } from './policy';
+import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './chains';
+import { compilePolicy, peopleAnswers, peopleCheck } from './policy';
 import type { ProfileStore } from './profiles/store';
 import type { Decision } from './types';
 
@@ -41,7 +42,7 @@ function error(status: ContentfulStatusCode, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status });
 }
 
-type Body = { state: unknown; ref?: string; callback_url?: string };
+type Body = { state: unknown; ref?: string; callback_url?: string; decisions?: Record<string, string> };
 
 /** Returns the parsed body, or an error message. */
 function parseBody(body: unknown): Body | string {
@@ -50,7 +51,7 @@ function parseBody(body: unknown): Body | string {
   }
   const b = body as Record<string, unknown>;
   for (const key of Object.keys(b)) {
-    if (!['state', 'ref', 'callback_url'].includes(key)) return `unknown field "${key}"`;
+    if (!['state', 'ref', 'callback_url', 'decisions'].includes(key)) return `unknown field "${key}"`;
   }
   if (b.state === undefined || b.state === null) return '"state" is required';
   if (typeof b.state !== 'object' && typeof b.state !== 'string') {
@@ -59,6 +60,10 @@ function parseBody(body: unknown): Body | string {
   if (typeof b.state === 'string' && b.state.trim() === '') return '"state" must not be empty';
   if (b.ref !== undefined && (typeof b.ref !== 'string' || b.ref.length === 0 || b.ref.length > MAX_REF_LENGTH)) {
     return `"ref" must be a string of 1 to ${MAX_REF_LENGTH} characters`;
+  }
+  if (b.decisions !== undefined) {
+    const problem = decisionsError(b.decisions);
+    if (problem) return problem;
   }
   if (b.callback_url !== undefined) {
     if (typeof b.callback_url !== 'string' || !URL.canParse(b.callback_url)
@@ -113,7 +118,9 @@ export function createApp(deps: (env: Env) => Deps) {
     } catch {
       return error(400, 'invalid_request', 'body must be valid JSON');
     }
-    const result = await makeDecision(deps(c.env), c.get('client'), c.req.param('profile'), raw, version);
+    const idempotencyKey = c.req.header('Idempotency-Key');
+    const result = await makeDecision(deps(c.env), c.get('client'), c.req.param('profile'), raw, version,
+      idempotencyKey === undefined ? {} : { idempotencyKey });
     return result.ok ? c.json(result.decision) : error(result.status, result.code, result.message);
   });
 
@@ -128,8 +135,10 @@ export function createApp(deps: (env: Env) => Deps) {
   app.get('/v1/decisions/:id', async (c) => {
     const record = await findDecision(c, deps(c.env).log, c.req.param('id'));
     if (!record) return error(404, 'decision_not_found', 'unknown decision');
-    const { callback_url: _, ...visible } = record;
-    return c.json(visible);
+    const { callback_url: _, request_digest: _digest, requires, ...visible } = record;
+    const client = c.get('client');
+    const shown = visibleRequires(requires, (profile) => canUse(client, profile));
+    return c.json(shown ? { ...visible, requires: shown } : visible);
   });
 
   app.post('/v1/decisions/:id/feedback', async (c) => {
@@ -212,6 +221,12 @@ export function createApp(deps: (env: Env) => Deps) {
     }
     const input = parseResolution(raw, profile);
     if (typeof input === 'string') return error(400, 'invalid_request', input);
+    // Only the answers the profile lists, so rules that read a person's answer
+    // (decisions.<name>.outcome) know every value it can have.
+    const answers = peopleAnswers(profile);
+    if (!answers.includes(input.action)) {
+      return error(400, 'invalid_request', `"action" must be one of: ${answers.join(', ')}`);
+    }
 
     const finalAnswers: Record<string, FinalAnswer> = {};
     for (const q of profile.questions) {
@@ -320,11 +335,18 @@ export async function makeDecision(
   profileId: string,
   raw: unknown,
   version?: number,
-  /**
-   * The state already has the profile's input fields (MCP callers send
-   * them directly) instead of a raw payload for the input mapping.
-   */
-  { stateIsMapped = false }: { stateIsMapped?: boolean } = {},
+  {
+    stateIsMapped = false,
+    idempotencyKey,
+  }: {
+    /**
+     * The state already has the profile's input fields (MCP callers send
+     * them directly) instead of a raw payload for the input mapping.
+     */
+    stateIsMapped?: boolean;
+    /** A repeated request with this key from the same client gets the logged decision again. */
+    idempotencyKey?: string;
+  } = {},
 ): Promise<DecisionResult> {
   // Checked before the profile lookup, so a token cannot probe which
   // profiles exist outside its scope.
@@ -335,9 +357,43 @@ export async function makeDecision(
   if (client.test && body.callback_url !== undefined) {
     return fail(400, 'invalid_request', 'a test token gets no callbacks: its decisions are not logged');
   }
+  if (idempotencyKey !== undefined && !IDEMPOTENCY_KEY.test(idempotencyKey)) {
+    return fail(400, 'invalid_request', 'the idempotency key must be 1 to 200 printable characters');
+  }
+  // A test token's decisions are not logged, so it has none to build on, and
+  // it must not read logged ones (P-TEST-TOKEN-ISOLATED).
+  if (client.test && body.decisions !== undefined) {
+    return fail(400, 'invalid_request', 'a test token cannot send decisions: its decisions are not logged');
+  }
 
   const profile = await store.get(profileId, version);
   if (!profile) return fail(404, 'profile_not_found', 'unknown profile or version');
+
+  const chained = (profile.requires ?? []).length > 0;
+  if (!chained && body.decisions !== undefined) return fail(400, 'invalid_request', '"decisions": this profile requires no decisions');
+  if (chained && client.test) return fail(400, 'invalid_request', 'a test token cannot decide a profile that requires other decisions');
+  if (chained && body.ref === undefined) return fail(400, 'invalid_request', '"ref" is required when the profile requires decisions');
+
+  // The same key from the same client: the decision already logged, if the
+  // request is the same; a different request with that key is a conflict.
+  const digest = idempotencyKey === undefined ? undefined
+    : await hashState({ profile: profile.id, version: profile.version, state: body.state, ref: body.ref ?? null, decisions: body.decisions ?? null });
+  if (idempotencyKey !== undefined && !client.test) {
+    const earlier = await log.byIdempotencyKey(client.client, idempotencyKey);
+    if (earlier) {
+      if (earlier.request_digest !== digest) return fail(409, 'idempotency_conflict', 'this idempotency key was used for a different request');
+      return { ok: true, decision: decisionOf(earlier) };
+    }
+  }
+
+  // A final decision that a person resolved is never replaced (docs/decision-chains.md).
+  const earlierFinal = chained ? await log.latestFor(profile.id, body.ref!, client.client) : null;
+  if (earlierFinal?.review?.status === 'resolved') {
+    return fail(409, 'resolved_by_person', 'a person has resolved the decision this one would replace');
+  }
+
+  const required = chained ? await loadRequired(profile, body.decisions, body.ref!, client, log, store) : undefined;
+  if (required && !required.ok) return fail(400, 'invalid_request', required.message);
 
   const state = stateIsMapped ? pickInputFields(profile, body.state) : buildState(profile, body.state);
   if (profile.input && Object.keys(state as object).length === 0) {
@@ -346,28 +402,33 @@ export async function makeDecision(
       : 'no field of the profile input mapping was found in "state"');
   }
 
-  // The profile's model first, then its fallback models in order. A model
-  // error (failed call, or an answer that does not fit the profile) moves
-  // on to the next model; the decision records the model that answered.
-  const models = [profile.model, ...(profile.fallback_models ?? [])];
-  const served = models.filter((m) => adapterFor(m) !== null);
-  if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
-
   // Facts read the client's data (the `at` paths), not the mapped state.
   // Looked up while the model answers; lookupFacts never throws.
   const factsLookup = profile.facts?.length ? lookupFacts(profile.facts, body.state, factProvider) : undefined;
 
-  let answers;
-  let model;
-  for (const m of served) {
-    try {
-      const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m));
-      answers = normalizeAnswers(profile, response);
-      model = response.model;
-      break;
-    } catch (err) {
-      if (!(err instanceof ModelError)) throw err;
-      console.error(`model error for profile ${profile.id}, model ${m}: ${err.message}`);
+  let answers: Decision['answers'] | undefined;
+  let model: string | undefined;
+  if (profile.questions.length === 0) {
+    // Rules only (a profile with requires): no model call, no adapter needed.
+    answers = {};
+    model = NO_MODEL;
+  } else {
+    // The profile's model first, then its fallback models in order. A model
+    // error (failed call, or an answer that does not fit the profile) moves
+    // on to the next model; the decision records the model that answered.
+    const models = [profile.model, ...(profile.fallback_models ?? [])];
+    const served = models.filter((m) => adapterFor(m) !== null);
+    if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
+    for (const m of served) {
+      try {
+        const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m));
+        answers = normalizeAnswers(profile, response);
+        model = response.model;
+        break;
+      } catch (err) {
+        if (!(err instanceof ModelError)) throw err;
+        console.error(`model error for profile ${profile.id}, model ${m}: ${err.message}`);
+      }
     }
   }
   const facts = factsLookup ? await factsLookup : undefined;
@@ -375,7 +436,9 @@ export async function makeDecision(
 
   // Profiles are validated before they reach a store, so a PolicyError here
   // means a store holds an unvalidated profile: a 500, like other config errors.
-  const { action, rule } = compilePolicy(profile).decide(answers, facts);
+  const policy = compilePolicy(profile, required?.ok ? required.profiles : {});
+  const { action, rule } = policy.decide(answers, facts, required?.ok ? required.inputs : {});
+  const opensReview = peopleCheck(profile).includes(action);
 
   const decision: Decision = {
     decision_id: crypto.randomUUID(),
@@ -388,20 +451,57 @@ export async function makeDecision(
     created_at: new Date().toISOString(),
     rule,
     ...(facts && { facts }),
+    ...(required?.ok && { requires: snapshotOf(required, policy) }),
+    ...(earlierFinal && { replaces: earlierFinal.decision_id }),
+    ...(opensReview && !client.test && { review: { status: 'pending' as const } }),
   };
   // A test token's decisions are not logged (and marked as such): they
   // check profiles and examples, nobody acts on them.
   if (client.test) return { ok: true, decision: { ...decision, test: true } };
   // Every decision is logged before it is returned. If the log fails, the
   // client gets a 500 and must not act on an unlogged decision.
-  await log.insert({
-    ...decision,
-    client: client.client,
-    state_hash: await hashState(state),
-    ...(profile.log?.store_state && { state }),
-    ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
-  });
+  try {
+    await log.insert({
+      ...decision,
+      client: client.client,
+      state_hash: await hashState(state),
+      ...(profile.log?.store_state && { state }),
+      ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
+      ...(idempotencyKey !== undefined && digest !== undefined && { idempotency_key: idempotencyKey, request_digest: digest }),
+    });
+  } catch (err) {
+    // Two requests with the same key at once: the other one was logged first.
+    const earlier = idempotencyKey === undefined ? null : await log.byIdempotencyKey(client.client, idempotencyKey);
+    if (!earlier) throw err;
+    if (earlier.request_digest !== digest) return fail(409, 'idempotency_conflict', 'this idempotency key was used for a different request');
+    return { ok: true, decision: decisionOf(earlier) };
+  }
+  // The new decision replaces the older ones of the same step for this report:
+  // their open reviews leave the queue.
+  if (chained) await log.supersede(profile.id, body.ref!, client.client, decision.created_at);
   return { ok: true, decision };
+}
+
+/** The model of a decision made by rules only. */
+export const NO_MODEL = 'none';
+const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,200}$/;
+
+/** A logged decision as the decide response (an idempotent repeat). */
+function decisionOf(r: DecisionRecord): Decision {
+  return {
+    decision_id: r.decision_id,
+    ...(r.ref !== undefined && { ref: r.ref }),
+    answers: r.answers,
+    action: r.action,
+    profile: r.profile,
+    profile_version: r.profile_version,
+    model: r.model,
+    created_at: r.created_at,
+    rule: r.rule,
+    ...(r.facts && { facts: r.facts }),
+    ...(r.requires && { requires: r.requires }),
+    ...(r.review?.status === 'pending' && { review: { status: 'pending' as const } }),
+  };
 }
 
 /** Longer than one attempt (10 s timeout), so a claim never expires mid-send. */

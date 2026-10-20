@@ -134,4 +134,10 @@ export interface Decision {
   facts?: Record<string, Fact>;
   /** Made with a test token: not logged, so the id is unknown to every other endpoint. */
   test?: true;
+  /** For profiles with requires: what the rules read from each required decision. */
+  requires?: Record<string, import('./log').RequiredSnapshot>;
+  /** The earlier decision of the same profile, ref and client that this one replaces. */
+  replaces?: string;
+  /** A person checks it before it counts (the profile's people_check). */
+  review?: { status: 'pending' };
 }

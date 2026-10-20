@@ -126,9 +126,17 @@ describe('review queue', () => {
 
   it('keeps the model answers and writes no feedback when nothing is corrected', async () => {
     const id = await newReview(s.call);
-    const { data } = await s.call('POST', `/v1/reviews/${id}/resolve`, { action: 'close', by: 'x' });
+    const { data } = await s.call('POST', `/v1/reviews/${id}/resolve`, { action: 'reject', by: 'x' });
     expect(data.answers.team).toEqual({ value: 'backend', source: 'model' });
     expect((await s.call('GET', `/v1/decisions/${id}`)).data.feedback).toEqual([]);
+  });
+
+  it('refuses an answer that is not in people_answers and keeps the review open', async () => {
+    const id = await newReview(s.call);
+    const res = await s.call('POST', `/v1/reviews/${id}/resolve`, { action: 'close', by: 'x' });
+    expect(res.status).toBe(400);
+    expect(res.data.error.message).toContain('"action" must be one of:');
+    expect((await s.call('GET', `/v1/decisions/${id}`)).data.review.status).toBe('pending');
   });
 
   it('answers 409 for a second resolve and for a decision without review', async () => {
