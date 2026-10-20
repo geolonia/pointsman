@@ -1,7 +1,8 @@
 # Decision chains (design)
 
 Status: **agreed design**, for #101 (agreed points of 2026-10-20 at the
-end). Nothing here is built yet.
+end). Built: the engine (#107) and the bridge (#108); the demo shows it.
+Still open: the graph for DMN tools (below).
 
 A decision can build on earlier decisions: the report is evaluated, more
 checks run, and a final decision uses all of it. This document says how a
@@ -68,20 +69,30 @@ version: 1
 requires:
   - { name: check, profile: road-restriction-check }
   - { name: evacuation, profile: evacuation-access-check, optional: true }
-facts:
-  - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
+model: none
+questions: []
 policy:
   rules:
-    - when: "decisions.evacuation.action == 'alert'"
+    - when: "decisions.check.outcome == 'reject'"
+      action: reject
+    - when: "decisions.evacuation.outcome == 'alert'"
       action: urgent
     - when: "decisions.check.outcome == 'urgent'"
       action: urgent
-    - when: "decisions.check.outcome == 'publish' and facts.flood.rank < 5"
+    - when: "decisions.check.outcome == 'publish'"
       action: publish
-    - when: "decisions.check.outcome == 'reject'"
-      action: reject
   default: review
+  people_check: []
 ```
+
+As built (examples/profiles/road-closure-final.yaml): a person's `reject`
+comes first, also over an alert; an alert counts when a person gave it on
+the evacuation check's review too (`outcome`, not `action`). The flood zone
+is checked in the first step, which sends a report in a deep flood zone to a
+person before it can be published: so `default: review` always means "the
+first step's review is still open", and answering it runs the final step
+again. A first version read the flood zone here, which left reports at
+`review` with nobody to answer them.
 
 The final profile has no `people_check` of its own: people check the first
 step (its profile lists `people_check: [review, urgent]` and
@@ -147,8 +158,11 @@ The rule's index is not readable: index 0 can be a different rule in
 another version. Rules use the action or outcome instead.
 
 This is what #101 asks for: **the map checks count in the final decision**,
-from the decision that looked them up (`decisions.evacuation.facts.walk.extra_m`)
-or looked up again by the final profile itself (`facts.flood.rank`).
+from the decision that looked them up (`decisions.evacuation.facts.walk.extra_m`),
+or, as in the demo, through the earlier decisions' results (the evacuation
+check's alert; the first check sends deep flood zones to a person). A final
+profile could also look up facts of its own (`facts.flood.rank`); then every
+action it leaves a report at needs a way out (see the example above).
 
 ### Checked both ways
 
@@ -257,8 +271,9 @@ required decision.
   `reviewedAt`, so a resolved review is a new input and the route runs
   again, also when the person only corrected answers. The rules
   read `outcome`, which now holds the person's answer. In the demo the
-  final route sets it for `check`; the evacuation route does not, so a
-  resolved check does not run the evacuation check (and its alert) twice.
+  final route sets it for `check` and `evacuation` (a person may answer
+  either); the evacuation route does not set it for `check`, so a resolved
+  check does not run the evacuation check (and its alert) twice.
 - **A person's answer stays** (agreed point 7). A final decision that a
   person has resolved is never replaced: a decide request that would
   replace it is refused (`409`, code `resolved_by_person`). The bridge
@@ -316,7 +331,8 @@ result is:
 ```json
 { "type": "RoadRestriction", "profile": "road-closure-final", "name": "final",
   "inputs": ["description", "check", "evacuation"], "attribute": "final",
-  "requires": { "check": { "attribute": "check", "rerunOnReview": true }, "evacuation": "evacuation" },
+  "requires": { "check": { "attribute": "check", "rerunOnReview": true },
+                "evacuation": { "attribute": "evacuation", "optional": true, "rerunOnReview": true } },
   "decisionEntity": true }
 ```
 

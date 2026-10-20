@@ -37,12 +37,19 @@ Pointsman does the first check on every report, within about a second:
 And the profile turns the answers into one of three actions:
 
 - **`urgent`**: `danger` is likely (≥ 0.7), or the place is in a river flood
-  zone of 3 m or deeper and `danger` is at least 0.4 (a fact rule, version
-  2; see "Spatial facts and the chain"). A person looks at it now.
-- **`publish`**: clear, consistent, confident category, no danger. It goes to
-  the public map without waiting.
-- **`review`**: everything else goes to the normal queue, also a report with
-  `danger` at least 0.4 whose flood zone could not be looked up.
+  zone of 3 m or deeper and `danger` is at least 0.4 (a fact rule; see
+  "Spatial facts and the chain"). A person looks at it now.
+- **`publish`**: clear, consistent, confident category, no danger, and not in
+  a flood zone of 3 m or deeper. It goes to the public map without waiting.
+- **`review`**: everything else goes to the normal queue. Since version 3
+  this also holds for a report in a flood zone of 3 m or deeper, or whose
+  flood zone could not be looked up, when it is not `urgent` by the rules
+  above.
+
+A person checks `urgent` and `review` reports and answers `publish` or
+`reject`. The demo then makes a final decision from this result and the
+evacuation check (profile `road-closure-final`, see
+[decision-chains.md](decision-chains.md)); the residents' map reads it.
 
 The profile is [examples/profiles/road-restriction-check.yaml](../examples/profiles/road-restriction-check.yaml).
 
@@ -142,9 +149,10 @@ Three additions after the first version (October 2026):
 
 - **Facts in the rules** (#64, #65, #70): for each report, Pointsman looks up
   the river flood zone (GSI hazard map tiles) and the nearest evacuation site
-  (GSI). The profile `road-restriction-check` version 2 sends a report in a
-  flood zone of 3 m or deeper to a person (`urgent`) when the text alone
-  would only be `review`. The model never sees the facts (spike #60); the page
+  (GSI). The profile `road-restriction-check` (version 2, and 3) sends a
+  report in a flood zone of 3 m or deeper to a person (`urgent`) when the
+  text alone would only be `review`; version 3 sends every report there to a
+  person before it is published. The model never sees the facts (spike #60); the page
   lists them with their source.
 - **A chain of decisions** (#66): for reports decided `urgent` or `review`, a
   second profile (`evacuation-access-check`) asks whether the closure cuts

@@ -4,7 +4,7 @@
 # RoadRestriction entity (datamodels.jp, transportation subject) in
 # normalized NGSI-LD form, as the bridge receives it.
 id: road-restriction-check
-version: 2
+version: 3
 title:
   en: Road restriction check
   ja: 通行規制の確認
@@ -70,6 +70,16 @@ policy:
     # Without the flood fact, the rule above cannot be checked: a person looks instead.
     - when: "facts.flood.missing == true and danger.yes >= 0.4"
       action: review
+    # In a deep flood zone, or without the flood fact, a person looks before it
+    # is published: the final decision (road-closure-final) then only combines.
+    - when: "facts.flood.rank >= 5"
+      action: review
+    - when: "facts.flood.missing == true"
+      action: review
     - when: "danger.yes < 0.5 and category.p >= 0.85 and status_matches.yes >= 0.8 and clarity.score >= 2"
       action: publish
   default: review
+  # A person checks urgent reports too, and answers publish or reject. The
+  # final decision (road-closure-final) reads that answer as check.outcome.
+  people_check: [review, urgent]
+  people_answers: [publish, reject]
