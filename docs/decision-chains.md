@@ -261,7 +261,10 @@ required decision.
   resolved check does not run the evacuation check (and its alert) twice.
 - **A person's answer stays** (agreed point 7). A final decision that a
   person has resolved is never replaced: a decide request that would
-  replace it is refused (`409`), and the bridge logs and skips it.
+  replace it is refused (`409`, code `resolved_by_person`). The bridge
+  treats only that code as done (it logs it and acknowledges the message);
+  every other error, including `idempotency_conflict`, is retried as usual
+  and ends in the dead-letter queue when the retries run out.
 - **The new final decision replaces the older ones** for the same profile,
   `ref` and client, for profiles with `requires` only (other profiles keep
   today's behaviour):
@@ -288,10 +291,13 @@ required decision.
   closes Tasks, and (4) writes the result attribute last. A failure in a
   later step leaves the message on the queue, which tries again. The
   bridge sends an idempotency key with the decide request (the route, the
-  entity and the hash of its inputs), and Pointsman answers a repeated key
-  from the same client with the decision it already logged, so a retry
-  never decides twice; steps 2 to 4 are written so that doing them again is
-  harmless (the entity ids come from the decision id). A message that still
+  entity and the hash of its inputs). Pointsman keeps, with the decision,
+  a digest of the request (profile and version, state, `ref`,
+  `decisions`). A repeated key from the same client with the same digest
+  gets the decision already logged, so a retry never decides twice; the
+  same key with another digest is refused (`409`, code
+  `idempotency_conflict`). Steps 2 to 4 are written so that doing them
+  again is harmless (the entity ids come from the decision id). A message that still
   fails after the retries goes to the dead-letter queue, from where it can
   be replayed with the same key.
 - **No loop.** A run again happens only when a required decision changes
@@ -432,7 +438,7 @@ The design adds an input that reads other decisions. The threat model gets:
    Tasks from the decide response's `review`, chained routes from the queue
    one at a time, the idempotency key, writes only when newer,
    closing the Task of a superseded decision, skipping a `409`, route
-   cycles.
+   cycles; only `resolved_by_person` is a no-op.
 4. **pointsman-config:** the `road-closure-final` profile and its route.
 5. **Demo:** three stages, the third decision in the developer view.
 6. **Later:** the graph endpoint and the DMN 1.3 export (with DMNDI); a
