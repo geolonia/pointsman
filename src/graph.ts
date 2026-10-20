@@ -396,9 +396,11 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
       // into the target (its left side, through the gap before its column).
       let start: string;
       let x1: number;
+      // In the gap, never back into a box, a few px apart for each arrow.
+      const inGap = (k: number) => Math.min(GX - 12, 12 + (k % 8) * 8);
       if (boxBelow(e.from)) {
-        x1 = a.x + BW + GX / 2 - 10 - skip * 6;
-        const y = a.y + BH - 12;
+        x1 = a.x + BW + inGap(skip);
+        const y = a.y + BH - 10 - (outs.indexOf(e) % 6) * 6;
         start = `M${a.x + BW + 2} ${y} L${x1} ${y}`;
       } else {
         x1 = a.x + spread(outs.indexOf(e), outs.length, BW);
@@ -407,8 +409,8 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
       let end: string;
       let x2: number;
       if (boxBelow(e.to)) {
-        x2 = b.x - GX / 2 + 10 + skip * 6;
-        const y = b.y + BH - 12;
+        x2 = b.x - inGap(skip);
+        const y = b.y + BH - 10 - (ins.indexOf(e) % 6) * 6;
         end = `L${x2} ${y} L${b.x - 2} ${y}`;
       } else {
         x2 = b.x + spread(ins.indexOf(e), ins.length, BW);

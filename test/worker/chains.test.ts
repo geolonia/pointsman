@@ -65,7 +65,13 @@ function setup() {
 }
 
 /** The app with some log methods replaced (to run a race at a fixed point) or other profiles. */
-function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last, follow, end]) {
+const after: Profile = {
+  ...end,
+  id: 'triage-after',
+  requires: [{ name: 'follow', profile: 'triage-follow' }, { name: 'triage', profile: 'issue-triage', optional: true }],
+};
+
+function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last, follow, end, after]) {
   const real = new D1DecisionLog(DB);
   const deps: Deps = {
     store: new MemoryProfileStore(profiles),
@@ -193,6 +199,16 @@ describe('decision chains', () => {
     expect(res.data.action).toBe('without-follow');
     expect(res.data.requires.triage.decision).toBe(t2);
     expect(res.data.requires.follow).toBeUndefined();
+  });
+
+  it('still refuses a required decision made for an older one, also when the other is optional', async () => {
+    // Here the follow-up is required and the first step optional: the stale one is required.
+    const t1 = await decideFirst();
+    const f1 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    const t2 = await decideFirst();
+    const res = await s.call('POST', '/v1/decide/triage-after', { state: {}, ref, decisions: { follow: f1.data.decision_id, triage: t2 } });
+    expect(res.status).toBe(400);
+    expect(res.data.error.message).toBe('decisions.follow is not a usable decision');
   });
 
   it('gives the same answer for every unusable decision', async () => {

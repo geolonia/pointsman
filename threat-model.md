@@ -742,8 +742,11 @@ what voids it.
   earlier decisions comes from the decision log, never from the request: the
   caller sends only ids, and each must be a logged decision of the named
   profile, in the token's scope, with the request's `ref`, made by the same
-  client and not replaced; the earlier decisions must fit each other; every
-  other id gives the same 400, so a token cannot learn which decisions exist.
+  client and not replaced; the earlier decisions must fit each other (an
+  optional one that does not fit is left out, a required one refused; only
+  decisions that passed every check above can be left out, so this tells the
+  caller nothing about other decisions); every other id gives the same 400,
+  so a token cannot learn which decisions exist.
   The decision keeps what its rules read (`requires`). Symptom:
   `x-authorization-bypass`, `x-unauthorized-action`, `info-leak`. Tier:
   security-critical. *(documented, docs/profile-format.md "Decision chains":

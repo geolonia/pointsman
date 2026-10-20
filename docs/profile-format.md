@@ -193,8 +193,12 @@ Each one must be of the named profile, in the token's scope, with the same
 `ref` and made by the same client, and the newest decision of its profile
 for that report (an older one was replaced). Every
 other case gives the same `400` (`decisions.<name> is not a usable
-decision`), so a token cannot find out which decisions exist. Test tokens
-cannot send `decisions`.
+decision`), so a token cannot find out which decisions exist. One exception:
+an `optional` decision that was itself made from an older decision than one
+given here (for example an evacuation check made for an earlier first check)
+is left out, as if it had not run. Then `decisions.<name>.missing` is true,
+and the answer's `requires` does not list it: compare it with what you sent.
+A required one in that case is refused. Test tokens cannot send `decisions`.
 
 Rules read these fields:
 
