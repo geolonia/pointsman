@@ -339,7 +339,9 @@ result is:
 - The bridge reads each required attribute's `decisionId` and sends it in
   `decisions`. A name the profile does not require is refused by Pointsman.
   This replaces `informedBy`, which keeps working as a route with a single
-  requirement until the routes are moved over.
+  requirement. The demo's evacuation check moved over on 2026-10-21
+  (`evacuation-access-check` version 3 requires `check`), so Pointsman knows
+  the order of the three steps and the graph shows it.
 - **When to run:** when all non-optional required decisions are there, and
   each optional one is either there or will not come. "Will not come" is
   the subscription's `q` (in the demo: `check` is `publish`, or
@@ -407,10 +409,13 @@ the export of the demo's chain validates against the DMN 1.3 XML Schema
 (OMG) and opens in bpmn.io dmn-js 17.12.2 without warnings.
 
 For people, `?format=svg` (with `lang=en` or `ja`) draws the chain as a small
-diagram in the style of the datamodels.jp diagrams: one box per decision
-(its AI questions or "rules only", its map checks), the asked-for decision
-highlighted, arrows from the decisions it requires, labelled with their
-names (dashed when optional). It uses the datamodels.jp class names and
+diagram in the style of the datamodels.jp diagrams, as a flow from left to
+right: one box per decision (its AI questions or "rules only", its map
+checks), each one column right of the decisions it requires, the asked-for
+decision highlighted, arrows from the decisions it requires, labelled with
+their names (dashed when optional). An arrow that skips a column (in the
+demo: a first check that published the report goes straight to the final
+result) runs under the boxes. It uses the datamodels.jp class names and
 colours, so inline on that site it takes the site's CSS; on its own it
 brings light and dark colours (`--pm-*` variables a page can set).
 

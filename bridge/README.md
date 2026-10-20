@@ -289,7 +289,9 @@ the closure cuts people off from their evacuation site (route 2).
   that should go on (for example `check=="urgent"`).
 - `informedBy: "check"`: its Decision entities link the first decision
   (`wasInformedBy`, from `check.decision`), so the chain can be followed in
-  the broker.
+  the broker. Pointsman does not know about this link. When the second
+  profile `requires` the first (next section), Pointsman checks it and its
+  graph shows the order; the demo does this since 2026-10-21.
 
 ```json
 [

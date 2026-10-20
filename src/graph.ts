@@ -298,9 +298,11 @@ function svgText(cls: string, x: number, y: number, text: string, size: number, 
 
 /**
  * The chain as a small SVG diagram in the datamodels.jp flow-diagram style
- * (class names and colours): one box per decision with its AI questions and
- * map checks, the asked-for decision highlighted, arrows from each required
- * decision labelled with its name. Inline on datamodels.jp it takes the
+ * (class names and colours), as a flow from left to right: one box per
+ * decision with its AI questions and map checks, each decision one column
+ * right of the decisions it requires, the asked-for decision highlighted.
+ * Arrows go from each required decision, labelled with its name; one that
+ * skips a column runs under the boxes. Inline on datamodels.jp it takes the
  * site's CSS; on its own it uses the colours in its style element (light
  * and dark).
  */
@@ -309,31 +311,35 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const decisions = graph.nodes.filter((n): n is Extract<GraphNode, { type: 'decision' }> => n.type === 'decision');
   const reqEdges = graph.edges.filter((e) => e.type === 'informationRequirement' && e.from.startsWith('decision_'));
-  // Rows: decisions nothing requires on top; each required decision one row
-  // below the lowest decision that requires it.
-  const row = new Map<string, number>();
-  const depth = (id: string, guard = 0): number => {
-    if (row.has(id)) return row.get(id)!;
-    const up = reqEdges.filter((e) => e.from === id).map((e) => e.to);
-    const d = up.length === 0 || guard > decisions.length ? 0 : Math.max(...up.map((t) => depth(t, guard + 1))) + 1;
-    row.set(id, d);
-    return d;
+  // Columns: decisions that require none on the left; each decision one
+  // column right of the rightmost decision it requires.
+  const col = new Map<string, number>();
+  const column = (id: string, guard = 0): number => {
+    if (col.has(id)) return col.get(id)!;
+    const from = reqEdges.filter((e) => e.to === id).map((e) => e.from);
+    const c = from.length === 0 || guard > decisions.length ? 0 : Math.max(...from.map((f) => column(f, guard + 1))) + 1;
+    col.set(id, c);
+    return c;
   };
-  for (const d of decisions) depth(d.id);
-  const rows: string[][] = [];
-  for (const d of decisions) (rows[row.get(d.id)!] ??= []).push(d.id);
+  for (const d of decisions) column(d.id);
+  const cols: string[][] = [];
+  for (const d of decisions) (cols[col.get(d.id)!] ??= []).push(d.id);
   const BW = 200;
   const BH = 78;
-  const GX = 20;
-  const GY = 62;
-  const widest = Math.max(...rows.map((r) => r.length));
-  const width = Math.max(460, widest * BW + (widest - 1) * GX + 40);
+  const GX = 110;
+  const GY = 24;
+  /** Space under the boxes for each arrow that skips a column. */
+  const LANE = 34;
+  const tallest = Math.max(...cols.map((c) => c.length));
+  const boxes = tallest * BH + (tallest - 1) * GY;
   const at = new Map<string, { x: number; y: number }>();
-  rows.forEach((ids, r) => {
-    const span = ids.length * BW + (ids.length - 1) * GX;
-    ids.forEach((id, i) => at.set(id, { x: (width - span) / 2 + i * (BW + GX), y: 8 + r * (BH + GY) }));
+  cols.forEach((ids, c) => {
+    const span = ids.length * BH + (ids.length - 1) * GY;
+    ids.forEach((id, i) => at.set(id, { x: 20 + c * (BW + GX), y: 8 + (boxes - span) / 2 + i * (BH + GY) }));
   });
-  const height = 8 + rows.length * BH + (rows.length - 1) * GY + 8;
+  const skips = reqEdges.filter((e) => col.get(e.to)! - col.get(e.from)! > 1);
+  const width = Math.max(460, 40 + cols.length * BW + (cols.length - 1) * GX);
+  const height = 8 + boxes + (skips.length > 0 ? 12 + skips.length * LANE : 0) + 8;
   const top = decisions.find((d) => d.profile === graph.profile)!;
   const title = (d: typeof top) => byId.get(d.profile)?.title[lang] ?? d.name;
   const parts: string[] = [];
@@ -346,29 +352,45 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
     + '.pm-graph .box.main{stroke:var(--vp-c-brand-1,var(--pm-brand));stroke-width:2}'
     + '.pm-graph text{text-anchor:middle;fill:var(--vp-c-text-1,var(--pm-text))}'
     + '.pm-graph .t{font-size:15px;font-weight:600}.pm-graph .s{font-size:12.5px;fill:var(--vp-c-text-2,var(--pm-text2))}'
-    + '.pm-graph .l{font-size:12.5px;text-anchor:start;fill:var(--vp-c-text-2,var(--pm-text2))}.pm-graph .l.e{text-anchor:end}'
-    + '.pm-graph .a{stroke:var(--vp-c-text-3,var(--pm-text3));stroke-width:1.5}.pm-graph .a.d{stroke-dasharray:4 3}'
+    + '.pm-graph .l{font-size:12.5px;fill:var(--vp-c-text-2,var(--pm-text2))}'
+    + '.pm-graph .a{fill:none;stroke:var(--vp-c-text-3,var(--pm-text3));stroke-width:1.5;stroke-linejoin:round}.pm-graph .a.d{stroke-dasharray:4 3}'
     + '.pm-graph .ah{fill:var(--vp-c-text-3,var(--pm-text3))}'
     + '</style>');
   parts.push(`<defs><marker id="${mid}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker></defs>`);
+  // Where arrows meet a box side by side, so they do not meet in one point.
+  const spread = (k: number, n: number, length: number) => (length * (k + 1)) / (n + 1);
   // Arrows first, so boxes sit on top of their ends.
   for (const e of reqEdges) {
     const a = at.get(e.from)!;
     const b = at.get(e.to)!;
-    // Arrows into one box end side by side along its bottom, in the order of
-    // the boxes they come from, so they do not meet in one point.
-    const into = reqEdges.filter((x) => x.to === e.to).sort((p, q) => at.get(p.from)!.x - at.get(q.from)!.x);
-    const k = into.indexOf(e);
-    const x1 = a.x + BW / 2;
-    const y1 = a.y - 2;
-    const x2 = b.x + (BW * (k + 1)) / (into.length + 1);
-    const y2 = b.y + BH + 2;
-    parts.push(`<line class="a${e.optional ? ' d' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#${mid})"/>`);
-    // The label at the arrow's start, just above the box it comes from, on
-    // the side the arrow does not go to.
-    const label = `${e.name ?? ''}${e.optional ? words.optional : ''}`;
-    const left = x2 > x1;
-    parts.push(svgText(left ? 'l e' : 'l', left ? x1 - 8 : x1 + 8, y1 - 8, label, 12.5, BW / 2 + GX - 12));
+    const label = e.name ?? '';
+    const skip = skips.indexOf(e);
+    if (skip < 0) {
+      // Next column: from the right side of one box to the left side of the next.
+      const outs = reqEdges.filter((x) => x.from === e.from && !skips.includes(x)).sort((p, q) => at.get(p.to)!.y - at.get(q.to)!.y);
+      const ins = reqEdges.filter((x) => x.to === e.to && !skips.includes(x)).sort((p, q) => at.get(p.from)!.y - at.get(q.from)!.y);
+      const x1 = a.x + BW + 2;
+      const y1 = a.y + spread(outs.indexOf(e), outs.length, BH);
+      const x2 = b.x - 2;
+      const y2 = b.y + spread(ins.indexOf(e), ins.length, BH);
+      parts.push(`<path class="a${e.optional ? ' d' : ''}" d="M${x1} ${y1} L${x2} ${y2}" marker-end="url(#${mid})"/>`);
+      // The name above the arrow's middle, "(if it ran)" under it.
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      parts.push(svgText('l', mx, my - 7, label, 12.5, GX - 14));
+      if (e.optional) parts.push(svgText('l', mx, my + 17, words.optional.trim(), 12.5, GX - 14));
+    } else {
+      // Skips a column: down from the box, under the boxes, up into the other.
+      const ins = reqEdges.filter((x) => x.to === e.to && skips.includes(x)).sort((p, q) => at.get(p.from)!.x - at.get(q.from)!.x);
+      const outs = skips.filter((x) => x.from === e.from).sort((p, q) => at.get(p.to)!.x - at.get(q.to)!.x);
+      const x1 = a.x + spread(outs.indexOf(e), outs.length, BW);
+      const x2 = b.x + spread(ins.indexOf(e), ins.length, BW);
+      const y1 = a.y + BH + 2;
+      const lane = 8 + boxes + 12 + skip * LANE + 8;
+      const y2 = b.y + BH + 2;
+      parts.push(`<path class="a${e.optional ? ' d' : ''}" d="M${x1} ${y1} L${x1} ${lane} L${x2} ${lane} L${x2} ${y2}" marker-end="url(#${mid})"/>`);
+      parts.push(svgText('l', (x1 + x2) / 2, lane - 6, `${label}${e.optional ? words.optional : ''}`, 12.5, Math.abs(x2 - x1) - 20));
+    }
   }
   for (const d of decisions) {
     const { x, y } = at.get(d.id)!;

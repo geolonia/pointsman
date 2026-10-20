@@ -127,8 +127,27 @@ describe('toSvg', () => {
     expect(svg).toContain('>AI: 4 questions<');
     // The optional requirement is dashed and says so.
     expect(svg).toContain('class="a d"');
-    expect(svg).toContain('>evacuation (if it ran)<');
+    expect(svg).toContain('>evacuation<');
+    expect(svg).toContain('>(if it ran)<');
     expect(svg).toContain('@media (prefers-color-scheme:dark)');
+  });
+
+  it('flows from left to right: first check, additional check, final result', () => {
+    const svg = toSvg(g, all, 'en');
+    const x = (title: string) => {
+      const i = svg.indexOf(`>${title}<`);
+      expect(i, title).toBeGreaterThan(0);
+      return Number(svg.slice(0, i).match(/<rect class="box(?: main)?" x="([\d.]+)"[^>]*\/><text class="t" x="[\d.]+" y="[\d.]+"(?: textLength="\d+" lengthAdjust="spacingAndGlyphs")?$/)![1]);
+    };
+    const first = x('Road restriction check');
+    const second = x('Evacuation access check');
+    const final = x('Road closure, final decision');
+    expect(first).toBeLessThan(second);
+    expect(second).toBeLessThan(final);
+    // check → evacuation and evacuation → final are straight; check → final
+    // skips a column and runs under the boxes (four points).
+    expect(svg.match(/<path class="a(?: d)?" d="M[\d.]+ [\d.]+ L[\d.]+ [\d.]+"/g)).toHaveLength(2);
+    expect(svg.match(/<path class="a" d="M[\d.]+ [\d.]+ L[\d.]+ [\d.]+ L[\d.]+ [\d.]+ L[\d.]+ [\d.]+"/g)).toHaveLength(1);
   });
 
   it('speaks Japanese with lang ja, and escapes text', () => {
