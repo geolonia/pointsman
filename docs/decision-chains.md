@@ -47,7 +47,7 @@ decision keeps its questions, facts and threshold rules as today.
 
 | DMN (1.3 and later) | Pointsman |
 |---|---|
-| `decision` (with `question`, `allowedAnswers`) | a profile, decided once per entity: one decision log row, one Decision entity. `question` = the profile's description, `allowedAnswers` = its actions and the answers a person may give (`people_answers`, below) |
+| `decision` (with `question`, `allowedAnswers`) | a profile. Each time it is decided for an entity there is one decision log row and one Decision entity; a run again gives a new one, which `replaces` the earlier one. `question` = the profile's description, `allowedAnswers` = its actions and the answers a person may give (`people_answers`, below) |
 | `inputData` | the state's fields the profile reads, and each fact (named after the fact) |
 | `informationRequirement` → `requiredDecision` | `requires` in the profile (below) |
 | `businessKnowledgeModel` + `knowledgeRequirement` | the profile's AI questions and model (DMN uses these for analytic models; we export it without logic) |
@@ -283,6 +283,17 @@ required decision.
   - An alert that was already sent stays sent (agreed point 2): the
     evacuation site's staff were told; the new decision is shown as
     replacing the earlier one, without an all-clear message.
+- **Order and failures.** For each run the bridge (1) asks Pointsman,
+  which logs the decision, (2) creates the Decision entity, (3) creates or
+  closes Tasks, and (4) writes the result attribute last. A failure in a
+  later step leaves the message on the queue, which tries again. The
+  bridge sends an idempotency key with the decide request (the route, the
+  entity and the hash of its inputs), and Pointsman answers a repeated key
+  from the same client with the decision it already logged, so a retry
+  never decides twice; steps 2 to 4 are written so that doing them again is
+  harmless (the entity ids come from the decision id). A message that still
+  fails after the retries goes to the dead-letter queue, from where it can
+  be replayed with the same key.
 - **No loop.** A run again happens only when a required decision changes
   (a new id, or a review resolved). The final step's own result is not an
   input of any route that it requires.
@@ -412,12 +423,14 @@ The design adds an input that reads other decisions. The threat model gets:
      deployments with duplicate names are told to rotate or rename);
    - `policy.people_answers`, checked when a review is resolved; `review`
      in the decide response;
+   - an idempotency key on the decide request (a repeated key from the
+     same client returns the logged decision);
    - docs, OpenAPI, threat model, tests, an example profile.
 2. **datamodels.jp:** the Decision model with several `wasInformedBy`,
    `requiredDecisions` and `replaces` (geolonia/datamodels#302).
 3. **Bridge:** `requires` on routes (with `rerunOnReview`), reviews and
    Tasks from the decide response's `review`, chained routes from the queue
-   one at a time, writes only when newer,
+   one at a time, the idempotency key, writes only when newer,
    closing the Task of a superseded decision, skipping a `409`, route
    cycles.
 4. **pointsman-config:** the `road-closure-final` profile and its route.
