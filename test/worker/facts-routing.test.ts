@@ -55,8 +55,13 @@ describe('detours', () => {
     expect(await routeOf(shaped('kz}fbAo~upiG??'))).toBe('kz}fbAo~upiG??');
     // Not asked for: the profile did not set route: true.
     expect(await routeOf(shaped('kz}fbAo~upiG??'), false)).toBeNull();
-    expect(await routeOf(shaped('a'.repeat(6000)))).toHaveLength(6000);
-    expect(await routeOf(shaped('a'.repeat(6001)))).toBeNull();
+    // '??' is one position (two zero deltas): a valid polyline of any even length.
+    expect(await routeOf(shaped('??'.repeat(3000)))).toHaveLength(6000);
+    expect(await routeOf(shaped('??'.repeat(3001)))).toBeNull();
+    // Only polyline characters, but incomplete: an open number, or half a position.
+    expect(await routeOf(shaped('a'))).toBeNull();
+    expect(await routeOf(shaped('???'))).toBeNull();
+    expect(await routeOf(shaped('??'))).toBeNull();
     // Not an encoded polyline, or not one leg: left out, the length stays.
     expect(await routeOf(shaped('<b>x</b>'))).toBeNull();
     expect(await routeOf(shaped('abc def'))).toBeNull();

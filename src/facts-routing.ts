@@ -141,15 +141,38 @@ export class ValhallaRouter {
     if (typeof km !== 'number' || !Number.isFinite(km)) throw new FactError('routing answer has no length');
     // Two locations make one leg; its shape is the route as an encoded polyline (precision 6).
     const legs = json?.trip?.legs;
-    // An encoded polyline uses only the characters ? to ~; anything else is not one.
     const raw = Array.isArray(legs) && legs.length === 1 ? legs[0]?.shape : undefined;
-    const shape = typeof raw === 'string' && POLYLINE.test(raw) ? raw : null;
+    const shape = typeof raw === 'string' && isPolyline(raw) ? raw : null;
     return { m: Math.round(km * 1000), shape };
   }
 }
 
 /** A route: its length in metres, and its shape (encoded polyline, precision 6) when Valhalla sent one. */
 type Trip = { m: number; shape: string | null };
+
+/**
+ * A complete encoded polyline of at least two positions: only the characters
+ * ? to ~, every number ends, and the numbers come in pairs. Checked, not
+ * decoded into positions: the route is kept as text.
+ */
+export function isPolyline(text: string): boolean {
+  if (text.length > MAX_ROUTE_CHARS * 2 || !POLYLINE.test(text)) return false;
+  let numbers = 0;
+  let open = false;
+  let chunks = 0;
+  for (let i = 0; i < text.length; i++) {
+    const b = text.charCodeAt(i) - 63;
+    chunks++;
+    // More than 7 chunks of 5 bits is beyond any coordinate at precision 6.
+    if (chunks > 7) return false;
+    open = b >= 32;
+    if (!open) {
+      numbers++;
+      chunks = 0;
+    }
+  }
+  return !open && numbers % 2 === 0 && numbers >= 4;
+}
 
 type Sample = { p: Position; at: number };
 

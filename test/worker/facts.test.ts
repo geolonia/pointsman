@@ -81,6 +81,12 @@ describe('lookups', () => {
     expect((await lookupFacts(asked, state(line), always)).detour).toMatchObject({ values: { route: 'kz}fbAo~upiG??' } });
   });
 
+  it('give route null for a provider that never sends one', async () => {
+    const old: FactProvider = { lookup: async () => ({ values: { possible: true, extra_m: 10 }, source: 's' }) };
+    const asked: FactSpec[] = [{ name: 'detour', type: 'detour', at: '$.location.value', route: true }];
+    expect((await lookupFacts(asked, state(line), old)).detour).toEqual({ missing: false, values: { possible: true, extra_m: 10, route: null }, source: 's' });
+  });
+
   it('record why a fact is missing, and never throw', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mock = new MockFactProvider();
