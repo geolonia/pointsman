@@ -371,9 +371,11 @@ attribute names in the notification match the ones in `BRIDGE_ROUTES`.
 
 The bridge answers `502` when an entity failed in a way a second try may fix
 (Pointsman or the broker not reachable, a 5xx or 429), and `200` otherwise,
-also when Pointsman refused the input or the broker or Pointsman answered
-with a redirect (a retry would fail the same way). The
-response lists what happened to each entity. Entities that succeeded are
+also when Pointsman refused the input (a retry would fail the same way). A
+redirect from the broker or Pointsman also answers `200`: the URL is wrong
+and a retry by the broker would fail the same way until the configuration
+is fixed. With the queue (below), such a message is retried, not dropped.
+The response lists what happened to each entity. Entities that succeeded are
 skipped on a retry because of the input hash.
 
 Whether a broker sends a failed notification again depends on the broker.
@@ -407,6 +409,9 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   dead-letter queue (`pointsman-bridge-dlq` in the example). Its messages
   hold the notified entity and can be sent to the queue again. Failures a
   retry cannot fix (Pointsman refused the input) are logged and acknowledged.
+  A redirect from the broker or Pointsman is retried too, although it will
+  fail until the URL is fixed: the message then ends in the dead-letter
+  queue, and can be sent again once the configuration is right.
 - **Setup:** create both queues once
   (`wrangler queues create pointsman-bridge`, and the same for the
   dead-letter queue), then add the `queues` block to the Worker's

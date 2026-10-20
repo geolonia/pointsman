@@ -334,9 +334,9 @@ modeled tree.
   `src/callbacks.ts:78`) *(documented, docs/profile-format.md "Detours":
   "Redirects are not followed (they would carry the key to another host)")*.
   The bridge's calls to the broker and to Pointsman do the same
-  (`bridge/src/bridge.ts` `send`): a 3xx is an error that is not retried, so
-  the broker credentials, the Pointsman token and the entity never reach a
-  redirect target *(documented, bridge/README.md "Configuration": "The
+  (`bridge/src/bridge.ts` `send`): a 3xx is an error, checked before the
+  body is read, so the broker credentials, the Pointsman token and the
+  entity never reach a redirect target *(documented, bridge/README.md "Configuration": "The
   bridge does not follow redirects")*.
 - **Child processes, environment, filesystem**: none in the engine and the
   bridge. Search:

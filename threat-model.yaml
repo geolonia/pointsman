@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:82b8237364ff1263bca189afaea6a809fb45000c19a0bfd32eedc5d4ba5a4294"
+prose_version: "threat-model.md@sha256:e0e3c90bbcf0f5b8f52001926351568f2e7be337220cf19c2f1b6f93545fb03f"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 260, maintainer: 69, inferred: 0, assumption: 0}
@@ -109,7 +109,7 @@ host_side_effects:
   - effect: redirect-following
     stance: absent
     components: [bridge]
-    conditions: "calls to the broker and to Pointsman use redirect: 'manual' and treat a 3xx as an error that is not retried"
+    conditions: "calls to the broker and to Pointsman use redirect: 'manual' and treat a 3xx as an error, checked before the body is read"
     provenance: {kind: documented, source: "bridge/README.md \"Configuration\": \"The bridge does not follow redirects\""}
   - effect: global-state
     stance: conditional

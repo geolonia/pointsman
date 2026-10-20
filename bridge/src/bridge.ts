@@ -96,7 +96,13 @@ export type EntityResult =
   | { id: string; resolves: string; finalAction: string }
   | { id: string; review: ReviewOutcome; written: boolean }
   | { id: string; action: string; decision: string; write: number }
-  | { id: string; error: string; retry: boolean; decision?: string };
+  /**
+   * retry: whether the broker should send the notification again. redirect:
+   * the broker or Pointsman answered with a redirect (#97); the broker is
+   * not asked to retry, but a queued message is, so it ends in the
+   * dead-letter queue and can be replayed once the URL is fixed.
+   */
+  | { id: string; error: string; retry: boolean; decision?: string; redirect?: true };
 
 type Entity = { id: string; type: string; [attribute: string]: unknown };
 
@@ -328,10 +334,18 @@ export async function handleMessage(message: BridgeMessage, config: BridgeConfig
     }
     return await handleEntity(current, route, config);
   } catch (err) {
-    // A redirect will not pass on a second try (like any 3xx: see retryable):
-    // the URL needs fixing.
-    return { id: entity.id, error: err instanceof Error ? err.message : String(err), retry: !(err instanceof Redirected) };
+    return failure(entity.id, err);
   }
+}
+
+/**
+ * A thrown error as a result. A redirect will not pass on a second try of
+ * the broker (like any 3xx: see retryable): the URL needs fixing.
+ */
+function failure(id: string, err: unknown, decision?: string): EntityResult {
+  const error = err instanceof Error ? err.message : String(err);
+  const redirect = err instanceof Redirected;
+  return { id, error, retry: !redirect, ...(decision !== undefined && { decision }), ...(redirect && { redirect: true as const }) };
 }
 
 /** An entity as it is now (normalized, with the given context's names), 'gone', or the failed response. */
@@ -372,11 +386,14 @@ export async function handleQueueBatch(batch: { messages: readonly QueuedMessage
       continue;
     }
     const result = await handleMessage(body, direct, { fresh: true });
-    if ('retry' in result && result.retry) {
-      console.error(`bridge queue: ${result.id} (attempt ${message.attempts}): ${result.error}`);
+    const decision = 'decision' in result && result.decision ? ` (decision ${result.decision})` : '';
+    // A redirect too: a wrong URL, fixed in the configuration. Retried, the
+    // message ends in the dead-letter queue and can be replayed then.
+    if ('retry' in result && (result.retry || result.redirect)) {
+      console.error(`bridge queue: ${result.id}${decision} (attempt ${message.attempts}): ${result.error}`);
       message.retry({ delaySeconds: retryDelay(message.attempts) });
     } else {
-      if ('error' in result) console.error(`bridge queue: ${result.id}: ${result.error}`);
+      if ('error' in result) console.error(`bridge queue: ${result.id}${decision}: ${result.error}`);
       message.ack();
     }
   }
@@ -406,40 +423,46 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     return { id: entity.id, error: 'unexpected answer from pointsman', retry: true };
   }
 
-  // One time for the entity and the property, when Pointsman gives none (older versions).
-  const decidedAt = new Date();
-  // The Decision entity first: the property on the entity points to it, and
-  // without it a retry decides again (no input hash written yet).
-  let decisionRef: string | undefined;
-  if (route.decisionEntity) {
-    const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
-    // 409: a retry of a notification whose entity was created, then the write failed.
-    if (!created.ok && created.status !== 409) {
-      return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
+  // From here on a decision exists: a failure keeps its id (a redirect
+  // throws, see send).
+  try {
+    // One time for the entity and the property, when Pointsman gives none (older versions).
+    const decidedAt = new Date();
+    // The Decision entity first: the property on the entity points to it, and
+    // without it a retry decides again (no input hash written yet).
+    let decisionRef: string | undefined;
+    if (route.decisionEntity) {
+      const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
+      // 409: a retry of a notification whose entity was created, then the write failed.
+      if (!created.ok && created.status !== 409) {
+        return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
+      }
+      decisionRef = decisionEntityId(d.decision_id);
     }
-    decisionRef = decisionEntityId(d.decision_id);
-  }
-  // Also before the property, for the same reason. Its id comes from the
-  // inputs, not the decision (a retry decides again, with a new decision id),
-  // and the Task always follows the latest decision for these inputs.
-  if (route.task) {
-    const taskId = await taskEntityId(entity.id, route.attribute, hash);
-    const failed = route.task.actions.includes(d.action)
-      ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
-      : await cancelOpenTask(taskId, d.action, config);
-    if (failed) {
-      return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${failed.status}`, retry: retryable(failed.status) };
+    // Also before the property, for the same reason. Its id comes from the
+    // inputs, not the decision (a retry decides again, with a new decision id),
+    // and the Task always follows the latest decision for these inputs.
+    if (route.task) {
+      const taskId = await taskEntityId(entity.id, route.attribute, hash);
+      const failed = route.task.actions.includes(d.action)
+        ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
+        : await cancelOpenTask(taskId, d.action, config);
+      if (failed) {
+        return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${failed.status}`, retry: retryable(failed.status) };
+      }
     }
-  }
 
-  const property = toProperty(d, hash, decidedAt, decisionRef);
-  const write = await writeAttribute(entity.id, route.attribute, property, config);
-  // Without a successful write the input hash is not stored either, so the
-  // next notification decides again: report it as a failure.
-  if (!write.ok) {
-    return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
+    const property = toProperty(d, hash, decidedAt, decisionRef);
+    const write = await writeAttribute(entity.id, route.attribute, property, config);
+    // Without a successful write the input hash is not stored either, so the
+    // next notification decides again: report it as a failure.
+    if (!write.ok) {
+      return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
+    }
+    return { id: entity.id, action: d.action, decision: d.decision_id, write: write.status };
+  } catch (err) {
+    return failure(entity.id, err, d.decision_id);
   }
-  return { id: entity.id, action: d.action, decision: d.decision_id, write: write.status };
 }
 
 /** Rate limits and server errors may pass on a second try; other 4xx will not. */

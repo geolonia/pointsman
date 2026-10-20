@@ -228,76 +228,128 @@ describe('failures', () => {
 describe('redirects (#97)', () => {
   // A redirect would carry the credentials and the entity to another URL.
   const LOCATION = 'https://elsewhere.test/catch';
-  const redirect = (status: number) => new Response('redirect body: secret text', { status, headers: { location: LOCATION } });
+  const R = 'urn:ngsi-ld:RoadRestriction:1';
+  const D = 'urn:ngsi-ld:Decision:d-1';
+  const message = (to: string, status: number) => `${to} answered ${status}, a redirect: the bridge does not follow redirects, check the ${to} URL`;
+  /** A 3xx whose body records whether it was read or cancelled. */
+  function redirect(status: number) {
+    const seen = { cancelled: false, read: false };
+    const body = new ReadableStream({
+      pull(c) { seen.read = true; c.enqueue(new TextEncoder().encode('redirect body: secret text')); c.close(); },
+      cancel() { seen.cancelled = true; },
+    }, { highWaterMark: 0 });
+    return Object.assign(new Response(body, { status, headers: { location: LOCATION } }), { seen });
+  }
+  const urgent = () => Response.json({ ...decision, action: 'urgent' });
+  const withTask = { decisionEntity: true, task: { actions: ['review', 'urgent'] } };
+  const reviews = (config: BridgeConfig, data: unknown[]) => handleRequest(new Request('https://bridge.test/reviews', {
+    method: 'POST', headers: { 'x-bridge-secret': SECRET }, body: JSON.stringify({ type: 'Notification', data }),
+  }), config);
+  const resolvedDecision = {
+    id: D, type: 'Decision', refersTo: { type: 'Relationship', object: R }, profile: P('road-restriction-check'),
+    reviewStatus: P('resolved'), finalAction: P('publish'), reviewedBy: P('app:reviewer-1'),
+    reviewedAt: P({ '@type': 'DateTime', '@value': '2026-10-09T03:00:00.000Z' }),
+  };
+  const linked = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  it('never lets fetch follow a redirect', async () => {
-    const { notify, calls } = setup();
-    expect((await notify([entity()])).status).toBe(200);
-    expect(calls.length).toBeGreaterThan(1);
+  it('never lets fetch follow a redirect, on any path', async () => {
+    // A decision with a Decision entity, a Task and the result.
+    const decide = setup({ pointsman: urgent, route: withTask });
+    expect((await decide.notify([entity()])).status).toBe(200);
+    expect(decide.calls.map((c) => c.method)).toEqual(['POST', 'POST', 'POST', 'PATCH', 'POST']);
+
+    // A review resolved in the broker: Pointsman, then the entity and its Task.
+    const review = setup({
+      route: withTask,
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+      handler: (c) => (c.method === 'GET' ? Response.json({ id: R, type: 'RoadRestriction', check: linked }) : undefined),
+    });
+    expect(await (await reviews(review.config, [resolvedDecision])).json()).toEqual({ handled: [{ id: D, review: 'resolved', written: true }] });
+
+    // A work order from another app: the entity, then its Decision.
+    const order = setup({
+      route: { decisionEntity: true },
+      handler: (c) => (c.method === 'GET' && c.url.includes(encodeURIComponent(R)) ? Response.json({ id: R, type: 'RoadRestriction', check: linked })
+        : c.method === 'GET' ? Response.json({ id: D, type: 'Decision', reviewStatus: P('pending') }) : undefined),
+    });
+    order.config.workOrders = { Published: 'publish' };
+    const W = 'urn:ngsi-ld:Issue:redmine:city-a:42';
+    expect(await (await reviews(order.config, [{
+      id: W, type: 'Task', progress: P('completed'), statusLabel: P('Published'), refersTo: { type: 'Relationship', object: R },
+      dateModified: P({ '@type': 'DateTime', '@value': '2026-10-09T05:00:00Z' }),
+    }])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+
+    const calls = [...decide.calls, ...review.calls, ...order.calls];
+    expect(calls.length).toBe(5 + 6 + 3);
     for (const c of calls) expect(c.redirect).toBe('manual');
   });
 
-  it('takes a 3xx from Pointsman as a failure that is not retried, and writes nothing', async () => {
-    const { notify, calls } = setup({ pointsman: () => redirect(307) });
+  it('takes a 3xx from Pointsman as a failure, cancels its body, and writes nothing', async () => {
+    const answer = redirect(307);
+    const { notify, calls } = setup({ pointsman: () => answer });
     const res = await notify([entity()]);
+    // The broker is not asked to retry: the URL needs fixing.
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(JSON.parse(body)).toEqual({ handled: [{
-      id: 'urn:ngsi-ld:RoadRestriction:1',
-      error: 'pointsman answered 307, a redirect: the bridge does not follow redirects, check the pointsman URL',
-      retry: false,
-    }] });
-    expect(body).not.toContain('secret text');
-    expect(body).not.toContain(LOCATION);
+    expect(JSON.parse(body)).toEqual({ handled: [{ id: R, error: message('pointsman', 307), retry: false, redirect: true }] });
+    expect(answer.seen).toEqual({ cancelled: true, read: false });
+    for (const secret of ['secret text', LOCATION, PM_TOKEN, BROKER_TOKEN]) expect(body).not.toContain(secret);
     expect(calls).toHaveLength(1);
-    expect(calls.some((c) => c.url.startsWith('https://elsewhere.test'))).toBe(false);
   });
 
-  it('takes a 3xx from the broker as a failure that is not retried', async () => {
-    const { notify, calls } = setup({ broker: { PATCH: 302 } });
-    const res = await notify([entity()]);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(JSON.parse(body)).toEqual({ handled: [{
-      id: 'urn:ngsi-ld:RoadRestriction:1',
-      error: 'broker answered 302, a redirect: the bridge does not follow redirects, check the broker URL',
-      retry: false,
-    }] });
-    expect(body).not.toContain('broker says no');
-    // No second write after the redirect (the append follows only a 404).
-    expect(calls.map((c) => c.method)).toEqual(['POST', 'PATCH']);
+  it('keeps the decision id when the broker redirects after the decision', async () => {
+    const API_KEY = crypto.randomUUID();
+    const steps: [string, (c: Call) => boolean][] = [
+      ['Decision entity', (c) => (c.body as { type?: string } | undefined)?.type === 'Decision'],
+      ['Task', (c) => (c.body as { type?: string } | undefined)?.type === 'Task'],
+      ['result', (c) => c.method === 'PATCH'],
+    ];
+    for (const [step, match] of steps) {
+      const answers: ReturnType<typeof redirect>[] = [];
+      const t = setup({ pointsman: urgent, route: withTask, handler: (c) => (match(c) ? answers[answers.push(redirect(302)) - 1] : undefined) });
+      delete t.config.broker.token;
+      t.config.broker.apiKey = API_KEY;
+      const res = await t.notify([entity()]);
+      expect(res.status, step).toBe(200);
+      const body = await res.text();
+      expect(JSON.parse(body), step).toEqual({ handled: [{ id: R, decision: 'd-1', error: message('broker', 302), retry: false, redirect: true }] });
+      expect(answers.map((a) => a.seen), step).toEqual([{ cancelled: true, read: false }]);
+      for (const secret of ['secret text', LOCATION, PM_TOKEN, API_KEY]) expect(body, step).not.toContain(secret);
+      // Nothing after the redirect.
+      expect(match(t.calls.at(-1)!), step).toBe(true);
+    }
   });
 
-  it('acknowledges a queued message whose broker read is redirected, without a retry', async () => {
+  it('retries a queued message hit by a redirect, so it ends in the dead-letter queue', async () => {
     const t = setup({ handler: (c) => (c.method === 'GET' ? redirect(301) : undefined) });
-    let acked = false;
-    let retried = false;
-    const m = { body: { path: '/notify', entity: entity() }, attempts: 1, ack: () => { acked = true; }, retry: () => { retried = true; } };
+    const m = { body: { path: '/notify', entity: entity() }, attempts: 3, acked: false, delay: undefined as number | undefined,
+      ack() { m.acked = true; }, retry(o?: { delaySeconds?: number }) { m.delay = o?.delaySeconds; } };
     await handleQueueBatch({ messages: [m] }, t.config);
-    expect({ acked, retried }).toEqual({ acked: true, retried: false });
+    expect({ acked: m.acked, delay: m.delay }).toEqual({ acked: false, delay: 120 });
     expect(t.calls).toHaveLength(1);
   });
 
-  it('takes a 3xx from Pointsman on a resolved review as a failure that is not retried', async () => {
+  it('retries a queued message whose result write is redirected, and logs the decision id', async () => {
+    const t = setup({ handler: (c) => (c.method === 'GET' ? Response.json(entity()) : c.method === 'PATCH' ? redirect(308) : undefined) });
+    const m = { body: { path: '/notify', entity: entity() }, attempts: 1, acked: false, retried: false,
+      ack() { m.acked = true; }, retry() { m.retried = true; } };
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (line: string) => { logged.push(line); };
+    try {
+      await handleQueueBatch({ messages: [m] }, t.config);
+    } finally {
+      console.error = original;
+    }
+    expect({ acked: m.acked, retried: m.retried }).toEqual({ acked: false, retried: true });
+    expect(logged).toEqual([`bridge queue: ${R} (decision d-1) (attempt 1): ${message('broker', 308)}`]);
+  });
+
+  it('takes a 3xx from Pointsman on a resolved review as a failure', async () => {
     const { config, calls } = setup({ pointsman: () => redirect(308) });
-    const res = await handleRequest(new Request('https://bridge.test/reviews', {
-      method: 'POST',
-      headers: { 'x-bridge-secret': SECRET, 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'Notification', data: [{
-        id: 'urn:ngsi-ld:Decision:d-1',
-        type: 'Decision',
-        reviewStatus: P('resolved'),
-        finalAction: P('publish'),
-        reviewedBy: P('reviewer@example.test'),
-        reviewedAt: P('2026-10-20T08:00:00Z'),
-      }] }),
-    }), config);
+    const res = await reviews(config, [resolvedDecision]);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ handled: [{
-      id: 'urn:ngsi-ld:Decision:d-1',
-      error: 'pointsman answered 308, a redirect: the bridge does not follow redirects, check the pointsman URL',
-      retry: false,
-    }] });
+    expect(await res.json()).toEqual({ handled: [{ id: D, error: message('pointsman', 308), retry: false, redirect: true }] });
     expect(calls).toHaveLength(1);
   });
 });
