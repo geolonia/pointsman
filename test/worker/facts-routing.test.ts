@@ -80,8 +80,70 @@ describe('detours', () => {
   it('never claim no way around: no path with the section closed is an error', async () => {
     const { router } = server(() => ok(0.24), noPath, noPath);
     await expect(router.detour(section)).rejects.toThrow(/no route with the section closed/);
+    // A server that says it is overloaded (503) is not asked again.
     const failing = server(() => ok(0.24), () => new Response('down', { status: 503 }));
     await expect(failing.router.detour(section)).rejects.toThrow('routing 503');
+    expect(failing.bodies).toHaveLength(2);
+  });
+
+  it('ask with and without the section at the same time', async () => {
+    let open = 0;
+    let most = 0;
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      open++;
+      most = Math.max(most, open);
+      await new Promise((r) => setTimeout(r, 20));
+      open--;
+      return ok(JSON.parse(String(init?.body)).exclude_polygons ? 0.85 : 0.24);
+    }) as typeof fetch;
+    const router = new ValhallaRouter(URL_, fetchFn);
+    expect((await router.detour(section)).values.extra_m).toBe(610);
+    expect(most).toBe(2);
+  });
+
+  it('try a call once more after a 502/504 or a lost connection, and only once', async () => {
+    const gateway = () => new Response('', { status: 504 });
+    const twice = server(() => ok(0.24), gateway, gateway);
+    await expect(twice.router.detour(section)).rejects.toThrow('routing 504');
+    expect(twice.bodies).toHaveLength(3);
+    // 429 (too many requests) is not retried either.
+    const busy = server(() => ok(0.24), () => new Response('{}', { status: 429 }));
+    await expect(busy.router.detour(section)).rejects.toThrow('routing 429');
+    expect(busy.bodies).toHaveLength(2);
+  });
+
+  it('stop the other call when the direct one fails, and report the direct error', async () => {
+    let aroundAborted = false;
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (!JSON.parse(String(init?.body)).exclude_polygons) return new Response('{}', { status: 403 });
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => { aroundAborted = true; reject(new DOMException('aborted', 'AbortError')); });
+      });
+    }) as typeof fetch;
+    await expect(new ValhallaRouter(URL_, fetchFn).detour(section)).rejects.toThrow('routing 403');
+    expect(aroundAborted).toBe(true);
+  });
+
+  it('start no retry once the time for the lookup is up', async () => {
+    const { bodies, router } = server(() => ok(0.24), () => new Response('', { status: 502 }), () => ok(0.85));
+    const facts = await lookupFacts([{ name: 'detour', type: 'detour', at: '$.g' }], { g: section }, new GsiFactProvider({ routing: router }), 100);
+    expect(facts.detour).toEqual({ missing: true, reason: 'timeout' });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(bodies).toHaveLength(2);
+  });
+
+  it('try a call once more after a gateway error or a lost connection, but not after a 4xx', async () => {
+    const down = () => new Response('down', { status: 502 });
+    const lost = () => { throw new TypeError('network connection lost'); };
+    // Direct and around run at once: the first two answers go to them, the retry comes third.
+    const a = server(() => ok(0.24), down, () => ok(0.85));
+    expect((await a.router.detour(section)).values.extra_m).toBe(610);
+    expect(a.bodies).toHaveLength(3);
+    const b = server(lost, () => ok(0.85), () => ok(0.24));
+    expect((await b.router.detour(section)).values.extra_m).toBe(610);
+    const c = server(() => ok(0.24), () => new Response('{}', { status: 403 }));
+    await expect(c.router.detour(section)).rejects.toThrow('routing 403');
+    expect(c.bodies).toHaveLength(2);
   });
 
   it('never close an end, also when the section bends back to its start', async () => {

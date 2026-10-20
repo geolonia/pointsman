@@ -81,6 +81,19 @@ describe('lookups', () => {
     expect((await lookupFacts(asked, state(line), always)).detour).toMatchObject({ values: { route: 'kz}fbAo~upiG??' } });
   });
 
+  it('give a detour more time than other facts (a routing server may start cold)', async () => {
+    const slow: FactProvider = { lookup: (q) => new Promise((r) => setTimeout(() => r(new MockFactProvider().lookup(q)), 3300)) };
+    const facts = await lookupFacts(specs, state(line), slow);
+    expect(facts.flood).toEqual({ missing: true, reason: 'timeout' });
+    expect(facts.detour).toMatchObject({ missing: false });
+  }, 10_000);
+
+  it('record a call that ran out of its own time as timeout, not error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const late: FactProvider = { lookup: async () => { throw new DOMException('The operation timed out.', 'TimeoutError'); } };
+    expect((await lookupFacts([specs[1]!], state(line), late)).detour).toEqual({ missing: true, reason: 'timeout' });
+  });
+
   it('give route null for a provider that never sends one', async () => {
     const old: FactProvider = { lookup: async () => ({ values: { possible: true, extra_m: 10 }, source: 's' }) };
     const asked: FactSpec[] = [{ name: 'detour', type: 'detour', at: '$.location.value', route: true }];
