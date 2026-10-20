@@ -35,7 +35,7 @@ function failure(message: string) {
 
 const visible = (p: Profile | null, client: TokenRecord) => !!p && p.mcp?.visible === true && canUse(client, p.id);
 
-function describe(p: Profile) {
+function describe(p: Profile, client: TokenRecord) {
   return {
     id: p.id,
     version: p.version,
@@ -52,7 +52,10 @@ function describe(p: Profile) {
     })),
     actions: [...new Set([...(p.policy.rules ?? []).map((r) => r.action), p.policy.default])],
     // Earlier decisions to send in `decisions`, by name (docs/decision-chains.md).
-    ...(p.requires?.length && { requires: p.requires.map((r) => ({ name: r.name, profile: r.profile, ...(r.optional && { optional: true }) })) }),
+    // The required profile's id only when the caller may use it.
+    ...(p.requires?.length && {
+      requires: p.requires.map((r) => ({ name: r.name, ...(canUse(client, r.profile) && { profile: r.profile }), ...(r.optional && { optional: true }) })),
+    }),
   };
 }
 
@@ -71,7 +74,7 @@ function server(deps: McpDeps, caller: Caller): McpServer {
       const profiles = [];
       for (const s of summaries) {
         const p = await deps.store.get(s.id);
-        if (visible(p, client)) profiles.push(describe(p!));
+        if (visible(p, client)) profiles.push(describe(p!, client));
       }
       return json({ profiles });
     },

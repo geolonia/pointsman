@@ -180,7 +180,8 @@ The request sends the ids of the earlier decisions, by name, and a `ref`:
 `{"state": {}, "ref": "report-7", "decisions": {"check": "<decision_id>"}}`.
 Pointsman reads them from the decision log; the caller cannot claim a result.
 Each one must be of the named profile, in the token's scope, with the same
-`ref` and made by the same client, and not replaced by a newer one. Every
+`ref` and made by the same client, and the newest decision of its profile
+for that report (an older one was replaced). Every
 other case gives the same `400` (`decisions.<name> is not a usable
 decision`), so a token cannot find out which decisions exist. Test tokens
 cannot send `decisions`.
@@ -209,9 +210,11 @@ name `decisions` cannot be used for a question.
 
 A newer decision of the same profile, `ref` and client replaces the earlier
 one: the response has `replaces` with the earlier id, and its open review is
-closed as `superseded`. Once a person has resolved a review of a profile with
-`requires`, a new decision for that report is refused (`409
-resolved_by_person`): a person's answer stays.
+closed as `superseded`; it can no longer be resolved. Once a person has
+resolved a review of a profile with `requires`, a new decision for that
+report is refused (`409 resolved_by_person`): a person's answer stays. When
+the person resolves it while the new decision is being made, the new one is
+logged as `superseded` (it never counts) and the answer is the same `409`.
 
 ### People: check and answers
 

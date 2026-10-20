@@ -41,7 +41,8 @@ paths:
             A repeated request with the same key from the same client gets the
             decision already logged, when the request is the same (profile and
             version, state, ref, decisions); a different request with the same
-            key is refused (409 idempotency_conflict). Not for test tokens.
+            key is refused (409 idempotency_conflict). Ignored for test tokens,
+            whose decisions are not logged.
           schema: { type: string, pattern: '^[\x21-\x7e]{1,200}$' }
       requestBody:
         required: true
@@ -460,6 +461,7 @@ components:
               - { $ref: '#/components/schemas/RequiredSnapshot' }
               - { $ref: '#/components/schemas/HiddenRequired' }
         idempotency_key: { type: string, description: The Idempotency-Key the decision was made with. }
+        replaces: { type: string, format: uuid, description: The earlier decision of the same profile, ref and client that this one replaced. }
     Review:
       description: Only for decisions whose action a person checks (the profile's people_check; default review).
       type: object

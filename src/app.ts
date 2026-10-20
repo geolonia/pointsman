@@ -135,10 +135,7 @@ export function createApp(deps: (env: Env) => Deps) {
   app.get('/v1/decisions/:id', async (c) => {
     const record = await findDecision(c, deps(c.env).log, c.req.param('id'));
     if (!record) return error(404, 'decision_not_found', 'unknown decision');
-    const { callback_url: _, request_digest: _digest, requires, ...visible } = record;
-    const client = c.get('client');
-    const shown = visibleRequires(requires, (profile) => canUse(client, profile));
-    return c.json(shown ? { ...visible, requires: shown } : visible);
+    return c.json(publicRecord(record, c.get('client')));
   });
 
   app.post('/v1/decisions/:id/feedback', async (c) => {
@@ -196,7 +193,10 @@ export function createApp(deps: (env: Env) => Deps) {
     }
     const pending = await deps(c.env).log.pendingReviews(profiles, 100);
     return c.json({
-      reviews: pending.map(({ callback_url: _, callback: __, ...visible }) => visible),
+      reviews: pending.map((r) => {
+        const { callback: _, ...visible } = publicRecord(r, client);
+        return visible;
+      }),
     });
   });
 
@@ -376,14 +376,16 @@ export async function makeDecision(
 
   // The same key from the same client: the decision already logged, if the
   // request is the same; a different request with that key is a conflict.
+  // The version as requested (not the latest one it resolved to), so a retry
+  // after a new profile version is published is still the same request.
   const digest = idempotencyKey === undefined ? undefined
-    : await hashState({ profile: profile.id, version: profile.version, state: body.state, ref: body.ref ?? null, decisions: body.decisions ?? null });
+    : await hashState({
+      profile: profile.id, version: version ?? null, state: body.state, ref: body.ref ?? null,
+      decisions: body.decisions ?? null, callback_url: body.callback_url ?? null, mapped: stateIsMapped === true,
+    });
   if (idempotencyKey !== undefined && !client.test) {
     const earlier = await log.byIdempotencyKey(client.client, idempotencyKey);
-    if (earlier) {
-      if (earlier.request_digest !== digest) return fail(409, 'idempotency_conflict', 'this idempotency key was used for a different request');
-      return { ok: true, decision: decisionOf(earlier) };
-    }
+    if (earlier) return repeated(earlier, digest!, log);
   }
 
   // A final decision that a person resolved is never replaced (docs/decision-chains.md).
@@ -473,13 +475,47 @@ export async function makeDecision(
     // Two requests with the same key at once: the other one was logged first.
     const earlier = idempotencyKey === undefined ? null : await log.byIdempotencyKey(client.client, idempotencyKey);
     if (!earlier) throw err;
-    if (earlier.request_digest !== digest) return fail(409, 'idempotency_conflict', 'this idempotency key was used for a different request');
-    return { ok: true, decision: decisionOf(earlier) };
+    return repeated(earlier, digest!, log);
   }
-  // The new decision replaces the older ones of the same step for this report:
-  // their open reviews leave the queue.
-  if (chained) await log.supersede(profile.id, body.ref!, client.client, decision.created_at);
+  if (chained) {
+    // A person resolved the decision this one replaces while it was being
+    // made: their answer stays, and this one never counts. (Once this one is
+    // logged, resolving the earlier one is refused, see DecisionLog.resolve.)
+    if (earlierFinal && (await log.get(earlierFinal.decision_id))?.review?.status === 'resolved') {
+      await log.discard(decision.decision_id);
+      return fail(409, 'resolved_by_person', 'a person has resolved the decision this one would replace');
+    }
+    // The new decision replaces the older ones of the same step for this
+    // report: their open reviews leave the queue.
+    await log.supersede({ ...decision, client: client.client });
+  }
   return { ok: true, decision };
+}
+
+/** A repeated request with a logged idempotency key: the logged decision, or a conflict. */
+async function repeated(earlier: DecisionRecord, digest: string, log: DecisionLog): Promise<DecisionResult> {
+  if (earlier.request_digest !== digest) return fail(409, 'idempotency_conflict', 'this idempotency key was used for a different request');
+  // The first try may have failed after it was logged: close the replaced
+  // reviews now (safe to repeat).
+  if (earlier.requires !== undefined && earlier.review?.status !== 'superseded') await log.supersede(earlier);
+  // The first try was discarded because a person resolved the decision it
+  // would replace: the same answer again.
+  if (earlier.review?.status === 'superseded' && earlier.replaces !== undefined
+    && (await log.get(earlier.replaces))?.review?.status === 'resolved') {
+    return fail(409, 'resolved_by_person', 'a person has resolved the decision this one would replace');
+  }
+  return { ok: true, decision: decisionOf(earlier) };
+}
+
+/**
+ * A logged decision as a token may read it: without callback_url and the
+ * request digest, and with required decisions of profiles outside the
+ * token's scope hidden (P-TOKEN-SCOPE).
+ */
+function publicRecord<R extends DecisionRecord>(record: R, client: TokenRecord) {
+  const { callback_url: _, request_digest: __, requires, ...visible } = record;
+  const shown = visibleRequires(requires, (profile) => canUse(client, profile));
+  return shown ? { ...visible, requires: shown } : visible;
 }
 
 /** The model of a decision made by rules only. */
@@ -500,6 +536,7 @@ function decisionOf(r: DecisionRecord): Decision {
     rule: r.rule,
     ...(r.facts && { facts: r.facts }),
     ...(r.requires && { requires: r.requires }),
+    ...(r.replaces !== undefined && { replaces: r.replaces }),
     ...(r.review?.status === 'pending' && { review: { status: 'pending' as const } }),
   };
 }

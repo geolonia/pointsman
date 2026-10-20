@@ -18,6 +18,7 @@ export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
     byIdempotencyKey: async () => null,
     latestFor: async () => null,
     supersede: async () => [],
+    discard: async () => {},
     ...overrides,
   };
 }

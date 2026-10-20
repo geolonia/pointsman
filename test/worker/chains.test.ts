@@ -49,12 +49,19 @@ const SECOND = newToken();
 const FINAL_ONLY = newToken();
 const TEST = newToken();
 
+const tokens = new MemoryTokenStore();
+
 function setup() {
-  const tokens = new MemoryTokenStore();
+  return setupWith({});
+}
+
+/** The app with some log methods replaced (to run a race at a fixed point) or other profiles. */
+function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last]) {
+  const real = new D1DecisionLog(DB);
   const deps: Deps = {
-    store: new MemoryProfileStore([first, other, final, last]),
+    store: new MemoryProfileStore(profiles),
     tokens,
-    log: new D1DecisionLog(DB),
+    log: Object.assign(real, log),
     adapterFor: () => new MockAdapter(),
     callbacks: noCallbacks,
   };
@@ -153,8 +160,9 @@ describe('decision chains', () => {
     // The final decision used one first decision; the request names another
     // first decision of the same report.
     const used = await decideFirst();
-    const another = await decideFirst();
     const f = await decideFinal({ triage: used });
+    expect(f.status).toBe(200);
+    const another = await decideFirst();
     const res = await decideLast({ final: f.data.decision_id, triage: another });
     expect(res.status).toBe(400);
     expect(res.data.error.message).toBe('decisions.final is not a usable decision');
@@ -205,6 +213,72 @@ describe('decision chains', () => {
     const chained = await s.call('POST', '/v1/decide/triage-final', { state: {}, ref }, TEST);
     expect(chained.status).toBe(400);
     expect(chained.data.error.message).toMatch(/test token cannot decide a profile that requires/);
+  });
+
+  it('uses only the newest decision of a step for the report', async () => {
+    const older = await decideFirst();
+    const newer = await decideFirst();
+    const res = await decideFinal({ triage: older });
+    expect(res.status).toBe(400);
+    expect(res.data.error.message).toBe('decisions.triage is not a usable decision');
+    expect((await decideFinal({ triage: newer })).status).toBe(200);
+  });
+
+  it('refuses to resolve a final decision that a newer one replaced', async () => {
+    const id = await decideFirst();
+    const a = await decideFinal({ triage: id });
+    await decideFinal({ triage: id });
+    const res = await s.call('POST', `/v1/reviews/${a.data.decision_id}/resolve`, { action: 'ship', by: 'x' });
+    expect(res.status).toBe(409);
+    expect(res.data.error.code).toBe('not_pending');
+  });
+
+  it('discards a decision made while a person resolved the one it replaces', async () => {
+    const id = await decideFirst();
+    const a = await decideFinal({ triage: id });
+    // A person resolves the earlier final decision while the new one is made:
+    // after the check that it is not resolved, before the new one is logged.
+    const log = new D1DecisionLog(DB);
+    const latestFor = log.latestFor.bind(log);
+    const racing = setupWith({
+      latestFor: async (...args) => {
+        const found = await latestFor(...args);
+        if (found?.decision_id === a.data.decision_id) {
+          expect((await s.call('POST', `/v1/reviews/${a.data.decision_id}/resolve`, { action: 'ship', by: 'x' })).status).toBe(200);
+        }
+        return found;
+      },
+    });
+    const key = { 'idempotency-key': `race-${crypto.randomUUID()}` };
+    const body = { state: {}, ref, decisions: { triage: id } };
+    const res = await racing.call('POST', '/v1/decide/triage-final', body, ALL, key);
+    expect(res.status).toBe(409);
+    expect(res.data.error.code).toBe('resolved_by_person');
+    // The resolved answer stays the one that counts, also for a retry.
+    expect((await s.call('POST', '/v1/decide/triage-final', body, ALL, key)).data.error.code).toBe('resolved_by_person');
+    expect((await s.call('GET', `/v1/decisions/${a.data.decision_id}`)).data.review.status).toBe('resolved');
+    expect((await decideFinal({ triage: id })).data.error.code).toBe('resolved_by_person');
+  });
+
+  it('lists reviews without the request digest and with out-of-scope decisions hidden', async () => {
+    const id = await decideFirst();
+    const made = await decideFinal({ triage: id }, {}, ALL, { 'idempotency-key': `q-${crypto.randomUUID()}` });
+    const queue = await s.call('GET', '/v1/reviews?profile=triage-final', undefined, FINAL_ONLY);
+    expect(queue.status).toBe(200);
+    expect(contract.reviewList(queue.data), JSON.stringify(contract.reviewList.errors)).toBe(true);
+    const item = queue.data.reviews.find((r: { decision_id: string }) => r.decision_id === made.data.decision_id);
+    expect(item.requires.triage).toEqual({ decision: null });
+    expect(item.request_digest).toBeUndefined();
+  });
+
+  it('a retry after a new profile version is the same request', async () => {
+    const id = await decideFirst();
+    const key = { 'idempotency-key': `v-${crypto.randomUUID()}` };
+    const a = await decideFinal({ triage: id }, {}, ALL, key);
+    const newer = setupWith({}, [first, other, { ...final, version: 2 }, last]);
+    const b = await newer.call('POST', '/v1/decide/triage-final', { state: {}, ref, decisions: { triage: id } }, ALL, key);
+    expect(b.status).toBe(200);
+    expect(b.data.decision_id).toBe(a.data.decision_id);
   });
 
   it('reads an optional decision when it is given', async () => {

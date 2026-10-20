@@ -28,7 +28,8 @@ them, and they never reach the review queue or the accuracy numbers.
 | `callback_url` | For the review queue (#9); not returned by the API |
 | `review_status` | `pending`, `resolved` or `superseded` for a decision whose action a person checks (see [reviews.md](reviews.md)) |
 | `requires` | Only for profiles with `requires`: for each required decision its id, profile and version, `action`, `outcome`, `reviewed`, and every value the rules read from it (`read`, JSON, see [profile-format.md](profile-format.md#decision-chains)) |
-| `idempotency_key`, `request_digest` | When the request had an `Idempotency-Key`: the key, and a SHA-256 of the request (profile and version, state, ref, decisions). The digest is not returned by the API |
+| `idempotency_key`, `request_digest` | When the request had an `Idempotency-Key`: the key, and a SHA-256 of the request (profile, the version as requested, state, ref, decisions, callback_url). The digest is not returned by the API |
+| `replaces` | The earlier decision of the same profile, `ref` and client that this one replaced |
 
 By default only the hash of the state is kept: the state can hold personal or
 confidential data (issue text, sensor data). The hash still shows when the

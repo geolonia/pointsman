@@ -98,6 +98,8 @@ export async function loadRequired(
       || record.client !== client.client || record.review?.status === 'superseded') {
       return unusable(r.name);
     }
+    // Only the newest decision of its step for this report counts.
+    if ((await log.latestFor(record.profile, ref, client.client))?.decision_id !== record.decision_id) return unusable(r.name);
     records[r.name] = record;
     inputs[r.name] = inputOf(record);
   }

@@ -30,6 +30,8 @@ export interface DecisionRecord {
   idempotency_key?: string;
   /** Digest of the request: profile and version, state, ref, decisions. */
   request_digest?: string;
+  /** The earlier decision of the same profile, ref and client that this one replaced. */
+  replaces?: string;
   /** Set when the decision has a callback_url and a callback was due. */
   callback?: CallbackState;
 }
@@ -112,13 +114,15 @@ export interface DecisionLog {
   resolve(decisionId: string, resolution: Resolution): Promise<boolean>;
   /** The decision a client made with this idempotency key, if any. */
   byIdempotencyKey(client: string, key: string): Promise<DecisionRecord | null>;
-  /** The newest decision of a profile for a ref and client, if any. */
+  /** The newest decision of a profile for a ref and client that counts (not superseded), if any. */
   latestFor(profile: string, ref: string, client: string): Promise<DecisionRecord | null>;
   /**
-   * Mark the open reviews of older decisions (same profile, ref and client,
-   * made before `before`) as superseded. Returns their ids.
+   * Mark the open reviews of the decisions that `decision` replaces (same
+   * profile, ref and client, made at or before it) as superseded. Returns their ids.
    */
-  supersede(profile: string, ref: string, client: string, before: string): Promise<string[]>;
+  supersede(decision: Pick<DecisionRecord, 'decision_id' | 'profile' | 'ref' | 'client' | 'created_at'>): Promise<string[]>;
+  /** Mark one decision as superseded: it never counts (a person resolved the one it would replace). */
+  discard(decisionId: string): Promise<void>;
   /** Decisions whose callback is pending and due at or before `now`. */
   dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]>;
   /**
@@ -177,6 +181,7 @@ interface DecisionRow {
   requires: string | null;
   idempotency_key: string | null;
   request_digest: string | null;
+  replaces: string | null;
 }
 
 function fromRow(row: DecisionRow): DecisionRecord {
@@ -207,6 +212,7 @@ function fromRow(row: DecisionRow): DecisionRecord {
     ...(row.requires !== null && { requires: JSON.parse(row.requires) as Record<string, RequiredSnapshot> }),
     ...(row.idempotency_key !== null && { idempotency_key: row.idempotency_key }),
     ...(row.request_digest !== null && { request_digest: row.request_digest }),
+    ...(row.replaces !== null && { replaces: row.replaces }),
     ...(row.callback_status !== null && {
       callback: {
         status: row.callback_status as CallbackState['status'],
@@ -226,6 +232,10 @@ interface FeedbackRow {
   note: string | null;
 }
 
+/** A decision that counts: not replaced by a newer one. */
+const COUNTS = "(review_status IS NULL OR review_status != 'superseded')";
+// Decisions of one millisecond are ordered by when they were inserted (rowid).
+
 export class D1DecisionLog implements DecisionLog {
   db: D1Database;
 
@@ -237,8 +247,8 @@ export class D1DecisionLog implements DecisionLog {
     await this.db
       .prepare(
         `INSERT INTO decisions (id, created_at, client, ref, profile_id, profile_version, model, action,
-           rule, answers, facts, state_hash, state, callback_url, review_status, requires, idempotency_key, request_digest)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           rule, answers, facts, state_hash, state, callback_url, review_status, requires, idempotency_key, request_digest, replaces)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         r.decision_id, r.created_at, r.client, r.ref ?? null, r.profile, r.profile_version, r.model,
@@ -247,6 +257,7 @@ export class D1DecisionLog implements DecisionLog {
         // The caller decides whether a person checks it (the profile's people_check).
         r.review?.status === 'pending' ? 'pending' : null,
         r.requires === undefined ? null : JSON.stringify(r.requires), r.idempotency_key ?? null, r.request_digest ?? null,
+        r.replaces ?? null,
       )
       .run();
   }
@@ -258,22 +269,30 @@ export class D1DecisionLog implements DecisionLog {
 
   async latestFor(profile: string, ref: string, client: string): Promise<DecisionRecord | null> {
     const row = await this.db
-      .prepare('SELECT * FROM decisions WHERE profile_id = ? AND ref = ? AND client = ? ORDER BY created_at DESC, id DESC LIMIT 1')
+      .prepare(
+        `SELECT * FROM decisions WHERE profile_id = ? AND ref = ? AND client = ? AND ${COUNTS}
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
       .bind(profile, ref, client)
       .first<DecisionRow>();
     return row ? fromRow(row) : null;
   }
 
-  async supersede(profile: string, ref: string, client: string, before: string): Promise<string[]> {
+  async supersede(d: Pick<DecisionRecord, 'decision_id' | 'profile' | 'ref' | 'client' | 'created_at'>): Promise<string[]> {
+    if (d.ref === undefined) return [];
     const { results } = await this.db
       .prepare(
         `UPDATE decisions SET review_status = 'superseded'
-         WHERE profile_id = ? AND ref = ? AND client = ? AND created_at < ? AND review_status = 'pending'
+         WHERE profile_id = ? AND ref = ? AND client = ? AND created_at <= ? AND id != ? AND review_status = 'pending'
          RETURNING id`,
       )
-      .bind(profile, ref, client, before)
+      .bind(d.profile, d.ref, d.client, d.created_at, d.decision_id)
       .run<{ id: string }>();
     return results.map((r) => r.id);
+  }
+
+  async discard(decisionId: string): Promise<void> {
+    await this.db.prepare(`UPDATE decisions SET review_status = 'superseded' WHERE id = ?`).bind(decisionId).run();
   }
 
   async get(id: string) {
@@ -355,7 +374,13 @@ export class D1DecisionLog implements DecisionLog {
            final_action = ?, final_answers = ?,
            callback_status = CASE WHEN callback_url IS NULL THEN NULL ELSE 'pending' END,
            callback_next_at = CASE WHEN callback_url IS NULL THEN NULL ELSE ? END
-         WHERE id = ? AND review_status = 'pending'`,
+         WHERE id = ? AND review_status = 'pending'
+           -- A decision of a chain step that a newer one replaced cannot be
+           -- resolved, also when the newer one was logged a moment ago.
+           AND (requires IS NULL OR NOT EXISTS (
+             SELECT 1 FROM decisions AS n WHERE n.profile_id = decisions.profile_id AND n.ref = decisions.ref
+               AND n.client = decisions.client AND n.id != decisions.id AND n.created_at >= decisions.created_at
+               AND (n.review_status IS NULL OR n.review_status != 'superseded')))`,
       ).bind(r.resolved_at, r.resolved_by, r.client, r.final_action, JSON.stringify(r.final_answers),
         r.callback_next_at ?? r.resolved_at, decisionId),
     ];
