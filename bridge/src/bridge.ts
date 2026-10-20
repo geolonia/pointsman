@@ -534,9 +534,19 @@ export function decisionsOf(entity: Entity, requires: Record<string, Requirement
  * in the entity changed since (inputs that came back, a review written on an
  * earlier result), it is another request with another key, and a new decision.
  */
-export async function idempotencyKey(route: Route, entityId: string, body: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([route.name ?? route.type, route.profile, entityId, body])));
+export async function idempotencyKey(route: Route, entityId: string, body: unknown): Promise<string> {
+  // Keys sorted, so the same entity read twice in another attribute order is the same request.
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson([route.name ?? route.type, route.profile, entityId, body])));
   return `bridge-${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** JSON with object keys sorted, at every level. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 /** The error code of a Pointsman error answer (never the message: it may name input). */
@@ -556,18 +566,21 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
   const decisions = route.requires ? decisionsOf(entity, route.requires) : undefined;
   if (decisions === null) return { id: entity.id, skipped: 'waiting for decisions' };
 
-  const body = JSON.stringify({ state: entity, ref: entity.id, ...(decisions && Object.keys(decisions).length > 0 && { decisions }) });
+  const request = { state: entity, ref: entity.id, ...(decisions && Object.keys(decisions).length > 0 && { decisions }) };
+  const body = JSON.stringify(request);
   const res = await send(config, 'pointsman', `${config.pointsman.url}/v1/decide/${encodeURIComponent(route.profile)}`, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${config.pointsman.token}`, 'content-type': 'application/json', 'user-agent': USER_AGENT,
-      'idempotency-key': await idempotencyKey(route, entity.id, body),
+      'idempotency-key': await idempotencyKey(route, entity.id, request),
     },
     body,
   });
   if (!res.ok) {
     const code = res.status === 409 ? await errorCode(res) : undefined;
-    // A person resolved the final decision this one would replace: their answer stays.
+    // A person resolved the final decision this one would replace: their answer
+    // stays. Nothing is written, so a later change of an input asks again and
+    // gets the same answer (one call per notification, no loop).
     if (code === 'resolved_by_person') return { id: entity.id, skipped: 'resolved by person' };
     if (code === 'idempotency_conflict') {
       return { id: entity.id, error: 'pointsman answered 409 idempotency_conflict: the same key was used for another request', retry: false, deadLetter: true };
@@ -815,6 +828,9 @@ export function informedByOf(entity: Entity, route: Route): string | undefined {
  */
 export function isChecked(d: Pick<Decision, 'action' | 'review' | 'requires'>, route: Route): boolean {
   if (route.reviewActions) return route.reviewActions.includes(d.action);
+  // The last case is for engines from before decision chains (#107), which
+  // send no review: a profile whose people_check leaves out review is then
+  // marked checked for action review. Set reviewActions for such a profile.
   return d.review !== undefined || (d.requires === undefined && d.action === 'review');
 }
 
@@ -1029,6 +1045,8 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     ...result,
     finalAction: { type: 'Property', value: finalAction },
     reviewedAt: { type: 'Property', value: when },
+    // The marker for open checks (toProperty) follows the review.
+    ...(result?.reviewStatus !== undefined && { reviewStatus: { type: 'Property', value: 'resolved' } }),
   }, config);
   if (!updatedAll(write)) return { id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
   const hash = valueOf(result?.inputHash);
