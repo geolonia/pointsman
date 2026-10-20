@@ -189,7 +189,7 @@ policy:
 |---|---|---|
 | `inside` | `inside` (boolean), `rank` (number), `class` (text) | Inside an area of the layer. `rank` and `class` describe the area, for example a flood depth class. Not inside: `rank` 0, `class` empty. |
 | `nearest` | `found` (boolean), `distance_m` (number), `name` (text) | The nearest feature of the layer. None found: `found` false, no distance or name. |
-| `detour` | `possible` (boolean), `extra_m` (number) | Extra metres around a closed section, by car or on foot (`mode`). Needs a `LineString`. No way around: `possible` false, no `extra_m`. |
+| `detour` | `possible` (boolean), `extra_m` (number), `route` (text) | Extra metres around a closed section, by car or on foot (`mode`). Needs a `LineString`. No way around: `possible` false, no `extra_m`. `route` is the way around, from one end of the section to the other, as an encoded polyline with precision 6 (as Valhalla sends it), so that apps can draw it; no value when the server sent none or it is longer than 6,000 characters. Rules have no use for it. |
 
 Every fact also has `missing` (boolean).
 

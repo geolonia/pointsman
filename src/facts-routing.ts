@@ -29,6 +29,13 @@ const MAX_SECTION_M = 5000;
 /** Rectangles for the closed section: 5 vertices each, under Valhalla's default limit of 100. */
 const MAX_RECTS = 19;
 
+/**
+ * The longest way around kept in the fact (encoded polyline, precision 6:
+ * about 1,000 positions). A longer one is left out (route null): the fact is
+ * stored with every decision.
+ */
+const MAX_ROUTE_CHARS = 6000;
+
 /** Valhalla error 176: the exclusion polygons have more vertices than the server allows. */
 class TooManyVertices extends FactError {}
 const SOURCE = '© OpenStreetMap contributors (ODbL), routed with Valhalla';
@@ -82,7 +89,7 @@ export class ValhallaRouter {
     const direct = await this.route(a, b, undefined, costing, signal);
     if (direct === null) throw new FactError('no route along the section itself');
     for (const polygons of usable) {
-      let around: number | null;
+      let around: Trip | null;
       try {
         around = await this.route(a, b, polygons, costing, signal);
       } catch (err) {
@@ -91,7 +98,10 @@ export class ValhallaRouter {
         if (err instanceof TooManyVertices) continue;
         throw err;
       }
-      if (around !== null) return { values: { possible: true, extra_m: Math.max(0, around - direct) }, source: SOURCE };
+      if (around !== null) {
+        const route = around.shape !== null && around.shape.length <= MAX_ROUTE_CHARS ? around.shape : null;
+        return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: SOURCE };
+      }
     }
     // Valhalla closes whole road edges: if one edge runs past an end, "no
     // path" may only mean that the route cannot start. That is not proof of
@@ -99,8 +109,8 @@ export class ValhallaRouter {
     throw new FactError('no route with the section closed (no way around, or a closed road edge at an end)');
   }
 
-  /** Distance in metres by car (`auto`) or on foot (`pedestrian`), or null when Valhalla finds no route. */
-  private async route(from: Position, to: Position, exclude: Position[][] | undefined, costing: 'auto' | 'pedestrian', signal?: AbortSignal): Promise<number | null> {
+  /** The route by car (`auto`) or on foot (`pedestrian`), or null when Valhalla finds no route. */
+  private async route(from: Position, to: Position, exclude: Position[][] | undefined, costing: 'auto' | 'pedestrian', signal?: AbortSignal): Promise<Trip | null> {
     signal?.throwIfAborted();
     const body = {
       locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }],
@@ -119,7 +129,7 @@ export class ValhallaRouter {
     });
     // Checked before the body: a redirect's body is not Valhalla's answer.
     if (res.status >= 300 && res.status < 400) throw new FactError(`routing ${res.status}`);
-    const json = (await res.json().catch(() => null)) as { trip?: { summary?: { length?: unknown } }; error_code?: unknown } | null;
+    const json = (await res.json().catch(() => null)) as { trip?: { summary?: { length?: unknown }; legs?: { shape?: unknown }[] }; error_code?: unknown } | null;
     if (!res.ok) {
       if (json?.error_code === 442) return null; // no path
       if (json?.error_code === 176) throw new TooManyVertices('routing: too many polygon vertices');
@@ -127,9 +137,15 @@ export class ValhallaRouter {
     }
     const km = json?.trip?.summary?.length;
     if (typeof km !== 'number' || !Number.isFinite(km)) throw new FactError('routing answer has no length');
-    return Math.round(km * 1000);
+    // Two locations make one leg; its shape is the route as an encoded polyline (precision 6).
+    const legs = json?.trip?.legs;
+    const shape = Array.isArray(legs) && legs.length === 1 && typeof legs[0]?.shape === 'string' && legs[0].shape !== '' ? legs[0].shape : null;
+    return { m: Math.round(km * 1000), shape };
   }
 }
+
+/** A route: its length in metres, and its shape (encoded polyline, precision 6) when Valhalla sent one. */
+type Trip = { m: number; shape: string | null };
 
 type Sample = { p: Position; at: number };
 

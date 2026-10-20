@@ -68,7 +68,7 @@ describe('lookups', () => {
     const provider: FactProvider = { lookup: async (q) => (calls.push(q), new MockFactProvider().lookup(q)) };
     expect(await lookupFacts(specs, state(line), provider)).toEqual({
       flood: { missing: false, values: { inside: true, rank: 1, class: 'mock' }, source: 'mock' },
-      detour: { missing: false, values: { possible: true, extra_m: 0 }, source: 'mock' },
+      detour: { missing: false, values: { possible: true, extra_m: 0, route: null }, source: 'mock' },
     });
     // A detour always says how: by car unless the profile says walk.
     expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', geometry: line }]);

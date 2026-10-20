@@ -140,7 +140,7 @@ export class MockFactProvider implements FactProvider {
       case 'nearest':
         return { values: { found: true, distance_m: 250, name: 'Mock feature' }, source: 'mock' };
       case 'detour':
-        return { values: { possible: true, extra_m: 0 }, source: 'mock' };
+        return { values: { possible: true, extra_m: 0, route: null }, source: 'mock' };
     }
   }
 }

@@ -98,8 +98,10 @@ export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
   inside: { inside: 'boolean', rank: 'number', class: 'string' },
   // The nearest feature of a layer. Not found: found false, no distance or name.
   nearest: { found: 'boolean', distance_m: 'number', name: 'string' },
-  // Extra metres around a closed section. No way around: possible false, no extra_m.
-  detour: { possible: 'boolean', extra_m: 'number' },
+  // Extra metres around a closed section. No way around: possible false, no
+  // extra_m. route: the way around (encoded polyline, precision 6), for
+  // people and maps; null when not known.
+  detour: { possible: 'boolean', extra_m: 'number', route: 'string' },
 };
 
 /** Reserved prefix of fact references; no question name may start with it. */
