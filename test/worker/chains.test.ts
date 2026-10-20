@@ -71,7 +71,14 @@ const after: Profile = {
   requires: [{ name: 'follow', profile: 'triage-follow' }, { name: 'triage', profile: 'issue-triage', optional: true }],
 };
 
-function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last, follow, end, after]) {
+const deep: Profile = { ...end, id: 'triage-deep', requires: [{ name: 'follow', profile: 'triage-follow' }] };
+const top: Profile = {
+  ...end,
+  id: 'triage-top',
+  requires: [{ name: 'triage', profile: 'issue-triage' }, { name: 'follow', profile: 'triage-follow', optional: true }, { name: 'deep', profile: 'triage-deep' }],
+};
+
+function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last, follow, end, after, deep, top]) {
   const real = new D1DecisionLog(DB);
   const deps: Deps = {
     store: new MemoryProfileStore(profiles),
@@ -209,6 +216,20 @@ describe('decision chains', () => {
     const res = await s.call('POST', '/v1/decide/triage-after', { state: {}, ref, decisions: { follow: f1.data.decision_id, triage: t2 } });
     expect(res.status).toBe(400);
     expect(res.data.error.message).toBe('decisions.follow is not a usable decision');
+  });
+
+  it('does not depend on the order of requires: a stale required decision behind a left-out one is refused', async () => {
+    // chain: triage -> follow (optional) -> deep (required, made from an older follow).
+    const t1 = await decideFirst();
+    const f0 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    const d0 = await s.call('POST', '/v1/decide/triage-deep', { state: {}, ref, decisions: { follow: f0.data.decision_id } });
+    expect(d0.status).toBe(200);
+    const f1 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    const t2 = await decideFirst();
+    // f1 was made for t1 (left out); d0 was made from f0, older than f1: refused.
+    const res = await s.call('POST', '/v1/decide/triage-top', { state: {}, ref, decisions: { triage: t2, follow: f1.data.decision_id, deep: d0.data.decision_id } });
+    expect(res.status).toBe(400);
+    expect(res.data.error.message).toBe('decisions.deep is not a usable decision');
   });
 
   it('gives the same answer for every unusable decision', async () => {

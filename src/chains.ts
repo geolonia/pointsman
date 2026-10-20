@@ -111,12 +111,17 @@ export async function loadRequired(
   // from the decisions that are current. A required one that does not fit is
   // refused.
   const optional = (name: string) => requires.some((r) => r.name === name && r.optional);
-  for (const [name, record] of Object.entries(records)) {
+  // Compared with everything given, also what gets left out, so the answer
+  // does not depend on the order of `requires`.
+  const all = { ...records };
+  for (const [name, record] of Object.entries(all)) {
     for (const snap of Object.values(record.requires ?? {})) {
-      const otherName = Object.keys(records).find((n) => records[n]!.profile === snap.profile);
-      if (otherName === undefined || records[otherName]!.decision_id === snap.decision) continue;
-      // `name` is the stale one: every given decision is the newest of its
-      // step, so the one it was made from is older than the one given.
+      const other = Object.values(all).find((x) => x.profile === snap.profile);
+      if (other === undefined || other.decision_id === snap.decision) continue;
+      // `name` is the stale one: every given decision was the newest of its
+      // step when it was read, so the one it was made from is older. (A
+      // decide call in between could make it look the other way round; then
+      // the request is refused or decided without it, never on stale data.)
       if (!optional(name)) return unusable(name);
       delete records[name];
       delete inputs[name];
