@@ -376,9 +376,12 @@ components:
           type: boolean
           const: true
         requires:
-          description: For a profile with `requires`, by name.
+          description: For a profile with `requires`, by name. A required decision of a profile the token may no longer use is hidden.
           type: object
-          additionalProperties: { $ref: '#/components/schemas/RequiredSnapshot' }
+          additionalProperties:
+            oneOf:
+              - { $ref: '#/components/schemas/RequiredSnapshot' }
+              - { $ref: '#/components/schemas/HiddenRequired' }
         replaces:
           description: The earlier decision of the same profile, ref and client that this one replaces.
           type: string
@@ -462,6 +465,10 @@ components:
               - { $ref: '#/components/schemas/HiddenRequired' }
         idempotency_key: { type: string, description: The Idempotency-Key the decision was made with. }
         replaces: { type: string, format: uuid, description: The earlier decision of the same profile, ref and client that this one replaced. }
+        discarded_at:
+          type: string
+          format: date-time
+          description: Made while a person resolved the decision it would replace; the client got 409 resolved_by_person and it never counts.
     Review:
       description: Only for decisions whose action a person checks (the profile's people_check; default review).
       type: object

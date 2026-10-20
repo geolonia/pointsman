@@ -296,8 +296,8 @@ required decision.
   later step leaves the message on the queue, which tries again. The
   bridge sends an idempotency key with the decide request (the route, the
   entity and the hash of its inputs). Pointsman keeps, with the decision,
-  a digest of the request (profile and version, state, `ref`,
-  `decisions`). A repeated key from the same client with the same digest
+  a digest of the request (profile, the version as requested, state,
+  `ref`, `decisions`, `callback_url`). A repeated key from the same client with the same digest
   gets the decision already logged, so a retry never decides twice; the
   same key with another digest is refused (`409`, code
   `idempotency_conflict`). Steps 2 to 4 are written so that doing them

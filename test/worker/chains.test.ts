@@ -260,6 +260,37 @@ describe('decision chains', () => {
     expect((await decideFinal({ triage: id })).data.error.code).toBe('resolved_by_person');
   });
 
+  it('a retry after a failure between logging and the check keeps the person\'s answer', async () => {
+    const id = await decideFirst();
+    const a = await decideFinal({ triage: id });
+    // The first try logs the new decision, then fails before it could check
+    // whether a person resolved the earlier one meanwhile (who did).
+    const log = new D1DecisionLog(DB);
+    const insert = log.insert.bind(log);
+    const failing = setupWith({
+      insert: async (r) => {
+        // Resolved just before the new decision is logged (after it, the
+        // resolve would be refused).
+        expect((await s.call('POST', `/v1/reviews/${a.data.decision_id}/resolve`, { action: 'ship', by: 'x' })).status).toBe(200);
+        await insert(r);
+        throw new Error('connection lost');
+      },
+      byIdempotencyKey: async () => null,
+    });
+    const key = { 'idempotency-key': `crash-${crypto.randomUUID()}` };
+    const body = { state: {}, ref, decisions: { triage: id } };
+    expect((await failing.call('POST', '/v1/decide/triage-final', body, ALL, key)).status).toBe(500);
+    const before = (await s.call('GET', '/v1/stats/triage-final')).data;
+    const retry = await s.call('POST', '/v1/decide/triage-final', body, ALL, key);
+    expect(retry.status).toBe(409);
+    expect(retry.data.error.code).toBe('resolved_by_person');
+    // The logged one never counts: not usable, not in the stats.
+    const stats = (await s.call('GET', '/v1/stats/triage-final')).data;
+    expect(stats.decisions).toBe(before.decisions - 1);
+    const last = await s.call('POST', '/v1/decide/triage-last', { state: {}, ref, decisions: { final: a.data.decision_id, triage: id } });
+    expect(last.status).toBe(200);
+  });
+
   it('lists reviews without the request digest and with out-of-scope decisions hidden', async () => {
     const id = await decideFirst();
     const made = await decideFinal({ triage: id }, {}, ALL, { 'idempotency-key': `q-${crypto.randomUUID()}` });

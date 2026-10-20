@@ -32,6 +32,8 @@ export interface DecisionRecord {
   request_digest?: string;
   /** The earlier decision of the same profile, ref and client that this one replaced. */
   replaces?: string;
+  /** Made while a person resolved the decision it would replace: it never counts (409 resolved_by_person). */
+  discarded_at?: string;
   /** Set when the decision has a callback_url and a callback was due. */
   callback?: CallbackState;
 }
@@ -121,8 +123,8 @@ export interface DecisionLog {
    * profile, ref and client, made at or before it) as superseded. Returns their ids.
    */
   supersede(decision: Pick<DecisionRecord, 'decision_id' | 'profile' | 'ref' | 'client' | 'created_at'>): Promise<string[]>;
-  /** Mark one decision as superseded: it never counts (a person resolved the one it would replace). */
-  discard(decisionId: string): Promise<void>;
+  /** Mark one decision as discarded: it never counts (a person resolved the one it would replace). */
+  discard(decisionId: string, at: string): Promise<void>;
   /** Decisions whose callback is pending and due at or before `now`. */
   dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]>;
   /**
@@ -182,6 +184,7 @@ interface DecisionRow {
   idempotency_key: string | null;
   request_digest: string | null;
   replaces: string | null;
+  discarded_at: string | null;
 }
 
 function fromRow(row: DecisionRow): DecisionRecord {
@@ -213,6 +216,7 @@ function fromRow(row: DecisionRow): DecisionRecord {
     ...(row.idempotency_key !== null && { idempotency_key: row.idempotency_key }),
     ...(row.request_digest !== null && { request_digest: row.request_digest }),
     ...(row.replaces !== null && { replaces: row.replaces }),
+    ...(row.discarded_at !== null && { discarded_at: row.discarded_at }),
     ...(row.callback_status !== null && {
       callback: {
         status: row.callback_status as CallbackState['status'],
@@ -233,7 +237,7 @@ interface FeedbackRow {
 }
 
 /** A decision that counts: not replaced by a newer one. */
-const COUNTS = "(review_status IS NULL OR review_status != 'superseded')";
+const COUNTS = "(review_status IS NULL OR review_status != 'superseded') AND discarded_at IS NULL";
 // Decisions of one millisecond are ordered by when they were inserted (rowid).
 
 export class D1DecisionLog implements DecisionLog {
@@ -283,16 +287,25 @@ export class D1DecisionLog implements DecisionLog {
     const { results } = await this.db
       .prepare(
         `UPDATE decisions SET review_status = 'superseded'
-         WHERE profile_id = ? AND ref = ? AND client = ? AND created_at <= ? AND id != ? AND review_status = 'pending'
+         WHERE profile_id = ? AND ref = ? AND client = ? AND review_status = 'pending' AND id != ?
+           AND (created_at < ? OR (created_at = ? AND rowid < (SELECT rowid FROM decisions WHERE id = ?)))
          RETURNING id`,
       )
-      .bind(d.profile, d.ref, d.client, d.created_at, d.decision_id)
+      .bind(d.profile, d.ref, d.client, d.decision_id, d.created_at, d.created_at, d.decision_id)
       .run<{ id: string }>();
     return results.map((r) => r.id);
   }
 
-  async discard(decisionId: string): Promise<void> {
-    await this.db.prepare(`UPDATE decisions SET review_status = 'superseded' WHERE id = ?`).bind(decisionId).run();
+  async discard(decisionId: string, at: string): Promise<void> {
+    // An open review of it leaves the queue; a resolved one stays as it was.
+    await this.db
+      .prepare(
+        `UPDATE decisions SET discarded_at = COALESCE(discarded_at, ?),
+           review_status = CASE WHEN review_status = 'pending' THEN 'superseded' ELSE review_status END
+         WHERE id = ?`,
+      )
+      .bind(at, decisionId)
+      .run();
   }
 
   async get(id: string) {
@@ -323,15 +336,16 @@ export class D1DecisionLog implements DecisionLog {
 
   async stats(profile: string, since: string): Promise<ProfileStats> {
     const [actions, reviews, corrected] = await this.db.batch<{ k: string | null; k2?: string | null; n: number }>([
-      this.db.prepare('SELECT action AS k, COUNT(*) AS n FROM decisions WHERE profile_id = ? AND created_at >= ? GROUP BY action').bind(profile, since),
+      // Discarded decisions never count (the client got 409 for them).
+      this.db.prepare('SELECT action AS k, COUNT(*) AS n FROM decisions WHERE profile_id = ? AND created_at >= ? AND discarded_at IS NULL GROUP BY action').bind(profile, since),
       this.db.prepare(
         `SELECT review_status AS k, final_action AS k2, COUNT(*) AS n FROM decisions
-         WHERE profile_id = ? AND created_at >= ? AND review_status IS NOT NULL GROUP BY review_status, final_action`,
+         WHERE profile_id = ? AND created_at >= ? AND review_status IS NOT NULL AND discarded_at IS NULL GROUP BY review_status, final_action`,
       ).bind(profile, since),
       // As in docs/accuracy.sql: a correction that changes at least one answer.
       this.db.prepare(
         `SELECT NULL AS k, COUNT(DISTINCT d.id) AS n FROM decisions d JOIN feedback f ON f.decision_id = d.id
-         WHERE d.profile_id = ? AND d.created_at >= ? AND EXISTS (
+         WHERE d.profile_id = ? AND d.created_at >= ? AND d.discarded_at IS NULL AND EXISTS (
            SELECT 1 FROM json_each(f.correct) c
            WHERE c.value IS NOT json_extract(d.answers, '$."' || c.key || '".value'))`,
       ).bind(profile, since),
@@ -374,13 +388,14 @@ export class D1DecisionLog implements DecisionLog {
            final_action = ?, final_answers = ?,
            callback_status = CASE WHEN callback_url IS NULL THEN NULL ELSE 'pending' END,
            callback_next_at = CASE WHEN callback_url IS NULL THEN NULL ELSE ? END
-         WHERE id = ? AND review_status = 'pending'
+         WHERE id = ? AND review_status = 'pending' AND discarded_at IS NULL
            -- A decision of a chain step that a newer one replaced cannot be
            -- resolved, also when the newer one was logged a moment ago.
            AND (requires IS NULL OR NOT EXISTS (
              SELECT 1 FROM decisions AS n WHERE n.profile_id = decisions.profile_id AND n.ref = decisions.ref
-               AND n.client = decisions.client AND n.id != decisions.id AND n.created_at >= decisions.created_at
-               AND (n.review_status IS NULL OR n.review_status != 'superseded')))`,
+               AND n.client = decisions.client AND n.id != decisions.id
+               AND (n.created_at > decisions.created_at OR (n.created_at = decisions.created_at AND n.rowid > decisions.rowid))
+               AND (n.review_status IS NULL OR n.review_status != 'superseded') AND n.discarded_at IS NULL))`,
       ).bind(r.resolved_at, r.resolved_by, r.client, r.final_action, JSON.stringify(r.final_answers),
         r.callback_next_at ?? r.resolved_at, decisionId),
     ];

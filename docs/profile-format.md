@@ -214,7 +214,8 @@ closed as `superseded`; it can no longer be resolved. Once a person has
 resolved a review of a profile with `requires`, a new decision for that
 report is refused (`409 resolved_by_person`): a person's answer stays. When
 the person resolves it while the new decision is being made, the new one is
-logged as `superseded` (it never counts) and the answer is the same `409`.
+logged as discarded (`discarded_at`; it never counts) and the answer is the
+same `409`, also for a retry with the same idempotency key.
 
 ### People: check and answers
 

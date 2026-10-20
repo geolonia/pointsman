@@ -11,15 +11,18 @@
 -- replaces: the earlier decision of the same profile, ref and client that
 -- this one replaced. NULL when there was none.
 --
+-- discarded_at: a decision made while a person resolved the one it would
+-- replace. The client got 409 resolved_by_person for it; it never counts
+-- (not in the stats, not usable, not resolvable). NULL for every other.
+--
 -- review_status may now also be 'superseded': a newer decision of the same
--- profile, ref and client replaced this one while its review was open, or
--- a decision made while a person resolved the one it would replace (it
--- never counts).
+-- profile, ref and client replaced this one while its review was open.
 
 ALTER TABLE decisions ADD COLUMN requires TEXT;
 ALTER TABLE decisions ADD COLUMN idempotency_key TEXT;
 ALTER TABLE decisions ADD COLUMN request_digest TEXT;
 ALTER TABLE decisions ADD COLUMN replaces TEXT;
+ALTER TABLE decisions ADD COLUMN discarded_at TEXT;
 
 CREATE UNIQUE INDEX decisions_idempotency ON decisions (client, idempotency_key) WHERE idempotency_key IS NOT NULL;
 -- The earlier decisions of a chain step for one report: same profile, ref and client.

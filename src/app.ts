@@ -121,7 +121,11 @@ export function createApp(deps: (env: Env) => Deps) {
     const idempotencyKey = c.req.header('Idempotency-Key');
     const result = await makeDecision(deps(c.env), c.get('client'), c.req.param('profile'), raw, version,
       idempotencyKey === undefined ? {} : { idempotencyKey });
-    return result.ok ? c.json(result.decision) : error(result.status, result.code, result.message);
+    if (!result.ok) return error(result.status, result.code, result.message);
+    // A repeated request returns the logged decision: hide what the token may no longer see.
+    const client = c.get('client');
+    const requires = visibleRequires(result.decision.requires, (profile) => canUse(client, profile));
+    return c.json(requires ? { ...result.decision, requires } : result.decision);
   });
 
   // A decision is visible only to tokens that may use its profile; for others
@@ -482,7 +486,7 @@ export async function makeDecision(
     // made: their answer stays, and this one never counts. (Once this one is
     // logged, resolving the earlier one is refused, see DecisionLog.resolve.)
     if (earlierFinal && (await log.get(earlierFinal.decision_id))?.review?.status === 'resolved') {
-      await log.discard(decision.decision_id);
+      await log.discard(decision.decision_id, new Date().toISOString());
       return fail(409, 'resolved_by_person', 'a person has resolved the decision this one would replace');
     }
     // The new decision replaces the older ones of the same step for this
@@ -495,14 +499,18 @@ export async function makeDecision(
 /** A repeated request with a logged idempotency key: the logged decision, or a conflict. */
 async function repeated(earlier: DecisionRecord, digest: string, log: DecisionLog): Promise<DecisionResult> {
   if (earlier.request_digest !== digest) return fail(409, 'idempotency_conflict', 'this idempotency key was used for a different request');
-  // The first try may have failed after it was logged: close the replaced
-  // reviews now (safe to repeat).
-  if (earlier.requires !== undefined && earlier.review?.status !== 'superseded') await log.supersede(earlier);
-  // The first try was discarded because a person resolved the decision it
-  // would replace: the same answer again.
-  if (earlier.review?.status === 'superseded' && earlier.replaces !== undefined
-    && (await log.get(earlier.replaces))?.review?.status === 'resolved') {
-    return fail(409, 'resolved_by_person', 'a person has resolved the decision this one would replace');
+  if (earlier.requires !== undefined) {
+    // A person resolved the decision it replaces before it was logged (the
+    // first try was discarded, failed before it could check, or is still
+    // running): it never counts, the same answer as for the first try.
+    if (earlier.discarded_at !== undefined
+      || (earlier.replaces !== undefined && (await log.get(earlier.replaces))?.review?.status === 'resolved')) {
+      if (earlier.discarded_at === undefined) await log.discard(earlier.decision_id, new Date().toISOString());
+      return fail(409, 'resolved_by_person', 'a person has resolved the decision this one would replace');
+    }
+    // The first try may have failed after it was logged: close the replaced
+    // reviews now (safe to repeat).
+    await log.supersede(earlier);
   }
   return { ok: true, decision: decisionOf(earlier) };
 }

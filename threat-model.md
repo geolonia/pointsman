@@ -762,7 +762,7 @@ what voids it.
   docs/profile-format.md "A missing fact is never guessed"; "The model does
   not see the facts")*. Voided by: nothing. Search:
   `grep -n "missing" src/policy.ts src/facts.ts` — the three-valued
-  evaluation at `src/policy.ts:288`.
+  evaluation at `src/policy.ts:387`.
 - **`P-FACT-LOOKUP-BOUNDED`** — a fact lookup does bounded work for any
   geometry: at most 1000 positions, 200 samples, 16 flood tiles, 9 shelter
   tiles, a 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour) and 10 s per tile load;
@@ -823,8 +823,9 @@ what voids it.
   A review replaced by a newer decision of a chained profile is
   `superseded`: it cannot be resolved (409, checked in the same `UPDATE`) and
   sends no callback. A chained decision made while a person resolved the one
-  it replaces is logged as `superseded` and answered with 409
-  `resolved_by_person`, so the person's answer stays.
+  it replaces is logged as discarded (`discarded_at`) and answered with 409
+  `resolved_by_person`, also on a retry with the same idempotency key, so the
+  person's answer stays.
 - **`P-CALLBACK-SIGNED`** — every callback carries `x-pointsman-timestamp` and
   `x-pointsman-signature`, an HMAC-SHA256 over `<timestamp>.<body>` with
   `CALLBACK_SECRET`; without the secret no callback is sent; attempts are

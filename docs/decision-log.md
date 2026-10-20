@@ -30,6 +30,7 @@ them, and they never reach the review queue or the accuracy numbers.
 | `requires` | Only for profiles with `requires`: for each required decision its id, profile and version, `action`, `outcome`, `reviewed`, and every value the rules read from it (`read`, JSON, see [profile-format.md](profile-format.md#decision-chains)) |
 | `idempotency_key`, `request_digest` | When the request had an `Idempotency-Key`: the key, and a SHA-256 of the request (profile, the version as requested, state, ref, decisions, callback_url). The digest is not returned by the API |
 | `replaces` | The earlier decision of the same profile, `ref` and client that this one replaced |
+| `discarded_at` | A decision made while a person resolved the one it would replace: the client got `409 resolved_by_person`, and it never counts (not in the stats, not usable in a chain, cannot be resolved) |
 
 By default only the hash of the state is kept: the state can hold personal or
 confidential data (issue text, sensor data). The hash still shows when the
