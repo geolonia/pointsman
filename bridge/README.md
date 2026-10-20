@@ -71,8 +71,8 @@ sequenceDiagram
 
 - `state` is the entity and `ref` its id. `decisions` is only sent for a
   route with `requires` (a chain): the ids of the earlier decisions, read
-  from the entity. Without them yet, the bridge waits for the next
-  notification.
+  from the entity. While a required one is missing, the bridge waits for
+  the next notification; a missing `optional` one is left out.
 - Pointsman looks up the facts the profile asks for itself (in the demo:
   flood zone, evacuation site, way around on foot); the bridge sends no
   facts.

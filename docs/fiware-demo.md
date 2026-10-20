@@ -212,20 +212,25 @@ flowchart LR
   kept in a dead-letter queue (tested with a 3.5-minute outage on
   2026-10-15). Broker and Pointsman
   credentials stay in the Worker.
-- **GeonicDB:** a demo tenant, with five subscriptions: new reports to
-  `/notify`; the first check's `urgent` and `review` results to
-  `/notify?route=evacuation` (the additional check); a published first
-  check or a finished additional check to `/notify?route=final` (the final
-  result); and resolved `Decision` and completed `Task` entities to
-  `/reviews`. GeonicDB behaves correctly for the
+- **GeonicDB:** a demo tenant, with five subscriptions:
+  1. new reports to `/notify` (the first check);
+  2. the first check's `urgent` and `review` results to
+     `/notify?route=evacuation` (the additional check);
+  3. a published first check, or a finished additional check, to
+     `/notify?route=final` (the final result);
+  4. resolved `Decision` entities to `/reviews`;
+  5. completed `Task` entities (work orders) to `/reviews`.
+
+  GeonicDB behaves correctly for the
   bridge's writes (#41) and supports the shared-secret header
   (`receiverInfo`).
 - **Pointsman:** the production Worker, with the demo's three profiles
   (`road-restriction-check`, `evacuation-access-check`,
   `road-closure-final`) in the config repository and its own API token,
   limited to those three profiles. Pointsman asks the AI model and looks up
-  the map facts itself; the bridge sends only the report (and, for the final
-  result, the ids of the earlier decisions).
+  the map facts itself; the bridge sends the report, and for a decision
+  that requires earlier ones (the final result) their ids, read from the
+  entity.
 - **GitHub:** issues in a public demo repository as the review queue, and a
   webhook back to the Worker for the review comments.
 - **Development:** `wrangler dev` for the Worker against a GeonicDB test
