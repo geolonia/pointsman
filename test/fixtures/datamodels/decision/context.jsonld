@@ -28,6 +28,11 @@
       "wasInformedBy": {
         "@id": "prov:wasInformedBy",
         "@type": "@id"
+      },
+      "requiredDecisions": "decision:requiredDecisions",
+      "replaces": {
+        "@id": "http://purl.org/dc/terms/replaces",
+        "@type": "@id"
       }
     }
   ]

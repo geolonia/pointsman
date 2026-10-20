@@ -1068,7 +1068,7 @@
       "property": "P-BRIDGE-LOOP-GUARD",
       "violation_symptom": "x-decision-loop",
       "severity_tier": "correctness",
-      "conditions": "the subscription delivers the result attribute; attribute-level PATCH",
+      "conditions": "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused",
       "provenance": "documented",
       "source": "bridge/README.md \"How it avoids loops\""
     },
@@ -1076,7 +1076,7 @@
       "property": "P-BRIDGE-SAFE-TO-REPEAT",
       "violation_symptom": "wrong-output",
       "severity_tier": "correctness",
-      "conditions": "a notification handled twice; a review already resolved; feedback already sent",
+      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written",
       "provenance": "documented",
       "source": "bridge/README.md \"Safe to repeat\""
     },

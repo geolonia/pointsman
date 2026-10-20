@@ -21,13 +21,19 @@
   // first (`wrangler queues create pointsman-bridge` and
   // `pointsman-bridge-dlq`), then uncomment.
   // "queues": {
-  //   "producers": [{ "binding": "BRIDGE_QUEUE", "queue": "pointsman-bridge" }],
+  //   "producers": [
+  //     { "binding": "BRIDGE_QUEUE", "queue": "pointsman-bridge" },
+  //     // Optional: a message no retry can pass (idempotency_conflict) goes
+  //     // straight to the dead-letter queue.
+  //     { "binding": "BRIDGE_DEAD_LETTER", "queue": "pointsman-bridge-dlq" }
+  //   ],
   //   "consumers": [{
   //     "queue": "pointsman-bridge",
   //     "max_batch_size": 10,
   //     "max_batch_timeout": 1,
   //     // One batch at a time: two messages for the same entity are then
   //     // decided one after the other, and the second finds the first's result.
+  //     // Needed for routes with requires (decision chains).
   //     "max_concurrency": 1,
   //     // With the bridge's delays (30 s doubling to an hour), 20 tries cover about 14 hours.
   //     "max_retries": 20,

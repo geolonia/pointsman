@@ -18,8 +18,9 @@
   docs/decision-chains.md): the §1.7 rows for `decisions`, `Idempotency-Key`
   and the resolve `action`, the §1.8 decision rows, `P-TOKEN-SCOPE`,
   `P-TEST-TOKEN-ISOLATED`, `P-ACTION-FROM-POLICY`, `P-REVIEW-RESOLVED-ONCE`
-  and the new `P-CHAIN-INPUTS-FROM-LOG`; the rest still stands as of the
-  bound commit.
+  and the new `P-CHAIN-INPUTS-FROM-LOG`; and for the bridge's routes with
+  `requires`: `P-BRIDGE-LOOP-GUARD` and `P-BRIDGE-SAFE-TO-REPEAT`; the rest
+  still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
   the Alpha-Omega `threat-model` plugin, version 1.2.1 at commit
@@ -873,7 +874,12 @@ what voids it.
 - **`P-BRIDGE-LOOP-GUARD`** — the bridge stores a hash of the input attribute
   values with the result and skips a notification whose inputs already have
   that hash; it writes with attribute-level `PATCH` so its own write does not
-  start a new decision. Symptom: `x-decision-loop` (repeated model calls for
+  start a new decision. For a route with `requires` the hash also covers each
+  earlier decision's id (and, with `rerunOnReview`, the person's answer on
+  it), so a final decision runs again only when an earlier one changes; routes
+  that read each other's results in a circle are refused when the routes are
+  read.
+  Symptom: `x-decision-loop` (repeated model calls for
   one unchanged entity). Tier: correctness-only. *(documented,
   bridge/README.md "How it avoids loops")*. Voided by: a subscription whose
   `notification.attributes` excludes the result attribute (documented as a
@@ -882,7 +888,11 @@ what voids it.
   review already resolved in Pointsman is not resolved again, feedback already
   sent by the same person is not sent again, a Task is found by its derived
   id, and a review that disagrees with Pointsman's recorded resolution writes
-  nothing. Symptom: `wrong-output`. Tier: correctness-only. *(documented,
+  nothing. Every decide request carries an `Idempotency-Key` from the route,
+  the entity and the exact request, so a retry of the same request after
+  Pointsman logged the decision gets the same decision; for a route with `requires`, which runs
+  from the queue only, a result older than the one on the entity is not
+  written. Symptom: `wrong-output`. Tier: correctness-only. *(documented,
   bridge/README.md "Safe to repeat")*. No switch affects it.
 - **`P-TRIAGE-ALLOWLIST`** — the triage Action applies only labels from the
   `labels` allow-list, and only for action `auto`; for any other action or any

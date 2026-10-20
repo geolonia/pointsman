@@ -1,7 +1,7 @@
 // The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
+import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
@@ -1332,5 +1332,223 @@ describe('reliable delivery (queue)', () => {
     expect(m.acked).toBe(true);
     expect(queue.sent).toHaveLength(0);
     expect(t.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(true);
+  });
+});
+
+describe('decision chains', () => {
+  const final: Route = {
+    type: 'RoadRestriction', profile: 'road-closure-final', name: 'final',
+    inputs: ['description', 'check', 'evacuation'], attribute: 'final', decisionEntity: true,
+    requires: { check: { attribute: 'check', rerunOnReview: true }, evacuation: { attribute: 'evacuation', optional: true } },
+  };
+  const result = (decisionId: string, extra: Record<string, unknown> = {}) =>
+    ({ type: 'Property', value: 'review', decisionId: P(decisionId), inputHash: P('h'), ...extra });
+  const finalDecision = {
+    ...decision, decision_id: 'f-2', action: 'publish', profile: 'road-closure-final', model: 'none', answers: {},
+    requires: { check: { decision: 'c-1' }, evacuation: { decision: null } },
+  };
+  const ENTITY_URL = 'https://broker.test/ngsi-ld/v1/entities/urn%3Angsi-ld%3ARoadRestriction%3A1';
+
+  /** One queued message for the final route, with the entity as the broker has it now. */
+  function run(now: Record<string, unknown>, opts: Parameters<typeof setup>[0] = {}) {
+    const s = setup({
+      pointsman: () => Response.json(finalDecision),
+      ...opts,
+      route: final,
+      handler: (c) => (c.method === 'GET' && c.url === ENTITY_URL ? Response.json(now) : opts.handler?.(c)),
+    });
+    const message: BridgeMessage = { path: '/notify', route: 'final', entity: entity() };
+    return { ...s, result: handleMessage(message, s.config, { fresh: true }) };
+  }
+
+  it('reads requires from the routes, as names and attributes', () => {
+    const [r] = parseRoutes(JSON.stringify([{ ...final, requires: { check: 'check', evacuation: { attribute: 'evacuation', optional: true } } }]));
+    expect(r!.requires).toEqual({ check: { attribute: 'check' }, evacuation: { attribute: 'evacuation', optional: true } });
+    for (const [requires, message] of [
+      [{ check: 'roadName' }, /attribute: expected one of the inputs/],
+      [{}, /expected an object/],
+      [{ check: { attribute: 'check', soon: true } }, /unknown option soon/],
+      [{ check: 'check', again: 'check' }, /used twice/],
+      [{ 'a b': 'check' }, /not a valid name/],
+    ] as const) {
+      expect(() => parseRoutes(JSON.stringify([{ ...final, requires }]))).toThrow(message);
+    }
+    expect(() => parseRoutes(JSON.stringify([{ ...final, informedBy: 'check' }]))).toThrow(/requires or informedBy/);
+  });
+
+  it('refuses routes that require each other in a circle', () => {
+    const a = { type: 'T', profile: 'p', name: 'a', inputs: ['x', 'b'], attribute: 'a', requires: { b: 'b' } };
+    const b = { type: 'T', profile: 'q', name: 'b', inputs: ['y', 'a'], attribute: 'b', requires: { a: 'a' } };
+    expect(() => parseRoutes(JSON.stringify([a, b]))).toThrow(/a → b → a read each other's results in a circle/);
+    // Also when only one of them requires the other: a plain input runs it again too.
+    const { requires: _, ...plain } = b;
+    expect(() => parseRoutes(JSON.stringify([a, plain]))).toThrow(/in a circle/);
+    // The same attribute names on another type are another graph.
+    expect(() => parseRoutes(JSON.stringify([a, { ...b, type: 'U' }]))).not.toThrow();
+  });
+
+  it('runs only from the queue', async () => {
+    const { config, calls } = setup({ route: final });
+    const res = await handleRequest(new Request('https://bridge.test/notify?route=final', {
+      method: 'POST',
+      headers: { 'x-bridge-secret': SECRET, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'Notification', data: [entity({ check: result('c-1') })] }),
+    }), config);
+    expect((await res.json() as { handled: unknown[] }).handled).toEqual([
+      { id: 'urn:ngsi-ld:RoadRestriction:1', error: 'a route with requires runs only from the queue (BRIDGE_QUEUE)', retry: false },
+    ]);
+    expect(calls).toHaveLength(0);
+    const env = { BRIDGE_ROUTES: JSON.stringify([final]), POINTSMAN_URL: 'https://pm.test', BROKER_URL: 'https://broker.test', NOTIFY_SECRET: SECRET, POINTSMAN_TOKEN: PM_TOKEN } as Env;
+    expect(() => configFrom(env)).toThrow(/route final has requires: set up BRIDGE_QUEUE/);
+  });
+
+  it('sends the earlier decisions by name, with an idempotency key', async () => {
+    const { result: r, calls } = run(entity({ check: result('c-1') }));
+    expect(await r).toMatchObject({ action: 'publish', decision: 'f-2' });
+    const ask = calls.find((c) => c.url.startsWith('https://pm.test/'))!;
+    expect(ask.url).toBe('https://pm.test/v1/decide/road-closure-final');
+    expect((ask.body as { decisions: unknown }).decisions).toEqual({ check: 'c-1' });
+    expect(ask.headers.get('idempotency-key')).toMatch(/^bridge-[0-9a-f]{64}$/);
+    // The same request gives the same key, so a retry gets the logged decision.
+    const key = async (now: Record<string, unknown>) => {
+      const x = run(now);
+      await x.result;
+      return x.calls.find((c) => c.url.startsWith('https://pm.test/'))!.headers.get('idempotency-key');
+    };
+    expect(await key(entity({ check: result('c-1') }))).toBe(ask.headers.get('idempotency-key'));
+    // Anything else in the entity changed (a review written on check, another
+    // attribute): another request, another key, so no idempotency_conflict.
+    expect(await key(entity({ check: result('c-1', { finalAction: P('publish') }) }))).not.toBe(ask.headers.get('idempotency-key'));
+    expect(await key(entity({ check: result('c-1'), note: P('x') }))).not.toBe(ask.headers.get('idempotency-key'));
+    // The same entity in another attribute order: the same request.
+    const { check: _, ...rest } = entity({ check: result('c-1') }) as Record<string, unknown>;
+    expect(await key({ check: result('c-1'), ...rest })).toBe(ask.headers.get('idempotency-key'));
+  });
+
+  it('queues only the id and type for a route with requires', async () => {
+    const sent: unknown[] = [];
+    const { config } = setup({ route: final });
+    const big = entity({ check: result('c-1'), geometry: P('x'.repeat(200_000)) });
+    const res = await handleRequest(new Request('https://bridge.test/notify?route=final', {
+      method: 'POST',
+      headers: { 'x-bridge-secret': SECRET, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'Notification', data: [big] }),
+    }), { ...config, queue: { sendBatch: async (m) => { sent.push(...m); } } });
+    expect(res.status).toBe(202);
+    expect(sent).toEqual([{ body: { path: '/notify', route: 'final', entity: { id: big.id, type: big.type } } }]);
+  });
+
+  it('waits for a required decision, not for an optional one', async () => {
+    const waiting = run(entity({ evacuation: result('e-1') }));
+    expect(await waiting.result).toEqual({ id: 'urn:ngsi-ld:RoadRestriction:1', skipped: 'waiting for decisions' });
+    expect(waiting.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(false);
+  });
+
+  it('runs again for a new earlier decision, and for a person\'s answer only with rerunOnReview', async () => {
+    const hash = (e: Record<string, unknown>) => inputHash(e as never, final.inputs, final.requires);
+    const base = await hash(entity({ check: result('c-1'), evacuation: result('e-1') }));
+    expect(await hash(entity({ check: result('c-2'), evacuation: result('e-1') }))).not.toBe(base);
+    expect(await hash(entity({ check: result('c-1', { finalAction: P('publish'), reviewedAt: P('2026-10-20T10:00:00Z') }), evacuation: result('e-1') }))).not.toBe(base);
+    expect(await hash(entity({ check: result('c-1'), evacuation: result('e-1', { finalAction: P('alert') }) }))).toBe(base);
+  });
+
+  it('treats a person\'s earlier answer as done, and an idempotency conflict as a dead letter', async () => {
+    const answered = (code: string) => run(entity({ check: result('c-1') }), {
+      pointsman: () => Response.json({ error: { code, message: 'x' } }, { status: 409 }),
+    }).result;
+    expect(await answered('resolved_by_person')).toEqual({ id: 'urn:ngsi-ld:RoadRestriction:1', skipped: 'resolved by person' });
+    expect(await answered('idempotency_conflict')).toMatchObject({ retry: false, deadLetter: true });
+    expect(await answered('not_pending')).toEqual({ id: 'urn:ngsi-ld:RoadRestriction:1', error: 'pointsman answered 409', retry: false });
+  });
+
+  it('sends a dead letter to the dead-letter queue at once, when there is one', async () => {
+    const s = setup({
+      route: final,
+      pointsman: () => Response.json({ error: { code: 'idempotency_conflict', message: 'x' } }, { status: 409 }),
+      handler: (c) => (c.method === 'GET' && c.url === ENTITY_URL ? Response.json(entity({ check: result('c-1') })) : undefined),
+    });
+    const sent: unknown[] = [];
+    const msg = (acked: string[]) => ({
+      body: { path: '/notify', route: 'final', entity: entity() } as BridgeMessage, attempts: 1,
+      ack: () => acked.push('ack'), retry: () => acked.push('retry'),
+    });
+    const withDlq: string[] = [];
+    await handleQueueBatch({ messages: [msg(withDlq)] }, { ...s.config, deadLetter: { sendBatch: async (m) => { sent.push(...m); } } });
+    expect(withDlq).toEqual(['ack']);
+    expect(sent).toHaveLength(1);
+    const without: string[] = [];
+    await handleQueueBatch({ messages: [msg(without)] }, s.config);
+    expect(without).toEqual(['retry']);
+  });
+
+  it('links the earlier decisions and the replaced one on the Decision entity', () => {
+    const out = toDecisionEntity({ ...finalDecision, replaces: 'f-1', review: { status: 'pending' } } as never, 'urn:x:1', final);
+    expect(out.wasInformedBy).toEqual([
+      { type: 'Relationship', object: 'urn:ngsi-ld:Decision:c-1', datasetId: 'urn:ngsi-ld:dataset:wasInformedBy:check' },
+    ]);
+    expect(out.requiredDecisions).toEqual({ type: 'JsonProperty', json: [{ name: 'check', decision: 'urn:ngsi-ld:Decision:c-1' }] });
+    expect(out.replaces).toEqual({ type: 'Relationship', object: 'urn:ngsi-ld:Decision:f-1' });
+    expect(out.reviewStatus).toEqual(P('pending'));
+    // No review in the answer: nobody checks it.
+    expect(toDecisionEntity(finalDecision as never, 'urn:x:1', final)).not.toHaveProperty('reviewStatus');
+    expect(JSON.parse(decisionContext)['@context'][1]).toMatchObject({ requiredDecisions: DECISION_TERMS.requiredDecisions, replaces: DECISION_TERMS.replaces });
+  });
+
+  it('marks the replaced Decision superseded and cancels its open Task', async () => {
+    const replaced = 'https://broker.test/ngsi-ld/v1/entities/urn%3Angsi-ld%3ADecision%3Af-1';
+    const route = { ...final, task: { actions: ['review'] } };
+    const s = setup({
+      route,
+      pointsman: () => Response.json({ ...finalDecision, replaces: 'f-1' }),
+      handler: (c) => {
+        if (c.method === 'GET' && c.url === ENTITY_URL) {
+          return Response.json(entity({ check: result('c-2'), final: { ...result('f-1'), inputHash: P('old'), observedAt: '2026-07-01T00:00:00Z' } }));
+        }
+        if (c.method === 'GET' && c.url === replaced) return Response.json({ id: 'urn:ngsi-ld:Decision:f-1', reviewStatus: P('pending') });
+        if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ATask%3A')) return Response.json({ progress: P('needs-action') });
+        return undefined;
+      },
+    });
+    const r = await handleMessage({ path: '/notify', route: 'final', entity: entity() }, s.config, { fresh: true });
+    expect(r).toMatchObject({ action: 'publish', decision: 'f-2' });
+    const update = s.calls.find((c) => c.method === 'POST' && c.url === `${replaced}/attrs`);
+    expect(update?.body).toMatchObject({ reviewStatus: P('superseded') });
+    const oldTask = await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'final', 'old');
+    const cancelled = s.calls.find((c) => c.method === 'POST' && c.url.endsWith(`${encodeURIComponent(oldTask)}/attrs`));
+    expect(cancelled?.body).toMatchObject({ progress: P('cancelled') });
+  });
+
+  it('writes nothing for a decision older than the result on the entity', async () => {
+    const { result: r, calls } = run(entity({ check: result('c-2'), final: { ...result('f-9'), inputHash: P('other'), observedAt: '2027-01-01T00:00:00Z' } }));
+    expect(await r).toMatchObject({ decision: 'f-2', write: 0 });
+    // No Decision entity, no Task, no result.
+    expect(calls.filter((c) => c.method !== 'GET' && !c.url.startsWith('https://pm.test/'))).toEqual([]);
+  });
+
+  it('compares the times as points in time, not as text', async () => {
+    // 2026-07-08T10:46+09:00 is 01:46 UTC, before the decision's 01:46:12.
+    const zone = run(entity({ check: result('c-2'), final: { ...result('f-9'), inputHash: P('other'), observedAt: '2026-07-08T10:46:00+09:00' } }));
+    expect(await zone.result).toMatchObject({ decision: 'f-2', write: 204 });
+    // Without milliseconds, in the same second: not newer.
+    const seconds = run(entity({ check: result('c-2'), final: { ...result('f-9'), inputHash: P('other'), observedAt: '2026-07-08T01:46:12Z' } }));
+    expect(await seconds.result).toMatchObject({ decision: 'f-2', write: 204 });
+  });
+
+  it('shows a person\'s answer on a decision that a newer one replaced, instead of dropping it', async () => {
+    const s = setup({ pointsman: () => Response.json({ review: { status: 'superseded' } }) });
+    const resolved = {
+      id: 'urn:ngsi-ld:Decision:f-1', type: 'Decision', reviewStatus: P('resolved'), finalAction: P('publish'),
+      reviewedBy: P('someone'), reviewedAt: P('2026-10-20T10:00:00Z'),
+    };
+    const r = await handleMessage({ path: '/reviews', entity: resolved }, s.config);
+    expect(r).toEqual({ id: resolved.id, error: 'a newer decision replaced this one before the review reached Pointsman; answer the newer one', retry: false });
+    expect(s.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('marks a checked result, so a work order can resolve it', async () => {
+    const { result: r, calls } = run(entity({ check: result('c-1') }), { pointsman: () => Response.json({ ...finalDecision, action: 'urgent', review: { status: 'pending' } }) });
+    await r;
+    const write = calls.find((c) => c.url.endsWith('/attrs/final'));
+    expect(write?.body).toMatchObject({ value: 'urgent', reviewStatus: P('pending') });
   });
 });

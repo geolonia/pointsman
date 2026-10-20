@@ -299,6 +299,61 @@ the closure cuts people off from their evacuation site (route 2).
 ]
 ```
 
+### A final decision from several earlier ones (`requires`)
+
+A profile can build on earlier decisions about the same entity
+([docs/decision-chains.md](../docs/decision-chains.md)): for example a final
+decision on a road closure from the first check and the evacuation check.
+Pointsman reads the earlier decisions from its log; the bridge sends only
+their ids, from the result attributes the earlier routes wrote.
+
+```json
+{ "type": "RoadRestriction", "profile": "road-closure-final", "name": "final",
+  "inputs": ["description", "check", "evacuation"], "attribute": "final", "decisionEntity": true,
+  "requires": { "check": { "attribute": "check", "rerunOnReview": true },
+                "evacuation": { "attribute": "evacuation", "optional": true } } }
+```
+
+- `requires` maps the names in the profile's `requires` to the attributes
+  with those results: an attribute name, or `{ "attribute", "rerunOnReview",
+  "optional" }`. Each attribute must be one of the `inputs`.
+- **When it runs:** when every required decision that is not `optional` is
+  on the entity (its `decisionId`); until then the message is skipped
+  (`waiting for decisions`). Whether an optional one will still come is the
+  subscription's `q` (in the demo: `check` is `publish`, or `evacuation` is
+  set); the bridge does not guess it.
+- **Running again:** a new earlier decision (another `decisionId`) is a new
+  input. With `rerunOnReview: true` a person's answer on it (`finalAction`,
+  `reviewedAt`) is one too, and the final decision is made again on it. The
+  bridge writes these on the result for reviews resolved in the broker; an
+  app that resolves reviews in Pointsman's review queue must write them on
+  the result too, or the final route does not run again.
+- **Replaced decisions:** a new final decision replaces the earlier one for
+  the entity (`replaces` in Pointsman's answer). The bridge marks the earlier
+  Decision entity's open check as `superseded` and cancels its open Task. An
+  alert that was sent stays sent. When a person has resolved the earlier
+  final decision, Pointsman keeps their answer (`409 resolved_by_person`);
+  the bridge logs this and is done (`resolved by person`). A person's answer
+  in the broker on a decision that was replaced before the answer reached
+  Pointsman is reported as an error (not sent): answer the newer one.
+- **Decision entities** get one `wasInformedBy` per earlier decision (one
+  Relationship instance each, told apart by `datasetId`),
+  `requiredDecisions` (the names with the decisions) and `replaces`, as in
+  the [datamodels.jp Decision model](https://datamodels.jp/models/decision/Decision/).
+  `informedBy` cannot be combined with `requires`.
+- Whether a person checks the decision comes from Pointsman (the profile's
+  `people_check`), unless the route sets `reviewActions`. A checked result has
+  `reviewStatus: pending`, so work orders find it.
+- **From the queue only:** routes with `requires` need the queue (below) with
+  `max_concurrency` 1, so two runs for one entity never overlap and the
+  newer decision is written last. Without the queue the Worker refuses the
+  configuration. Their messages hold only the entity's id and type (the
+  consumer reads the entity anyway), so a large entity still fits. In
+  addition, the bridge writes nothing (no Decision entity, Task or result)
+  for a decision older than the result on the entity (`observedAt`).
+- Routes that read each other's results in a circle (one route's attribute
+  among the other's inputs, required or not) are refused.
+
 ## How it avoids loops
 
 The bridge writes to the entity it was notified about. Two things keep that
@@ -308,7 +363,9 @@ from starting a new decision:
   never `PATCH …/attrs`: Orion-LD notifies on the latter even for attributes
   the subscription does not watch (#41).
 - It stores a hash of the input values (`inputHash`) with the result, and
-  ignores a notification whose inputs have that hash. For this the
+  ignores a notification whose inputs have that hash. For an attribute in
+  `requires` the hash also covers the earlier decision's id (and with
+  `rerunOnReview` the person's answer on it). For this the
   notification must include the result attribute: do not limit
   `notification.attributes`, or include the result attribute in it.
 
@@ -320,7 +377,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 
 | Name | Meaning |
 |---|---|
-| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first, default `["review"]`), `name` and `informedBy` (for chains, above), `task` (also create Task entities, above) |
+| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first; default: as Pointsman answers, from the profile's `people_check`), `name`, `informedBy` and `requires` (for chains, above), `task` (also create Task entities, above) |
 | `POINTSMAN_URL` | Pointsman's base URL |
 | `BRIDGE_WORK_ORDERS` | Optional JSON object: a completed work order's `statusLabel` to the final action, for example `{"Published": "publish"}` (see "Work orders from other apps") |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
@@ -412,6 +469,15 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   A redirect from the broker or Pointsman is retried too, although it will
   fail until the URL is fixed: the message then ends in the dead-letter
   queue, and can be sent again once the configuration is right.
+- **Repeats:** every decide request carries an `Idempotency-Key` made from
+  the route, the entity and the exact request. A retry of the same request
+  after Pointsman has logged the decision gets that decision again instead
+  of a new one; when the entity changed in the meantime, it is a new request
+  and a new decision. If Pointsman still answers `409 idempotency_conflict`
+  (the same key for another request, which no retry can fix), the message
+  goes straight to the dead-letter queue when the bridge has it as a
+  producer (`BRIDGE_DEAD_LETTER`), otherwise it is retried until it ends
+  there.
 - **Setup:** create both queues once
   (`wrangler queues create pointsman-bridge`, and the same for the
   dead-letter queue), then add the `queues` block to the Worker's

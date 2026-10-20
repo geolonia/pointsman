@@ -19,6 +19,8 @@ export interface Env {
   BROKER_API_KEY?: string;
   /** Optional queue (producer and consumer), see bridge/README.md "Reliable delivery". */
   BRIDGE_QUEUE?: Queue<BridgeMessage>;
+  /** Optional producer for the dead-letter queue, see bridge/README.md "Reliable delivery". */
+  BRIDGE_DEAD_LETTER?: Queue<BridgeMessage>;
 }
 
 /** Reads the configuration; throws naming the first missing or invalid setting. */
@@ -35,9 +37,14 @@ export function configFrom(env: Env): BridgeConfig {
   // GeonicDB prefers the Bearer token when both are sent; refuse instead of guessing.
   if (env.BROKER_TOKEN && env.BROKER_API_KEY) throw new Error('set BROKER_TOKEN or BROKER_API_KEY, not both');
   const trim = (u: string) => u.replace(/\/+$/, '');
+  const routes = parseRoutes(env.BRIDGE_ROUTES);
+  // Decision chains run one message at a time from the queue (docs/decision-chains.md).
+  const chained = routes.find((r) => r.requires);
+  if (chained && !env.BRIDGE_QUEUE) throw new Error(`route ${chained.name ?? chained.type} has requires: set up BRIDGE_QUEUE`);
   return {
-    routes: parseRoutes(env.BRIDGE_ROUTES),
+    routes,
     ...(env.BRIDGE_QUEUE && { queue: env.BRIDGE_QUEUE }),
+    ...(env.BRIDGE_DEAD_LETTER && { deadLetter: env.BRIDGE_DEAD_LETTER }),
     ...(env.BRIDGE_WORK_ORDERS && { workOrders: parseWorkOrders(env.BRIDGE_WORK_ORDERS) }),
     notifySecret: env.NOTIFY_SECRET,
     pointsman: { url: trim(env.POINTSMAN_URL), token: env.POINTSMAN_TOKEN },

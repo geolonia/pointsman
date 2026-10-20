@@ -14,7 +14,7 @@ export interface Route {
   attribute: string;
   /** Also create a Decision entity (datamodels.jp Decision model) for each decision. */
   decisionEntity?: boolean;
-  /** Actions a person checks before anything happens (default: review). */
+  /** Actions a person checks before anything happens (default: as Pointsman says, from the profile's people_check). */
   reviewActions?: string[];
   /**
    * Needed when a type has more than one route: the subscription for this
@@ -29,10 +29,29 @@ export interface Route {
    */
   informedBy?: string;
   /**
+   * For a decision chain (docs/decision-chains.md): the earlier decisions the
+   * profile `requires`, by its names, each read from an input attribute that
+   * an earlier route wrote. The bridge sends their `decisionId` in
+   * `decisions`. Routes with requires run from the queue only.
+   */
+  requires?: Record<string, Requirement>;
+  /**
    * Also create a Task entity (datamodels.jp Task model) for these actions,
    * so a person's work shows up in any app that lists tasks. See TaskOptions.
    */
   task?: TaskOptions;
+}
+
+export interface Requirement {
+  /** The input attribute with the earlier decision's result. */
+  attribute: string;
+  /**
+   * Run again when a person resolves that decision's review (its result gets
+   * finalAction and reviewedAt). Default false: only a new decision runs it again.
+   */
+  rerunOnReview?: boolean;
+  /** The decision may not come; the route then runs without it. Default false: the route waits for it. */
+  optional?: boolean;
 }
 
 export interface TaskOptions {
@@ -73,6 +92,12 @@ export interface BridgeConfig {
    * within the broker's request.
    */
   queue?: BridgeQueue;
+  /**
+   * Optional: the dead-letter queue as a producer. A message that cannot
+   * pass on any retry (409 idempotency_conflict) goes there at once;
+   * without it, it is retried until the consumer's max_retries move it there.
+   */
+  deadLetter?: BridgeQueue;
   /** For tests; defaults to the global fetch. */
   fetch?: typeof fetch;
 }
@@ -92,7 +117,7 @@ export interface BridgeMessage {
 
 /** What happened to one entity of a notification. */
 export type EntityResult =
-  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | 'no route' | WorkOrderSkip }
+  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | 'no route' | 'waiting for decisions' | 'resolved by person' | WorkOrderSkip }
   | { id: string; resolves: string; finalAction: string }
   | { id: string; review: ReviewOutcome; written: boolean }
   | { id: string; action: string; decision: string; write: number }
@@ -102,7 +127,7 @@ export type EntityResult =
    * not asked to retry, but a queued message is, so it ends in the
    * dead-letter queue and can be replayed once the URL is fixed.
    */
-  | { id: string; error: string; retry: boolean; decision?: string; redirect?: true };
+  | { id: string; error: string; retry: boolean; decision?: string; redirect?: true; deadLetter?: true };
 
 type Entity = { id: string; type: string; [attribute: string]: unknown };
 
@@ -116,10 +141,10 @@ export function parseRoutes(json: string): Route[] {
   }
   if (!Array.isArray(data) || data.length === 0) throw new Error('bridge routes: expected a non-empty list');
   const seen = new Set<string>();
-  return data.map((r, i) => {
+  const routes = data.map((r, i): Route => {
     const where = `bridge routes[${i}]`;
     if (!r || typeof r !== 'object') throw new Error(`${where}: expected an object`);
-    const { type, profile, inputs, attribute, decisionEntity, reviewActions, name, informedBy, task } = r as Record<string, unknown>;
+    const { type, profile, inputs, attribute, decisionEntity, reviewActions, name, informedBy, task, requires } = r as Record<string, unknown>;
     for (const [name, v] of Object.entries({ type, profile, attribute })) {
       if (typeof v !== 'string' || v === '') throw new Error(`${where}.${name}: expected a non-empty string`);
     }
@@ -139,6 +164,8 @@ export function parseRoutes(json: string): Route[] {
       throw new Error(`${where}.informedBy: expected one of the inputs`);
     }
     if (task !== undefined) parseTask(task, `${where}.task`);
+    const required = requires === undefined ? undefined : parseRequires(requires, inputs as string[], `${where}.requires`);
+    if (required && informedBy !== undefined) throw new Error(`${where}: use requires or informedBy, not both`);
     // One unnamed route per type, and every name once.
     const key = name === undefined ? `type:${String(type)}` : `name:${name}`;
     if (seen.has(key)) {
@@ -152,8 +179,59 @@ export function parseRoutes(json: string): Route[] {
       ...(name !== undefined && { name }),
       ...(informedBy !== undefined && { informedBy }),
       ...(task !== undefined && { task }),
+      ...(required && { requires: required }),
     } as Route;
   });
+  requiresCycle(routes);
+  return routes;
+}
+
+const REQUIREMENT_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+
+function parseRequires(requires: unknown, inputs: string[], where: string): Record<string, Requirement> {
+  if (!requires || typeof requires !== 'object' || Array.isArray(requires) || Object.keys(requires).length === 0) {
+    throw new Error(`${where}: expected an object of names and attributes`);
+  }
+  const entries = Object.entries(requires as Record<string, unknown>);
+  // As Pointsman takes them: at most 8 decisions.
+  if (entries.length > 8) throw new Error(`${where}: at most 8 decisions`);
+  const out: Record<string, Requirement> = {};
+  for (const [name, spec] of entries) {
+    if (!REQUIREMENT_NAME.test(name)) throw new Error(`${where}: ${name} is not a valid name`);
+    const r = typeof spec === 'string' ? { attribute: spec } : spec;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw new Error(`${where}.${name}: expected an attribute name or an object`);
+    const { attribute, rerunOnReview, optional, ...rest } = r as Record<string, unknown>;
+    const unknown = Object.keys(rest);
+    if (unknown.length) throw new Error(`${where}.${name}: unknown option ${unknown[0]}`);
+    // An input, so that a new decision there is a new input (loop guard).
+    if (typeof attribute !== 'string' || !inputs.includes(attribute)) throw new Error(`${where}.${name}.attribute: expected one of the inputs`);
+    if (rerunOnReview !== undefined && typeof rerunOnReview !== 'boolean') throw new Error(`${where}.${name}.rerunOnReview: expected true or false`);
+    if (optional !== undefined && typeof optional !== 'boolean') throw new Error(`${where}.${name}.optional: expected true or false`);
+    if (Object.values(out).some((x) => x.attribute === attribute)) throw new Error(`${where}.${name}: attribute ${attribute} is used twice`);
+    out[name] = { attribute, ...(rerunOnReview && { rerunOnReview }), ...(optional && { optional }) };
+  }
+  return out;
+}
+
+/**
+ * Routes that require each other in a circle, through the attributes they
+ * write and read, would run each other again without end: refused.
+ */
+function requiresCycle(routes: Route[]): void {
+  const label = (r: Route) => r.name ?? r.type;
+  // The routes whose result a route reads: same type, attribute among its
+  // inputs (a new decision there runs it again, required or not).
+  const reads = (r: Route) => routes.filter((p) => p !== r && p.type === r.type && r.inputs.includes(p.attribute));
+  const done = new Set<Route>();
+  const visit = (r: Route, path: Route[]) => {
+    if (path.includes(r)) {
+      throw new Error(`bridge routes: ${[...path.slice(path.indexOf(r)), r].map(label).join(' → ')} read each other's results in a circle`);
+    }
+    if (done.has(r)) return;
+    for (const p of reads(r)) visit(p, [...path, r]);
+    done.add(r);
+  };
+  for (const r of routes) visit(r, []);
 }
 
 function parseTask(task: unknown, where: string): void {
@@ -179,8 +257,16 @@ function parseTask(task: unknown, where: string): void {
  * the loop guard: some brokers notify on the bridge's own write even when the
  * subscription watches other attributes (#41).
  */
-export async function inputHash(entity: Entity, inputs: string[]): Promise<string> {
-  const values = inputs.map((name) => valueOf(entity[name]) ?? null);
+export async function inputHash(entity: Entity, inputs: string[], requires?: Record<string, Requirement>): Promise<string> {
+  const values = inputs.map((name) => {
+    const value = valueOf(entity[name]) ?? null;
+    const req = Object.values(requires ?? {}).find((r) => r.attribute === name);
+    if (!req) return value;
+    // An earlier decision: its id, so that a new decision with the same
+    // action runs the route again; with rerunOnReview also a person's answer.
+    const sub = (key: string) => valueOf((entity[name] as Record<string, unknown> | undefined)?.[key]) ?? null;
+    return [value, sub('decisionId'), ...(req.rerunOnReview ? [sub('finalAction'), sub('reviewedAt')] : [])];
+  });
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(values)));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -229,7 +315,7 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   // ?route=<name> selects a named route; without it, the type's unnamed route.
   const route = url.searchParams.get('route') ?? undefined;
   const messages = (data as Entity[]).filter((entity) => forBridge(path, route, entity, config))
-    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity }));
+    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity: chainedRef(path, route, entity, config) }));
 
   let direct = messages;
   if (config.queue) {
@@ -290,6 +376,17 @@ export function queueBatches<T extends { bytes: number }>(messages: T[]): T[][] 
   return batches;
 }
 
+/**
+ * For a route with requires, only the entity's id and type: the queue
+ * consumer reads the entity as it is now anyway, and a large entity then
+ * still fits in a queue message (these routes run from the queue only).
+ */
+function chainedRef(path: BridgeMessage['path'], routeName: string | undefined, entity: Entity, config: BridgeConfig): Entity {
+  if (path !== '/notify' || !config.queue) return entity;
+  const route = config.routes.find((r) => r.type === entity.type && r.name === routeName);
+  return route?.requires ? { id: entity.id, type: entity.type } : entity;
+}
+
 /** Whether the bridge handles this entity of a notification on this path. */
 function forBridge(path: BridgeMessage['path'], routeName: string | undefined, entity: Entity, config: BridgeConfig): boolean {
   if (!entity || typeof entity !== 'object' || typeof entity.id !== 'string') return false;
@@ -322,6 +419,9 @@ export async function handleMessage(message: BridgeMessage, config: BridgeConfig
     // Deleting an entity also notifies (NGSI-LD 1.8: with deletedAt); there is
     // nothing left to decide about.
     if ('deletedAt' in entity) return { id: entity.id, skipped: 'deleted' };
+    // One message at a time from the queue keeps two runs for one report
+    // apart, so the newer decision is always written last (docs/decision-chains.md).
+    if (route.requires && !fresh) return { id: entity.id, error: 'a route with requires runs only from the queue (BRIDGE_QUEUE)', retry: false };
     let current = entity;
     if (fresh) {
       // From the queue: the entity as it is now, not as it was notified. A
@@ -387,9 +487,21 @@ export async function handleQueueBatch(batch: { messages: readonly QueuedMessage
     }
     const result = await handleMessage(body, direct, { fresh: true });
     const decision = 'decision' in result && result.decision ? ` (decision ${result.decision})` : '';
+    if ('deadLetter' in result && result.deadLetter && config.deadLetter) {
+      // No retry can pass: straight to the dead-letter queue, to be fixed and replayed.
+      console.error(`bridge queue: ${result.id}${decision}: ${result.error}; sent to the dead-letter queue`);
+      try {
+        await config.deadLetter.sendBatch([{ body }]);
+        message.ack();
+      } catch (err) {
+        console.error(`bridge dead-letter queue: ${err instanceof Error ? err.message : String(err)}`);
+        message.retry({ delaySeconds: retryDelay(message.attempts) });
+      }
+      continue;
+    }
     // A redirect too: a wrong URL, fixed in the configuration. Retried, the
     // message ends in the dead-letter queue and can be replayed then.
-    if ('retry' in result && (result.retry || result.redirect)) {
+    if ('retry' in result && (result.retry || result.redirect || result.deadLetter)) {
       console.error(`bridge queue: ${result.id}${decision} (attempt ${message.attempts}): ${result.error}`);
       message.retry({ delaySeconds: retryDelay(message.attempts) });
     } else {
@@ -404,17 +516,75 @@ export function retryDelay(attempts: number): number {
   return Math.min(30 * 2 ** Math.max(0, attempts - 1), 3600);
 }
 
-async function handleEntity(entity: Entity, route: Route, config: BridgeConfig): Promise<EntityResult> {
-  const hash = await inputHash(entity, route.inputs);
-  const previous = entity[route.attribute] as { inputHash?: { value?: unknown } } | undefined;
-  if (previous?.inputHash?.value === hash) return { id: entity.id, skipped: 'inputs unchanged' };
+/** The earlier decisions' ids from their result attributes; null when a required one is not there yet. */
+export function decisionsOf(entity: Entity, requires: Record<string, Requirement>): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (const [name, r] of Object.entries(requires)) {
+    const id = valueOf((entity[r.attribute] as Record<string, unknown> | undefined)?.decisionId);
+    if (typeof id === 'string' && id !== '') out[name] = id;
+    else if (!r.optional) return null;
+  }
+  return out;
+}
 
+/**
+ * The Idempotency-Key for a decide request: the route, the entity and the
+ * exact request body. A retry of the same request (also after a failure once
+ * Pointsman has logged the decision) gets the logged decision; when anything
+ * in the entity changed since (inputs that came back, a review written on an
+ * earlier result), it is another request with another key, and a new decision.
+ */
+export async function idempotencyKey(route: Route, entityId: string, body: unknown): Promise<string> {
+  // Keys sorted, so the same entity read twice in another attribute order is the same request.
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson([route.name ?? route.type, route.profile, entityId, body])));
+  return `bridge-${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** JSON with object keys sorted, at every level. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** The error code of a Pointsman error answer (never the message: it may name input). */
+async function errorCode(res: Response): Promise<string | undefined> {
+  try {
+    const code = ((await res.json()) as { error?: { code?: unknown } })?.error?.code;
+    return typeof code === 'string' ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function handleEntity(entity: Entity, route: Route, config: BridgeConfig): Promise<EntityResult> {
+  const hash = await inputHash(entity, route.inputs, route.requires);
+  const previous = entity[route.attribute] as Record<string, { value?: unknown } | undefined> & { observedAt?: unknown } | undefined;
+  if (previous?.inputHash?.value === hash) return { id: entity.id, skipped: 'inputs unchanged' };
+  const decisions = route.requires ? decisionsOf(entity, route.requires) : undefined;
+  if (decisions === null) return { id: entity.id, skipped: 'waiting for decisions' };
+
+  const request = { state: entity, ref: entity.id, ...(decisions && Object.keys(decisions).length > 0 && { decisions }) };
+  const body = JSON.stringify(request);
   const res = await send(config, 'pointsman', `${config.pointsman.url}/v1/decide/${encodeURIComponent(route.profile)}`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${config.pointsman.token}`, 'content-type': 'application/json', 'user-agent': USER_AGENT },
-    body: JSON.stringify({ state: entity, ref: entity.id }),
+    headers: {
+      authorization: `Bearer ${config.pointsman.token}`, 'content-type': 'application/json', 'user-agent': USER_AGENT,
+      'idempotency-key': await idempotencyKey(route, entity.id, request),
+    },
+    body,
   });
   if (!res.ok) {
+    const code = res.status === 409 ? await errorCode(res) : undefined;
+    // A person resolved the final decision this one would replace: their answer
+    // stays. Nothing is written, so a later change of an input asks again and
+    // gets the same answer (one call per notification, no loop).
+    if (code === 'resolved_by_person') return { id: entity.id, skipped: 'resolved by person' };
+    if (code === 'idempotency_conflict') {
+      return { id: entity.id, error: 'pointsman answered 409 idempotency_conflict: the same key was used for another request', retry: false, deadLetter: true };
+    }
     // Only the status: the body may echo the input.
     return { id: entity.id, error: `pointsman answered ${res.status}`, retry: retryable(res.status) };
   }
@@ -426,33 +596,51 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
   // From here on a decision exists: a failure keeps its id (a redirect
   // throws, see send).
   try {
+    // A newer decision is already on the entity (NGSI-LD has no conditional
+    // update; the queue runs one message at a time, this is the second
+    // guard). Checked before anything is written for this one.
+    if (route.requires && isOlder(d.created_at, previous?.observedAt)) {
+      return { id: entity.id, action: d.action, decision: d.decision_id, write: 0 };
+    }
     // One time for the entity and the property, when Pointsman gives none (older versions).
     const decidedAt = new Date();
     // The Decision entity first: the property on the entity points to it, and
     // without it a retry decides again (no input hash written yet).
     let decisionRef: string | undefined;
     if (route.decisionEntity) {
-      const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
+      const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, route.requires ? undefined : informedByOf(entity, route)), config);
       // 409: a retry of a notification whose entity was created, then the write failed.
       if (!created.ok && created.status !== 409) {
         return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
       }
       decisionRef = decisionEntityId(d.decision_id);
+      // The replaced decision's check is no longer needed (Pointsman closed its review).
+      if (d.replaces) {
+        const failed = await supersedeDecisionEntity(decisionEntityId(d.replaces), config);
+        if (failed) {
+          return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision update: ${failed.status}`, retry: retryable(failed.status) };
+        }
+      }
     }
     // Also before the property, for the same reason. Its id comes from the
     // inputs, not the decision (a retry decides again, with a new decision id),
     // and the Task always follows the latest decision for these inputs.
     if (route.task) {
       const taskId = await taskEntityId(entity.id, route.attribute, hash);
-      const failed = route.task.actions.includes(d.action)
+      let failed = route.task.actions.includes(d.action)
         ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
         : await cancelOpenTask(taskId, d.action, config);
+      // A replaced decision's open Task (made for the earlier inputs) is not needed any more.
+      const earlier = valueOf(previous?.inputHash);
+      if (!failed && route.requires && d.replaces && typeof earlier === 'string' && earlier !== hash) {
+        failed = await cancelOpenTask(await taskEntityId(entity.id, route.attribute, earlier), 'superseded', config);
+      }
       if (failed) {
         return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${failed.status}`, retry: retryable(failed.status) };
       }
     }
 
-    const property = toProperty(d, hash, decidedAt, decisionRef);
+    const property = toProperty(d, hash, decidedAt, decisionRef, isChecked(d, route));
     const write = await writeAttribute(entity.id, route.attribute, property, config);
     // Without a successful write the input hash is not stored either, so the
     // next notification decides again: report it as a failure.
@@ -463,6 +651,13 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
   } catch (err) {
     return failure(entity.id, err, d.decision_id);
   }
+}
+
+/** Whether `time` is before `than`, as points in time (any zone, any precision); false when either is unknown. */
+function isOlder(time: unknown, than: unknown): boolean {
+  const a = typeof time === 'string' ? Date.parse(time) : NaN;
+  const b = typeof than === 'string' ? Date.parse(than) : NaN;
+  return !Number.isNaN(a) && !Number.isNaN(b) && a < b;
 }
 
 /** Rate limits and server errors may pass on a second try; other 4xx will not. */
@@ -482,6 +677,12 @@ interface Decision {
   /** Pointsman returns both since #56; older versions do not. */
   created_at?: string;
   rule?: number | null;
+  /** For a profile with requires: what it read from each earlier decision ({decision: null} when hidden). */
+  requires?: Record<string, { decision: string | null }>;
+  /** The earlier decision of the same profile and entity that this one replaces. */
+  replaces?: string;
+  /** Present when a person checks the decision (the profile's people_check). */
+  review?: { status: 'pending' };
 }
 
 /** "0", "1", ... for the rule that matched, "default" for the default action. */
@@ -495,7 +696,7 @@ function policyRule(d: Decision): string | undefined {
  * sub-properties, so a consumer that only needs the action reads
  * `<attribute>.value` and can filter on it.
  */
-export function toProperty(d: Decision, hash: string, now = new Date(), decisionRef?: string): Record<string, unknown> {
+export function toProperty(d: Decision, hash: string, now = new Date(), decisionRef?: string, checked = false): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
   const rule = policyRule(d);
   const property: Record<string, unknown> = {
@@ -509,6 +710,8 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
     ...(rule !== undefined && { policyRule: P(rule) }),
     model: P(d.model),
     inputHash: P(hash),
+    // A person checks it first: work orders (#85) look for this.
+    ...(checked && { reviewStatus: P('pending') }),
   };
   for (const [name, a] of Object.entries(d.answers)) {
     // One level of sub-properties: Orion-LD drops a third level (#14).
@@ -603,18 +806,14 @@ export const DECISION_TERMS: Record<string, string | { '@id': string; '@type': '
   reviewedAt: 'decision:reviewedAt',
   corrections: 'decision:corrections',
   wasInformedBy: { '@id': 'prov:wasInformedBy', '@type': '@id' },
+  requiredDecisions: 'decision:requiredDecisions',
+  replaces: { '@id': 'http://purl.org/dc/terms/replaces', '@type': '@id' },
 };
 
 const CORE_CONTEXT = 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld';
 
 export const decisionEntityId = (decisionId: string) => `urn:ngsi-ld:Decision:${decisionId}`;
 
-/**
- * A Decision entity (datamodels.jp Decision model) in normalized form. A person takes
- * part before anything happens for the route's review actions (default:
- * review); for the others the action is taken and a person can correct it
- * later through Pointsman's feedback.
- */
 /** The earlier decision this one follows: the `decision` relationship of the route's informedBy attribute. */
 export function informedByOf(entity: Entity, route: Route): string | undefined {
   if (!route.informedBy) return undefined;
@@ -622,9 +821,29 @@ export function informedByOf(entity: Entity, route: Route): string | undefined {
   return typeof object === 'string' && object !== '' ? object : undefined;
 }
 
+/**
+ * Whether a person checks the decision before anything happens: the route's
+ * reviewActions, if set; otherwise Pointsman says so (`review`, from the
+ * profile's people_check). Older Pointsman versions without it: action review.
+ */
+export function isChecked(d: Pick<Decision, 'action' | 'review' | 'requires'>, route: Route): boolean {
+  if (route.reviewActions) return route.reviewActions.includes(d.action);
+  // The last case is for engines from before decision chains (#107), which
+  // send no review: a profile whose people_check leaves out review is then
+  // marked checked for action review. Set reviewActions for such a profile.
+  return d.review !== undefined || (d.requires === undefined && d.action === 'review');
+}
+
+/**
+ * A Decision entity (datamodels.jp Decision model) in normalized form. A person takes
+ * part before anything happens when it is checked (isChecked); for the others
+ * the action is taken and a person can correct it later through Pointsman's feedback.
+ */
 export function toDecisionEntity(d: Decision, entityId: string, route: Route, now = new Date(), informedBy?: string): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
-  const checked = (route.reviewActions ?? ['review']).includes(d.action);
+  const checked = isChecked(d, route);
+  // The earlier decisions, by name, as Pointsman read them (hidden ones left out).
+  const required = Object.entries(d.requires ?? {}).flatMap(([name, r]) => (typeof r?.decision === 'string' ? [{ name, decision: decisionEntityId(r.decision) }] : []));
   const rule = policyRule(d);
   return {
     '@context': [DECISION_CONTEXT, CORE_CONTEXT],
@@ -651,7 +870,13 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
     model: P(d.model),
     decidedAt: P({ '@type': 'DateTime', '@value': d.created_at ?? now.toISOString() }),
     humanInvolvement: { type: 'VocabProperty', vocab: checked ? 'dpv:HumanInvolvementForVerification' : 'dpv:HumanInvolvementForOversight' },
-    ...(informedBy !== undefined && { wasInformedBy: { type: 'Relationship', object: informedBy } }),
+    ...(informedBy !== undefined && required.length === 0 && { wasInformedBy: { type: 'Relationship', object: informedBy } }),
+    // One instance per earlier decision, told apart by datasetId (datamodels.jp Decision model).
+    ...(required.length > 0 && {
+      wasInformedBy: required.map((r) => ({ type: 'Relationship', object: r.decision, datasetId: `urn:ngsi-ld:dataset:wasInformedBy:${r.name}` })),
+      requiredDecisions: { type: 'JsonProperty', json: required },
+    }),
+    ...(d.replaces && { replaces: { type: 'Relationship', object: decisionEntityId(d.replaces) } }),
     ...(checked && { reviewStatus: P('pending') }),
   };
 }
@@ -773,6 +998,10 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
       if (!again.ok) return { id, error: `pointsman answered ${again.status}`, retry: retryable(again.status) };
       record = (await again.json()) as Record_;
     }
+  } else if (record.review?.status === 'superseded') {
+    // A newer decision replaced this one before the answer reached Pointsman:
+    // the answer cannot count. Shown, not dropped (a person's answer stays elsewhere).
+    return { id, error: 'a newer decision replaced this one before the review reached Pointsman; answer the newer one', retry: false };
   } else if (record.review) {
     review = 'already resolved';
   } else if (Object.keys(correct).length === 0) {
@@ -816,6 +1045,8 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     ...result,
     finalAction: { type: 'Property', value: finalAction },
     reviewedAt: { type: 'Property', value: when },
+    // The marker for open checks (toProperty) follows the review.
+    ...(result?.reviewStatus !== undefined && { reviewStatus: { type: 'Property', value: 'resolved' } }),
   }, config);
   if (!updatedAll(write)) return { id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
   const hash = valueOf(result?.inputHash);
@@ -934,7 +1165,10 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const waiting = candidates.filter((r) => {
     if (r.type !== current.type) return false;
     const result = current[r.attribute] as Record<string, unknown> | undefined;
-    return typeof valueOf(result) === 'string' && (r.reviewActions ?? ['review']).includes(valueOf(result) as string)
+    // reviewStatus on the result since decision chains; before, the action review.
+    const checked = r.reviewActions ? r.reviewActions.includes(valueOf(result) as string)
+      : valueOf(result?.reviewStatus) === 'pending' || (result?.reviewStatus === undefined && valueOf(result) === 'review');
+    return typeof valueOf(result) === 'string' && checked
       && valueOf(result?.finalAction) === undefined
       && typeof (result?.decision as { object?: unknown } | undefined)?.object === 'string';
   });
@@ -1042,6 +1276,23 @@ async function cancelOpenTask(id: string, action: string, config: BridgeConfig):
     '@context': [TASK_CONTEXT, CORE_CONTEXT],
     progress: { type: 'Property', value: 'cancelled' },
     statusLabel: { type: 'Property', value: action },
+  });
+  return updatedAll(updated) ? null : updated;
+}
+
+/**
+ * A replaced decision's Decision entity: a pending check becomes superseded
+ * (datamodels.jp Decision model); a resolved one stays as it is. Returns the
+ * failed response, if any.
+ */
+async function supersedeDecisionEntity(id: string, config: BridgeConfig): Promise<Response | null> {
+  const found = await brokerRequest('GET', id, config, undefined, undefined, DECISION_CONTEXT);
+  if (found.status === 404) return null;
+  if (!found.ok) return found;
+  if (valueOf((await found.json() as Entity).reviewStatus) !== 'pending') return null;
+  const updated = await brokerRequest('POST', id, config, {
+    '@context': [DECISION_CONTEXT, CORE_CONTEXT],
+    reviewStatus: { type: 'Property', value: 'superseded' },
   });
   return updatedAll(updated) ? null : updated;
 }

@@ -18,6 +18,10 @@ function values(entity) {
   for (const [k, v] of Object.entries(entity)) {
     if (k === '@context') continue;
     if (k === 'id' || k === 'type') out[k] = v;
+    // A multi-valued attribute (instances with datasetId): a list.
+    else if (Array.isArray(v)) out[k] = v.map((x) => x.object ?? x.value);
+    // wasInformedBy is always a list in key-values, also with one decision (Decision model).
+    else if (k === 'wasInformedBy') out[k] = [v.object];
     else if (v.type === 'Relationship') out[k] = v.object;
     else if (v.type === 'JsonProperty') out[k] = v.json;
     else if (v.type === 'VocabProperty') out[k] = v.vocab;
@@ -65,8 +69,25 @@ test('facts in a Decision entity match the schema, and the schema checks them', 
 
 test('a chained decision links the one before, and matches the schema', () => {
   const kv = values(toDecisionEntity(decision, 'urn:ngsi-ld:RoadRestriction:0001', route, new Date(), 'urn:ngsi-ld:Decision:d-0'));
-  assert.equal(kv.wasInformedBy, 'urn:ngsi-ld:Decision:d-0');
+  assert.deepEqual(kv.wasInformedBy, ['urn:ngsi-ld:Decision:d-0']);
   assert.ok(validate(kv), JSON.stringify(validate.errors));
+});
+
+test('a decision from several earlier ones (requires) matches the schema', () => {
+  const final = {
+    ...decision, action: 'publish', profile: 'road-closure-final', model: 'none', answers: {},
+    requires: { check: { decision: 'c-1' }, evacuation: { decision: 'e-1' }, hidden: { decision: null } },
+    replaces: 'f-1', review: { status: 'pending' },
+  };
+  const entity = toDecisionEntity(final, 'urn:ngsi-ld:RoadRestriction:0001', { ...route, profile: 'road-closure-final' });
+  assert.deepEqual(entity.wasInformedBy.map((r) => r.datasetId), ['urn:ngsi-ld:dataset:wasInformedBy:check', 'urn:ngsi-ld:dataset:wasInformedBy:evacuation']);
+  const kv = values(entity);
+  assert.deepEqual(kv.wasInformedBy, ['urn:ngsi-ld:Decision:c-1', 'urn:ngsi-ld:Decision:e-1']);
+  assert.deepEqual(kv.requiredDecisions, [{ name: 'check', decision: 'urn:ngsi-ld:Decision:c-1' }, { name: 'evacuation', decision: 'urn:ngsi-ld:Decision:e-1' }]);
+  assert.equal(kv.replaces, 'urn:ngsi-ld:Decision:f-1');
+  assert.equal(kv.reviewStatus, 'pending');
+  assert.ok(validate(kv), JSON.stringify(validate.errors));
+  assert.ok(validate({ ...kv, reviewStatus: 'superseded' }), JSON.stringify(validate.errors));
 });
 
 test('the schema catches what the bridge must not write', () => {
