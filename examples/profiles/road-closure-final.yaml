@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# Example of a decision chain (docs/decision-chains.md): the final decision on
+# a road closure report, from the first check (road-restriction-check) and,
+# when it ran, the evacuation check. Rules only: no questions, no model call.
+# The map checks count here: the flood zone of the first check, and the way
+# around on foot of the evacuation check.
+id: road-closure-final
+version: 1
+title:
+  en: Road closure, final decision
+  ja: 通行止めの最終判断
+description:
+  en: Combine the first check of a road closure report with the evacuation check into one final result.
+  ja: 通行止めの報告について、最初の確認と避難の確認をまとめ、最終的な結果を 1 つ出す。
+model: none
+requires:
+  - { name: check, profile: road-restriction-check }
+  - { name: evacuation, profile: evacuation-access-check, optional: true }
+questions: []
+policy:
+  rules:
+    # People on foot are cut off from their evacuation site.
+    - when: "decisions.evacuation.action == 'alert'"
+      action: urgent
+    - when: "decisions.check.outcome == 'urgent'"
+      action: urgent
+    - when: "decisions.check.outcome == 'reject'"
+      action: reject
+    # Published only outside deep flood zones, also after a person said publish.
+    - when: "decisions.check.outcome == 'publish' and decisions.check.facts.flood.rank < 5"
+      action: publish
+  default: review

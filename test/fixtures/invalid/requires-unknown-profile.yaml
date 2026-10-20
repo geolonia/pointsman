@@ -1,0 +1,14 @@
+# expect: /requires/0/profile: "road-restriction-check" is not among the profiles validated with it
+id: requires-unknown-profile
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+requires:
+  - { name: check, profile: road-restriction-check }
+questions: []
+policy:
+  rules:
+    - when: "decisions.check.outcome == 'urgent'"
+      action: urgent
+  default: review

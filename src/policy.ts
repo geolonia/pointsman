@@ -7,8 +7,12 @@
 //   comparison := operand ("==" | "!=" | ">=" | ">" | "<=" | "<") operand
 //   operand    := reference | number | string | true | false
 //   reference  := <question name> "." field | "facts." <fact name> "." fact field
+//               | "decisions." <name> "." decision field
 //   field      := value | p | yes | score | probabilities.<option or level>
 //   fact field := missing, or a field of the fact's type (FACT_FIELDS)
+//   decision field := missing | action | outcome | reviewed
+//               | "answers." <question of that profile> "." field
+//               | "facts." <fact of that profile> "." fact field
 //
 // Strings use single or double quotes. Examples:
 //   team.p >= 0.85
@@ -26,20 +30,38 @@
 // matches only when its condition is true, so a missing fact never makes a
 // rule match by accident; `facts.<name>.missing == true` is always known.
 //
+// Decisions (docs/decision-chains.md) are the earlier decisions a profile
+// `requires`, read from the decision log. They are checked against the
+// required profile; at run time a decision that was not given, or a value
+// that is missing or of another type (an older version of that profile), is
+// unknown too.
+//
 // This file is also imported by the profile validator under Node.js, so it
 // uses only TypeScript syntax that Node can strip (no enums, no parameter
 // properties) and imports types only.
 
-import type { Answer, Fact, FactSpec, FactType, Profile, Question } from './types';
+import type { Answer, Fact, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
 
 type Kind = 'number' | 'string' | 'boolean';
 type Value = number | string | boolean;
 type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
 
+type QuestionOperand = { kind: Kind; question: string; field: string; key?: string };
+type FactOperand = { kind: Kind; fact: string; field: string };
+type DecisionOperand =
+  | { kind: Kind; decision: string; field: 'missing' | 'action' | 'outcome' | 'reviewed'; path: string; allowed?: string[] }
+  | { kind: Kind; decision: string; inner: QuestionOperand | FactOperand; path: string };
+
 type Operand =
   | { kind: Kind; literal: Value }
-  | { kind: Kind; question: string; field: string; key?: string }
-  | { kind: Kind; fact: string; field: string };
+  | QuestionOperand
+  | FactOperand
+  | DecisionOperand;
+
+/** The parts of a profile that rules are compiled against. */
+export type PolicyProfile = Pick<Profile, 'questions' | 'policy' | 'facts' | 'requires'>;
+/** A required profile, by id: what decisions.<name>.* is checked against. */
+export type RequiredProfiles = Record<string, PolicyProfile | undefined>;
 
 type Node =
   | { type: 'and' | 'or'; left: Node; right: Node }
@@ -109,6 +131,58 @@ const DISPLAY_FIELDS: Partial<Record<FactType, string[]>> = { detour: ['route'] 
 
 /** Reserved prefix of fact references; no question name may start with it. */
 export const FACTS_PREFIX = 'facts.';
+/** Reserved prefix of references to required decisions; no question name may start with it. */
+export const DECISIONS_PREFIX = 'decisions.';
+
+/** The actions a profile's rules can give. */
+export function profileActions(profile: Pick<Profile, 'policy'>): string[] {
+  return [...new Set([...(profile.policy.rules ?? []).map((r) => r.action), profile.policy.default])];
+}
+
+/** The answers a person may give: people_answers, or the actions without review plus reject. */
+export function peopleAnswers(profile: Pick<Profile, 'policy'>): string[] {
+  return profile.policy.people_answers ?? [...new Set([...profileActions(profile).filter((a) => a !== 'review'), 'reject'])];
+}
+
+/** The actions a person checks: people_check, or [review]. */
+export function peopleCheck(profile: Pick<Profile, 'policy'>): string[] {
+  return profile.policy.people_check ?? ['review'];
+}
+
+const DECISION_FIELDS = { missing: 'boolean', action: 'string', outcome: 'string', reviewed: 'boolean' } as const;
+
+function resolveDecision(word: string, requires: PolicyProfile['requires'], required: RequiredProfiles): Operand {
+  const rest = word.slice(DECISIONS_PREFIX.length);
+  // Names may contain dots: longest first, as for questions and facts.
+  const r = [...(requires ?? [])].sort((a, b) => b.name.length - a.name.length).find((x) => rest.startsWith(`${x.name}.`));
+  if (!r) throw new PolicyError(`"${word}" does not refer to a required decision of this profile`);
+  const p = Object.hasOwn(required, r.profile) ? required[r.profile] : undefined;
+  if (!p) throw new PolicyError(`"${word}": the required profile "${r.profile}" is not known`);
+  const field = rest.slice(r.name.length + 1);
+  if (field === 'action' || field === 'outcome') {
+    const allowed = field === 'action' ? profileActions(p) : [...new Set([...profileActions(p), ...peopleAnswers(p)])];
+    return { kind: 'string', decision: r.name, field, path: field, allowed };
+  }
+  if (field === 'missing' || field === 'reviewed') return { kind: DECISION_FIELDS[field], decision: r.name, field, path: field };
+  // An error inside names the whole reference and the required profile.
+  const inside = (resolve: () => Operand): Operand => {
+    try {
+      return resolve();
+    } catch (err) {
+      if (err instanceof PolicyError) throw new PolicyError(`"${word}" in ${r.profile}: ${err.message.replace('of this profile', `of ${r.profile}`)}`);
+      throw err;
+    }
+  };
+  if (field.startsWith('answers.')) {
+    const inner = inside(() => resolveReference(field.slice('answers.'.length), p.questions));
+    return { kind: inner.kind, decision: r.name, inner: inner as QuestionOperand, path: field };
+  }
+  if (field.startsWith(FACTS_PREFIX)) {
+    const inner = inside(() => resolveFact(field, p.facts ?? []));
+    return { kind: inner.kind, decision: r.name, inner: inner as FactOperand, path: field };
+  }
+  throw new PolicyError(`"${word}": decisions have missing, action, outcome, reviewed, answers.<question>.<field>, facts.<fact>.<field>`);
+}
 
 function resolveFact(word: string, facts: FactSpec[]): Operand {
   const rest = word.slice(FACTS_PREFIX.length);
@@ -162,12 +236,16 @@ class Parser {
   tokens: Token[];
   questions: Question[];
   facts: FactSpec[];
+  requires: PolicyProfile['requires'];
+  required: RequiredProfiles;
   pos = 0;
 
-  constructor(tokens: Token[], questions: Question[], facts: FactSpec[]) {
+  constructor(tokens: Token[], questions: Question[], facts: FactSpec[], requires: PolicyProfile['requires'] = [], required: RequiredProfiles = {}) {
     this.tokens = tokens;
     this.questions = questions;
     this.facts = facts;
+    this.requires = requires;
+    this.required = required;
   }
 
   peek(): Token | undefined {
@@ -238,10 +316,22 @@ class Parser {
       throw new PolicyError(`${op.v} works only on numbers`);
     }
     for (const [ref, lit] of [[left, right], [right, left]] as const) {
-      if ('question' in ref && ref.kind === 'string' && 'literal' in lit) {
+      if (!('literal' in lit) || ref.kind !== 'string') continue;
+      if ('question' in ref) {
         const q = this.questions.find((x) => x.name === ref.question)!;
         if (!optionsOf(q)!.includes(lit.literal as string)) {
           throw new PolicyError(`"${String(lit.literal)}" is not an option of "${q.name}"`);
+        }
+      }
+      if ('decision' in ref && 'allowed' in ref && ref.allowed && !ref.allowed.includes(lit.literal as string)) {
+        throw new PolicyError(`"${String(lit.literal)}" is not an ${ref.field} of decisions.${ref.decision} (${ref.allowed.join(', ')})`);
+      }
+      if ('decision' in ref && 'inner' in ref && 'question' in ref.inner) {
+        const inner = ref.inner;
+        const r = this.requires!.find((x) => x.name === ref.decision)!;
+        const q = this.required[r.profile]!.questions.find((x) => x.name === inner.question)!;
+        if (!optionsOf(q)!.includes(lit.literal as string)) {
+          throw new PolicyError(`"${String(lit.literal)}" is not an option of "${q.name}" in ${r.profile}`);
         }
       }
     }
@@ -260,6 +350,7 @@ class Parser {
       case 'word':
         if (t.v === 'true' || t.v === 'false') return { kind: 'boolean', literal: t.v === 'true' };
         if (['and', 'or', 'not'].includes(t.v)) throw new PolicyError(`unexpected "${t.v}"`);
+        if (t.v.startsWith(DECISIONS_PREFIX)) return resolveDecision(t.v, this.requires, this.required);
         return t.v.startsWith(FACTS_PREFIX) ? resolveFact(t.v, this.facts) : resolveReference(t.v, this.questions);
       default:
         throw new PolicyError(`unexpected "${t.v}"`);
@@ -269,9 +360,33 @@ class Parser {
 
 // ---- evaluation ----
 
+type Decisions = Record<string, RequiredDecisionInput | undefined>;
+
+/** A required decision's value; undefined = unknown (not given, missing, or of another type). */
+function decisionValue(operand: DecisionOperand, decisions: Decisions): Value | undefined {
+  const d = Object.hasOwn(decisions, operand.decision) ? decisions[operand.decision] : undefined;
+  if ('field' in operand && operand.field === 'missing') return !d;
+  if (!d) return undefined;
+  let v: Value | undefined;
+  if ('inner' in operand) {
+    try {
+      v = valueOf(operand.inner, d.answers ?? {}, d.facts ?? {}, {});
+    } catch (err) {
+      // An answer that decision does not have (an older version of its profile).
+      if (err instanceof PolicyError) return undefined;
+      throw err;
+    }
+  } else {
+    // missing was answered above; the other fields are on the decision.
+    v = d[operand.field as 'action' | 'outcome' | 'reviewed'];
+  }
+  return typeof v === operand.kind ? v : undefined;
+}
+
 /** undefined = unknown (a missing fact, or a fact field without a value). */
-function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Record<string, Fact>): Value | undefined {
+function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Record<string, Fact>, decisions: Decisions): Value | undefined {
   if ('literal' in operand) return operand.literal;
+  if ('decision' in operand) return decisionValue(operand, decisions);
   if ('fact' in operand) {
     const f = facts[operand.fact];
     if (!f) return operand.field === 'missing' ? true : undefined; // never looked up
@@ -292,29 +407,29 @@ function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Recor
 }
 
 /** true, false, or null for unknown (three-valued logic, see the top of the file). */
-function evaluate(node: Node, answers: Record<string, Answer>, facts: Record<string, Fact>): boolean | null {
+function evaluate(node: Node, answers: Record<string, Answer>, facts: Record<string, Fact>, decisions: Decisions): boolean | null {
   switch (node.type) {
     case 'and': {
-      const l = evaluate(node.left, answers, facts);
+      const l = evaluate(node.left, answers, facts, decisions);
       if (l === false) return false;
-      const r = evaluate(node.right, answers, facts);
+      const r = evaluate(node.right, answers, facts, decisions);
       if (r === false) return false;
       return l === true && r === true ? true : null;
     }
     case 'or': {
-      const l = evaluate(node.left, answers, facts);
+      const l = evaluate(node.left, answers, facts, decisions);
       if (l === true) return true;
-      const r = evaluate(node.right, answers, facts);
+      const r = evaluate(node.right, answers, facts, decisions);
       if (r === true) return true;
       return l === false && r === false ? false : null;
     }
     case 'not': {
-      const v = evaluate(node.operand, answers, facts);
+      const v = evaluate(node.operand, answers, facts, decisions);
       return v === null ? null : !v;
     }
     case 'cmp': {
-      const l = valueOf(node.left, answers, facts);
-      const r = valueOf(node.right, answers, facts);
+      const l = valueOf(node.left, answers, facts, decisions);
+      const r = valueOf(node.right, answers, facts, decisions);
       if (l === undefined || r === undefined) return null;
       if (node.op === '==') return l === r;
       if (node.op === '!=') return l !== r;
@@ -338,40 +453,61 @@ export interface CompiledPolicy {
    * The action, and the index of the matching rule (null = default). A rule
    * matches only when its condition is true, not when it is unknown.
    */
-  decide(answers: Record<string, Answer>, facts?: Record<string, Fact>): { action: string; rule: number | null };
+  decide(answers: Record<string, Answer>, facts?: Record<string, Fact>, decisions?: Decisions): { action: string; rule: number | null };
+  /**
+   * Every value the rules read from required decisions, by decision name and
+   * path (for example "outcome", "answers.danger.yes"); null = unknown. Kept
+   * with the decision, so the log explains the result later.
+   */
+  read(decisions: Decisions): Record<string, Record<string, Value | null>>;
 }
 
 /** Compile one condition; throws PolicyError with a readable message. */
-export function compileCondition(condition: string, questions: Question[], facts: FactSpec[] = []): Node {
-  return new Parser(tokenize(condition), questions, facts).parse();
+export function compileCondition(condition: string, questions: Question[], facts: FactSpec[] = [], requires: PolicyProfile['requires'] = [], required: RequiredProfiles = {}): Node {
+  return new Parser(tokenize(condition), questions, facts, requires, required).parse();
+}
+
+function decisionOperands(node: Node, out: DecisionOperand[]): DecisionOperand[] {
+  if (node.type === 'not') return decisionOperands(node.operand, out);
+  if (node.type === 'and' || node.type === 'or') return decisionOperands(node.right, decisionOperands(node.left, out));
+  for (const o of [node.left, node.right]) if ('decision' in o) out.push(o);
+  return out;
 }
 
 /** Compile all rules of a profile. Throws PolicyError naming the rule. */
-export function compilePolicy(profile: Pick<Profile, 'questions' | 'policy' | 'facts'>): CompiledPolicy {
+export function compilePolicy(profile: PolicyProfile, required: RequiredProfiles = {}): CompiledPolicy {
   const rules = (profile.policy.rules ?? []).map((rule, i) => {
     try {
-      return { action: rule.action, when: compileCondition(rule.when, profile.questions, profile.facts) };
+      return { action: rule.action, when: compileCondition(rule.when, profile.questions, profile.facts, profile.requires, required) };
     } catch (err) {
       if (err instanceof PolicyError) throw new PolicyError(`rule ${i}: ${err.message}`);
       throw err;
     }
   });
+  const reads = rules.flatMap((r) => decisionOperands(r.when, []));
   return {
-    decide(answers, facts = {}) {
+    decide(answers, facts = {}, decisions = {}) {
       for (const [i, rule] of rules.entries()) {
-        if (evaluate(rule.when, answers, facts) === true) return { action: rule.action, rule: i };
+        if (evaluate(rule.when, answers, facts, decisions) === true) return { action: rule.action, rule: i };
       }
       return { action: profile.policy.default, rule: null };
+    },
+    read(decisions) {
+      const out: Record<string, Record<string, Value | null>> = {};
+      for (const o of reads) {
+        (out[o.decision] ??= {})[o.path] = decisionValue(o, decisions) ?? null;
+      }
+      return out;
     },
   };
 }
 
 /** Validation errors for all rules, as [rule index, message]. */
-export function policyErrors(profile: Pick<Profile, 'questions' | 'policy' | 'facts'>): [number, string][] {
+export function policyErrors(profile: PolicyProfile, required: RequiredProfiles = {}): [number, string][] {
   const errors: [number, string][] = [];
   for (const [i, rule] of (profile.policy.rules ?? []).entries()) {
     try {
-      compileCondition(rule.when, profile.questions, profile.facts);
+      compileCondition(rule.when, profile.questions, profile.facts, profile.requires, required);
     } catch (err) {
       if (!(err instanceof PolicyError)) throw err;
       errors.push([i, err.message]);

@@ -70,17 +70,23 @@ try {
 } catch (err) {
   fail(err.message, 2);
 }
+// Read every file first: a profile is validated with the ones it requires,
+// so a new version of a required profile that breaks one stops the publish.
+const read = [];
 for (const path of files) {
   try {
-    const profile = parseProfile(readFileSync(path, 'utf8'), path);
-    const problems = validateProfile(profile, { fileName: path });
-    if (problems.length > 0) errors.push(`${path}\n  ${problems.join('\n  ')}`);
-    else {
-      profiles.push(profile);
-      paths.push(path);
-    }
+    read.push({ path, profile: parseProfile(readFileSync(path, 'utf8'), path) });
   } catch (err) {
     errors.push(`${path}\n  (parse): ${err.message.split('\n')[0]}`);
+  }
+}
+const byId = new Map(read.filter((r) => typeof r.profile?.id === 'string').map((r) => [r.profile.id, r.profile]));
+for (const { path, profile } of read) {
+  const problems = validateProfile(profile, { fileName: path, profiles: byId });
+  if (problems.length > 0) errors.push(`${path}\n  ${problems.join('\n  ')}`);
+  else {
+    profiles.push(profile);
+    paths.push(path);
   }
 }
 errors.push(...duplicateIdErrors(paths.map((p, i) => [p, profiles[i]])));

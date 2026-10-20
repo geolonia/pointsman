@@ -6,16 +6,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { validateProfileFile } from '../scripts/lib/profile.mjs';
+import { parseProfile, validateProfileFile } from '../scripts/lib/profile.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const examples = join(root, 'examples', 'profiles');
 const invalid = join(root, 'test', 'fixtures', 'invalid');
 const cli = join(root, 'scripts', 'validate-profiles.mjs');
 
+// The examples are one set: road-closure-final requires two of the others.
+const exampleSet = new Map(readdirSync(examples).map((f) => {
+  const p = parseProfile(readFileSync(join(examples, f), 'utf8'), f);
+  return [p.id, p];
+}));
 for (const file of readdirSync(examples)) {
   test(`example ${file} is valid`, () => {
-    assert.deepEqual(validateProfileFile(join(examples, file)), []);
+    assert.deepEqual(validateProfileFile(join(examples, file), { profiles: exampleSet }), []);
   });
 }
 
@@ -135,4 +140,35 @@ policy:
   default: auto
 `);
   assert.deepEqual(validateProfileFile(path), []);
+});
+
+// Decision chains (docs/decision-chains.md): profiles are checked against the
+// ones they require, in both directions, through the CLI on a folder.
+function chainFolder(t, files) {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-chain-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+  return spawnSync(process.execPath, [cli, dir], { encoding: 'utf8' });
+}
+const head = (id) => `id: ${id}\nversion: 1\ntitle: { en: Test, ja: テスト }\ndescription: { en: Test profile, ja: テスト用 }\nmodel: clef-flash\n`;
+const first = (questions = '  - { name: danger, type: noul, instructions: Danger? }\n') => `${head('first')}questions:\n${questions}policy:\n  rules:\n    - when: "danger.yes >= 0.7"\n      action: urgent\n  default: review\n`;
+const final = `${head('final')}requires:\n  - { name: check, profile: first }\nquestions: []\npolicy:\n  rules:\n    - when: "decisions.check.answers.danger.yes >= 0.9 and decisions.check.outcome == 'urgent'"\n      action: urgent\n  default: review\n`;
+
+test('a chained profile is valid with the profile it requires', (t) => {
+  const r = chainFolder(t, { 'first.yaml': first(), 'final.yaml': final });
+  assert.equal(r.status, 0, r.stdout);
+});
+
+test('a change to a required profile that breaks a rule reading it fails, naming the profile', (t) => {
+  const r = chainFolder(t, { 'first.yaml': first('  - { name: risk, type: noul, instructions: Risk? }\n').replace('danger.yes', 'risk.yes'), 'final.yaml': final });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /FAIL .*final\.yaml[\s\S]*decisions\.check\.answers\.danger\.yes/);
+});
+
+test('profiles that require each other in a circle fail', (t) => {
+  const a = `${head('a')}requires:\n  - { name: b, profile: b }\nquestions: []\npolicy:\n  default: review\n`;
+  const b = `${head('b')}requires:\n  - { name: a, profile: a }\nquestions: []\npolicy:\n  default: review\n`;
+  const r = chainFolder(t, { 'a.yaml': a, 'b.yaml': b });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /require each other in a circle: a → b → a/);
 });

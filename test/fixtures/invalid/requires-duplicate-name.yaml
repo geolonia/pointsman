@@ -1,0 +1,12 @@
+# expect: /requires: duplicate name "check"
+id: requires-duplicate-name
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+requires:
+  - { name: check, profile: a }
+  - { name: check, profile: b }
+questions: []
+policy:
+  default: review

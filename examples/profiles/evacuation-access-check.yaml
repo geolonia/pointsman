@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# FIWARE demo, step 2 of the chain (pointsman#66): for a road closure that
+# step 1 (road-restriction-check) decided urgent or review, does it cut
+# people off from their evacuation site? The bridge runs it only for those
+# (subscription q on check) and links step 1's decision (wasInformedBy).
+id: evacuation-access-check
+version: 2
+title:
+  en: Evacuation access check
+  ja: 避難経路の確認
+description:
+  en: For a closed road near an evacuation site, check whether people on foot are cut off from the site, and alert the site's staff.
+  ja: 避難場所の近くで道路が閉じられたとき、歩く人が避難場所へ行けなくなるかを確認し、避難場所の担当者に知らせる。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: road, path: $.roadName.value }
+  - { name: status, path: $.restrictionStatus.value }
+  - { name: description, path: $.description.value }
+facts:
+  - { name: shelter, type: nearest, layer: gsi-shelters-flood, at: $.location.value }
+  # route: true keeps the way around, so the demo map can draw it. Its ends
+  # are the reported closed section, stored with every decision: fine for
+  # road closures on public roads (the demo's prepared reports); do not copy
+  # this to a profile whose places may be personal.
+  - { name: walk, type: detour, mode: walk, route: true, at: $.location.value }
+questions:
+  - name: foot_passable
+    type: noul
+    instructions: Can people on foot still pass the closed section?
+    criteria:
+      true: People on foot can still pass, for example on the sidewalk or one side.
+      false: The section is closed for people on foot too, or it is not safe to walk there.
+policy:
+  rules:
+    # Near a site, the way around on foot is long, and walking through is not possible.
+    - when: "facts.shelter.distance_m <= 1000 and facts.walk.extra_m >= 200 and foot_passable.yes < 0.5"
+      action: alert
+    # Near a site, but the way around could not be found: a person looks.
+    - when: "facts.shelter.distance_m <= 1000 and facts.walk.missing == true"
+      action: review
+  default: none
