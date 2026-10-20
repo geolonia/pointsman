@@ -96,7 +96,7 @@ after a model update.
 
 Most visitors know nothing about FIWARE, decision services or AI, and many
 are not native English speakers. So the page is a guided flow in four
-numbered steps (geolonia/pointsman-demo#30, #70), with the technical layer
+numbered steps (geolonia/pointsman-demo#30, geolonia/pointsman-demo#70), with the technical layer
 behind "How it works" and the developer view. Beside the steps is one map with a switch: the
 **headquarters view** with every report, and the **residents' view** with
 only what is published. The base map is gray, so only the reports and the
@@ -190,7 +190,7 @@ check** (`evacuation-access-check`) and the **final result**
 
 ```mermaid
 flowchart LR
-  Page["Demo page"] -->|"report, poll"| W["Demo Worker<br/>(Cloudflare, runs the bridge)"]
+  Page["Demo page"] -->|"report, poll, decide"| W["Demo Worker<br/>(Cloudflare, runs the bridge)"]
   W -->|"create report"| B["GeonicDB<br/>(tenant pointsman_demo)"]
   B -->|"notifications<br/>(5 subscriptions)"| W
   W -->|"first check, additional check,<br/>final result, resolve review"| P["Pointsman"]
@@ -207,7 +207,7 @@ flowchart LR
   broker directly.
 - **Demo Worker:** creates entities from the page (checked and limited, see
   below), returns the entities for the maps, and runs the bridge (#47) on
-  `/notify`, through a Cloudflare queue (#88): when Pointsman or the broker
+  `/notify` and `/reviews`, through a Cloudflare queue (#88): when Pointsman or the broker
   is down for a while, notifications are retried for about 14 hours, then
   kept in a dead-letter queue (tested with a 3.5-minute outage on
   2026-10-15). Broker and Pointsman

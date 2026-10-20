@@ -73,12 +73,14 @@ sequenceDiagram
   route with `requires` (a chain): the ids of the earlier decisions, read
   from the entity. Without them yet, the bridge waits for the next
   notification.
-- Pointsman looks up the facts (flood zone, evacuation site, way around on
-  foot) itself; the bridge sends no facts.
+- Pointsman looks up the facts the profile asks for itself (in the demo:
+  flood zone, evacuation site, way around on foot); the bridge sends no
+  facts.
 - A person's answer comes back the other way: the broker notifies
-  `/reviews` with a resolved `Decision` (or a completed `Task`), and the
-  bridge resolves the review in Pointsman
-  (`POST /v1/reviews/{id}/resolve`) and writes the final action.
+  `/reviews` with a resolved `Decision`, and the bridge resolves the review
+  in Pointsman (`POST /v1/reviews/{id}/resolve`) and writes the final
+  action. A completed work order from another app (a `Task`, with
+  `BRIDGE_WORK_ORDERS` set) is first turned into a resolved `Decision`.
 
 How the demo uses this, with three chained decisions: [docs/fiware-demo.md](../docs/fiware-demo.md#how-it-runs).
 
