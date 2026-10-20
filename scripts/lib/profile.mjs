@@ -91,6 +91,8 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
   requires.forEach((r, i) => {
     if (r.profile === profile.id) errors.push(`/requires/${i}/profile: a profile cannot require itself`);
     else if (!profiles.has(r.profile)) errors.push(`/requires/${i}/profile: "${r.profile}" is not among the profiles validated with it`);
+    // Its own errors are reported with it; its rules cannot be read here.
+    else if (!validateSchema(profiles.get(r.profile))) errors.push(`/requires/${i}/profile: "${r.profile}" is not a valid profile`);
     else required[r.profile] = profiles.get(r.profile);
   });
   const cycle = requiresCycle(profile, profiles);
@@ -107,6 +109,10 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
   });
   for (const [i, message] of policyErrors(profile, required)) {
     errors.push(`/policy/rules/${i}/when: ${message}`);
+  }
+  // "none" means no model call: only for rules-only profiles (no questions).
+  if (profile.questions.length > 0 && [profile.model, ...(profile.fallback_models ?? [])].includes('none')) {
+    errors.push('/model: "none" is only for profiles without questions (rules only)');
   }
   if ((profile.fallback_models ?? []).includes(profile.model)) {
     errors.push(`/fallback_models: repeats the primary model "${profile.model}"`);

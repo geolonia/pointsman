@@ -165,6 +165,14 @@ test('a change to a required profile that breaks a rule reading it fails, naming
   assert.match(r.stdout, /FAIL .*final\.yaml[\s\S]*decisions\.check\.answers\.danger\.yes/);
 });
 
+test('a required profile that is not valid fails the profile built on it, without a crash', (t) => {
+  const broken = first().replace(/policy:[\s\S]*$/, '');
+  const r = chainFolder(t, { 'first.yaml': broken, 'final.yaml': final });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /FAIL .*final\.yaml[\s\S]*"first" is not a valid profile/);
+  assert.doesNotMatch(r.stderr, /TypeError/);
+});
+
 test('profiles that require each other in a circle fail', (t) => {
   const a = `${head('a')}requires:\n  - { name: b, profile: b }\nquestions: []\npolicy:\n  default: review\n`;
   const b = `${head('b')}requires:\n  - { name: a, profile: a }\nquestions: []\npolicy:\n  default: review\n`;
