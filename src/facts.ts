@@ -138,7 +138,9 @@ export async function lookupFacts(
     } catch (err) {
       // The message only: errors must not carry the location into the logs.
       console.error(`fact ${spec.name} (${spec.type}): ${err instanceof Error ? err.message : 'lookup failed'}`);
-      return [spec.name, { missing: true, reason: err instanceof FactUnavailableError ? 'unavailable' : 'error' }];
+      // A call's own time limit (the routing server's) is a timeout too, like the lookup's.
+      const timedOut = err instanceof Error && err.name === 'TimeoutError';
+      return [spec.name, { missing: true, reason: err instanceof FactUnavailableError ? 'unavailable' : timedOut ? 'timeout' : 'error' }];
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
