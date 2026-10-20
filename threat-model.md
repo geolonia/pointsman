@@ -10,7 +10,9 @@
   bound to the commit. A report against a later commit is triaged against the
   model as it stood at that commit, not against this model.
 - **Date / author**: 2026-10-16, drafted for the maintainer, Daniel Kastl, who
-  ratifies the claims in §1.18.
+  ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
+  opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
+  `R-DATA-MINIMISATION`; the rest still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
   the Alpha-Omega `threat-model` plugin, version 1.2.1 at commit
@@ -380,6 +382,7 @@ configuration is in-model even when the configuration is not the default.
 | GitHub login (`PUBLIC_URL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ALLOWED_GITHUB_ORGS`, `OAUTH_KV`) | wrangler vars, secret, binding | unset | all set: people may log in to `/mcp`; none: `/mcp` takes API tokens only; some: every request fails with a configuration error | both supported; a partial configuration is refused | *(documented, docs/mcp.md "Setting up GitHub login": "Set all of these or none")* |
 | `global_fetch_strictly_public` | `compatibility_flags` | present in all three wrangler configs | outbound fetches reach only public addresses | required; a deployment without it is unsupported and voids `P-OUTBOUND-PUBLIC-ONLY` | *(maintainer, 2026-10)* |
 | `log.store_state: true` | per profile | `false` | stores the full state in D1 instead of only its hash | supported; voids `P-STATE-NOT-STORED` for that profile | *(documented, docs/decision-log.md "What is stored")* |
+| `route: true` on a `detour` fact | per profile | `false` | the fact keeps the way around, whose ends are the section's place in the state; stored with the decision, returned by the API and MCP, and written by the bridge into the Decision entity | supported; narrows `P-STATE-NOT-STORED` for that profile (the place, not the rest of the state) | *(documented, docs/decision-log.md "What is stored")* |
 | `mcp.visible: true` | per profile | `false` | the profile is listed and callable through MCP, by every logged-in person and by tokens in scope | supported | *(documented, docs/mcp.md "Only profiles that set `mcp.visible: true`")* |
 | Test tokens (`tokens.mjs create --test`) | token record `test: true` | not set | decisions are made but not logged, marked `test: true`; the token may only decide and list profiles over REST | supported | *(documented, README "API tokens")* |
 | Bridge `BRIDGE_QUEUE` | bridge binding | unset | with a queue, notifications are answered 202 and handled later with retries; without it, in the broker's request | both supported | *(documented, bridge/README.md "Reliable delivery (queue)")* |
@@ -770,7 +773,9 @@ what voids it.
   Voided by: `log.store_state: true` on a profile (`src/app.ts:401`), the AI
   Gateway's `collect_logs: true` (`ai-gateway.json`; documented in
   docs/models.md "Logs hold the state"), and a model server's own retention
-  (`D-STATE-TO-BACKEND`). The first two are §1.6 rows.
+  (`D-STATE-TO-BACKEND`). The first two are §1.6 rows. Narrowed by: `route:
+  true` on a `detour` fact, which keeps the section's place in the stored
+  facts (`src/facts-routing.ts`; §1.6 row).
 - **`P-SECRETS-NOT-LOGGED`** — API keys for the model server and the routing
   server, the callback secret and the GitHub client secret never appear in
   logs, error messages or responses; outbound calls that carry a key refuse
@@ -966,8 +971,9 @@ the receivers must do for §1.5–§1.11 to hold.
 - **`R-DATA-MINIMISATION`** — do not send secrets in `state`; send personal
   data only when the AI Gateway's `collect_logs` setting and the profile's
   `log.store_state` are what you intend; set `collect_logs: false` when
-  inputs must not be kept *(documented, docs/models.md "Logs hold the
-  state")*.
+  inputs must not be kept; set `route: true` on a `detour` fact only where the
+  place may be kept *(documented, docs/models.md "Logs hold the state";
+  docs/decision-log.md "What is stored")*.
 - **`R-CALLBACK-SECRET`** — set `CALLBACK_SECRET` with `wrangler secret put`
   before clients use `callback_url`; without it no callback is sent
   *(documented, docs/deployment.md "Set the callback secret")*.

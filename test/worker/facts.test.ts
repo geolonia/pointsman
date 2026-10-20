@@ -68,10 +68,23 @@ describe('lookups', () => {
     const provider: FactProvider = { lookup: async (q) => (calls.push(q), new MockFactProvider().lookup(q)) };
     expect(await lookupFacts(specs, state(line), provider)).toEqual({
       flood: { missing: false, values: { inside: true, rank: 1, class: 'mock' }, source: 'mock' },
-      detour: { missing: false, values: { possible: true, extra_m: 0 }, source: 'mock' },
+      detour: { missing: false, values: { possible: true, extra_m: 0, route: null }, source: 'mock' },
     });
     // A detour always says how: by car unless the profile says walk.
-    expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', geometry: line }]);
+    expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', route: false, geometry: line }]);
+  });
+
+  it('keep a route only for a detour fact that asks for it, whatever the provider sends', async () => {
+    const always: FactProvider = { lookup: async () => ({ values: { possible: true, extra_m: 10, route: 'kz}fbAo~upiG??' }, source: 's' }) };
+    const asked: FactSpec[] = [{ name: 'detour', type: 'detour', at: '$.location.value', route: true }];
+    expect((await lookupFacts([specs[1]!], state(line), always)).detour).toMatchObject({ values: { route: null } });
+    expect((await lookupFacts(asked, state(line), always)).detour).toMatchObject({ values: { route: 'kz}fbAo~upiG??' } });
+  });
+
+  it('give route null for a provider that never sends one', async () => {
+    const old: FactProvider = { lookup: async () => ({ values: { possible: true, extra_m: 10 }, source: 's' }) };
+    const asked: FactSpec[] = [{ name: 'detour', type: 'detour', at: '$.location.value', route: true }];
+    expect((await lookupFacts(asked, state(line), old)).detour).toEqual({ missing: false, values: { possible: true, extra_m: 10, route: null }, source: 's' });
   });
 
   it('record why a fact is missing, and never throw', async () => {

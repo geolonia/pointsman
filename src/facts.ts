@@ -14,6 +14,8 @@ export interface FactQuery {
   layer?: string;
   /** For `detour`; always set for detours (default drive). */
   mode?: DetourMode;
+  /** For `detour`: also return the way around; always set for detours (default false). */
+  route?: boolean;
   geometry: Geometry;
 }
 
@@ -55,6 +57,13 @@ export function toGeometry(value: unknown): Geometry | null {
     return { type, coordinates: coordinates.map((p: Position) => [p[0], p[1]] as Position) };
   }
   return null;
+}
+
+/** A detour result without a route (from a provider written before the field) gets route null. */
+function withRoute(result: FactResult): FactResult {
+  const values: unknown = (result as Partial<FactResult> | null)?.values;
+  if (values === null || typeof values !== 'object' || Array.isArray(values) || Object.hasOwn(values, 'route')) return result;
+  return { ...result, values: { ...(values as FactResult['values']), route: null } };
 }
 
 /** Null when the result fits the fact type, otherwise what is wrong. */
@@ -104,7 +113,7 @@ export async function lookupFacts(
         provider.lookup({
           type: spec.type,
           ...(spec.layer !== undefined && { layer: spec.layer }),
-          ...(spec.type === 'detour' && { mode: spec.mode ?? 'drive' }),
+          ...(spec.type === 'detour' && { mode: spec.mode ?? 'drive', route: spec.route === true }),
           geometry,
         }, controller.signal),
         timeout,
@@ -113,9 +122,13 @@ export async function lookupFacts(
         controller.abort();
         return [spec.name, { missing: true, reason: 'timeout' }];
       }
-      const problem = resultError(spec.type, result);
+      const checked = spec.type === 'detour' ? withRoute(result) : result;
+      const problem = resultError(spec.type, checked);
       if (problem) throw new FactError(`invalid result: ${problem}`);
-      return [spec.name, { missing: false, values: { ...result.values }, source: result.source }];
+      const values = { ...checked.values };
+      // The route shows the place: kept only when the profile asks for it, whatever the provider sent.
+      if (spec.type === 'detour' && spec.route !== true) values.route = null;
+      return [spec.name, { missing: false, values, source: checked.source }];
     } catch (err) {
       // The message only: errors must not carry the location into the logs.
       console.error(`fact ${spec.name} (${spec.type}): ${err instanceof Error ? err.message : 'lookup failed'}`);
@@ -140,7 +153,7 @@ export class MockFactProvider implements FactProvider {
       case 'nearest':
         return { values: { found: true, distance_m: 250, name: 'Mock feature' }, source: 'mock' };
       case 'detour':
-        return { values: { possible: true, extra_m: 0 }, source: 'mock' };
+        return { values: { possible: true, extra_m: 0, route: null }, source: 'mock' };
     }
   }
 }

@@ -32,7 +32,7 @@ function server(...responses: (() => Response)[]) {
 describe('detours', () => {
   it('compare the drive with and without the whole section, ends left open', async () => {
     const { bodies, router } = server(() => ok(0.24), () => ok(0.85));
-    expect(await router.detour(section)).toEqual({ values: { possible: true, extra_m: 610 }, source: expect.stringContaining('OpenStreetMap') });
+    expect(await router.detour(section)).toEqual({ values: { possible: true, extra_m: 610, route: null }, source: expect.stringContaining('OpenStreetMap') });
     expect(bodies[0]).not.toHaveProperty('exclude_polygons');
     const polygons = bodies[1].exclude_polygons as [number, number][][];
     // The polygons cover the section without its ends (20 m open at each end).
@@ -43,9 +43,37 @@ describe('detours', () => {
     expect(bodies[1].costing).toBe('auto');
   });
 
+  it('keep the way around as an encoded polyline only when asked', async () => {
+    const shaped = (shape: unknown, legs = 1) => () => Response.json({ trip: { summary: { length: 0.85 }, legs: Array.from({ length: legs }, () => ({ shape })) } });
+    const routeOf = async (answer: () => Response, withRoute = true) => {
+      const { bodies, router } = server(() => ok(0.24), answer);
+      const { values } = await router.detour(section, undefined, 'walk', withRoute);
+      expect(bodies[1].shape_format).toBe('polyline6');
+      expect(values.extra_m).toBe(610);
+      return values.route;
+    };
+    expect(await routeOf(shaped('kz}fbAo~upiG??'))).toBe('kz}fbAo~upiG??');
+    // Not asked for: the profile did not set route: true.
+    expect(await routeOf(shaped('kz}fbAo~upiG??'), false)).toBeNull();
+    // '??' is one position (two zero deltas): a valid polyline of any even length.
+    expect(await routeOf(shaped('??'.repeat(3000)))).toHaveLength(6000);
+    expect(await routeOf(shaped('??'.repeat(3001)))).toBeNull();
+    // Only polyline characters, but incomplete: an open number, or half a position.
+    expect(await routeOf(shaped('a'))).toBeNull();
+    expect(await routeOf(shaped('???'))).toBeNull();
+    expect(await routeOf(shaped('??'))).toBeNull();
+    // Not an encoded polyline, or not one leg: left out, the length stays.
+    expect(await routeOf(shaped('<b>x</b>'))).toBeNull();
+    expect(await routeOf(shaped('abc def'))).toBeNull();
+    expect(await routeOf(shaped(''))).toBeNull();
+    expect(await routeOf(shaped(42))).toBeNull();
+    expect(await routeOf(shaped('abc', 2))).toBeNull();
+    expect(await routeOf(() => ok(0.85))).toBeNull();
+  });
+
   it('fall back to a box in the middle when the whole section leaves no route', async () => {
     const { bodies, router } = server(() => ok(0.24), noPath, () => ok(0.5));
-    expect((await router.detour(section)).values).toEqual({ possible: true, extra_m: 260 });
+    expect((await router.detour(section)).values).toEqual({ possible: true, extra_m: 260, route: null });
     expect(bodies).toHaveLength(3);
   });
 
@@ -102,11 +130,11 @@ describe('detours', () => {
       return { bodies, router: new ValhallaRouter(URL_, fetchFn) };
     };
     const normal = limited(100);
-    expect((await normal.router.detour(winding)).values).toEqual({ possible: true, extra_m: 500 });
+    expect((await normal.router.detour(winding)).values).toEqual({ possible: true, extra_m: 500, route: null });
     expect(vertices(normal.bodies[1])).toBeLessThanOrEqual(100);
     // A server that allows only 20: the section's closure (5 rectangles, 25 vertices) is refused, the box at the middle is used.
     const strict = limited(20);
-    expect((await strict.router.detour(winding)).values).toEqual({ possible: true, extra_m: 500 });
+    expect((await strict.router.detour(winding)).values).toEqual({ possible: true, extra_m: 500, route: null });
     expect(strict.bodies).toHaveLength(3);
     expect(vertices(strict.bodies[2])).toBe(5);
   });
@@ -115,7 +143,7 @@ describe('detours', () => {
     // 30 m: too short for the ends-open corridor, long enough for a box at the middle.
     const short: Geometry = { type: 'LineString', coordinates: [[139.7500, 35.7000], [139.7500, 35.70027]] };
     const { bodies, router } = server(() => ok(0.03), () => ok(0.2));
-    expect((await router.detour(short)).values).toEqual({ possible: true, extra_m: 170 });
+    expect((await router.detour(short)).values).toEqual({ possible: true, extra_m: 170, route: null });
     const box = bodies[1].exclude_polygons[0] as [number, number][];
     expect(inside([139.7500, 35.700135], box)).toBe(true);
     // 4 m: any closure would cover an end, so no answer (not "no way around").
@@ -140,13 +168,26 @@ describe('detours', () => {
 
   it('walk when asked to: pedestrian costing for every request', async () => {
     const { bodies, router } = server(() => ok(0.24), () => ok(0.4));
-    expect((await router.detour(section, undefined, 'walk')).values).toEqual({ possible: true, extra_m: 160 });
+    expect((await router.detour(section, undefined, 'walk')).values).toEqual({ possible: true, extra_m: 160, route: null });
     expect(bodies.map((b) => b.costing)).toEqual(['pedestrian', 'pedestrian']);
     // Through the provider, from the profile's mode.
     const p = server(() => ok(0.24), () => ok(0.3));
     const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g' }], { g: section }, new GsiFactProvider({ routing: p.router }));
     expect(facts.walk).toMatchObject({ missing: false, values: { extra_m: 60 } });
     expect(p.bodies.map((b) => b.costing)).toEqual(['pedestrian', 'pedestrian']);
+  });
+
+  it('give the route only to a fact with route: true', async () => {
+    const shaped = () => Response.json({ trip: { summary: { length: 0.3 }, legs: [{ shape: 'kz}fbAo~upiG??' }] } });
+    const ask = async (route?: boolean) => {
+      const { router } = server(() => ok(0.24), shaped);
+      const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g', ...(route !== undefined && { route }) }], { g: section }, new GsiFactProvider({ routing: router }));
+      const walk = facts.walk;
+      return walk && !walk.missing ? walk.values.route : 'missing';
+    };
+    expect(await ask(true)).toBe('kz}fbAo~upiG??');
+    expect(await ask()).toBeNull();
+    expect(await ask(false)).toBeNull();
   });
 
   it('need a section, not a point', async () => {

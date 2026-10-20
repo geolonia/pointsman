@@ -206,6 +206,8 @@ describe('facts', () => {
   it.each([
     ['facts.rain.inside == true', 'does not refer to a fact of this profile'],
     ['facts.flood.distance_m > 1', 'inside facts have missing, inside, rank, class'],
+    // The route is for people and maps: no rule can use it.
+    ["facts.detour.route == 'x'", 'detour facts have missing, possible, extra_m'],
     ['facts.flood.class >= 1', 'cannot compare string with number'],
     ['facts.flood == true', 'does not refer to a fact of this profile'],
   ])('refuses %s', (when, message) => {

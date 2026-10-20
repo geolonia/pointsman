@@ -184,12 +184,13 @@ policy:
 | `at` | JSONPath to a GeoJSON `Point` or `LineString` (WGS 84) in the request state, for example `$.location.value` for an NGSI-LD `GeoProperty`. Read from what the client sends, before the `input` mapping. Through MCP, clients send the input fields themselves, so there `at` reads those (for example `$.location`). |
 | `layer` | For `inside` and `nearest`: the layer to look in. Layers are set up per deployment (source, licence, attribution), not in the profile. |
 | `mode` | For `detour`: `drive` (default) or `walk`, the way around by car or on foot. |
+| `route` | For `detour`: `true` to also return the way around (`route`). Default `false`: the route starts and ends at the section, so it shows the place, and facts are stored with every decision even when the state is not ([decision-log.md](decision-log.md#what-is-stored)). |
 
 | Type | Fields | Notes |
 |---|---|---|
 | `inside` | `inside` (boolean), `rank` (number), `class` (text) | Inside an area of the layer. `rank` and `class` describe the area, for example a flood depth class. Not inside: `rank` 0, `class` empty. |
 | `nearest` | `found` (boolean), `distance_m` (number), `name` (text) | The nearest feature of the layer. None found: `found` false, no distance or name. |
-| `detour` | `possible` (boolean), `extra_m` (number) | Extra metres around a closed section, by car or on foot (`mode`). Needs a `LineString`. No way around: `possible` false, no `extra_m`. |
+| `detour` | `possible` (boolean), `extra_m` (number), `route` (text) | Extra metres around a closed section, by car or on foot (`mode`). Needs a `LineString`. No way around: `possible` false, no `extra_m`. `route` is the way around, from one end of the section to the other, as an encoded polyline with precision 6 (as Valhalla sends it), so that apps can draw it. It has a value only when the fact sets `route: true`, the server sent a valid shape, and it is at most 6,000 characters. Rules cannot refer to it. |
 
 Every fact also has `missing` (boolean).
 
