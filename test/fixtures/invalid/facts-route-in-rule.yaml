@@ -1,4 +1,4 @@
-# expect: detour facts have missing, possible, extra_m
+# expect: detour facts have missing, reason, possible, extra_m
 id: facts-route-in-rule
 version: 1
 title: { en: Test, ja: テスト }

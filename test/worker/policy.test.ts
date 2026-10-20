@@ -195,8 +195,18 @@ describe('facts', () => {
     ['facts.detour.extra_m >= 300 or facts.flood.rank >= 5', true],
     ['not (facts.detour.extra_m >= 300 and facts.flood.rank >= 9)', true],
     ['facts.detour.extra_m >= 300 or stuck.yes > 0.9', false],
+    // Why a fact is missing; unknown for a fact that is there.
+    ["facts.detour.reason == 'timeout'", true],
+    ["facts.detour.missing == true and facts.detour.reason != 'no_location'", true],
+    ["facts.flood.reason == 'timeout'", false],
+    ["facts.flood.reason != 'timeout'", false],
   ])('%s → %s', (when, expected) => {
     expect(result(when)).toBe(expected);
+  });
+
+  it('reads no_location for a fact whose place is not of its kind (a point for a detour)', () => {
+    const point = { ...found, detour: { missing: true as const, reason: 'no_location' as const } };
+    expect(result("facts.detour.missing == true and facts.detour.reason != 'no_location'", point)).toBe(false);
   });
 
   it('treats facts that were never looked up as missing', () => {
@@ -206,9 +216,11 @@ describe('facts', () => {
 
   it.each([
     ['facts.rain.inside == true', 'does not refer to a fact of this profile'],
-    ['facts.flood.distance_m > 1', 'inside facts have missing, inside, rank, class'],
+    ['facts.flood.distance_m > 1', 'inside facts have missing, reason, inside, rank, class'],
+    ["facts.detour.reason == 'gone'", 'is not a reason a fact can be missing (no_location, unavailable, timeout, error)'],
+    ['facts.detour.reason == 1', 'cannot compare string with number'],
     // The route is for people and maps: no rule can use it.
-    ["facts.detour.route == 'x'", 'detour facts have missing, possible, extra_m'],
+    ["facts.detour.route == 'x'", 'detour facts have missing, reason, possible, extra_m'],
     ['facts.flood.class >= 1', 'cannot compare string with number'],
     ['facts.flood == true', 'does not refer to a fact of this profile'],
   ])('refuses %s', (when, message) => {
@@ -305,7 +317,7 @@ describe('decisions', () => {
     ["decisions.check.outcome == 'later'", 'is not an outcome of decisions.check'],
     ["decisions.check.answers.category.value == 'rain'", '"rain" is not an option of "category" in road-check'],
     ['decisions.check.answers.nothing.yes >= 1', 'does not refer to a question'],
-    ['decisions.check.facts.flood.depth >= 1', 'inside facts have missing, inside, rank, class'],
+    ['decisions.check.facts.flood.depth >= 1', 'inside facts have missing, reason, inside, rank, class'],
     ['decisions.check.rule == 0', 'decisions have missing, action, outcome, reviewed'],
     ["decisions.check.outcome >= 'urgent'", 'works only on numbers'],
   ])('refuses %s', (when, message) => {
@@ -324,6 +336,26 @@ describe('decisions', () => {
 
 // The example chain (examples/profiles, as in the FIWARE demo) over every
 // flow: a rule-order change that loses urgency or a person's answer fails here.
+
+describe('decisions.<name>.facts.<fact>.reason', () => {
+  const required: RequiredProfiles = {
+    'road-check': { questions, facts: [{ name: 'walk', type: 'detour', mode: 'walk', at: '$.location' }], policy: { default: 'review' } } as unknown as Profile,
+  };
+  const chained = { questions: [], requires: [{ name: 'check', profile: 'road-check' }], policy: { rules: [{ when: "decisions.check.facts.walk.reason == 'timeout'", action: 'hit' }], default: 'miss' } };
+  const input = (walk: Fact): RequiredDecisionInput => ({ action: 'review', outcome: 'review', reviewed: false, answers: {}, facts: { walk } });
+
+  it('reads the reason of a required decision, and keeps it in what the rules read', () => {
+    const policy = compilePolicy(chained as never, required);
+    expect(policy.decide({}, {}, { check: input({ missing: true, reason: 'timeout' }) }).action).toBe('hit');
+    expect(policy.decide({}, {}, { check: input({ missing: false, values: { possible: true, extra_m: 10 }, source: 'x' }) }).action).toBe('miss');
+    expect(policy.read({ check: input({ missing: true, reason: 'timeout' }) }).check).toMatchObject({ 'facts.walk.reason': 'timeout' });
+  });
+
+  it('refuses a reason that does not exist, naming the required profile', () => {
+    const bad = { ...chained, policy: { rules: [{ when: "decisions.check.facts.walk.reason == 'gone'", action: 'hit' }], default: 'miss' } };
+    expect(policyErrors(bad as never, required).map(([, m]) => m).join()).toMatch(/is not a reason a fact can be missing/);
+  });
+});
 
 describe('the example final decision (road-closure-final)', () => {
   const all = bundledProfiles as Profile[];

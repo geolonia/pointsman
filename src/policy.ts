@@ -40,9 +40,15 @@
 // uses only TypeScript syntax that Node can strip (no enums, no parameter
 // properties) and imports types only.
 
-import type { Answer, Fact, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
+import type { Answer, Fact, FactMissingReason, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
 
 type Kind = 'number' | 'string' | 'boolean';
+
+/** Why a fact can be missing, for facts.<fact>.reason: every FactMissingReason (tsc checks both ways). */
+const REASONS = ['no_location', 'unavailable', 'timeout', 'error'] as const satisfies readonly FactMissingReason[];
+const ALL_REASONS: Exclude<FactMissingReason, (typeof REASONS)[number]> extends never ? true : never = true;
+void ALL_REASONS;
+const MISSING_REASONS: string[] = [...REASONS];
 type Value = number | string | boolean;
 type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
 
@@ -191,10 +197,14 @@ function resolveFact(word: string, facts: FactSpec[]): Operand {
   if (!f) throw new PolicyError(`"${word}" does not refer to a fact of this profile`);
   const field = rest.slice(f.name.length + 1);
   if (field === 'missing') return { kind: 'boolean', fact: f.name, field };
+  // Why a fact is missing; unknown when it is not missing (also when it was
+  // never looked up). Checked before the type's fields: no fact type may
+  // have a field named reason.
+  if (field === 'reason') return { kind: 'string', fact: f.name, field };
   const display = DISPLAY_FIELDS[f.type] ?? [];
   const kind = Object.hasOwn(FACT_FIELDS[f.type], field) && !display.includes(field) ? FACT_FIELDS[f.type][field] : undefined;
   const fields = Object.keys(FACT_FIELDS[f.type]).filter((x) => !display.includes(x));
-  if (!kind) throw new PolicyError(`"${word}": ${f.type} facts have missing, ${fields.join(', ')}`);
+  if (!kind) throw new PolicyError(`"${word}": ${f.type} facts have missing, reason, ${fields.join(', ')}`);
   return { kind, fact: f.name, field };
 }
 
@@ -323,6 +333,10 @@ class Parser {
           throw new PolicyError(`"${String(lit.literal)}" is not an option of "${q.name}"`);
         }
       }
+      const reason = 'fact' in ref ? ref.field === 'reason' : 'inner' in ref && 'fact' in ref.inner && ref.inner.field === 'reason';
+      if (reason && !MISSING_REASONS.includes(lit.literal as string)) {
+        throw new PolicyError(`"${String(lit.literal)}" is not a reason a fact can be missing (${MISSING_REASONS.join(', ')})`);
+      }
       if ('decision' in ref && 'allowed' in ref && ref.allowed && !ref.allowed.includes(lit.literal as string)) {
         throw new PolicyError(`"${String(lit.literal)}" is not an ${ref.field} of decisions.${ref.decision} (${ref.allowed.join(', ')})`);
       }
@@ -391,6 +405,7 @@ function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Recor
     const f = facts[operand.fact];
     if (!f) return operand.field === 'missing' ? true : undefined; // never looked up
     if (operand.field === 'missing') return f.missing;
+    if (operand.field === 'reason') return f.missing ? f.reason : undefined;
     if (f.missing) return undefined;
     const v = Object.hasOwn(f.values, operand.field) ? f.values[operand.field] : undefined;
     return v === null ? undefined : v;
