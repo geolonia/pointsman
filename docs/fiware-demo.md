@@ -41,9 +41,10 @@ And the profile turns the answers into one of three actions:
   "Spatial facts and the chain"). A person looks at it now.
 - **`publish`**: clear, consistent, confident category, no danger, and not in
   a flood zone of 3 m or deeper. It goes to the public map without waiting.
-- **`review`**: everything else goes to the normal queue, also every report
-  in a flood zone of 3 m or deeper, and every report whose flood zone could
-  not be looked up (version 3).
+- **`review`**: everything else goes to the normal queue. Since version 3
+  this also holds for a report in a flood zone of 3 m or deeper, or whose
+  flood zone could not be looked up, when it is not `urgent` by the rules
+  above.
 
 A person checks `urgent` and `review` reports and answers `publish` or
 `reject`. The demo then makes a final decision from this result and the
