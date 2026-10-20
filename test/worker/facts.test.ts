@@ -74,6 +74,13 @@ describe('lookups', () => {
     expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', route: false, geometry: line }]);
   });
 
+  it('keep a route only for a detour fact that asks for it, whatever the provider sends', async () => {
+    const always: FactProvider = { lookup: async () => ({ values: { possible: true, extra_m: 10, route: 'kz}fbAo~upiG??' }, source: 's' }) };
+    const asked: FactSpec[] = [{ name: 'detour', type: 'detour', at: '$.location.value', route: true }];
+    expect((await lookupFacts([specs[1]!], state(line), always)).detour).toMatchObject({ values: { route: null } });
+    expect((await lookupFacts(asked, state(line), always)).detour).toMatchObject({ values: { route: 'kz}fbAo~upiG??' } });
+  });
+
   it('record why a fact is missing, and never throw', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mock = new MockFactProvider();

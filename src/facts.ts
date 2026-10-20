@@ -117,7 +117,10 @@ export async function lookupFacts(
       }
       const problem = resultError(spec.type, result);
       if (problem) throw new FactError(`invalid result: ${problem}`);
-      return [spec.name, { missing: false, values: { ...result.values }, source: result.source }];
+      const values = { ...result.values };
+      // The route shows the place: kept only when the profile asks for it, whatever the provider sent.
+      if (spec.type === 'detour' && spec.route !== true) values.route = null;
+      return [spec.name, { missing: false, values, source: result.source }];
     } catch (err) {
       // The message only: errors must not carry the location into the logs.
       console.error(`fact ${spec.name} (${spec.type}): ${err instanceof Error ? err.message : 'lookup failed'}`);

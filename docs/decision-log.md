@@ -34,7 +34,8 @@ need the inputs, for example to build a training set later.
 
 Facts are stored as looked up, also without `log.store_state`. They are
 derived values (a flood class, the nearest site and its distance, extra
-metres), with one exception: a `detour` fact with `route: true` keeps the way
+metres); the nearest site and its distance already tell roughly where the
+place is. A `detour` fact with `route: true` goes further: it keeps the way
 around, which starts and ends at the place in the state. Set it only where
 that place may be kept.
 

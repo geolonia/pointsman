@@ -10,7 +10,9 @@
   bound to the commit. A report against a later commit is triaged against the
   model as it stood at that commit, not against this model.
 - **Date / author**: 2026-10-16, drafted for the maintainer, Daniel Kastl, who
-  ratifies the claims in §1.18.
+  ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
+  opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
+  `R-DATA-MINIMISATION`; the rest still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
   the Alpha-Omega `threat-model` plugin, version 1.2.1 at commit
@@ -969,8 +971,9 @@ the receivers must do for §1.5–§1.11 to hold.
 - **`R-DATA-MINIMISATION`** — do not send secrets in `state`; send personal
   data only when the AI Gateway's `collect_logs` setting and the profile's
   `log.store_state` are what you intend; set `collect_logs: false` when
-  inputs must not be kept *(documented, docs/models.md "Logs hold the
-  state")*.
+  inputs must not be kept; set `route: true` on a `detour` fact only where the
+  place may be kept *(documented, docs/models.md "Logs hold the state";
+  docs/decision-log.md "What is stored")*.
 - **`R-CALLBACK-SECRET`** — set `CALLBACK_SECRET` with `wrangler secret put`
   before clients use `callback_url`; without it no callback is sent
   *(documented, docs/deployment.md "Set the callback secret")*.

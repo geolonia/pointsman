@@ -1251,7 +1251,7 @@
     "never act on a decision marked test: true; keep test tokens out of production clients",
     "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
-    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept",
+    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept",
     "set CALLBACK_SECRET before clients use callback_url; without it no callback is sent",
     "a GitHub App with only Organization → Members: Read-only installed on every allowed organization; all five settings or none; accept the 7-day lag or clear OAUTH_KV",
     "set mcp.visible: true only on profiles every member of the allowed organizations may use",

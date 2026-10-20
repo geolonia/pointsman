@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:6d9a8eed2bec90997367cfbe023e489d819a0a575077f81de5d9877eb44ec109"
+prose_version: "threat-model.md@sha256:fe3059d09f5ec58d48484b7fe159e74a7270e7d0756fd5b010dd201f3aaaa925"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 259, maintainer: 70, inferred: 0, assumption: 0}
@@ -1388,7 +1388,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "actions/triage/README.md; openapi.yaml ref"}
   - id: R-DATA-MINIMISATION
     component: engine-api
-    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept"
+    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept"
     enforces: [backend-keeps-nothing, P-STATE-NOT-STORED]
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state\""}
   - id: R-CALLBACK-SECRET
