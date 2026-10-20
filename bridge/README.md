@@ -291,7 +291,8 @@ the closure cuts people off from their evacuation site (route 2).
   (`wasInformedBy`, from `check.decision`), so the chain can be followed in
   the broker. Pointsman does not know about this link. When the second
   profile `requires` the first (next section), Pointsman checks it and its
-  graph shows the order; the demo does this since 2026-10-21. (So the
+  graph shows the order; the demo moves to this with
+  geolonia/pointsman-config#19 (planned for 2026-10-21). (So the
   example uses a profile of your own: `evacuation-access-check` requires
   `check` since version 4, and a route for it needs `requires`.)
 

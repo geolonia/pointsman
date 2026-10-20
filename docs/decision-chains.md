@@ -344,9 +344,10 @@ result is:
 - The bridge reads each required attribute's `decisionId` and sends it in
   `decisions`. A name the profile does not require is refused by Pointsman.
   This replaces `informedBy`, which keeps working as a route with a single
-  requirement. The demo's evacuation check moved over on 2026-10-21
-  (`evacuation-access-check` version 4 requires `check`), so Pointsman knows
-  the order of the three steps and the graph shows it.
+  requirement. The demo's evacuation check moves over with
+  geolonia/pointsman-config#19 and geolonia/pointsman-demo#78 (planned for
+  2026-10-21: `evacuation-access-check` version 4 requires `check`), so
+  Pointsman knows the order of the three steps and the graph shows it.
 - **When to run:** when all non-optional required decisions are there, and
   each optional one is either there or will not come. "Will not come" is
   the subscription's `q` (in the demo: `check` is `publish`, or
