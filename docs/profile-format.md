@@ -196,7 +196,7 @@ Every fact also has `missing` (boolean).
 
 **A missing fact is never guessed.** A lookup can fail: no location in the
 state (`no_location`), no fact provider (`unavailable`), too slow
-(`timeout`, 3 s per fact) or an error (`error`). A comparison with a missing
+(`timeout`, 3 s per fact, 8 s for `detour`) or an error (`error`). A comparison with a missing
 fact, or with a field that has no value, is *unknown*, and a rule matches
 only when its condition is true:
 
@@ -272,11 +272,13 @@ followed (they would carry the key to another host): a 3xx answer is an
   an `error`, like any other failure. This provider never answers
   `possible: false`.
 - Sections longer than 5 km are refused (`error`).
-- A server that starts cold (for example on AWS Lambda) can take longer than
-  the 3 s limit for the first lookups: those facts are `timeout`.
-- A server that refuses the request (wrong key: 403; too many requests: 429)
-  makes the fact `error`; the Worker log shows the status. There is no retry:
-  a decision does not wait for the server.
+- The ways with and without the section are asked for at the same time, so
+  a server that starts cold (for example on AWS Lambda) delays the answer
+  once, not twice. A `detour` fact has 8 s instead of 3 s for that.
+- A call that gets no connection or a 5xx answer is tried once more, after
+  a short pause, within those 8 s. A server that refuses the request (wrong
+  key: 403; too many requests: 429) is not asked again: the fact is
+  `error`, and the Worker log shows the status.
 
 Geocoding is still open (issue #65).
 

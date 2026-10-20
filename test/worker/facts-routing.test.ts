@@ -80,8 +80,39 @@ describe('detours', () => {
   it('never claim no way around: no path with the section closed is an error', async () => {
     const { router } = server(() => ok(0.24), noPath, noPath);
     await expect(router.detour(section)).rejects.toThrow(/no route with the section closed/);
-    const failing = server(() => ok(0.24), () => new Response('down', { status: 503 }));
+    // A 503 is tried once more; failing twice, it is an error.
+    const down = () => new Response('down', { status: 503 });
+    const failing = server(() => ok(0.24), down, down);
     await expect(failing.router.detour(section)).rejects.toThrow('routing 503');
+  });
+
+  it('ask with and without the section at the same time', async () => {
+    let open = 0;
+    let most = 0;
+    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      open++;
+      most = Math.max(most, open);
+      await new Promise((r) => setTimeout(r, 20));
+      open--;
+      return ok(JSON.parse(String(init?.body)).exclude_polygons ? 0.85 : 0.24);
+    }) as typeof fetch;
+    const router = new ValhallaRouter(URL_, fetchFn);
+    expect((await router.detour(section)).values.extra_m).toBe(610);
+    expect(most).toBe(2);
+  });
+
+  it('try a call once more after a 5xx or a lost connection, but not after a 4xx', async () => {
+    const down = () => new Response('down', { status: 502 });
+    const lost = () => { throw new TypeError('network connection lost'); };
+    // Direct and around run at once: the first two answers go to them, the retry comes third.
+    const a = server(() => ok(0.24), down, () => ok(0.85));
+    expect((await a.router.detour(section)).values.extra_m).toBe(610);
+    expect(a.bodies).toHaveLength(3);
+    const b = server(lost, () => ok(0.85), () => ok(0.24));
+    expect((await b.router.detour(section)).values.extra_m).toBe(610);
+    const c = server(() => ok(0.24), () => new Response('{}', { status: 403 }));
+    await expect(c.router.detour(section)).rejects.toThrow('routing 403');
+    expect(c.bodies).toHaveLength(2);
   });
 
   it('never close an end, also when the section bends back to its start', async () => {

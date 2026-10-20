@@ -39,6 +39,14 @@ const POLYLINE = /^[?-~]+$/;
 
 /** Valhalla error 176: the exclusion polygons have more vertices than the server allows. */
 class TooManyVertices extends FactError {}
+/** No connection, or a 5xx answer: worth one more try. */
+class RoutingUnavailable extends FactError {}
+const RETRY_PAUSE_MS = 250;
+
+/** A promise's value or error, without throwing (two calls run at once; both are awaited). */
+function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> {
+  return p.then((value) => ({ value }), (error: unknown) => ({ error: error ?? new FactError('routing failed') }));
+}
 const SOURCE = '© OpenStreetMap contributors (ODbL), routed with Valhalla';
 
 export class ValhallaRouter {
@@ -87,18 +95,22 @@ export class ValhallaRouter {
     const usable = closures.filter((polys) => polys.every((poly) => !inside(a, poly) && !inside(b, poly)));
     if (usable.length === 0) throw new FactError('section too short to close without closing its ends');
 
-    const direct = await this.route(a, b, undefined, costing, signal);
+    // The way with and without the section at the same time: a server that
+    // starts cold then delays the answer once, not twice.
+    const aroundOf = (polygons: Position[][]) => settle(this.route(a, b, polygons, costing, signal));
+    const [directResult, firstAround] = await Promise.all([settle(this.route(a, b, undefined, costing, signal)), aroundOf(usable[0]!)]);
+    if (directResult.error !== undefined) throw directResult.error;
+    const direct = directResult.value ?? null;
     if (direct === null) throw new FactError('no route along the section itself');
-    for (const polygons of usable) {
-      let around: Trip | null;
-      try {
-        around = await this.route(a, b, polygons, costing, signal);
-      } catch (err) {
+    for (let i = 0; i < usable.length; i++) {
+      const attempt = i === 0 ? firstAround : await aroundOf(usable[i]!);
+      if (attempt.error !== undefined) {
         // A server with a lower vertex limit than the default refuses the
         // closure (error 176): try the next, smaller one.
-        if (err instanceof TooManyVertices) continue;
-        throw err;
+        if (attempt.error instanceof TooManyVertices) continue;
+        throw attempt.error;
       }
+      const around = attempt.value ?? null;
       if (around !== null) {
         const route = withRoute && around.shape !== null && around.shape.length <= MAX_ROUTE_CHARS ? around.shape : null;
         return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: SOURCE };
@@ -110,8 +122,22 @@ export class ValhallaRouter {
     throw new FactError('no route with the section closed (no way around, or a closed road edge at an end)');
   }
 
-  /** The route by car (`auto`) or on foot (`pedestrian`), or null when Valhalla finds no route. */
+  /**
+   * The route by car (`auto`) or on foot (`pedestrian`), or null when
+   * Valhalla finds no route. A failed connection or a 5xx answer is tried
+   * once more, after a short pause, if the lookup's time is not up.
+   */
   private async route(from: Position, to: Position, exclude: Position[][] | undefined, costing: 'auto' | 'pedestrian', signal?: AbortSignal): Promise<Trip | null> {
+    try {
+      return await this.routeOnce(from, to, exclude, costing, signal);
+    } catch (err) {
+      if (!(err instanceof RoutingUnavailable) || signal?.aborted) throw err;
+      await new Promise((resolve) => setTimeout(resolve, RETRY_PAUSE_MS));
+      return this.routeOnce(from, to, exclude, costing, signal);
+    }
+  }
+
+  private async routeOnce(from: Position, to: Position, exclude: Position[][] | undefined, costing: 'auto' | 'pedestrian', signal?: AbortSignal): Promise<Trip | null> {
     signal?.throwIfAborted();
     const body = {
       locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }],
@@ -121,20 +147,28 @@ export class ValhallaRouter {
       ...(exclude && { exclude_polygons: exclude }),
     };
     const limit = AbortSignal.timeout(TIMEOUT_MS);
-    const res = await this.fetchFn(`${this.url}/route`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
-      body: JSON.stringify(body),
-      // A redirect would carry the key to another host: a 3xx is an error.
-      redirect: 'manual',
-      signal: signal ? AbortSignal.any([signal, limit]) : limit,
-    });
+    let res: Response;
+    try {
+      res = await this.fetchFn(`${this.url}/route`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
+        body: JSON.stringify(body),
+        // A redirect would carry the key to another host: a 3xx is an error.
+        redirect: 'manual',
+        signal: signal ? AbortSignal.any([signal, limit]) : limit,
+      });
+    } catch (err) {
+      // Time up (the lookup's or this call's): no retry. Anything else is the connection.
+      if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) throw err;
+      throw new RoutingUnavailable('routing: no connection');
+    }
     // Checked before the body: a redirect's body is not Valhalla's answer.
     if (res.status >= 300 && res.status < 400) throw new FactError(`routing ${res.status}`);
     const json = (await res.json().catch(() => null)) as { trip?: { summary?: { length?: unknown }; legs?: { shape?: unknown }[] }; error_code?: unknown } | null;
     if (!res.ok) {
       if (json?.error_code === 442) return null; // no path
       if (json?.error_code === 176) throw new TooManyVertices('routing: too many polygon vertices');
+      if (res.status >= 500) throw new RoutingUnavailable(`routing ${res.status}`);
       throw new FactError(`routing ${res.status}${typeof json?.error_code === 'number' ? ` (${json.error_code})` : ''}`);
     }
     const km = json?.trip?.summary?.length;

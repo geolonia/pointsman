@@ -40,6 +40,11 @@ export class FactUnavailableError extends FactError {
 }
 
 export const FACT_TIMEOUT_MS = 3000;
+/**
+ * A detour asks a routing server (two calls at once, one retry): a server
+ * that starts cold needs a few seconds for the first answer.
+ */
+export const DETOUR_TIMEOUT_MS = 8000;
 const MAX_POSITIONS = 1000;
 const MAX_SOURCE_LENGTH = 200;
 
@@ -93,7 +98,8 @@ export async function lookupFacts(
   specs: FactSpec[],
   state: unknown,
   provider: FactProvider | undefined,
-  timeoutMs = FACT_TIMEOUT_MS,
+  /** For tests: one limit for every fact. Default: 3 s, detours 8 s. */
+  timeoutMs?: number,
 ): Promise<Record<string, Fact>> {
   const entries = await Promise.all(specs.map(async (spec): Promise<[string, Fact]> => {
     const geometry = toGeometry(resolvePath(state, spec.at));
@@ -106,7 +112,7 @@ export async function lookupFacts(
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<'timeout'>((resolve) => {
-      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      timer = setTimeout(() => resolve('timeout'), timeoutMs ?? (spec.type === 'detour' ? DETOUR_TIMEOUT_MS : FACT_TIMEOUT_MS));
     });
     try {
       const result = await Promise.race([
