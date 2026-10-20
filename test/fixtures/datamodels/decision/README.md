@@ -1,7 +1,7 @@
 # Decision model, pinned copy
 
 Copied from [geolonia/datamodels](https://github.com/geolonia/datamodels) at
-commit 90ed126 (`models/decision/context.jsonld`,
+commit 5a2b79f (`models/decision/context.jsonld`,
 `models/decision/Decision/schema.json`), published as
 https://datamodels.jp/context/decision/v1.jsonld and
 https://datamodels.jp/schema/decision/Decision/v1.json.

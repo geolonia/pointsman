@@ -62,7 +62,6 @@
     },
     "answers": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "oneOf": [
           {
@@ -183,7 +182,7 @@
           }
         ]
       },
-      "description": "The model's answers, one per question, each with its probability",
+      "description": "The model's answers, one per question, each with its probability. Empty for a decision made by rules only; its model is then none",
       "x-ngsi": {
         "type": "JsonProperty"
       },
@@ -294,7 +293,7 @@
     },
     "model": {
       "type": "string",
-      "description": "Id of the model that answered",
+      "description": "Id of the model that answered; none for a decision made by rules only, with no model, whose answers are then an empty list",
       "x-ngsi": {
         "type": "Property"
       },
@@ -327,9 +326,10 @@
       "type": "string",
       "enum": [
         "pending",
-        "resolved"
+        "resolved",
+        "superseded"
       ],
-      "description": "State of the check by a person: pending or resolved. Absent when no check was asked",
+      "description": "State of the check by a person: pending, resolved, or superseded (the check was still pending when a newer decision replaced this one, so it is no longer needed). Absent when no check was asked. Corrections of answers do not depend on it: they can come at any time",
       "x-ngsi": {
         "type": "Property"
       },
@@ -402,7 +402,7 @@
           }
         }
       },
-      "description": "Answers corrected by a person (the ground truth for measuring the model)",
+      "description": "Answers corrected by a person (the ground truth for measuring the model). They can come at any time, also without a check (reviewStatus)",
       "x-ngsi": {
         "type": "JsonProperty"
       },
@@ -410,14 +410,59 @@
       "x-personal-data": true
     },
     "wasInformedBy": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "The earlier decisions this one used, in a chain of decisions. Always an array in the key-values form, even with one decision. In DMN terms, the decisions this one requires",
+      "x-ngsi": {
+        "type": "Relationship",
+        "target": "https://datamodels.jp/ns/decision/Decision",
+        "multi": true
+      },
+      "x-iri": "http://www.w3.org/ns/prov#wasInformedBy"
+    },
+    "requiredDecisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "decision"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The name the rule set gives this earlier decision, for example check"
+          },
+          "decision": {
+            "type": "string",
+            "format": "uri",
+            "description": "Id of the earlier decision. It must also be in wasInformedBy"
+          }
+        }
+      },
+      "description": "Which earlier decision played which part: one item per earlier decision, with the name the rule set gives it (each name once) and the decision's id. Every decision listed here must also be in wasInformedBy",
+      "x-ngsi": {
+        "type": "JsonProperty"
+      },
+      "x-iri": "https://datamodels.jp/ns/decision/requiredDecisions"
+    },
+    "replaces": {
       "type": "string",
       "format": "uri",
-      "description": "The decision this one followed, in a chain of decisions",
+      "description": "The decision this one replaces. This one is the same rule set's decision about the same entity, made again, for example after a person checked one of the decisions it used",
       "x-ngsi": {
         "type": "Relationship",
         "target": "https://datamodels.jp/ns/decision/Decision"
       },
-      "x-iri": "http://www.w3.org/ns/prov#wasInformedBy"
+      "x-iri": "http://purl.org/dc/terms/replaces"
     }
   },
   "required": [
@@ -483,7 +528,50 @@
           ]
         }
       }
+    },
+    {
+      "if": {
+        "required": [
+          "answers"
+        ],
+        "properties": {
+          "answers": {
+            "maxItems": 0
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "model": {
+            "const": "none"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "answers": {
+            "maxItems": 0
+          }
+        }
+      }
     }
   ],
+  "dependentRequired": {
+    "requiredDecisions": [
+      "wasInformedBy"
+    ]
+  },
   "additionalProperties": false
 }
