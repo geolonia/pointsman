@@ -96,7 +96,13 @@ export type EntityResult =
   | { id: string; resolves: string; finalAction: string }
   | { id: string; review: ReviewOutcome; written: boolean }
   | { id: string; action: string; decision: string; write: number }
-  | { id: string; error: string; retry: boolean; decision?: string };
+  /**
+   * retry: whether the broker should send the notification again. redirect:
+   * the broker or Pointsman answered with a redirect (#97); the broker is
+   * not asked to retry, but a queued message is, so it ends in the
+   * dead-letter queue and can be replayed once the URL is fixed.
+   */
+  | { id: string; error: string; retry: boolean; decision?: string; redirect?: true };
 
 type Entity = { id: string; type: string; [attribute: string]: unknown };
 
@@ -328,18 +334,27 @@ export async function handleMessage(message: BridgeMessage, config: BridgeConfig
     }
     return await handleEntity(current, route, config);
   } catch (err) {
-    return { id: entity.id, error: err instanceof Error ? err.message : String(err), retry: true };
+    return failure(entity.id, err);
   }
+}
+
+/**
+ * A thrown error as a result. A redirect will not pass on a second try of
+ * the broker (like any 3xx: see retryable): the URL needs fixing.
+ */
+function failure(id: string, err: unknown, decision?: string): EntityResult {
+  const error = err instanceof Error ? err.message : String(err);
+  const redirect = err instanceof Redirected;
+  return { id, error, retry: !redirect, ...(decision !== undefined && { decision }), ...(redirect && { redirect: true as const }) };
 }
 
 /** An entity as it is now (normalized, with the given context's names), 'gone', or the failed response. */
 async function readEntity(id: string, config: BridgeConfig, context = config.broker.context): Promise<Entity | 'gone' | Response> {
-  const fetchFn = config.fetch ?? fetch;
   const headers = brokerHeaders(config, 'application/json');
   delete headers['content-type'];
   headers.accept = 'application/json';
   if (context) headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
-  const res = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, { headers });
+  const res = await send(config, 'broker', `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, { headers });
   if (res.status === 404) return 'gone';
   if (!res.ok) return res;
   return (await res.json()) as Entity;
@@ -371,11 +386,14 @@ export async function handleQueueBatch(batch: { messages: readonly QueuedMessage
       continue;
     }
     const result = await handleMessage(body, direct, { fresh: true });
-    if ('retry' in result && result.retry) {
-      console.error(`bridge queue: ${result.id} (attempt ${message.attempts}): ${result.error}`);
+    const decision = 'decision' in result && result.decision ? ` (decision ${result.decision})` : '';
+    // A redirect too: a wrong URL, fixed in the configuration. Retried, the
+    // message ends in the dead-letter queue and can be replayed then.
+    if ('retry' in result && (result.retry || result.redirect)) {
+      console.error(`bridge queue: ${result.id}${decision} (attempt ${message.attempts}): ${result.error}`);
       message.retry({ delaySeconds: retryDelay(message.attempts) });
     } else {
-      if ('error' in result) console.error(`bridge queue: ${result.id}: ${result.error}`);
+      if ('error' in result) console.error(`bridge queue: ${result.id}${decision}: ${result.error}`);
       message.ack();
     }
   }
@@ -387,12 +405,11 @@ export function retryDelay(attempts: number): number {
 }
 
 async function handleEntity(entity: Entity, route: Route, config: BridgeConfig): Promise<EntityResult> {
-  const fetchFn = config.fetch ?? fetch;
   const hash = await inputHash(entity, route.inputs);
   const previous = entity[route.attribute] as { inputHash?: { value?: unknown } } | undefined;
   if (previous?.inputHash?.value === hash) return { id: entity.id, skipped: 'inputs unchanged' };
 
-  const res = await fetchFn(`${config.pointsman.url}/v1/decide/${encodeURIComponent(route.profile)}`, {
+  const res = await send(config, 'pointsman', `${config.pointsman.url}/v1/decide/${encodeURIComponent(route.profile)}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${config.pointsman.token}`, 'content-type': 'application/json', 'user-agent': USER_AGENT },
     body: JSON.stringify({ state: entity, ref: entity.id }),
@@ -406,40 +423,46 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     return { id: entity.id, error: 'unexpected answer from pointsman', retry: true };
   }
 
-  // One time for the entity and the property, when Pointsman gives none (older versions).
-  const decidedAt = new Date();
-  // The Decision entity first: the property on the entity points to it, and
-  // without it a retry decides again (no input hash written yet).
-  let decisionRef: string | undefined;
-  if (route.decisionEntity) {
-    const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
-    // 409: a retry of a notification whose entity was created, then the write failed.
-    if (!created.ok && created.status !== 409) {
-      return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
+  // From here on a decision exists: a failure keeps its id (a redirect
+  // throws, see send).
+  try {
+    // One time for the entity and the property, when Pointsman gives none (older versions).
+    const decidedAt = new Date();
+    // The Decision entity first: the property on the entity points to it, and
+    // without it a retry decides again (no input hash written yet).
+    let decisionRef: string | undefined;
+    if (route.decisionEntity) {
+      const created = await createEntity(toDecisionEntity(d, entity.id, route, decidedAt, informedByOf(entity, route)), config);
+      // 409: a retry of a notification whose entity was created, then the write failed.
+      if (!created.ok && created.status !== 409) {
+        return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
+      }
+      decisionRef = decisionEntityId(d.decision_id);
     }
-    decisionRef = decisionEntityId(d.decision_id);
-  }
-  // Also before the property, for the same reason. Its id comes from the
-  // inputs, not the decision (a retry decides again, with a new decision id),
-  // and the Task always follows the latest decision for these inputs.
-  if (route.task) {
-    const taskId = await taskEntityId(entity.id, route.attribute, hash);
-    const failed = route.task.actions.includes(d.action)
-      ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
-      : await cancelOpenTask(taskId, d.action, config);
-    if (failed) {
-      return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${failed.status}`, retry: retryable(failed.status) };
+    // Also before the property, for the same reason. Its id comes from the
+    // inputs, not the decision (a retry decides again, with a new decision id),
+    // and the Task always follows the latest decision for these inputs.
+    if (route.task) {
+      const taskId = await taskEntityId(entity.id, route.attribute, hash);
+      const failed = route.task.actions.includes(d.action)
+        ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
+        : await cancelOpenTask(taskId, d.action, config);
+      if (failed) {
+        return { id: entity.id, decision: d.decision_id, error: `broker refused the Task entity: ${failed.status}`, retry: retryable(failed.status) };
+      }
     }
-  }
 
-  const property = toProperty(d, hash, decidedAt, decisionRef);
-  const write = await writeAttribute(entity.id, route.attribute, property, config);
-  // Without a successful write the input hash is not stored either, so the
-  // next notification decides again: report it as a failure.
-  if (!write.ok) {
-    return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
+    const property = toProperty(d, hash, decidedAt, decisionRef);
+    const write = await writeAttribute(entity.id, route.attribute, property, config);
+    // Without a successful write the input hash is not stored either, so the
+    // next notification decides again: report it as a failure.
+    if (!write.ok) {
+      return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
+    }
+    return { id: entity.id, action: d.action, decision: d.decision_id, write: write.status };
+  } catch (err) {
+    return failure(entity.id, err, d.decision_id);
   }
-  return { id: entity.id, action: d.action, decision: d.decision_id, write: write.status };
 }
 
 /** Rate limits and server errors may pass on a second try; other 4xx will not. */
@@ -502,6 +525,28 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
  */
 export const USER_AGENT = 'pointsman-bridge (+https://github.com/geolonia/pointsman)';
 
+/** A 3xx from the broker or Pointsman: the bridge does not follow redirects (#97). */
+export class Redirected extends Error {
+  override name = 'Redirected';
+}
+
+/**
+ * Every request of the bridge goes through here. A redirect would send the
+ * credentials (broker token or API key, Pointsman token) and the entity to
+ * another URL, one the operator never set: it is not followed, and a 3xx is
+ * an error, checked before the body is read. Like the engine's own outbound
+ * calls (src/facts-routing.ts). The message has the status only: the
+ * Location header is not logged.
+ */
+async function send(config: BridgeConfig, to: 'broker' | 'pointsman', url: string, init: RequestInit): Promise<Response> {
+  const res = await (config.fetch ?? fetch)(url, { ...init, redirect: 'manual' });
+  if (res.status >= 300 && res.status < 400) {
+    await res.body?.cancel().catch(() => {});
+    throw new Redirected(`${to} answered ${res.status}, a redirect: the bridge does not follow redirects, check the ${to} URL`);
+  }
+  return res;
+}
+
 /** Authentication, tenant and content type: the same for every request to the broker. */
 function brokerHeaders(config: BridgeConfig, contentType: string): Record<string, string> {
   const { broker } = config;
@@ -519,14 +564,13 @@ function brokerHeaders(config: BridgeConfig, contentType: string): Record<string
  * (#41).
  */
 async function writeAttribute(id: string, name: string, property: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
-  const fetchFn = config.fetch ?? fetch;
   const { broker } = config;
   const headers = brokerHeaders(config, 'application/json');
   if (broker.context) headers.link = `<${broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const attrs = `${broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}/attrs`;
-  const write = await fetchFn(`${attrs}/${encodeURIComponent(name)}`, { method: 'PATCH', headers, body: JSON.stringify(property) });
+  const write = await send(config, 'broker', `${attrs}/${encodeURIComponent(name)}`, { method: 'PATCH', headers, body: JSON.stringify(property) });
   if (write.status !== 404) return write;
-  return fetchFn(attrs, { method: 'POST', headers, body: JSON.stringify({ [name]: property }) });
+  return send(config, 'broker', attrs, { method: 'POST', headers, body: JSON.stringify({ [name]: property }) });
 }
 
 /** The published context of the Decision model (datamodels.jp). */
@@ -707,9 +751,8 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     return { id, error: 'reviewedAt: expected a date and time (RFC 3339)', retry: false };
   }
 
-  const fetchFn = config.fetch ?? fetch;
   const decisionId = id.slice('urn:ngsi-ld:Decision:'.length);
-  const pointsman = (path: string, body?: unknown) => fetchFn(`${config.pointsman.url}${path}`, {
+  const pointsman = (path: string, body?: unknown) => send(config, 'pointsman', `${config.pointsman.url}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { authorization: `Bearer ${config.pointsman.token}`, 'user-agent': USER_AGENT, ...(body !== undefined && { 'content-type': 'application/json' }) },
     ...(body !== undefined && { body: JSON.stringify(body) }),
@@ -759,7 +802,7 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   headers.accept = 'application/json';
   if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const attrs = [...new Set(candidates.map((r) => r.attribute))].map(encodeURIComponent).join(',');
-  const got = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
+  const got = await send(config, 'broker', `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
   if (got.status === 404) return { id, review, written: false };
   if (!got.ok) return { id, error: `broker read failed: ${got.status}`, retry: retryable(got.status) };
   const current = (await got.json()) as Entity;
@@ -878,13 +921,12 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   // the entity could not tell them apart.
   const candidates = config.routes.filter((r) => r.decisionEntity && r.name === undefined);
   if (candidates.length === 0) return { id, skipped: 'nothing to resolve' };
-  const fetchFn = config.fetch ?? fetch;
   const headers = brokerHeaders(config, 'application/json');
   delete headers['content-type'];
   headers.accept = 'application/json';
   if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   const attrs = [...new Set(candidates.map((r) => r.attribute))].map(encodeURIComponent).join(',');
-  const got = await fetchFn(`${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
+  const got = await send(config, 'broker', `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
   if (got.status === 404) return { id, skipped: 'nothing to resolve' };
   if (!got.ok) return { id, error: `broker read failed: ${got.status}`, retry: retryable(got.status) };
   const current = (await got.json()) as Entity;
@@ -1009,7 +1051,6 @@ const updatedAll = (res: Response) => res.ok && res.status !== 207;
 
 /** GET an entity, DELETE it or one attribute, or POST attributes to it; reads and deletes with the Task context unless another is given. */
 function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown, attribute?: string, context = TASK_CONTEXT): Promise<Response> {
-  const fetchFn = config.fetch ?? fetch;
   const path = method === 'POST' ? '/attrs' : attribute ? `/attrs/${encodeURIComponent(attribute)}` : '';
   const url = `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}${path}`;
   const headers = brokerHeaders(config, 'application/ld+json');
@@ -1018,13 +1059,12 @@ function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: Br
     headers.accept = 'application/json';
     headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
   }
-  return fetchFn(url, { method, headers, ...(body !== undefined && { body: JSON.stringify(body) }) });
+  return send(config, 'broker', url, { method, headers, ...(body !== undefined && { body: JSON.stringify(body) }) });
 }
 
 async function createEntity(entity: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
-  const fetchFn = config.fetch ?? fetch;
   const { broker } = config;
   // The context is in the body, so no Link header.
   const headers = brokerHeaders(config, 'application/ld+json');
-  return fetchFn(`${broker.url}/ngsi-ld/v1/entities`, { method: 'POST', headers, body: JSON.stringify(entity) });
+  return send(config, 'broker', `${broker.url}/ngsi-ld/v1/entities`, { method: 'POST', headers, body: JSON.stringify(entity) });
 }

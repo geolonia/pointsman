@@ -13,7 +13,8 @@
   ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
   opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
   `R-DATA-MINIMISATION`; and for detour lookups with 8 s, parallel calls and
-  one retry (`P-FACT-LOOKUP-BOUNDED`); the rest still stands as of the bound
+  one retry (`P-FACT-LOOKUP-BOUNDED`); and for the bridge refusing redirects
+  (pointsman#105, §1.5 "Redirects"); the rest still stands as of the bound
   commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
@@ -43,7 +44,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 259 documented / 70 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 260 documented / 69 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -333,10 +334,11 @@ modeled tree.
   a 3xx as an error (`src/models/http.ts:97`, `src/facts-routing.ts:117`,
   `src/callbacks.ts:78`) *(documented, docs/profile-format.md "Detours":
   "Redirects are not followed (they would carry the key to another host)")*.
-  The bridge's calls to the broker and to Pointsman use the default redirect
-  mode, so a redirecting broker would receive the broker credentials and the
-  entity at the redirect target; the broker URL is operator-set, so this is a
-  trusted-collaborator edge, not an attacker-controlled one *(maintainer, 2026-10)*.
+  The bridge's calls to the broker and to Pointsman do the same
+  (`bridge/src/bridge.ts` `send`): a 3xx is an error, checked before the
+  body is read, so the broker credentials, the Pointsman token and the
+  entity never reach a redirect target *(documented, bridge/README.md "Configuration": "The
+  bridge does not follow redirects")*.
 - **Child processes, environment, filesystem**: none in the engine and the
   bridge. Search:
   `grep -rn "child_process\|spawn(\|execFile\|process\.env\|\beval(\|new Function" src bridge/src`
