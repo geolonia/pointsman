@@ -13,7 +13,8 @@
   ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
   opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
   `R-DATA-MINIMISATION`; and for detour lookups with 8 s, parallel calls and
-  one retry (`P-FACT-LOOKUP-BOUNDED`); the rest still stands as of the bound
+  one retry (`P-FACT-LOOKUP-BOUNDED`); and for the bridge refusing redirects
+  (pointsman#105, §1.5 "Redirects"); the rest still stands as of the bound
   commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
