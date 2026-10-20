@@ -32,6 +32,7 @@ const responses = {
   reviewList: api.paths['/v1/reviews'].get.responses['200'].content['application/json'].schema,
   error: { $ref: '#/components/schemas/Error' },
   profileList: api.paths['/v1/profiles'].get.responses['200'].content['application/json'].schema,
+  decisionGraph: { $ref: '#/components/schemas/DecisionGraph' },
 };
 ajv.addSchema({ $id: base, components: api.components, responses });
 const ids = Object.fromEntries(Object.keys(responses).map((name) => [name, `${base}#/responses/${name}`]));

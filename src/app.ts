@@ -13,6 +13,7 @@ import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } fr
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
 import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './chains';
+import { decisionGraph, toDmn, toSvg } from './graph';
 import { compilePolicy, peopleAnswers, peopleCheck } from './policy';
 import type { ProfileStore } from './profiles/store';
 import type { Decision } from './types';
@@ -101,6 +102,37 @@ export function createApp(deps: (env: Env) => Deps) {
     const client = c.get('client');
     const profiles = (await store.list()).filter((p) => canUse(client, p.id));
     return c.json({ profiles });
+  });
+
+  // The decision graph a profile belongs to, for DMN tools: JSON, or DMN 1.3
+  // XML with ?format=dmn (docs/decision-chains.md). Only profiles in scope.
+  app.get('/v1/profiles/:id/graph', async (c) => {
+    const { store } = deps(c.env);
+    const client = c.get('client');
+    const id = c.req.param('id');
+    const format = c.req.query('format') ?? 'json';
+    if (format !== 'json' && format !== 'dmn' && format !== 'svg') return error(400, 'invalid_request', '"format" must be json, dmn or svg');
+    const lang = c.req.query('lang') ?? 'en';
+    if (lang !== 'en' && lang !== 'ja') return error(400, 'invalid_request', '"lang" must be en or ja');
+    // Checked before the lookup, as for decide: no probing outside the scope.
+    if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
+    const profile = await store.get(id);
+    if (!profile) return error(404, 'profile_not_found', 'unknown profile');
+    const others = [];
+    for (const s of (await store.list()).filter((p) => p.id !== id && canUse(client, p.id))) {
+      const p = await store.get(s.id);
+      if (p) others.push(p);
+    }
+    const graph = decisionGraph(profile, others);
+    if (format === 'svg') {
+      return new Response(toSvg(graph, [profile, ...others], lang), { headers: { 'content-type': 'image/svg+xml; charset=utf-8' } });
+    }
+    if (format === 'dmn') {
+      return new Response(toDmn(graph), {
+        headers: { 'content-type': 'application/xml; charset=utf-8', 'content-disposition': `inline; filename="${profile.id}.dmn"` },
+      });
+    }
+    return c.json(graph);
   });
 
   app.post('/v1/decide/:profile', async (c) => {

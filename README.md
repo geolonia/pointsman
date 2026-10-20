@@ -109,6 +109,13 @@ Decisions with action `review` wait for a person: `GET /v1/reviews`,
 `POST /v1/reviews/{id}/resolve`; the final answer is sent, signed, to the
 decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
 
+A profile can build on earlier decisions (a decision chain, see
+[docs/decision-chains.md](docs/decision-chains.md)).
+`GET /v1/profiles/{id}/graph` shows the chain as a DMN decision requirements
+graph: JSON, DMN 1.3 XML with `?format=dmn` (DMN tools such as bpmn.io
+dmn-js and Camunda Modeler open it), or a small SVG diagram with
+`?format=svg`.
+
 ## Clients
 
 - [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `decide` and

@@ -19,8 +19,9 @@
   and the resolve `action`, the §1.8 decision rows, `P-TOKEN-SCOPE`,
   `P-TEST-TOKEN-ISOLATED`, `P-ACTION-FROM-POLICY`, `P-REVIEW-RESOLVED-ONCE`
   and the new `P-CHAIN-INPUTS-FROM-LOG`; and for the bridge's routes with
-  `requires`: `P-BRIDGE-LOOP-GUARD` and `P-BRIDGE-SAFE-TO-REPEAT`; the rest
-  still stands as of the bound commit.
+  `requires`: `P-BRIDGE-LOOP-GUARD` and `P-BRIDGE-SAFE-TO-REPEAT`; and for
+  the decision graph export (`GET /v1/profiles/{id}/graph`, §1.7 and §1.8
+  rows); the rest still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
   the Alpha-Omega `threat-model` plugin, version 1.2.1 at commit
@@ -49,7 +50,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 263 documented / 69 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 265 documented / 69 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -402,7 +403,7 @@ configuration is in-model even when the configuration is not the default.
 
 ### Per-input-operand trust table
 
-Coverage: 58 rows cover all 7 REST routes, the `/mcp` endpoint with its 4
+Coverage: 59 rows cover all 8 REST routes, the `/mcp` endpoint with its 4
 tools, the 7 OAuth routes (grouped), the bridge's 2 routes and queue
 consumer, both Actions, and the config repository's inputs. Every route in
 `src/app.ts` has at least one row. Headers and indirect inputs (model
@@ -414,6 +415,7 @@ they are security-relevant.
 | every `/v1/*` route | `Authorization: Bearer <token>` header | yes (anyone can send a header); accepted only when its SHA-256 matches a record in `TOKENS` | data | none — `P-AUTH-REQUIRED` | *(documented, README "API tokens")* |
 | every `/v1/*` route | the token record (`client`, `profiles`, `test`) read from KV | no — written only by the operator with `scripts/tokens.mjs` | serialized-state | keep `TOKENS` writable only by operators | *(documented, docs/deployment.md "Deployment" table)* |
 | `GET /v1/profiles` | none beyond the token | — | — | — | *(documented, openapi.yaml `/v1/profiles`)* |
+| `GET /v1/profiles/{id}/graph` | `{id}` path, `format` and `lang` query | yes (token holder) | resource-name, data | none — scope checked before the lookup; the graph holds only profiles in scope (`P-TOKEN-SCOPE`); `format` must be `json`, `dmn` or `svg` and `lang` `en` or `ja`, else 400 | *(documented, openapi.yaml `/v1/profiles/{id}/graph`)* |
 | `POST /v1/decide/{profile}` | `{profile}` path | yes (token holder) | resource-name | none — scope checked before the lookup (`P-TOKEN-SCOPE`) | *(documented, docs/decision-log.md "A token sees and corrects only decisions of profiles in its scope")* |
 | `POST /v1/decide/{profile}` | `?version` query | yes (token holder) | data | none — must match `^[1-9][0-9]{0,8}$`, else 400 | *(documented, openapi.yaml `/v1/decide/{profile}` `version` parameter)* |
 | `POST /v1/decide/{profile}` | `state` body field (string, object or array) | **yes, by the state author** through the client | data, size, x-prompt-text | treat it as untrusted data: never put it in a shell, a query or a template; do not include secrets or personal data unless `log.store_state` and gateway logging are intended | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
@@ -591,6 +593,7 @@ docs/profile-format.md "A missing fact is never guessed")*.
 | the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`, `requires`, `replaces`, `review`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens)* |
 | the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]`, `requires`, `idempotency_key` | engine-api | constrained as above; `callback_url` and `request_digest` are never returned; a required decision of a profile outside the reader's scope is shown as `{decision: null}`; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API")* |
 | the review list (`GET /v1/reviews`) | engine-api | constrained; `callback_url` and `callback` are stripped | — | *(documented, docs/reviews.md "Review queue")* |
+| the decision graph (`GET /v1/profiles/{id}/graph`) | engine-api | constrained: profile ids, versions, titles and descriptions, actions and answers, question, input and fact names, model names, data-source names; never a decision or a state; XML and SVG text and attributes escaped; the SVG has no script, links or external references | that the XML is safe for any parser setting (it has no DTD and no entities); that profile titles are safe to show unescaped by a consumer that inlines the SVG's text elsewhere | *(documented, openapi.yaml `/v1/profiles/{id}/graph`)* |
 | stats (`GET /v1/stats/{profile}`) | engine-api | counts only; no single decision, no state | — | *(documented, docs/decision-log.md "Counts only, no single decisions")* |
 | error bodies (`{error: {code, message}}`) | engine-api | assembled from fixed messages; a validation message can name a field, a profile id and version, or an option list from the profile, never the state or a token | — | *(maintainer, 2026-10)* |
 | the Workers log | engine-api, engine-facts, engine-mcp | reasons only: model name and error message, fact name and reason, decision id for callbacks; no state, token, key or model response | — | *(documented, docs/models.md "Errors and logs never include the request, the response body or the key")* |
@@ -676,7 +679,7 @@ what voids it.
   Voided by: nothing. Search:
   `grep -n "app\.\(get\|post\|all\|use\)(" src/app.ts` — every `/v1/*` route
   is registered after the `app.use('/v1/*', …)` middleware at
-  `src/app.ts:82`; `/mcp` authenticates on lines 288 (OAuth resource server) and 290 (API tokens) of `src/app.ts`; the remaining
+  `src/app.ts:83`; `/mcp` authenticates on lines 320 (OAuth resource server) and 322 (API tokens) of `src/app.ts`; the remaining
   routes are the OAuth flow (which issues grants only after GitHub membership)
   and the 404 handler.
 - **`P-TOKEN-SCOPE`** — a token acts only on the profiles in its record;
@@ -710,8 +713,8 @@ what voids it.
   Tier: security-critical. *(documented, README "API tokens": "A test token
   may only decide (and list its profiles) over the REST API, not over MCP,
   and gets no callbacks")*. Voided by: nothing. Search:
-  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 94 and 283 of `src/app.ts`, the unlogged return at
-  `src/app.ts:466`, and the callback refusal in `makeDecision`. A test token
+  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 95 and 315 of `src/app.ts`, the unlogged return at
+  `src/app.ts:498`, and the callback refusal in `makeDecision`. A test token
   also cannot send `decisions` or decide a profile with `requires`, so it
   never reads logged decisions (`makeDecision`, docs/decision-chains.md).
 - **`P-ANSWER-SHAPE`** — a model answer is accepted only when every question
@@ -725,7 +728,7 @@ what voids it.
   format": "Answers that do not fit the profile ... are rejected with a
   `model_error`")*. Voided by: nothing. Search:
   `grep -rn "normalizeAnswers" src` — called on the only decision path,
-  `src/app.ts:431`, for every adapter.
+  `src/app.ts:463`, for every adapter.
 - **`P-ACTION-FROM-POLICY`** — the action is the first rule whose condition
   is true over the typed answers, facts and required decisions, else the
   profile's default; a
@@ -780,7 +783,7 @@ what voids it.
   log. Symptom: `x-unlogged-decision`, `integrity-bypass`. Tier:
   security-critical. *(documented, docs/decision-log.md "Every decision is
   stored in D1 ... before it is returned"; docs/mcp.md "Decisions through
-  MCP")*. Voided by: a test token (`src/app.ts:466`, `if (client.test)
+  MCP")*. Voided by: a test token (`src/app.ts:498`, `if (client.test)
   return`), by design and marked in the response.
 - **`P-PROFILE-VERSION-IMMUTABLE`** — a published profile id and version never
   change content: the deploy registers each version's content hash in D1 and
@@ -800,7 +803,7 @@ what voids it.
   returned; tokens never appear in logs, responses or the decision log.
   Symptom: `info-leak`. Tier: security-critical. *(documented,
   docs/decision-log.md "By default only the hash of the state is kept")*.
-  Voided by: `log.store_state: true` on a profile (`src/app.ts:474`), the AI
+  Voided by: `log.store_state: true` on a profile (`src/app.ts:506`), the AI
   Gateway's `collect_logs: true` (`ai-gateway.json`; documented in
   docs/models.md "Logs hold the state"), and a model server's own retention
   (`D-STATE-TO-BACKEND`). The first two are §1.6 rows. Narrowed by: `route:
