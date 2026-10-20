@@ -262,9 +262,13 @@ required decision.
 - **A person's answer stays** (agreed point 7). A final decision that a
   person has resolved is never replaced: a decide request that would
   replace it is refused (`409`, code `resolved_by_person`). The bridge
-  treats only that code as done (it logs it and acknowledges the message);
-  every other error, including `idempotency_conflict`, is retried as usual
-  and ends in the dead-letter queue when the retries run out.
+  treats only that code as done (it logs it and acknowledges the message).
+  `idempotency_conflict` is not retried: sending the same request again
+  cannot succeed, so the message goes to the dead-letter queue at once.
+  There an operator either fixes the request and sends it with a new key,
+  or restores the original request (whose digest matches) and replays it.
+  Every other error is retried as usual and ends in the dead-letter queue
+  when the retries run out.
 - **The new final decision replaces the older ones** for the same profile,
   `ref` and client, for profiles with `requires` only (other profiles keep
   today's behaviour):
