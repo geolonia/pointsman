@@ -204,8 +204,13 @@ POST /v1/decide/road-closure-final
   usable decision"), so a caller cannot find out which decisions exist
   (`P-TOKEN-SCOPE`).
 - **The decisions fit each other.** If a required decision itself required
-  one that is also given (the evacuation check required `check`), the ids
+  one that is also given (the evacuation check requires `check`), the ids
   must match: an old evacuation result cannot be combined with a new check.
+  For an `optional` requirement such a decision is **left out**, as if it
+  had not run (agreed point 8): it was made for an earlier state of the
+  report, and the step is decided from the current decisions; it runs again
+  when the later decision is made for the new check. A non-optional one is
+  refused (`400`, the same answer as above).
 - **Not replaced decisions only.** A required decision that was itself
   replaced (`superseded`, below) is refused with the same answer.
 - **Test tokens may not send `decisions`** (`400`). Their decisions are not
@@ -534,3 +539,11 @@ Checked on 2026-10-20. Used where they fit, recorded where not:
 7. **A person's answer stays:** a final decision a person has resolved is
    never replaced by a run again. In the demo people check only the first
    step; the final step is rules only.
+
+Added on 2026-10-21:
+
+8. **A stale optional step is left out:** when the evacuation check also
+   requires the first check (so the order is known), an evacuation result
+   made for an earlier first check is left out of the final decision rather
+   than refused; otherwise a report whose first check was made again could
+   stay without a final result.

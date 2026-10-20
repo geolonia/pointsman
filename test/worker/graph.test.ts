@@ -132,6 +132,40 @@ describe('toSvg', () => {
     expect(svg).toContain('@media (prefers-color-scheme:dark)');
   });
 
+  it('routes an arrow that skips a column around the boxes, also with two boxes in a column', () => {
+    const base = byId('road-closure-final');
+    const mk = (id: string, requires: { name: string; profile: string; optional?: boolean }[] = []) =>
+      ({ ...base, id, title: { en: id, ja: id }, requires: requires.length ? requires : undefined }) as unknown as Profile;
+    // a and b in column 0 (a above b), c in column 1, d in column 2: d -> c
+    // is next door, d -> a skips column 1 while b sits below a.
+    const ps = [mk('a'), mk('b'), mk('c', [{ name: 'b', profile: 'b' }]), mk('d', [{ name: 'c', profile: 'c' }, { name: 'a', profile: 'a', optional: true }])];
+    const svg = toSvg(decisionGraph(ps[3]!, ps), ps, 'en');
+    const boxes = [...svg.matchAll(/<rect class="box(?: main)?" x="([\d.]+)" y="([\d.]+)" width="(\d+)" height="(\d+)"/g)].map((m) => m.slice(1).map(Number));
+    expect(boxes).toHaveLength(4);
+    for (const [, d] of svg.matchAll(/<path class="a(?: d)?" d="([^"]+)"/g)) {
+      const pts = [...d!.matchAll(/[ML]([\d.]+) ([\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      // No vertical leg runs through a box.
+      for (let i = 1; i < pts.length; i++) {
+        const [xa = 0, ya = 0] = pts[i - 1]!;
+        const [xb = 0, yb = 0] = pts[i]!;
+        if (xa !== xb) continue;
+        for (const [bx, by, bw, bh] of boxes) {
+          const inside = xa > bx! && xa < bx! + bw! && Math.min(ya, yb) < by! && Math.max(ya, yb) > by! + bh!;
+          expect(inside, `${d} through box at ${bx},${by}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('centres a single decision, and never draws NaN', () => {
+    const { requires: _, ...rest } = byId('road-restriction-check');
+    const one = rest as Profile;
+    const svg = toSvg(decisionGraph(one, [one]), [one], 'en');
+    const [, x] = svg.match(/<rect class="box main" x="([\d.]+)"/)!;
+    expect(Number(x)).toBe((460 - 200) / 2);
+    expect(svg).not.toContain('NaN');
+  });
+
   it('flows from left to right: first check, additional check, final result', () => {
     const svg = toSvg(g, all, 'en');
     const x = (title: string) => {

@@ -322,8 +322,11 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
     return c;
   };
   for (const d of decisions) column(d.id);
-  const cols: string[][] = [];
-  for (const d of decisions) (cols[col.get(d.id)!] ??= []).push(d.id);
+  const sparse: string[][] = [];
+  for (const d of decisions) (sparse[col.get(d.id)!] ??= []).push(d.id);
+  // No empty columns (only a cycle, which validation refuses, could leave one).
+  const cols = sparse.filter((c) => c && c.length > 0);
+  cols.forEach((ids, c) => ids.forEach((id) => col.set(id, c)));
   const BW = 200;
   const BH = 78;
   const GX = 110;
@@ -332,13 +335,17 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
   const LANE = 34;
   const tallest = Math.max(...cols.map((c) => c.length));
   const boxes = tallest * BH + (tallest - 1) * GY;
+  const width = Math.max(460, 40 + cols.length * BW + (cols.length - 1) * GX);
+  // Centred when the drawing is narrower than the image (a single decision).
+  const left = (width - (cols.length * BW + (cols.length - 1) * GX)) / 2;
   const at = new Map<string, { x: number; y: number }>();
   cols.forEach((ids, c) => {
     const span = ids.length * BH + (ids.length - 1) * GY;
-    ids.forEach((id, i) => at.set(id, { x: 20 + c * (BW + GX), y: 8 + (boxes - span) / 2 + i * (BH + GY) }));
+    ids.forEach((id, i) => at.set(id, { x: left + c * (BW + GX), y: 8 + (boxes - span) / 2 + i * (BH + GY) }));
   });
   const skips = reqEdges.filter((e) => col.get(e.to)! - col.get(e.from)! > 1);
-  const width = Math.max(460, 40 + cols.length * BW + (cols.length - 1) * GX);
+  /** Whether another box sits below this one in its column (an arrow straight down would run behind it). */
+  const boxBelow = (id: string) => cols[col.get(id)!]!.some((o) => o !== id && at.get(o)!.y > at.get(id)!.y);
   const height = 8 + boxes + (skips.length > 0 ? 12 + skips.length * LANE : 0) + 8;
   const top = decisions.find((d) => d.profile === graph.profile)!;
   const title = (d: typeof top) => byId.get(d.profile)?.title[lang] ?? d.name;
@@ -383,12 +390,31 @@ export function toSvg(graph: DecisionGraph, profiles: Profile[], lang: 'en' | 'j
       // Skips a column: down from the box, under the boxes, up into the other.
       const ins = reqEdges.filter((x) => x.to === e.to && skips.includes(x)).sort((p, q) => at.get(p.from)!.x - at.get(q.from)!.x);
       const outs = skips.filter((x) => x.from === e.from).sort((p, q) => at.get(p.to)!.x - at.get(q.to)!.x);
-      const x1 = a.x + spread(outs.indexOf(e), outs.length, BW);
-      const x2 = b.x + spread(ins.indexOf(e), ins.length, BW);
-      const y1 = a.y + BH + 2;
       const lane = 8 + boxes + 12 + skip * LANE + 8;
-      const y2 = b.y + BH + 2;
-      parts.push(`<path class="a${e.optional ? ' d' : ''}" d="M${x1} ${y1} L${x1} ${lane} L${x2} ${lane} L${x2} ${y2}" marker-end="url(#${mid})"/>`);
+      // Down from the box's bottom, or, with a box below it, out of its right
+      // side and down through the gap next to the column; the same way up
+      // into the target (its left side, through the gap before its column).
+      let start: string;
+      let x1: number;
+      if (boxBelow(e.from)) {
+        x1 = a.x + BW + GX / 2 - 10 - skip * 6;
+        const y = a.y + BH - 12;
+        start = `M${a.x + BW + 2} ${y} L${x1} ${y}`;
+      } else {
+        x1 = a.x + spread(outs.indexOf(e), outs.length, BW);
+        start = `M${x1} ${a.y + BH + 2}`;
+      }
+      let end: string;
+      let x2: number;
+      if (boxBelow(e.to)) {
+        x2 = b.x - GX / 2 + 10 + skip * 6;
+        const y = b.y + BH - 12;
+        end = `L${x2} ${y} L${b.x - 2} ${y}`;
+      } else {
+        x2 = b.x + spread(ins.indexOf(e), ins.length, BW);
+        end = `L${x2} ${b.y + BH + 2}`;
+      }
+      parts.push(`<path class="a${e.optional ? ' d' : ''}" d="${start} L${x1} ${lane} L${x2} ${lane} ${end}" marker-end="url(#${mid})"/>`);
       parts.push(svgText('l', (x1 + x2) / 2, lane - 6, `${label}${e.optional ? words.optional : ''}`, 12.5, Math.abs(x2 - x1) - 20));
     }
   }

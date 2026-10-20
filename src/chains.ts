@@ -104,11 +104,23 @@ export async function loadRequired(
     inputs[r.name] = inputOf(record);
   }
   // The decisions fit each other: a required decision that itself used one
-  // of the same profile as another given here must have used that one.
+  // of the same profile as another given here must have used that one. An
+  // optional one that does not fit was made for an earlier state of the
+  // report (for example an evacuation check from before the first check was
+  // made again): it is left out, as if it had not run, so the step is decided
+  // from the decisions that are current. A required one that does not fit is
+  // refused.
+  const optional = (name: string) => requires.some((r) => r.name === name && r.optional);
   for (const [name, record] of Object.entries(records)) {
+    if (!records[name]) continue;
     for (const snap of Object.values(record.requires ?? {})) {
-      const other = Object.values(records).find((x) => x.profile === snap.profile);
-      if (other && other.decision_id !== snap.decision) return unusable(name);
+      const otherName = Object.keys(records).find((n) => records[n]!.profile === snap.profile);
+      if (otherName === undefined || records[otherName]!.decision_id === snap.decision) continue;
+      const drop = optional(name) ? name : optional(otherName) ? otherName : undefined;
+      if (drop === undefined) return unusable(name);
+      delete records[drop];
+      delete inputs[drop];
+      if (drop === name) break;
     }
   }
   const profiles: RequiredProfiles = {};
