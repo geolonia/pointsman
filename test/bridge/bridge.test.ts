@@ -1379,7 +1379,10 @@ describe('decision chains', () => {
   it('refuses routes that require each other in a circle', () => {
     const a = { type: 'T', profile: 'p', name: 'a', inputs: ['x', 'b'], attribute: 'a', requires: { b: 'b' } };
     const b = { type: 'T', profile: 'q', name: 'b', inputs: ['y', 'a'], attribute: 'b', requires: { a: 'a' } };
-    expect(() => parseRoutes(JSON.stringify([a, b]))).toThrow(/a → b → a require each other/);
+    expect(() => parseRoutes(JSON.stringify([a, b]))).toThrow(/a → b → a read each other's results in a circle/);
+    // Also when only one of them requires the other: a plain input runs it again too.
+    const { requires: _, ...plain } = b;
+    expect(() => parseRoutes(JSON.stringify([a, plain]))).toThrow(/in a circle/);
     // The same attribute names on another type are another graph.
     expect(() => parseRoutes(JSON.stringify([a, { ...b, type: 'U' }]))).not.toThrow();
   });
@@ -1406,10 +1409,30 @@ describe('decision chains', () => {
     expect(ask.url).toBe('https://pm.test/v1/decide/road-closure-final');
     expect((ask.body as { decisions: unknown }).decisions).toEqual({ check: 'c-1' });
     expect(ask.headers.get('idempotency-key')).toMatch(/^bridge-[0-9a-f]{64}$/);
-    // The same inputs give the same key, so a retry gets the logged decision.
-    const again = run(entity({ check: result('c-1') }));
-    await again.result;
-    expect(again.calls.find((c) => c.url.startsWith('https://pm.test/'))!.headers.get('idempotency-key')).toBe(ask.headers.get('idempotency-key'));
+    // The same request gives the same key, so a retry gets the logged decision.
+    const key = async (now: Record<string, unknown>) => {
+      const x = run(now);
+      await x.result;
+      return x.calls.find((c) => c.url.startsWith('https://pm.test/'))!.headers.get('idempotency-key');
+    };
+    expect(await key(entity({ check: result('c-1') }))).toBe(ask.headers.get('idempotency-key'));
+    // Anything else in the entity changed (a review written on check, another
+    // attribute): another request, another key, so no idempotency_conflict.
+    expect(await key(entity({ check: result('c-1', { finalAction: P('publish') }) }))).not.toBe(ask.headers.get('idempotency-key'));
+    expect(await key(entity({ check: result('c-1'), note: P('x') }))).not.toBe(ask.headers.get('idempotency-key'));
+  });
+
+  it('queues only the id and type for a route with requires', async () => {
+    const sent: unknown[] = [];
+    const { config } = setup({ route: final });
+    const big = entity({ check: result('c-1'), geometry: P('x'.repeat(200_000)) });
+    const res = await handleRequest(new Request('https://bridge.test/notify?route=final', {
+      method: 'POST',
+      headers: { 'x-bridge-secret': SECRET, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'Notification', data: [big] }),
+    }), { ...config, queue: { sendBatch: async (m) => { sent.push(...m); } } });
+    expect(res.status).toBe(202);
+    expect(sent).toEqual([{ body: { path: '/notify', route: 'final', entity: { id: big.id, type: big.type } } }]);
   });
 
   it('waits for a required decision, not for an optional one', async () => {
@@ -1492,9 +1515,37 @@ describe('decision chains', () => {
     expect(cancelled?.body).toMatchObject({ progress: P('cancelled') });
   });
 
-  it('does not overwrite a newer result on the entity', async () => {
+  it('writes nothing for a decision older than the result on the entity', async () => {
     const { result: r, calls } = run(entity({ check: result('c-2'), final: { ...result('f-9'), inputHash: P('other'), observedAt: '2027-01-01T00:00:00Z' } }));
     expect(await r).toMatchObject({ decision: 'f-2', write: 0 });
-    expect(calls.some((c) => c.url.includes('/attrs/final') || (c.method === 'POST' && c.url === `${ENTITY_URL}/attrs`))).toBe(false);
+    // No Decision entity, no Task, no result.
+    expect(calls.filter((c) => c.method !== 'GET' && !c.url.startsWith('https://pm.test/'))).toEqual([]);
+  });
+
+  it('compares the times as points in time, not as text', async () => {
+    // 2026-07-08T10:46+09:00 is 01:46 UTC, before the decision's 01:46:12.
+    const zone = run(entity({ check: result('c-2'), final: { ...result('f-9'), inputHash: P('other'), observedAt: '2026-07-08T10:46:00+09:00' } }));
+    expect(await zone.result).toMatchObject({ decision: 'f-2', write: 204 });
+    // Without milliseconds, in the same second: not newer.
+    const seconds = run(entity({ check: result('c-2'), final: { ...result('f-9'), inputHash: P('other'), observedAt: '2026-07-08T01:46:12Z' } }));
+    expect(await seconds.result).toMatchObject({ decision: 'f-2', write: 204 });
+  });
+
+  it('shows a person\'s answer on a decision that a newer one replaced, instead of dropping it', async () => {
+    const s = setup({ pointsman: () => Response.json({ review: { status: 'superseded' } }) });
+    const resolved = {
+      id: 'urn:ngsi-ld:Decision:f-1', type: 'Decision', reviewStatus: P('resolved'), finalAction: P('publish'),
+      reviewedBy: P('someone'), reviewedAt: P('2026-10-20T10:00:00Z'),
+    };
+    const r = await handleMessage({ path: '/reviews', entity: resolved }, s.config);
+    expect(r).toEqual({ id: resolved.id, error: 'a newer decision replaced this one before the review reached Pointsman; answer the newer one', retry: false });
+    expect(s.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('marks a checked result, so a work order can resolve it', async () => {
+    const { result: r, calls } = run(entity({ check: result('c-1') }), { pointsman: () => Response.json({ ...finalDecision, action: 'urgent', review: { status: 'pending' } }) });
+    await r;
+    const write = calls.find((c) => c.url.endsWith('/attrs/final'));
+    expect(write?.body).toMatchObject({ value: 'urgent', reviewStatus: P('pending') });
   });
 });

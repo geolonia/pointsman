@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:46a4121f60a0e32250ee068b8534376e1cedc53c10d6fca00b5dae1cda8c7ead"
+prose_version: "threat-model.md@sha256:0e4dfe62e1bc88565a247ae66959bc5346df56e87e2d32cb7cea6b8e427d346a"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 263, maintainer: 69, inferred: 0, assumption: 0}
@@ -1214,14 +1214,14 @@ properties_claimed:
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; circular requires refused"
+    conditions: "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused"
     violation_symptoms: [x-decision-loop]
     provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}
   - id: P-BRIDGE-SAFE-TO-REPEAT
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and inputs; routes with requires from the queue only, no older result written"
+    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written"
     violation_symptoms: [wrong-output]
     provenance: {kind: documented, source: "bridge/README.md \"Safe to repeat\""}
   - id: P-TRIAGE-ALLOWLIST

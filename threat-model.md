@@ -877,7 +877,8 @@ what voids it.
   start a new decision. For a route with `requires` the hash also covers each
   earlier decision's id (and, with `rerunOnReview`, the person's answer on
   it), so a final decision runs again only when an earlier one changes; routes
-  that require each other in a circle are refused when the routes are read.
+  that read each other's results in a circle are refused when the routes are
+  read.
   Symptom: `x-decision-loop` (repeated model calls for
   one unchanged entity). Tier: correctness-only. *(documented,
   bridge/README.md "How it avoids loops")*. Voided by: a subscription whose
@@ -888,8 +889,8 @@ what voids it.
   sent by the same person is not sent again, a Task is found by its derived
   id, and a review that disagrees with Pointsman's recorded resolution writes
   nothing. Every decide request carries an `Idempotency-Key` from the route,
-  the entity and the input hash, so a retry after Pointsman logged the
-  decision gets the same decision; for a route with `requires`, which runs
+  the entity and the exact request, so a retry of the same request after
+  Pointsman logged the decision gets the same decision; for a route with `requires`, which runs
   from the queue only, a result older than the one on the entity is not
   written. Symptom: `wrong-output`. Tier: correctness-only. *(documented,
   bridge/README.md "Safe to repeat")*. No switch affects it.
