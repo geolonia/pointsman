@@ -43,6 +43,15 @@ const last: Profile = {
   requires: [{ name: 'final', profile: 'triage-final' }, { name: 'triage', profile: 'issue-triage' }],
   policy: { rules: [{ when: "decisions.final.action == 'ship'", action: 'close' }], default: 'keep' },
 };
+// As in the FIWARE demo: a second step with its own question that requires
+// the first, and an end step for which the second is optional.
+const follow: Profile = { ...triage, id: 'triage-follow', requires: [{ name: 'triage', profile: 'issue-triage' }], policy: { default: 'noted' } };
+const end: Profile = {
+  ...final,
+  id: 'triage-end',
+  requires: [{ name: 'triage', profile: 'issue-triage' }, { name: 'follow', profile: 'triage-follow', optional: true }],
+  policy: { rules: [{ when: "decisions.follow.outcome == 'noted'", action: 'with-follow' }], default: 'without-follow' },
+};
 
 const ALL = newToken();
 const SECOND = newToken();
@@ -56,7 +65,20 @@ function setup() {
 }
 
 /** The app with some log methods replaced (to run a race at a fixed point) or other profiles. */
-function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last]) {
+const after: Profile = {
+  ...end,
+  id: 'triage-after',
+  requires: [{ name: 'follow', profile: 'triage-follow' }, { name: 'triage', profile: 'issue-triage', optional: true }],
+};
+
+const deep: Profile = { ...end, id: 'triage-deep', requires: [{ name: 'follow', profile: 'triage-follow' }] };
+const top: Profile = {
+  ...end,
+  id: 'triage-top',
+  requires: [{ name: 'triage', profile: 'issue-triage' }, { name: 'follow', profile: 'triage-follow', optional: true }, { name: 'deep', profile: 'triage-deep' }],
+};
+
+function setupWith(log: Partial<D1DecisionLog>, profiles = [first, other, final, last, follow, end, after, deep, top]) {
   const real = new D1DecisionLog(DB);
   const deps: Deps = {
     store: new MemoryProfileStore(profiles),
@@ -166,6 +188,48 @@ describe('decision chains', () => {
     const res = await decideLast({ final: f.data.decision_id, triage: another });
     expect(res.status).toBe(400);
     expect(res.data.error.message).toBe('decisions.final is not a usable decision');
+  });
+
+  it('leaves out an optional decision made for an earlier first decision, and decides from the current ones', async () => {
+    const t1 = await decideFirst();
+    const f1 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    expect(f1.status).toBe(200);
+    expect(f1.data.requires.triage.decision).toBe(t1);
+    const decideEnd = (decisions: Record<string, string>) => s.call('POST', '/v1/decide/triage-end', { state: {}, ref, decisions });
+    // Both current: the second step counts.
+    const both = await decideEnd({ triage: t1, follow: f1.data.decision_id });
+    expect(both.data).toMatchObject({ action: 'with-follow', requires: { follow: { decision: f1.data.decision_id } } });
+    // The first step is made again: the second step was made for the old one.
+    const t2 = await decideFirst();
+    const res = await decideEnd({ triage: t2, follow: f1.data.decision_id });
+    expect(res.status).toBe(200);
+    expect(res.data.action).toBe('without-follow');
+    expect(res.data.requires.triage.decision).toBe(t2);
+    expect(res.data.requires.follow).toBeUndefined();
+  });
+
+  it('still refuses a required decision made for an older one, also when the other is optional', async () => {
+    // Here the follow-up is required and the first step optional: the stale one is required.
+    const t1 = await decideFirst();
+    const f1 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    const t2 = await decideFirst();
+    const res = await s.call('POST', '/v1/decide/triage-after', { state: {}, ref, decisions: { follow: f1.data.decision_id, triage: t2 } });
+    expect(res.status).toBe(400);
+    expect(res.data.error.message).toBe('decisions.follow is not a usable decision');
+  });
+
+  it('does not depend on the order of requires: a stale required decision behind a left-out one is refused', async () => {
+    // chain: triage -> follow (optional) -> deep (required, made from an older follow).
+    const t1 = await decideFirst();
+    const f0 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    const d0 = await s.call('POST', '/v1/decide/triage-deep', { state: {}, ref, decisions: { follow: f0.data.decision_id } });
+    expect(d0.status).toBe(200);
+    const f1 = await s.call('POST', '/v1/decide/triage-follow', { state: issue, ref, decisions: { triage: t1 } });
+    const t2 = await decideFirst();
+    // f1 was made for t1 (left out); d0 was made from f0, older than f1: refused.
+    const res = await s.call('POST', '/v1/decide/triage-top', { state: {}, ref, decisions: { triage: t2, follow: f1.data.decision_id, deep: d0.data.decision_id } });
+    expect(res.status).toBe(400);
+    expect(res.data.error.message).toBe('decisions.deep is not a usable decision');
   });
 
   it('gives the same answer for every unusable decision', async () => {

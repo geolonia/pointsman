@@ -204,8 +204,13 @@ POST /v1/decide/road-closure-final
   usable decision"), so a caller cannot find out which decisions exist
   (`P-TOKEN-SCOPE`).
 - **The decisions fit each other.** If a required decision itself required
-  one that is also given (the evacuation check required `check`), the ids
+  one that is also given (the evacuation check requires `check`), the ids
   must match: an old evacuation result cannot be combined with a new check.
+  For an `optional` requirement such a decision is **left out**, as if it
+  had not run (agreed point 8): it was made for an earlier state of the
+  report, and the step is decided from the current decisions; it runs again
+  when the later decision is made for the new check. A non-optional one is
+  refused (`400`, the same answer as above).
 - **Not replaced decisions only.** A required decision that was itself
   replaced (`superseded`, below) is refused with the same answer.
 - **Test tokens may not send `decisions`** (`400`). Their decisions are not
@@ -339,7 +344,10 @@ result is:
 - The bridge reads each required attribute's `decisionId` and sends it in
   `decisions`. A name the profile does not require is refused by Pointsman.
   This replaces `informedBy`, which keeps working as a route with a single
-  requirement until the routes are moved over.
+  requirement. The demo's evacuation check moves over with
+  geolonia/pointsman-config#19 and geolonia/pointsman-demo#78 (planned for
+  2026-10-21: `evacuation-access-check` version 4 requires `check`), so
+  Pointsman knows the order of the three steps and the graph shows it.
 - **When to run:** when all non-optional required decisions are there, and
   each optional one is either there or will not come. "Will not come" is
   the subscription's `q` (in the demo: `check` is `publish`, or
@@ -407,10 +415,13 @@ the export of the demo's chain validates against the DMN 1.3 XML Schema
 (OMG) and opens in bpmn.io dmn-js 17.12.2 without warnings.
 
 For people, `?format=svg` (with `lang=en` or `ja`) draws the chain as a small
-diagram in the style of the datamodels.jp diagrams: one box per decision
-(its AI questions or "rules only", its map checks), the asked-for decision
-highlighted, arrows from the decisions it requires, labelled with their
-names (dashed when optional). It uses the datamodels.jp class names and
+diagram in the style of the datamodels.jp diagrams, as a flow from left to
+right: one box per decision (its AI questions or "rules only", its map
+checks), each one column right of the decisions it requires, the asked-for
+decision highlighted, arrows from the decisions it requires, labelled with
+their names (dashed when optional). An arrow that skips a column (in the
+demo: a first check that published the report goes straight to the final
+result) runs under the boxes. It uses the datamodels.jp class names and
 colours, so inline on that site it takes the site's CSS; on its own it
 brings light and dark colours (`--pm-*` variables a page can set).
 
@@ -529,3 +540,11 @@ Checked on 2026-10-20. Used where they fit, recorded where not:
 7. **A person's answer stays:** a final decision a person has resolved is
    never replaced by a run again. In the demo people check only the first
    step; the final step is rules only.
+
+Added on 2026-10-21:
+
+8. **A stale optional step is left out:** when the evacuation check also
+   requires the first check (so the order is known), an evacuation result
+   made for an earlier first check is left out of the final decision rather
+   than refused; otherwise a report whose first check was made again could
+   stay without a final result.

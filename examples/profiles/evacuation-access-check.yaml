@@ -1,10 +1,12 @@
 # yaml-language-server: $schema=../../schema/profile-v1.schema.json
-# FIWARE demo, step 2 of the chain (pointsman#66): for a road closure that
-# step 1 (road-restriction-check) decided urgent or review, does it cut
-# people off from their evacuation site? The bridge runs it only for those
-# (subscription q on check) and links step 1's decision (wasInformedBy).
+# FIWARE demo, the additional check of the chain (pointsman#66): for a road
+# closure that the first check (road-restriction-check) decided urgent or
+# review, does it cut people off from their evacuation site? The bridge runs
+# it only for those (subscription q on check). Since version 4 it requires
+# the first check (docs/decision-chains.md): the bridge sends its id, and
+# the Decision links it (wasInformedBy), so the graph shows the order.
 id: evacuation-access-check
-version: 2
+version: 4
 title:
   en: Evacuation access check
   ja: 避難経路の確認
@@ -12,6 +14,8 @@ description:
   en: For a closed road near an evacuation site, check whether people on foot are cut off from the site, and alert the site's staff.
   ja: 避難場所の近くで道路が閉じられたとき、歩く人が避難場所へ行けなくなるかを確認し、避難場所の担当者に知らせる。
 model: clef-flash
+requires:
+  - { name: check, profile: road-restriction-check }
 fallback_models: [clef]
 input:
   - { name: road, path: $.roadName.value }
@@ -37,6 +41,10 @@ policy:
     - when: "facts.shelter.distance_m <= 1000 and facts.walk.extra_m >= 200 and foot_passable.yes < 0.5"
       action: alert
     # Near a site, but the way around could not be found: a person looks.
-    - when: "facts.shelter.distance_m <= 1000 and facts.walk.missing == true"
+    # Not for a report that marks a point (no_location): a point has no road
+    # section to go around, so there is nothing for a person to check. A
+    # missing or broken location is no_location too, but then shelter is
+    # missing as well (both read the same `at`; keep them the same).
+    - when: "facts.shelter.distance_m <= 1000 and facts.walk.missing == true and facts.walk.reason != 'no_location'"
       action: review
   default: none

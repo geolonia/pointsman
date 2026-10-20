@@ -104,11 +104,28 @@ export async function loadRequired(
     inputs[r.name] = inputOf(record);
   }
   // The decisions fit each other: a required decision that itself used one
-  // of the same profile as another given here must have used that one.
-  for (const [name, record] of Object.entries(records)) {
+  // of the same profile as another given here must have used that one. An
+  // optional one that does not fit was made for an earlier state of the
+  // report (for example an evacuation check from before the first check was
+  // made again): it is left out, as if it had not run, so the step is decided
+  // from the decisions that are current. A required one that does not fit is
+  // refused.
+  const optional = (name: string) => requires.some((r) => r.name === name && r.optional);
+  // Compared with everything given, also what gets left out, so the answer
+  // does not depend on the order of `requires`.
+  const all = { ...records };
+  for (const [name, record] of Object.entries(all)) {
     for (const snap of Object.values(record.requires ?? {})) {
-      const other = Object.values(records).find((x) => x.profile === snap.profile);
-      if (other && other.decision_id !== snap.decision) return unusable(name);
+      const other = Object.values(all).find((x) => x.profile === snap.profile);
+      if (other === undefined || other.decision_id === snap.decision) continue;
+      // `name` is the stale one: every given decision was the newest of its
+      // step when it was read, so the one it was made from is older. (A
+      // decide call in between could make it look the other way round; then
+      // the request is refused or decided without it, never on stale data.)
+      if (!optional(name)) return unusable(name);
+      delete records[name];
+      delete inputs[name];
+      break;
     }
   }
   const profiles: RequiredProfiles = {};

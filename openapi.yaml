@@ -362,7 +362,9 @@ components:
             the earlier decisions, by the names in `requires`. They are read from
             the decision log and must be of the named profile, in the token's
             scope, with this request's `ref` (then required) and from the same
-            client; every other case gives the same 400. Not for test tokens.
+            client; every other case gives the same 400. An optional one that
+            was made for an older decision than one given here is left out (it
+            is missing from `requires` in the answer). Not for test tokens.
           type: object
           minProperties: 1
           maxProperties: 8

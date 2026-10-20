@@ -313,12 +313,17 @@ the closure cuts people off from their evacuation site (route 2).
   that should go on (for example `check=="urgent"`).
 - `informedBy: "check"`: its Decision entities link the first decision
   (`wasInformedBy`, from `check.decision`), so the chain can be followed in
-  the broker.
+  the broker. Pointsman does not know about this link. When the second
+  profile `requires` the first (next section), Pointsman checks it and its
+  graph shows the order; the demo moves to this with
+  geolonia/pointsman-config#19 (planned for 2026-10-21). (So the
+  example uses a profile of your own: `evacuation-access-check` requires
+  `check` since version 4, and a route for it needs `requires`.)
 
 ```json
 [
   { "type": "RoadRestriction", "profile": "road-restriction-check", "inputs": ["description"], "attribute": "check", "decisionEntity": true },
-  { "type": "RoadRestriction", "profile": "evacuation-access-check", "inputs": ["description", "check"], "attribute": "evacuation",
+  { "type": "RoadRestriction", "profile": "my-second-check", "inputs": ["description", "check"], "attribute": "evacuation",
     "name": "evacuation", "informedBy": "check", "decisionEntity": true }
 ]
 ```
