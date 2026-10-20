@@ -155,7 +155,9 @@ for (const [id, set] of [...versions].sort(([a], [b]) => a.localeCompare(b))) {
   // index, so it can no longer be called without a version.
   const p = latestFromRepo.get(id);
   if (!p) continue;
-  index.push({ id, version: latest, versions: sorted, title: p.title, description: p.description });
+  // requires: the profile ids it builds on, so the decision graph
+  // (GET /v1/profiles/{id}/graph) reads only the profiles in it.
+  index.push({ id, version: latest, versions: sorted, title: p.title, description: p.description, requires: (p.requires ?? []).map((r) => r.profile) });
 }
 
 console.log(`New: ${toWrite.map((p) => `${p.id}@${p.version}`).join(', ') || '(none)'}`);

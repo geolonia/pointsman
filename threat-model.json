@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 332,
+    "documented": 334,
     "inferred": 0
   },
   "components": [
@@ -235,6 +235,15 @@
       "caller_must_enforce": "none — P-TOKEN-SCOPE",
       "provenance": "documented",
       "source": "openapi.yaml /v1/profiles"
+    },
+    {
+      "entry_point": "GET /v1/profiles/{id}/graph",
+      "parameter": "id-format",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-TOKEN-SCOPE; only profiles in scope are in the graph",
+      "provenance": "documented",
+      "source": "openapi.yaml /v1/profiles/{id}/graph"
     },
     {
       "entry_point": "POST /v1/decide/{profile}",

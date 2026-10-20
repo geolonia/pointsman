@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:0e4dfe62e1bc88565a247ae66959bc5346df56e87e2d32cb7cea6b8e427d346a"
+prose_version: "threat-model.md@sha256:36635ed1958a2d091ff552df51f6ed24258d8638f1ec59c143fcf113dd0acaa8"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 263, maintainer: 69, inferred: 0, assumption: 0}
+confidence: {documented: 265, maintainer: 69, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1)"
@@ -145,6 +145,14 @@ entry_points:
         control_kinds: [data]
         caller_must_enforce: "none — P-TOKEN-SCOPE"
         provenance: {kind: documented, source: "openapi.yaml /v1/profiles"}
+  - id: "GET /v1/profiles/{id}/graph"
+    component: engine-api
+    parameters:
+      - name: id-format
+        attacker_controllable: true
+        control_kinds: [resource-name, data]
+        caller_must_enforce: "none — P-TOKEN-SCOPE; only profiles in scope are in the graph"
+        provenance: {kind: documented, source: "openapi.yaml /v1/profiles/{id}/graph"}
   - id: "POST /v1/decide/{profile}"
     component: engine-api
     parameters:

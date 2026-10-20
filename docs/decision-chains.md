@@ -1,8 +1,8 @@
 # Decision chains (design)
 
 Status: **agreed design**, for #101 (agreed points of 2026-10-20 at the
-end). Built: the engine (#107) and the bridge (#108); the demo shows it.
-Still open: the graph for DMN tools (below).
+end). Built: the engine (#107), the bridge (#108) and the graph for DMN
+tools (below); the demo shows it.
 
 A decision can build on earlier decisions: the report is evaluated, more
 checks run, and a final decision uses all of it. This document says how a
@@ -365,21 +365,26 @@ the third decision.
 
 ## The graph for DMN tools
 
-`GET /v1/profiles/{id}/graph` returns the graph a profile belongs to, as
-JSON whose nodes and edges use the DMN names, so the DMN XML is a direct
-serialization of it:
+`GET /v1/profiles/{id}/graph` returns the graph a profile belongs to (the
+profiles connected to it through `requires`, both ways, among the ones the
+token may use), as JSON whose nodes and edges use the DMN names, so the DMN
+XML (`?format=dmn`) is a direct serialization of it. As built (src/graph.ts),
+shortened:
 
 ```json
-{ "nodes": [
-    { "id": "decision_road-closure-final", "type": "decision", "name": "final", "profile": "road-closure-final", "version": 1, "allowedAnswers": ["publish", "review", "urgent", "reject"] },
-    { "id": "decision_road-restriction-check", "type": "decision", "name": "check", "profile": "road-restriction-check", "version": 2, "allowedAnswers": ["publish", "review", "urgent", "reject"] },
-    { "id": "input_location", "type": "inputData", "name": "location" },
-    { "id": "bkm_road-restriction-check", "type": "businessKnowledgeModel", "name": "AI questions" },
-    { "id": "ks_gsi", "type": "knowledgeSource", "name": "GSI (flood zones, evacuation sites)", "locationURI": "https://disaportal.gsi.go.jp/" } ],
+{ "profile": "road-closure-final",
+  "nodes": [
+    { "id": "decision_road-closure-final", "type": "decision", "name": "Road closure, final decision", "profile": "road-closure-final", "version": 1, "question": "Combine …", "allowedAnswers": ["reject", "urgent", "publish", "review"], "model": "none" },
+    { "id": "decision_road-restriction-check", "type": "decision", "name": "Road restriction check", "profile": "road-restriction-check", "version": 3, "question": "Check …", "allowedAnswers": ["urgent", "review", "publish", "reject"], "model": "clef-flash" },
+    { "id": "input_description", "type": "inputData", "name": "description" },
+    { "id": "fact_road-restriction-check_flood", "type": "inputData", "name": "flood", "source": "ks_gsi-flood-max" },
+    { "id": "ks_gsi-flood-max", "type": "knowledgeSource", "name": "GSI hazard map portal: river flood zones (maximum assumed rainfall)", "locationURI": "https://disaportal.gsi.go.jp/" },
+    { "id": "bkm_road-restriction-check", "type": "businessKnowledgeModel", "name": "AI questions (category, status_matches, danger, clarity)", "profile": "road-restriction-check", "model": "clef-flash" } ],
   "edges": [
-    { "type": "informationRequirement", "from": "decision_road-restriction-check", "to": "decision_road-closure-final", "optional": false },
-    { "type": "knowledgeRequirement", "from": "bkm_road-restriction-check", "to": "decision_road-restriction-check" },
-    { "type": "authorityRequirement", "from": "ks_gsi", "to": "decision_road-restriction-check" } ] }
+    { "id": "ird_road-closure-final_check", "type": "informationRequirement", "from": "decision_road-restriction-check", "to": "decision_road-closure-final", "name": "check" },
+    { "id": "irf_road-restriction-check_flood", "type": "informationRequirement", "from": "fact_road-restriction-check_flood", "to": "decision_road-restriction-check" },
+    { "id": "kr_road-restriction-check", "type": "knowledgeRequirement", "from": "bkm_road-restriction-check", "to": "decision_road-restriction-check" },
+    { "id": "ar_road-restriction-check_gsi-flood-max", "type": "authorityRequirement", "from": "ks_gsi-flood-max", "to": "decision_road-restriction-check" } ] }
 ```
 
 and as **DMN 1.3 XML** (`https://www.omg.org/spec/DMN/20191111/MODEL/`):
@@ -388,8 +393,26 @@ shapes and edges (a simple layered layout, which the demo reuses), ids as
 NCNames (`decision_…`, `input_…`), and the profile version and `optional` in
 `extensionElements`. DMN 1.3, because it is the version that bpmn.io
 dmn-js, Camunda Modeler, Apache KIE and Trisotech all open; without DMNDI,
-dmn-js does not lay the graph out. The export is checked by opening it in
-those tools. Optional, after the rest.
+dmn-js does not lay the graph out.
+
+As built: decisions are named after the profile title, with the profile id,
+version and model in `pm:profile` (namespace
+`https://github.com/geolonia/pointsman/dmn`) and the requirement name and
+`optional` in `pm:requirement`; each fact is an `inputData` with an
+`authorityRequirement` from its data source; the AI questions are one
+`businessKnowledgeModel` per profile (a rules-only profile has none). The
+layout is a tree: under each decision the decisions it requires, its inputs
+and its AI model; under each fact its data source. Checked on 2026-10-21:
+the export of the demo's chain validates against the DMN 1.3 XML Schema
+(OMG) and opens in bpmn.io dmn-js 17.12.2 without warnings.
+
+For people, `?format=svg` (with `lang=en` or `ja`) draws the chain as a small
+diagram in the style of the datamodels.jp diagrams: one box per decision
+(its AI questions or "rules only", its map checks), the asked-for decision
+highlighted, arrows from the decisions it requires, labelled with their
+names (dashed when optional). It uses the datamodels.jp class names and
+colours, so inline on that site it takes the site's CSS; on its own it
+brings light and dark colours (`--pm-*` variables a page can set).
 
 NGSI-LD 1.8 *linked entity retrieval* (`join=inline&joinLevel=2`) can fetch
 the chain of Decision entities in one request; broker support (GeonicDB,

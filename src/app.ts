@@ -13,9 +13,10 @@ import { hashState, type DecisionLog, type DecisionRecord, type FinalAnswer } fr
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
 import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './chains';
+import { decisionGraph, toDmn, toSvg } from './graph';
 import { compilePolicy, peopleAnswers, peopleCheck } from './policy';
 import type { ProfileStore } from './profiles/store';
-import type { Decision } from './types';
+import type { Decision, Profile } from './types';
 
 export interface Deps {
   store: ProfileStore;
@@ -99,8 +100,45 @@ export function createApp(deps: (env: Env) => Deps) {
   app.get('/v1/profiles', async (c) => {
     const { store } = deps(c.env);
     const client = c.get('client');
-    const profiles = (await store.list()).filter((p) => canUse(client, p.id));
+    // requires names only profiles this token may use, too (P-TOKEN-SCOPE).
+    const profiles = (await store.list()).filter((p) => canUse(client, p.id))
+      .map((p) => (p.requires ? { ...p, requires: p.requires.filter((r) => canUse(client, r)) } : p));
     return c.json({ profiles });
+  });
+
+  // The decision graph a profile belongs to, for DMN tools: JSON, DMN 1.3 XML
+  // with ?format=dmn, or an SVG diagram with ?format=svg (docs/decision-chains.md).
+  // Only profiles in scope.
+  app.get('/v1/profiles/:id/graph', async (c) => {
+    const { store } = deps(c.env);
+    const client = c.get('client');
+    const id = c.req.param('id');
+    const format = c.req.query('format') ?? 'json';
+    if (format !== 'json' && format !== 'dmn' && format !== 'svg') return error(400, 'invalid_request', '"format" must be json, dmn or svg');
+    const lang = c.req.query('lang') ?? 'en';
+    if (lang !== 'en' && lang !== 'ja') return error(400, 'invalid_request', '"lang" must be en or ja');
+    // Checked before the lookup, as for decide: no probing outside the scope.
+    if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
+    const profile = await store.get(id);
+    if (!profile) return error(404, 'profile_not_found', 'unknown profile');
+    // Only the profiles connected to this one through requires (both ways),
+    // found in the index, are read: KV allows a limited number of reads per
+    // request. An index without requires (written before the graph) gives
+    // every profile in scope.
+    const summaries = (await store.list()).filter((p) => canUse(client, p.id));
+    const wanted = summaries.every((s) => Array.isArray(s.requires)) ? connected(id, summaries) : new Set(summaries.map((s) => s.id));
+    const reads = summaries.filter((s) => s.id !== id && wanted.has(s.id));
+    const others = (await Promise.all(reads.map((s) => store.get(s.id, s.version)))).filter((p): p is Profile => p !== null);
+    const graph = decisionGraph(profile, others);
+    if (format === 'svg') {
+      return new Response(toSvg(graph, [profile, ...others], lang), { headers: { 'content-type': 'image/svg+xml; charset=utf-8' } });
+    }
+    if (format === 'dmn') {
+      return new Response(toDmn(graph), {
+        headers: { 'content-type': 'application/xml; charset=utf-8', 'content-disposition': `inline; filename="${profile.id}.dmn"` },
+      });
+    }
+    return c.json(graph);
   });
 
   app.post('/v1/decide/:profile', async (c) => {
@@ -524,6 +562,29 @@ function publicRecord<R extends DecisionRecord>(record: R, client: TokenRecord) 
   const { callback_url: _, request_digest: __, requires, ...visible } = record;
   const shown = visibleRequires(requires, (profile) => canUse(client, profile));
   return shown ? { ...visible, requires: shown } : visible;
+}
+
+/** The profile ids connected to `id` through requires, both ways, by the index. */
+function connected(id: string, summaries: { id: string; requires?: string[] }[]): Set<string> {
+  // Only through profiles in the list (the ones in scope): a profile out of
+  // scope does not join two others, as in decisionGraph.
+  const known = new Set(summaries.map((s) => s.id));
+  const seen = new Set([id]);
+  const queue = [id];
+  while (queue.length > 0) {
+    const at = queue.shift()!;
+    const next = [
+      ...(summaries.find((s) => s.id === at)?.requires ?? []),
+      ...summaries.filter((s) => s.requires?.includes(at)).map((s) => s.id),
+    ];
+    for (const n of next) {
+      if (known.has(n) && !seen.has(n)) {
+        seen.add(n);
+        queue.push(n);
+      }
+    }
+  }
+  return seen;
 }
 
 /** The model of a decision made by rules only. */
