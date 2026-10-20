@@ -679,7 +679,7 @@ what voids it.
   Voided by: nothing. Search:
   `grep -n "app\.\(get\|post\|all\|use\)(" src/app.ts` — every `/v1/*` route
   is registered after the `app.use('/v1/*', …)` middleware at
-  `src/app.ts:83`; `/mcp` authenticates on lines 319 (OAuth resource server) and 321 (API tokens) of `src/app.ts`; the remaining
+  `src/app.ts:83`; `/mcp` authenticates on lines 324 (OAuth resource server) and 326 (API tokens) of `src/app.ts`; the remaining
   routes are the OAuth flow (which issues grants only after GitHub membership)
   and the 404 handler.
 - **`P-TOKEN-SCOPE`** — a token acts only on the profiles in its record;
@@ -713,8 +713,8 @@ what voids it.
   Tier: security-critical. *(documented, README "API tokens": "A test token
   may only decide (and list its profiles) over the REST API, not over MCP,
   and gets no callbacks")*. Voided by: nothing. Search:
-  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 95 and 314 of `src/app.ts`, the unlogged return at
-  `src/app.ts:497`, and the callback refusal in `makeDecision`. A test token
+  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 95 and 319 of `src/app.ts`, the unlogged return at
+  `src/app.ts:502`, and the callback refusal in `makeDecision`. A test token
   also cannot send `decisions` or decide a profile with `requires`, so it
   never reads logged decisions (`makeDecision`, docs/decision-chains.md).
 - **`P-ANSWER-SHAPE`** — a model answer is accepted only when every question
@@ -728,7 +728,7 @@ what voids it.
   format": "Answers that do not fit the profile ... are rejected with a
   `model_error`")*. Voided by: nothing. Search:
   `grep -rn "normalizeAnswers" src` — called on the only decision path,
-  `src/app.ts:462`, for every adapter.
+  `src/app.ts:467`, for every adapter.
 - **`P-ACTION-FROM-POLICY`** — the action is the first rule whose condition
   is true over the typed answers, facts and required decisions, else the
   profile's default; a
@@ -783,7 +783,7 @@ what voids it.
   log. Symptom: `x-unlogged-decision`, `integrity-bypass`. Tier:
   security-critical. *(documented, docs/decision-log.md "Every decision is
   stored in D1 ... before it is returned"; docs/mcp.md "Decisions through
-  MCP")*. Voided by: a test token (`src/app.ts:497`, `if (client.test)
+  MCP")*. Voided by: a test token (`src/app.ts:502`, `if (client.test)
   return`), by design and marked in the response.
 - **`P-PROFILE-VERSION-IMMUTABLE`** — a published profile id and version never
   change content: the deploy registers each version's content hash in D1 and
@@ -803,7 +803,7 @@ what voids it.
   returned; tokens never appear in logs, responses or the decision log.
   Symptom: `info-leak`. Tier: security-critical. *(documented,
   docs/decision-log.md "By default only the hash of the state is kept")*.
-  Voided by: `log.store_state: true` on a profile (`src/app.ts:505`), the AI
+  Voided by: `log.store_state: true` on a profile (`src/app.ts:510`), the AI
   Gateway's `collect_logs: true` (`ai-gateway.json`; documented in
   docs/models.md "Logs hold the state"), and a model server's own retention
   (`D-STATE-TO-BACKEND`). The first two are §1.6 rows. Narrowed by: `route:

@@ -11,6 +11,11 @@ export interface ProfileSummary {
   versions: number[];
   title: BilingualText;
   description: BilingualText;
+  /**
+   * The profile ids the latest version requires (decision chains). Missing in
+   * an index written before the decision graph; the next deploy adds it.
+   */
+  requires?: string[];
 }
 
 export interface ProfileStore {
@@ -28,6 +33,7 @@ function summarize(versions: Profile[]): ProfileSummary {
     versions: sorted.map((p) => p.version),
     title: latest.title,
     description: latest.description,
+    requires: (latest.requires ?? []).map((r) => r.profile),
   };
 }
 

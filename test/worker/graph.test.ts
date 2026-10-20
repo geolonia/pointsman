@@ -177,6 +177,23 @@ describe('GET /v1/profiles/{id}/graph', () => {
     expect(await svg.text()).toContain('通行止めの最終判断');
   });
 
+  it('reads only the profiles connected to it, by the index', async () => {
+    const read: string[] = [];
+    const store = new MemoryProfileStore(all);
+    const counting = { list: () => store.list(), get: async (id: string, v?: number) => { read.push(id); return store.get(id, v); } };
+    const tokens = new MemoryTokenStore();
+    tokens.records.set(await hashToken(ALL), { client: 'all', profiles: ['*'], created_at: '' });
+    const app = createApp(() => ({ store: counting, tokens, log: fakeLog(), adapterFor: () => new MockAdapter(), callbacks: noCallbacks }));
+    const res = await app.request('/v1/profiles/road-closure-final/graph', { headers: { authorization: `Bearer ${ALL}` } }, env);
+    expect(res.status).toBe(200);
+    expect([...new Set(read)].sort()).toEqual([...chain].sort());
+    // An index from before (no requires): every profile in scope, as a fallback.
+    read.length = 0;
+    counting.list = async () => (await store.list()).map(({ requires: _, ...s }) => s);
+    await app.request('/v1/profiles/road-closure-final/graph', { headers: { authorization: `Bearer ${ALL}` } }, env);
+    expect(new Set(read).size).toBe(all.length);
+  });
+
   it('shows only profiles in the token scope', async () => {
     const g = await (await call('/v1/profiles/road-closure-final/graph', FINAL_ONLY)).json<{ nodes: { id: string }[] }>();
     expect(g.nodes.map((n) => n.id)).not.toContain('decision_evacuation-access-check');

@@ -712,6 +712,10 @@ components:
         versions: { type: array, items: { type: integer, minimum: 1 } }
         title: { $ref: '#/components/schemas/BilingualText' }
         description: { $ref: '#/components/schemas/BilingualText' }
+        requires:
+          description: The profile ids the latest version requires (decision chains, docs/decision-chains.md).
+          type: array
+          items: { type: string }
     BilingualText:
       type: object
       additionalProperties: false

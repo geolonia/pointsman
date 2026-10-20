@@ -119,9 +119,14 @@ export function createApp(deps: (env: Env) => Deps) {
     if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
     const profile = await store.get(id);
     if (!profile) return error(404, 'profile_not_found', 'unknown profile');
-    // The latest version of each profile in scope, read at once.
-    const summaries = (await store.list()).filter((p) => p.id !== id && canUse(client, p.id));
-    const others = (await Promise.all(summaries.map((s) => store.get(s.id, s.version)))).filter((p): p is Profile => p !== null);
+    // Only the profiles connected to this one through requires (both ways),
+    // found in the index, are read: KV allows a limited number of reads per
+    // request. An index without requires (written before the graph) gives
+    // every profile in scope.
+    const summaries = (await store.list()).filter((p) => canUse(client, p.id));
+    const wanted = summaries.every((s) => Array.isArray(s.requires)) ? connected(id, summaries) : new Set(summaries.map((s) => s.id));
+    const reads = summaries.filter((s) => s.id !== id && wanted.has(s.id));
+    const others = (await Promise.all(reads.map((s) => store.get(s.id, s.version)))).filter((p): p is Profile => p !== null);
     const graph = decisionGraph(profile, others);
     if (format === 'svg') {
       return new Response(toSvg(graph, [profile, ...others], lang), { headers: { 'content-type': 'image/svg+xml; charset=utf-8' } });
@@ -555,6 +560,26 @@ function publicRecord<R extends DecisionRecord>(record: R, client: TokenRecord) 
   const { callback_url: _, request_digest: __, requires, ...visible } = record;
   const shown = visibleRequires(requires, (profile) => canUse(client, profile));
   return shown ? { ...visible, requires: shown } : visible;
+}
+
+/** The profile ids connected to `id` through requires, both ways, by the index. */
+function connected(id: string, summaries: { id: string; requires?: string[] }[]): Set<string> {
+  const seen = new Set([id]);
+  const queue = [id];
+  while (queue.length > 0) {
+    const at = queue.shift()!;
+    const next = [
+      ...(summaries.find((s) => s.id === at)?.requires ?? []),
+      ...summaries.filter((s) => s.requires?.includes(at)).map((s) => s.id),
+    ];
+    for (const n of next) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        queue.push(n);
+      }
+    }
+  }
+  return seen;
 }
 
 /** The model of a decision made by rules only. */
