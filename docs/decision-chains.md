@@ -47,7 +47,7 @@ decision keeps its questions, facts and threshold rules as today.
 
 | DMN (1.3 and later) | Pointsman |
 |---|---|
-| `decision` (with `question`, `allowedAnswers`) | a profile, decided once per entity: one decision log row, one Decision entity. `question` = the profile's description, `allowedAnswers` = its actions |
+| `decision` (with `question`, `allowedAnswers`) | a profile, decided once per entity: one decision log row, one Decision entity. `question` = the profile's description, `allowedAnswers` = its actions and the answers a person may give (`people_answers`, below) |
 | `inputData` | the state's fields the profile reads, and each fact (named after the fact) |
 | `informationRequirement` → `requiredDecision` | `requires` in the profile (below) |
 | `businessKnowledgeModel` + `knowledgeRequirement` | the profile's AI questions and model (DMN uses these for analytic models; we export it without logic) |
@@ -227,8 +227,13 @@ Apache KIE and Camunda traces where they fit (see "Standards considered").
 
 `GET /v1/decisions/{id}` returns `requires` filtered by the reader's scope:
 a required decision of a profile the reader may not see is shown as
-`{ "decision": null }` with no other fields, as if unknown. The Decision entity gets one
-`wasInformedBy` per required decision.
+`{ "decision": null }` with no other fields, as if unknown; MCP's
+`get_decision` does the same (and also hides profiles that are not
+`mcp.visible`). These are Pointsman's own answers, so Pointsman filters
+them. The Decision entity in the broker is written by the caller, which
+already knows the ids it sent; who may read it is the broker's access
+control, as for every entity there. It gets one `wasInformedBy` per
+required decision.
 
 ### Who runs the chain
 
@@ -248,8 +253,9 @@ required decision.
 
 - **What starts it again.** For a requirement with `rerunOnReview: true` in
   the route (default `false`), the bridge's loop guard (the hash of the
-  inputs) includes the required attribute's decision id and `finalAction`,
-  so a resolved review is a new input and the route runs again. The rules
+  inputs) includes the required attribute's decision id, `finalAction` and
+  `reviewedAt`, so a resolved review is a new input and the route runs
+  again, also when the person only corrected answers. The rules
   read `outcome`, which now holds the person's answer. In the demo the
   final route sets it for `check`; the evacuation route does not, so a
   resolved check does not run the evacuation check (and its alert) twice.
@@ -259,16 +265,21 @@ required decision.
 - **The new final decision replaces the older ones** for the same profile,
   `ref` and client, for profiles with `requires` only (other profiles keep
   today's behaviour):
-  - "Latest" is the newest `created_at` in the decision log. The bridge
-    writes the result attribute only when its decision is newer than the
-    `observedAt` of the one already there. NGSI-LD has no conditional
-    update, so this makes an older result winning unlikely, not impossible;
-    the next run corrects it.
+  - "Latest" is the newest `created_at` in the decision log. Routes with
+    `requires` run from the bridge's queue one message at a time
+    (`max_concurrency` 1), so two runs for the same report never overlap
+    and the newer one is always written last; the inline path without a
+    queue is refused for them. In addition the bridge writes the result
+    attribute only when its decision is newer than the `observedAt` of the
+    one already there (NGSI-LD has no conditional update, so this check
+    alone would not be enough).
   - An older final decision whose review is still open gets the review
     status `superseded`: it leaves the review queue (no callback is sent
     for it), the bridge closes its Task, and the stats count it as
     replaced, not as reviewed.
-  - The new Decision entity links the one it replaces (`wasRevisionOf`).
+  - The new Decision entity links the one it replaces (`replaces`,
+    Dublin Core `dcterms:replaces`; PROV-O's `wasRevisionOf` links
+    entities, and a Decision is a PROV activity).
   - An alert that was already sent stays sent (agreed point 2): the
     evacuation site's staff were told; the new decision is shown as
     replacing the earlier one, without an all-clear message.
@@ -324,6 +335,7 @@ serialization of it:
 ```json
 { "nodes": [
     { "id": "decision_road-closure-final", "type": "decision", "name": "final", "profile": "road-closure-final", "version": 1, "allowedAnswers": ["publish", "review", "urgent", "reject"] },
+    { "id": "decision_road-restriction-check", "type": "decision", "name": "check", "profile": "road-restriction-check", "version": 2, "allowedAnswers": ["publish", "review", "urgent", "reject"] },
     { "id": "input_location", "type": "inputData", "name": "location" },
     { "id": "bkm_road-restriction-check", "type": "businessKnowledgeModel", "name": "AI questions" },
     { "id": "ks_gsi", "type": "knowledgeSource", "name": "GSI (flood zones, evacuation sites)", "locationURI": "https://disaportal.gsi.go.jp/" } ],
@@ -402,9 +414,10 @@ The design adds an input that reads other decisions. The threat model gets:
      in the decide response;
    - docs, OpenAPI, threat model, tests, an example profile.
 2. **datamodels.jp:** the Decision model with several `wasInformedBy`,
-   `requiredDecisions` and `wasRevisionOf` (geolonia/datamodels#302).
+   `requiredDecisions` and `replaces` (geolonia/datamodels#302).
 3. **Bridge:** `requires` on routes (with `rerunOnReview`), reviews and
-   Tasks from the decide response's `review`, writes only when newer,
+   Tasks from the decide response's `review`, chained routes from the queue
+   one at a time, writes only when newer,
    closing the Task of a superseded decision, skipping a `409`, route
    cycles.
 4. **pointsman-config:** the `road-closure-final` profile and its route.
@@ -422,7 +435,8 @@ Checked on 2026-10-20. Used where they fit, recorded where not:
 | DMN decision logic (FEEL, S-FEEL, tables) | Same | No | Spike #13: +25 % Worker size, separate validation; our rules read better at this size |
 | DMN TCK | Active (Apache-2.0) | No | Tests decision logic, which we do not export |
 | Apache KIE (Drools/Kogito) DMN, Camunda DMN | Mature engines | Names only | They run the whole graph in one call; we take their trace field names |
-| W3C PROV-O | Recommendation | **Yes** (already) | `wasInformedBy` per requirement, `wasRevisionOf` for a replaced decision |
+| W3C PROV-O | Recommendation | **Yes** (already) | `wasInformedBy` per requirement. Not `wasRevisionOf` for a replaced decision: it links PROV entities, a Decision is an activity |
+| Dublin Core Terms | DCMI | **Yes** | `dcterms:replaces` for a decision that replaces an earlier one |
 | NGSI-LD Relationships, linked entity retrieval (1.8) | ETSI GS CIM 009 | **Yes** | Links between Decision entities; one request for the chain (after a broker check) |
 | Smart Data Models `Alert` | Maintained | **Yes** (already) | The alert of the evacuation check |
 | Google CEL | Active (Kubernetes) | No | Well specified, but about 82 KB in the Worker and its own type environment |
