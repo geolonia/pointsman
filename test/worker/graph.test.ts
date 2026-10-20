@@ -194,6 +194,18 @@ describe('GET /v1/profiles/{id}/graph', () => {
     expect(new Set(read).size).toBe(all.length);
   });
 
+  it('lists requires only with profiles in scope, and reads nothing through a profile out of scope', async () => {
+    const list = await (await call('/v1/profiles', FINAL_ONLY)).json<{ profiles: { id: string; requires?: string[] }[] }>();
+    expect(list.profiles.find((p) => p.id === 'road-closure-final')?.requires).toEqual(['road-restriction-check']);
+    const read: string[] = [];
+    const store = new MemoryProfileStore(all);
+    const tokens = new MemoryTokenStore();
+    tokens.records.set(await hashToken(FINAL_ONLY), { client: 'final', profiles: ['road-closure-final', 'issue-triage'], created_at: '' });
+    const app = createApp(() => ({ store: { list: () => store.list(), get: async (id: string, v?: number) => { read.push(id); return store.get(id, v); } }, tokens, log: fakeLog(), adapterFor: () => new MockAdapter(), callbacks: noCallbacks }));
+    await app.request('/v1/profiles/road-closure-final/graph', { headers: { authorization: `Bearer ${FINAL_ONLY}` } }, env);
+    expect([...new Set(read)]).toEqual(['road-closure-final']);
+  });
+
   it('shows only profiles in the token scope', async () => {
     const g = await (await call('/v1/profiles/road-closure-final/graph', FINAL_ONLY)).json<{ nodes: { id: string }[] }>();
     expect(g.nodes.map((n) => n.id)).not.toContain('decision_evacuation-access-check');

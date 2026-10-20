@@ -100,7 +100,9 @@ export function createApp(deps: (env: Env) => Deps) {
   app.get('/v1/profiles', async (c) => {
     const { store } = deps(c.env);
     const client = c.get('client');
-    const profiles = (await store.list()).filter((p) => canUse(client, p.id));
+    // requires names only profiles this token may use, too (P-TOKEN-SCOPE).
+    const profiles = (await store.list()).filter((p) => canUse(client, p.id))
+      .map((p) => (p.requires ? { ...p, requires: p.requires.filter((r) => canUse(client, r)) } : p));
     return c.json({ profiles });
   });
 
@@ -564,6 +566,9 @@ function publicRecord<R extends DecisionRecord>(record: R, client: TokenRecord) 
 
 /** The profile ids connected to `id` through requires, both ways, by the index. */
 function connected(id: string, summaries: { id: string; requires?: string[] }[]): Set<string> {
+  // Only through profiles in the list (the ones in scope): a profile out of
+  // scope does not join two others, as in decisionGraph.
+  const known = new Set(summaries.map((s) => s.id));
   const seen = new Set([id]);
   const queue = [id];
   while (queue.length > 0) {
@@ -573,7 +578,7 @@ function connected(id: string, summaries: { id: string; requires?: string[] }[])
       ...summaries.filter((s) => s.requires?.includes(at)).map((s) => s.id),
     ];
     for (const n of next) {
-      if (!seen.has(n)) {
+      if (known.has(n) && !seen.has(n)) {
         seen.add(n);
         queue.push(n);
       }
