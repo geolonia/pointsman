@@ -48,17 +48,41 @@ to its own broker.
 
 ## How it works
 
+One route, for one notified entity:
+
 ```mermaid
 sequenceDiagram
   participant Broker as Context broker
   participant Bridge
   participant P as Pointsman
   Broker->>Bridge: notification (entity) + shared secret
+  opt with a queue
+    Bridge-->>Broker: 202 at once, the queue handler goes on
+  end
   Bridge->>Bridge: inputs unchanged since the last decision? then stop
-  Bridge->>P: POST /v1/decide/{profile} {state: entity, ref: entity id}
-  P-->>Bridge: answers, probabilities, action
+  Bridge->>P: POST /v1/decide/{profile} {state, ref, decisions?} + Idempotency-Key
+  Note over P: asks the model, looks up the facts, applies the rules
+  P-->>Bridge: decision id, answers, facts, action
+  opt Decision or Task entities on for the route
+    Bridge->>Broker: create the Decision entity, create or cancel the Task
+  end
   Bridge->>Broker: write the result attribute on the entity
 ```
+
+- `state` is the entity and `ref` its id. `decisions` is only sent for a
+  route with `requires` (a chain): the ids of the earlier decisions, read
+  from the entity. While a required one is missing, the bridge waits for
+  the next notification; a missing `optional` one is left out.
+- Pointsman looks up the facts the profile asks for itself (in the demo:
+  flood zone, evacuation site, way around on foot); the bridge sends no
+  facts.
+- A person's answer comes back the other way: the broker notifies
+  `/reviews` with a resolved `Decision`, and the bridge resolves the review
+  in Pointsman (`POST /v1/reviews/{id}/resolve`) and writes the final
+  action. A completed work order from another app (a `Task`, with
+  `BRIDGE_WORK_ORDERS` set) is first turned into a resolved `Decision`.
+
+How the demo uses this, with three chained decisions: [docs/fiware-demo.md](../docs/fiware-demo.md#how-it-runs).
 
 The profile reads the entity as the broker sends it (normalized NGSI-LD), so
 there is no mapping code: the input paths in the profile point at the
