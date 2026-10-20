@@ -48,6 +48,18 @@ describe('decisionGraph', () => {
     for (const id of [...ids, ...g.edges.map((e) => e.id)]) expect(id).toMatch(/^[A-Za-z_][A-Za-z0-9._-]*$/);
   });
 
+  it('gives every node and edge its own id, also when a requirement is named like a fact or input', () => {
+    const base = byId('road-closure-final');
+    const odd = { ...base, facts: [{ name: 'x', type: 'inside', layer: 'gsi-flood-max', at: '$.location.value' }], requires: [...(base.requires ?? []), { name: 'fact_x', profile: 'issue-triage', optional: true }] } as Profile;
+    const graph = decisionGraph(odd, all);
+    const ids = [...graph.nodes.map((n) => n.id), ...graph.edges.map((e) => e.id)];
+    expect(new Set(ids).size).toBe(ids.length);
+    const xml = toDmn(graph);
+    // Element ids (pm:profile and pm:model carry a profile or model id, not an XML id).
+    const xmlIds = [...xml.matchAll(/<(?!pm:)[\w:]+ id="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(xmlIds).size).toBe(xmlIds.length);
+  });
+
   it('is the same graph from any profile in it', () => {
     const fromCheck = decisionGraph(byId('road-restriction-check'), all);
     expect(fromCheck.nodes.map((n) => n.id).sort()).toEqual(g.nodes.map((n) => n.id).sort());
@@ -88,6 +100,11 @@ describe('toDmn', () => {
     const drawn = new Set([...xml.matchAll(/dmnElementRef="([^"]+)"/g)].map((m) => m[1]));
     for (const [, id] of xml.matchAll(/<(?:decision|inputData|businessKnowledgeModel|knowledgeSource) id="([^"]+)"/g)) expect(drawn.has(id), id).toBe(true);
     for (const [, id] of xml.matchAll(/<(?:informationRequirement|knowledgeRequirement|authorityRequirement) id="([^"]+)"/g)) expect(drawn.has(id), id).toBe(true);
+  });
+
+  it('drops characters XML does not allow', () => {
+    const p = { ...byId('road-closure-final'), description: { en: 'a\u0001b\u000bc', ja: 'x' } } as Profile;
+    expect(toDmn(decisionGraph(p, all))).toContain('<question>abc</question>');
   });
 
   it('escapes text', () => {

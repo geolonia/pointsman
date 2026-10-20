@@ -369,19 +369,22 @@ the third decision.
 profiles connected to it through `requires`, both ways, among the ones the
 token may use), as JSON whose nodes and edges use the DMN names, so the DMN
 XML (`?format=dmn`) is a direct serialization of it. As built (src/graph.ts),
-roughly:
+shortened:
 
 ```json
-{ "nodes": [
-    { "id": "decision_road-closure-final", "type": "decision", "name": "final", "profile": "road-closure-final", "version": 1, "allowedAnswers": ["publish", "review", "urgent", "reject"] },
-    { "id": "decision_road-restriction-check", "type": "decision", "name": "check", "profile": "road-restriction-check", "version": 3, "allowedAnswers": ["publish", "review", "urgent", "reject"] },
-    { "id": "input_location", "type": "inputData", "name": "location" },
-    { "id": "bkm_road-restriction-check", "type": "businessKnowledgeModel", "name": "AI questions" },
-    { "id": "ks_gsi", "type": "knowledgeSource", "name": "GSI (flood zones, evacuation sites)", "locationURI": "https://disaportal.gsi.go.jp/" } ],
+{ "profile": "road-closure-final",
+  "nodes": [
+    { "id": "decision_road-closure-final", "type": "decision", "name": "Road closure, final decision", "profile": "road-closure-final", "version": 1, "question": "Combine …", "allowedAnswers": ["reject", "urgent", "publish", "review"], "model": "none" },
+    { "id": "decision_road-restriction-check", "type": "decision", "name": "Road restriction check", "profile": "road-restriction-check", "version": 3, "question": "Check …", "allowedAnswers": ["urgent", "review", "publish", "reject"], "model": "clef-flash" },
+    { "id": "input_description", "type": "inputData", "name": "description" },
+    { "id": "fact_road-restriction-check_flood", "type": "inputData", "name": "flood", "source": "ks_gsi-flood-max" },
+    { "id": "ks_gsi-flood-max", "type": "knowledgeSource", "name": "GSI hazard map portal: river flood zones (maximum assumed rainfall)", "locationURI": "https://disaportal.gsi.go.jp/" },
+    { "id": "bkm_road-restriction-check", "type": "businessKnowledgeModel", "name": "AI questions (category, status_matches, danger, clarity)", "profile": "road-restriction-check", "model": "clef-flash" } ],
   "edges": [
-    { "type": "informationRequirement", "from": "decision_road-restriction-check", "to": "decision_road-closure-final", "optional": false },
-    { "type": "knowledgeRequirement", "from": "bkm_road-restriction-check", "to": "decision_road-restriction-check" },
-    { "type": "authorityRequirement", "from": "ks_gsi", "to": "decision_road-restriction-check" } ] }
+    { "id": "ird_road-closure-final_check", "type": "informationRequirement", "from": "decision_road-restriction-check", "to": "decision_road-closure-final", "name": "check" },
+    { "id": "irf_road-restriction-check_flood", "type": "informationRequirement", "from": "fact_road-restriction-check_flood", "to": "decision_road-restriction-check" },
+    { "id": "kr_road-restriction-check", "type": "knowledgeRequirement", "from": "bkm_road-restriction-check", "to": "decision_road-restriction-check" },
+    { "id": "ar_road-restriction-check_gsi-flood-max", "type": "authorityRequirement", "from": "ks_gsi-flood-max", "to": "decision_road-restriction-check" } ] }
 ```
 
 and as **DMN 1.3 XML** (`https://www.omg.org/spec/DMN/20191111/MODEL/`):

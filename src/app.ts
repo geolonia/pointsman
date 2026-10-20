@@ -16,7 +16,7 @@ import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './cha
 import { decisionGraph, toDmn, toSvg } from './graph';
 import { compilePolicy, peopleAnswers, peopleCheck } from './policy';
 import type { ProfileStore } from './profiles/store';
-import type { Decision } from './types';
+import type { Decision, Profile } from './types';
 
 export interface Deps {
   store: ProfileStore;
@@ -104,8 +104,9 @@ export function createApp(deps: (env: Env) => Deps) {
     return c.json({ profiles });
   });
 
-  // The decision graph a profile belongs to, for DMN tools: JSON, or DMN 1.3
-  // XML with ?format=dmn (docs/decision-chains.md). Only profiles in scope.
+  // The decision graph a profile belongs to, for DMN tools: JSON, DMN 1.3 XML
+  // with ?format=dmn, or an SVG diagram with ?format=svg (docs/decision-chains.md).
+  // Only profiles in scope.
   app.get('/v1/profiles/:id/graph', async (c) => {
     const { store } = deps(c.env);
     const client = c.get('client');
@@ -118,11 +119,9 @@ export function createApp(deps: (env: Env) => Deps) {
     if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
     const profile = await store.get(id);
     if (!profile) return error(404, 'profile_not_found', 'unknown profile');
-    const others = [];
-    for (const s of (await store.list()).filter((p) => p.id !== id && canUse(client, p.id))) {
-      const p = await store.get(s.id);
-      if (p) others.push(p);
-    }
+    // The latest version of each profile in scope, read at once.
+    const summaries = (await store.list()).filter((p) => p.id !== id && canUse(client, p.id));
+    const others = (await Promise.all(summaries.map((s) => store.get(s.id, s.version)))).filter((p): p is Profile => p !== null);
     const graph = decisionGraph(profile, others);
     if (format === 'svg') {
       return new Response(toSvg(graph, [profile, ...others], lang), { headers: { 'content-type': 'image/svg+xml; charset=utf-8' } });

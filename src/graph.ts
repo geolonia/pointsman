@@ -100,20 +100,21 @@ export function decisionGraph(profile: Profile, profiles: Profile[]): DecisionGr
     add({ id, type: 'decision', name: p.title.en, profile: p.id, version: p.version, question: p.description.en, allowedAnswers: answers, model: p.model });
     for (const r of p.requires ?? []) {
       if (!members.has(r.profile)) continue;
-      edges.push({ id: `ir_${ncname(p.id)}_${ncname(r.name)}`, type: 'informationRequirement', from: decisionId(r.profile), to: id, name: r.name, ...(r.optional && { optional: true }) });
+      // One prefix per kind of edge: a requirement named like an input or a fact cannot clash.
+      edges.push({ id: `ird_${ncname(p.id)}_${ncname(r.name)}`, type: 'informationRequirement', from: decisionId(r.profile), to: id, name: r.name, ...(r.optional && { optional: true }) });
     }
     // The state's fields the profile reads (shared by name across profiles).
     const inputs = p.input?.map((i) => i.name) ?? (p.questions.length > 0 ? ['state'] : []);
     for (const name of inputs) {
       const inputId = `input_${ncname(name)}`;
       add({ id: inputId, type: 'inputData', name });
-      edges.push({ id: `ir_${ncname(p.id)}_input_${ncname(name)}`, type: 'informationRequirement', from: inputId, to: id });
+      edges.push({ id: `iri_${ncname(p.id)}_${ncname(name)}`, type: 'informationRequirement', from: inputId, to: id });
     }
     // Each fact is an input of its own, looked up from a data source.
     for (const f of p.facts ?? []) {
       const factId = `fact_${ncname(p.id)}_${ncname(f.name)}`;
       add({ id: factId, type: 'inputData', name: f.name, source: `ks_${ncname(sourceKey(f))}` });
-      edges.push({ id: `ir_${ncname(p.id)}_fact_${ncname(f.name)}`, type: 'informationRequirement', from: factId, to: id });
+      edges.push({ id: `irf_${ncname(p.id)}_${ncname(f.name)}`, type: 'informationRequirement', from: factId, to: id });
       const key = sourceKey(f);
       const ksId = `ks_${ncname(key)}`;
       add({ id: ksId, type: 'knowledgeSource', ...(SOURCES[key] ?? { name: key }) });
@@ -151,7 +152,9 @@ const GAP_X = 30;
 const GAP_Y = 70;
 
 function xml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // Characters XML 1.0 does not allow are dropped, so the document stays well-formed.
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /**
