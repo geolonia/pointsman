@@ -1,6 +1,7 @@
 # Decision chains (design)
 
-Status: **proposal**, for #101. Nothing here is built yet.
+Status: **agreed design**, for #101 (decisions of 2026-10-20 at the end).
+Nothing here is built yet.
 
 A decision can build on earlier decisions: the report is evaluated, more
 checks run, and a final decision uses all of it. This document says how a
@@ -84,6 +85,12 @@ policy:
   needs at least one item; this would allow zero when `requires` is set.
 - A required profile may itself require others. Cycles are refused when
   profiles are published.
+- **Checked both ways.** A profile with `requires` is checked against the
+  required profile's latest version when it is published, and publishing a
+  new version of a required profile checks every profile that requires it:
+  if one would break (a question or fact it reads is gone or has another
+  type), the publish fails in CI and names it. A decision of an older
+  version that lacks a field gives *unknown* at run time.
 
 ### What rules can read
 
@@ -125,9 +132,10 @@ POST /v1/decide/road-closure-final
   facts come from the decision log, so a client cannot make a final decision
   "urgent" by claiming the first one was. A decision of another profile, or
   one the token may not see (scope), is refused (`400`).
-- **Same entity.** The required decision must be about the same entity: its
-  `ref` equals this request's `ref`, or its `state_hash` matches the hash of
-  the state it was given. Exact rule to settle (open question 2).
+- **Same report, same client.** A required decision must have this
+  request's `ref` and come from the same client (API token), otherwise the
+  request is refused (`400`). The state hash is not compared: the state
+  changes between steps, because the bridge adds the results.
 - **Logged.** The new decision row stores the ids it used (`requires` as a
   JSON map); `GET /v1/decisions/{id}` returns them, and the Decision entity
   gets one `prov:wasInformedBy` per id (today: one, from the bridge's
@@ -160,7 +168,8 @@ result is:
 - The bridge reads each required attribute's `decisionId` and sends it in
   `decisions`. This replaces `informedBy` (kept for a while as one entry).
 - **When to run the final step:** when all required decisions are there,
-  and optional ones are either there or will not come. The subscription
+  and optional ones are either there or will not come; and again when a
+  required decision's `finalAction` is set by a review (decision 1). The subscription
   watches the required attributes; for the demo: `check` is `publish` (no
   evacuation check will come), or `evacuation` is set.
 - The existing loop guard (input hash) and `PATCH …/attrs/{name}` apply as
@@ -285,20 +294,20 @@ Checked on 2026-10-20. Used where they fit, recorded where not:
 | FIWARE Perseo (CEP) | Maintained, NGSI-v2, AGPL | No | Event correlation rules, not decisions with a model; a separate server |
 | A Smart Data Models "Decision" or "Rule" | Does not exist | — | Our Decision model stays our own ([decision-model-standards.md](decision-model-standards.md)) |
 
-## Open questions
+## Decisions (2026-10-20)
 
-1. **Reviews in the chain.** If `check` waits for a person, does the final
-   step wait for `final_action`, or decide on `action` and run again after
-   the review? (Proposal: run on `action`; a review of a required decision
-   starts the final step again, for example from the review callback, and
-   the final decision records which `final_action` it used, as PROV-O
-   `used` of the revised decision. In the trace, a decision that waits is
-   `SUCCEEDED` with its `action`; its review is a second entry.)
-2. **Same entity.** Is `ref` equality enough, or should the engine also
-   require the same state (hash)? The second breaks when the state changes
-   between steps (the bridge adds the result attributes).
-3. **Versions.** Rules are validated against the required profile's latest
-   version. A decision of an older version may lack a question the rule
-   reads: unknown, as today for missing facts. Is that enough?
-4. **Replace or keep the side-by-side results?** The final decision gives one
-   result; should the page still show the first two as "intermediate"?
+1. **Reviews in the chain: decide now, again after the review.** The final
+   step runs as soon as its required decisions have their automatic
+   results (an urgent alert is not delayed). When a person resolves a
+   required decision, the final step runs again with `final_action`; the
+   new final decision records which revised decision it used (PROV-O
+   `used`, the review being `wasRevisionOf`). Both final decisions stay in
+   the log; the latest counts, and the report's `final` attribute holds it.
+   In the trace, a decision that waits for a person is `SUCCEEDED` with its
+   `action`; its review is a second entry.
+2. **Same report: same `ref` and same client.** See "In the request".
+3. **Versions: checked both ways when publishing.** See "In the profile".
+4. **Demo: three stages.** The page shows first result → additional checks →
+   final result; the first two marked as intermediate, the final one as the
+   headline, each with what it was based on. Apps (the residents' map) read
+   the report's `final` attribute.
