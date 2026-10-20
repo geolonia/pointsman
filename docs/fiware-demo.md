@@ -95,9 +95,9 @@ after a model update.
 ## Storyboard
 
 Most visitors know nothing about FIWARE, decision services or AI, and many
-are not native English speakers. So the page is a guided flow in three
-numbered steps (geolonia/pointsman-demo#30), with the technical layer behind
-"How it works". Beside the steps is one map with a switch: the
+are not native English speakers. So the page is a guided flow in four
+numbered steps (geolonia/pointsman-demo#30, #70), with the technical layer
+behind "How it works" and the developer view. Beside the steps is one map with a switch: the
 **headquarters view** with every report, and the **residents' view** with
 only what is published. The base map is gray, so only the reports and the
 flood zones are in colour.
@@ -106,29 +106,36 @@ flood zones are in colour.
    in. Four prepared reports, one for each outcome: a clear report, an
    unclear one, someone in danger, and one near an evacuation site. More
    examples are folded away. Everything is in English and Japanese.
-2. **Pointsman decides.** The steps appear one after the other, with the
+2. **First check.** The steps appear one after the other, with the
    total time: saved in the data platform, the AI answered four
    questions, facts about the place were looked up, the city's rule
    decided. The answers are plain questions with a confidence word ("very
    sure", "unsure") instead of raw probabilities. The facts are marked as
    public data, not AI. The rule is one sentence. The real NGSI-LD data is
-   behind "Show the data in the data platform (for developers)".
-3. **What happens next.** The outcome in plain words, and the map zooms to
-   the report. A `publish` report shows up in the residents' view. Near an
-   evacuation site, the second check (the chain) adds its facts and the
-   alert. For `review` and `urgent` reports, the visitor who sent the report
+   behind "Show the data (developer view)".
+3. **Additional check.** For `urgent` and `review` reports: the way to the
+   nearest evacuation site, the way around on foot on the map, the rule,
+   and whether the site's staff got an alert. Otherwise the page says why
+   it did not run (published at once, or the report marks a point, not a
+   road section).
+4. **Final result.** The outcome in plain words, the rule that made it and
+   what it was made from; a `publish` result shows up in the residents'
+   view. For `review` and `urgent` reports, the visitor who sent the report
    is "the person on duty": Publish or Reject. Their answer goes to the
-   broker, and to Pointsman for `review` reports, like a review on GitHub
-   (marked `reviewedBy` = `demo:visitor`). The page says why it matters: it
-   shows how often the AI was right.
+   broker and to Pointsman, like a review on GitHub (marked `reviewedBy` =
+   `demo:visitor`), and the final result is made again. The page says why
+   it matters: it shows how often the AI was right.
 
-"How it works" explains the way of a report in four parts (the report, how
-the data platform passes it on through the bridge, Pointsman, the result)
-and lists the profile, the bridge and the source, plus
-the recent reports and the decisions waiting for a person, with the NGSI-LD
-query that finds them. Team members also resolve reviews in the GitHub
-review queue (`/publish`, `/reject`, corrections such as
-`/category laneRestriction`).
+Two panels open from the header. "How it works" explains the way of a
+report in four parts (the report, how the data platform passes it on
+through the bridge, Pointsman, the result), shows the chain of decisions as
+a diagram (with the DMN file), and links the profile, the bridge and the
+source. "Reports" shows the numbers of the last 7 days, the recent reports
+and the decisions waiting for a person, with the NGSI-LD query that finds
+them. Team members also resolve reviews in the GitHub review queue
+(`/publish`, `/reject`, corrections such as `/category laneRestriction`).
+The page in detail: the demo's
+[README](https://github.com/geolonia/pointsman-demo#the-page).
 
 ### What the viewer should take away
 
@@ -159,7 +166,7 @@ Three additions after the first version (October 2026):
   people off from their evacuation site. Facts: the nearest site and the way
   around on foot (Valhalla, OpenStreetMap). Near a site, with a long way
   around and no way through on foot, it raises an `Alert` (Smart Data Models)
-  for the site's staff. Its `Decision` entity links step 1
+  for the site's staff. Its `Decision` entity links the first check
   (`wasInformedBy`).
 - **Tasks** (#81, with geolonia/pointsman-demo#17): each `urgent` or
   `review` report also becomes a `Task` entity (datamodels.jp Task model) for
@@ -175,18 +182,23 @@ Decisions follow the Decision model on datamodels.jp
 
 ## How it runs
 
+The same diagram is in the demo's [README](https://github.com/geolonia/pointsman-demo#how-it-works),
+with each step of a report in order. Pointsman makes up to three decisions
+per report: the **first check** (`road-restriction-check`), the **additional
+check** (`evacuation-access-check`) and the **final result**
+(`road-closure-final`); the page uses the same names.
+
 ```mermaid
 flowchart LR
-  Page["Demo page<br/>(served by the demo Worker)"] -->|report, poll| API["Demo Worker<br/>(Cloudflare)"]
-  API -->|create entity| Broker["GeonicDB<br/>(demo tenant)"]
-  Broker -->|notification| Bridge["Bridge<br/>(in the demo Worker)"]
-  Bridge -->|decide, with facts| PM["Pointsman"]
-  PM -->|flood zones, evacuation sites, routes| Geo["GSI, Valhalla"]
-  Bridge -->|write check, Decision, Task| Broker
-  Bridge -->|urgent / review| GH["GitHub issues<br/>(demo repository)"]
-  GH -->|"/publish comment (webhook)"| Bridge
-  Broker -->|"check: urgent / review<br/>(second subscription)"| Bridge
-  Bridge -->|alert| Alert["Alert entity"]
+  Page["Demo page"] -->|"report, poll"| W["Demo Worker<br/>(Cloudflare, runs the bridge)"]
+  W -->|"create report"| B["GeonicDB<br/>(tenant pointsman_demo)"]
+  B -->|"notifications<br/>(5 subscriptions)"| W
+  W -->|"first check, additional check,<br/>final result; resolve review"| P["Pointsman"]
+  P -->|"fixed questions"| AI["AI model<br/>(Workers AI)"]
+  P -->|"flood zone, evacuation site,<br/>way around on foot"| Geo["Public map data<br/>(GSI; Valhalla on OpenStreetMap)"]
+  W -->|"write check, evacuation, final;<br/>Decision, Task, Alert"| B
+  W -->|"urgent / review<br/>(prepared reports only)"| G["GitHub issues<br/>(geolonia/pointsman-demo)"]
+  G -->|"/publish, /reject<br/>(webhook)"| W
 ```
 
 - **Demo page:** static files served by the demo Worker
@@ -200,14 +212,20 @@ flowchart LR
   kept in a dead-letter queue (tested with a 3.5-minute outage on
   2026-10-15). Broker and Pointsman
   credentials stay in the Worker.
-- **GeonicDB:** a demo tenant, with two subscriptions on `RoadRestriction`:
-  new reports to `/notify`, and step 1's `urgent` and `review` results to
-  `/notify?route=evacuation` (the chain). GeonicDB behaves correctly for the
+- **GeonicDB:** a demo tenant, with five subscriptions: new reports to
+  `/notify`; the first check's `urgent` and `review` results to
+  `/notify?route=evacuation` (the additional check); a published first
+  check or a finished additional check to `/notify?route=final` (the final
+  result); and resolved `Decision` and completed `Task` entities to
+  `/reviews`. GeonicDB behaves correctly for the
   bridge's writes (#41) and supports the shared-secret header
   (`receiverInfo`).
-- **Pointsman:** the production Worker, with the demo's two profiles
-  (`road-restriction-check`, `evacuation-access-check`) in the config
-  repository and its own API token, limited to those two profiles.
+- **Pointsman:** the production Worker, with the demo's three profiles
+  (`road-restriction-check`, `evacuation-access-check`,
+  `road-closure-final`) in the config repository and its own API token,
+  limited to those three profiles. Pointsman asks the AI model and looks up
+  the map facts itself; the bridge sends only the report (and, for the final
+  result, the ids of the earlier decisions).
 - **GitHub:** issues in a public demo repository as the review queue, and a
   webhook back to the Worker for the review comments.
 - **Development:** `wrangler dev` for the Worker against a GeonicDB test
