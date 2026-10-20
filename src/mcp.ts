@@ -9,6 +9,8 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { makeDecision, type Deps } from './app';
 import { canUse, type TokenRecord } from './auth';
+import { visibleRequires } from './chains';
+import type { RequiredSnapshot } from './log';
 import { parseFeedback } from './feedback';
 import type { Caller } from './oauth';
 import type { Profile } from './types';
@@ -34,7 +36,7 @@ function failure(message: string) {
 
 const visible = (p: Profile | null, client: TokenRecord) => !!p && p.mcp?.visible === true && canUse(client, p.id);
 
-function describe(p: Profile) {
+function describe(p: Profile, seen: Set<string>) {
   return {
     id: p.id,
     version: p.version,
@@ -50,12 +52,29 @@ function describe(p: Profile) {
       ...(q.type === 'score' && { levels: q.criteria }),
     })),
     actions: [...new Set([...(p.policy.rules ?? []).map((r) => r.action), p.policy.default])],
+    // Earlier decisions to send in `decisions`, by name (docs/decision-chains.md).
+    // The required profile's id only when the caller may see it through MCP.
+    ...(p.requires?.length && {
+      requires: p.requires.map((r) => ({ name: r.name, ...(seen.has(r.profile) && { profile: r.profile }), ...(r.optional && { optional: true }) })),
+    }),
   };
 }
 
 function server(deps: McpDeps, caller: Caller): McpServer {
   const client = clientOf(caller);
   const mcp = new McpServer({ name: 'pointsman', version: '0.1.0' });
+
+  /** The profiles of these ids the caller may see through MCP. */
+  const seenProfiles = async (ids: string[]) => {
+    const seen = new Set<string>();
+    for (const id of new Set(ids)) if (visible(await deps.store.get(id), client)) seen.add(id);
+    return seen;
+  };
+  /** `requires` with required decisions of profiles the caller may not see through MCP hidden. */
+  const shownRequires = async (requires: Record<string, RequiredSnapshot> | undefined) => {
+    const seen = await seenProfiles(Object.values(requires ?? {}).map((s) => s.profile));
+    return visibleRequires(requires, (p) => seen.has(p));
+  };
 
   mcp.registerTool(
     'list_profiles',
@@ -68,7 +87,7 @@ function server(deps: McpDeps, caller: Caller): McpServer {
       const profiles = [];
       for (const s of summaries) {
         const p = await deps.store.get(s.id);
-        if (visible(p, client)) profiles.push(describe(p!));
+        if (visible(p, client)) profiles.push(describe(p!, await seenProfiles(p!.requires?.map((r) => r.profile) ?? [])));
       }
       return json({ profiles });
     },
@@ -85,12 +104,20 @@ function server(deps: McpDeps, caller: Caller): McpServer {
         profile: z.string().describe('Profile id from list_profiles'),
         state: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('What to decide about: text, or a JSON object'),
         ref: z.string().optional().describe('Your reference for this decision, for example an issue URL'),
+        decisions: z.record(z.string(), z.string()).optional()
+          .describe('For profiles with requires: the decision_id of each earlier decision, by the name in requires. Needs ref.'),
+        idempotency_key: z.string().optional()
+          .describe('Send the same key again to get the same decision instead of a new one'),
       },
     },
-    async ({ profile, state, ref }) => {
+    async ({ profile, state, ref, decisions, idempotency_key }) => {
       if (!visible(await deps.store.get(profile), client)) return failure(`unknown profile "${profile}"`);
-      const result = await makeDecision(deps, client, profile, { state, ...(ref !== undefined && { ref }) }, undefined, { stateIsMapped: true });
-      return result.ok ? json(result.decision) : failure(`${result.code}: ${result.message}`);
+      const body = { state, ...(ref !== undefined && { ref }), ...(decisions !== undefined && { decisions }) };
+      const result = await makeDecision(deps, client, profile, body, undefined,
+        { stateIsMapped: true, ...(idempotency_key !== undefined && { idempotencyKey: idempotency_key }) });
+      if (!result.ok) return failure(`${result.code}: ${result.message}`);
+      const requires = await shownRequires(result.decision.requires);
+      return json(requires ? { ...result.decision, requires } : result.decision);
     },
   );
 
@@ -105,8 +132,10 @@ function server(deps: McpDeps, caller: Caller): McpServer {
       // Decisions of profiles that are not MCP-visible look unknown too.
       const profile = record ? await deps.store.get(record.profile) : null;
       if (!record || !visible(profile, client)) return failure(`unknown decision "${decision_id}"`);
-      const { callback_url: _, state: __, ...shown } = record;
-      return json(shown);
+      const { callback_url: _, state: __, request_digest: ___, requires, ...shown } = record;
+      // A required decision of a profile the caller may not see through MCP is hidden.
+      const hidden = await shownRequires(requires);
+      return json(hidden ? { ...shown, requires: hidden } : shown);
     },
   );
 

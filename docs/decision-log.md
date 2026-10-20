@@ -26,6 +26,11 @@ them, and they never reach the review queue or the accuracy numbers.
 | `state_hash` | SHA-256 of the state sent to the model, with object keys sorted |
 | `state` | The state itself, **only** when the profile sets `log.store_state: true` |
 | `callback_url` | For the review queue (#9); not returned by the API |
+| `review_status` | `pending`, `resolved` or `superseded` for a decision whose action a person checks (see [reviews.md](reviews.md)) |
+| `requires` | Only for profiles with `requires`: for each required decision its id, profile and version, `action`, `outcome`, `reviewed`, and every value the rules read from it (`read`, JSON, see [profile-format.md](profile-format.md#decision-chains)) |
+| `idempotency_key`, `request_digest` | When the request had an `Idempotency-Key`: the key, and a SHA-256 of the request (profile, the version as requested, state, ref, decisions, callback_url). The digest is not returned by the API |
+| `replaces` | The earlier decision of the same profile, `ref` and client that this one replaced |
+| `discarded_at` | A decision made while a person resolved the one it would replace: the client got `409 resolved_by_person`, and it never counts (not in the stats, not usable in a chain, cannot be resolved) |
 
 By default only the hash of the state is kept: the state can hold personal or
 confidential data (issue text, sensor data). The hash still shows when the
@@ -38,6 +43,20 @@ metres); the nearest site and its distance already tell roughly where the
 place is. A `detour` fact with `route: true` goes further: it keeps the way
 around, which starts and ends at the place in the state. Set it only where
 that place may be kept.
+
+The `requires` snapshot shows what a decision was based on, even when a
+required decision gets a review answer later. `GET /v1/decisions/{id}` shows a
+required decision of a profile outside the token's scope as
+`{"decision": null}`.
+
+### Repeated requests
+
+A client that may send a request twice (a queue that retries) sends an
+`Idempotency-Key` header (1 to 200 printable ASCII characters). The same key
+from the same client returns the decision already logged, when the request is
+the same; with another request it answers `409 idempotency_conflict`. Keys of
+different clients do not meet. Test tokens are not logged, so a key does
+nothing for them.
 
 ## Feedback
 
@@ -72,8 +91,8 @@ decisions are wrong more often than the policy threshold suggests.
 
 For apps, `GET /v1/stats/{profile}?days=7` gives the same kind of numbers
 without database access, for the profiles the token may use: decisions per
-action, the review queue (pending, resolved, and the final actions people
-chose), and how many decisions a person corrected. Counts only, no single
+action, the review queue (pending, resolved, superseded, and the final
+actions people chose), and how many decisions a person corrected. Counts only, no single
 decisions. The window applies to when a decision was made: a decision from
 the window that was resolved or corrected later is counted with it.
 

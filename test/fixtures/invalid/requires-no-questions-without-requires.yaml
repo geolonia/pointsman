@@ -1,0 +1,9 @@
+# expect: /questions: must NOT have fewer than 1 items
+id: requires-no-questions-without-requires
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions: []
+policy:
+  default: review

@@ -76,14 +76,40 @@ export interface Profile {
   model: string;
   fallback_models?: string[];
   input?: { name: string; path: string }[];
+  /** Empty only for a profile with `requires`: then rules only, no model call. */
   questions: Question[];
   facts?: FactSpec[];
+  /** The decisions this one builds on (docs/decision-chains.md). */
+  requires?: RequiredDecisionSpec[];
   mcp?: { visible?: boolean };
   log?: { store_state?: boolean };
   policy: {
     rules?: { when: string; action: string }[];
     default: string;
+    /** Actions a person checks before they count (default [review]). */
+    people_check?: string[];
+    /** Answers a person may give (default: the actions without review, plus reject). */
+    people_answers?: string[];
   };
+}
+
+/** A decision a profile builds on: a local name for rules, and the profile it comes from. */
+export interface RequiredDecisionSpec {
+  name: string;
+  profile: string;
+  /** The decision may not exist (rules see decisions.<name>.missing). */
+  optional?: boolean;
+}
+
+/** What rules can read from a required decision (docs/decision-chains.md "What rules can read"). */
+export interface RequiredDecisionInput {
+  action: string;
+  /** The person's answer when a review was resolved, otherwise the action. */
+  outcome: string;
+  reviewed: boolean;
+  /** A person's corrected answers when the review corrected them, otherwise the model's. */
+  answers: Record<string, Answer>;
+  facts: Record<string, Fact>;
 }
 
 /** Answer in the engine's own format. `p` is always the probability of `value`. */
@@ -108,4 +134,10 @@ export interface Decision {
   facts?: Record<string, Fact>;
   /** Made with a test token: not logged, so the id is unknown to every other endpoint. */
   test?: true;
+  /** For profiles with requires: what the rules read from each required decision. */
+  requires?: Record<string, import('./log').RequiredSnapshot>;
+  /** The earlier decision of the same profile, ref and client that this one replaces. */
+  replaces?: string;
+  /** A person checks it before it counts (the profile's people_check). */
+  review?: { status: 'pending' };
 }

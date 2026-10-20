@@ -12,27 +12,30 @@ import { PROFILE_EXTENSIONS, parseProfile, validateProfile } from './lib/profile
 const [out = 'generated/profiles.json', ...dirs] = process.argv.slice(2);
 const sources = dirs.length > 0 ? dirs : ['examples/profiles'];
 
-const profiles = [];
-let failed = false;
+// Read everything first: a profile is validated with the ones it requires.
+const read = [];
 for (const dir of sources) {
   for (const entry of readdirSync(dir).sort()) {
     if (!PROFILE_EXTENSIONS.includes(extname(entry))) continue;
     const path = join(dir, entry);
-    let profile;
-    let errors;
     try {
-      profile = parseProfile(readFileSync(path, 'utf8'), path);
-      errors = validateProfile(profile, { fileName: path });
+      read.push({ path, profile: parseProfile(readFileSync(path, 'utf8'), path) });
     } catch (err) {
-      errors = [`(parse): ${err.message.split('\n')[0]}`];
+      read.push({ path, error: `(parse): ${err.message.split('\n')[0]}` });
     }
-    if (errors.length > 0) {
-      failed = true;
-      console.error(`FAIL  ${path}\n      ${errors.join('\n      ')}`);
-      continue;
-    }
-    profiles.push(profile);
   }
+}
+const byId = new Map(read.filter((r) => r.profile && typeof r.profile.id === 'string').map((r) => [r.profile.id, r.profile]));
+const profiles = [];
+let failed = false;
+for (const { path, profile, error } of read) {
+  const errors = error ? [error] : validateProfile(profile, { fileName: path, profiles: byId });
+  if (errors.length > 0) {
+    failed = true;
+    console.error(`FAIL  ${path}\n      ${errors.join('\n      ')}`);
+    continue;
+  }
+  profiles.push(profile);
 }
 if (failed) process.exit(1);
 if (profiles.length === 0) {

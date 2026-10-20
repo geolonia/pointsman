@@ -14,8 +14,12 @@
   opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
   `R-DATA-MINIMISATION`; and for detour lookups with 8 s, parallel calls and
   one retry (`P-FACT-LOOKUP-BOUNDED`); and for the bridge refusing redirects
-  (pointsman#105, §1.5 "Redirects"); the rest still stands as of the bound
-  commit.
+  (pointsman#105, §1.5 "Redirects"); and for decision chains (pointsman#101,
+  docs/decision-chains.md): the §1.7 rows for `decisions`, `Idempotency-Key`
+  and the resolve `action`, the §1.8 decision rows, `P-TOKEN-SCOPE`,
+  `P-TEST-TOKEN-ISOLATED`, `P-ACTION-FROM-POLICY`, `P-REVIEW-RESOLVED-ONCE`
+  and the new `P-CHAIN-INPUTS-FROM-LOG`; the rest still stands as of the
+  bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
   the Alpha-Omega `threat-model` plugin, version 1.2.1 at commit
@@ -44,7 +48,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 260 documented / 69 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 263 documented / 69 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -397,7 +401,7 @@ configuration is in-model even when the configuration is not the default.
 
 ### Per-input-operand trust table
 
-Coverage: 56 rows cover all 7 REST routes, the `/mcp` endpoint with its 4
+Coverage: 58 rows cover all 7 REST routes, the `/mcp` endpoint with its 4
 tools, the 7 OAuth routes (grouped), the bridge's 2 routes and queue
 consumer, both Actions, and the config repository's inputs. Every route in
 `src/app.ts` has at least one row. Headers and indirect inputs (model
@@ -414,6 +418,8 @@ they are security-relevant.
 | `POST /v1/decide/{profile}` | `state` body field (string, object or array) | **yes, by the state author** through the client | data, size, x-prompt-text | treat it as untrusted data: never put it in a shell, a query or a template; do not include secrets or personal data unless `log.store_state` and gateway logging are intended | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
 | `POST /v1/decide/{profile}` | `state` size and nesting | yes (state author) | size | the engine sets no limit; the platform's request body limit applies; rate-limit at the edge | *(documented, openapi.yaml `DecideRequest.state` has no `maxLength`; maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | `ref` | yes (token holder; often derived from attacker-named things such as an issue number) | data | 1–200 characters; it is logged and returned, so no secrets | *(documented, openapi.yaml `DecideRequest.ref`)* |
+| `POST /v1/decide/{profile}` | `decisions` (names → decision ids) | yes (token holder) | resource-name | none — only ids are taken; each must be a logged decision of the named profile, in scope, with the same `ref` and client, not replaced; every other id gives the same 400 (`P-CHAIN-INPUTS-FROM-LOG`) | *(documented, docs/profile-format.md "Decision chains")* |
+| `POST /v1/decide/{profile}` | `Idempotency-Key` header | yes (token holder) | data | 1–200 printable ASCII characters; keys are per client, so one client cannot reach another's decision with a key | *(documented, docs/decision-log.md "Repeated requests")* |
 | `POST /v1/decide/{profile}` | `callback_url` | yes (token holder) | resource-name | https only; any public host; refused for test tokens | *(documented, openapi.yaml `DecideRequest.callback_url`; README "A test token ... gets no callbacks")* |
 | `POST /v1/decide/{profile}` | the profile read from the store (questions, rules, `input` paths, `facts`, `log`, `mcp`) | no — authored by the integrator, validated before publication | serialized-state, x-policy-rules | validate with `validate-profiles.mjs`; bump the version | *(documented, docs/deployment.md "Profile versions"; `src/profiles/store.ts` header: "Profiles are validated before they reach a store")* |
 | `POST /v1/decide/{profile}` | the model response (`answers`, `model`) | partly — the model backend is a collaborator; its answers are shaped by the state | collaborator-implementation, data | none — `P-ANSWER-SHAPE` rejects answers that do not fit the profile | *(documented, docs/profile-format.md "Engine answer format")* |
@@ -425,7 +431,7 @@ they are security-relevant.
 | `POST /v1/decisions/{id}/feedback` | `by`, `note` | yes (token holder) | data | `by` 1–100 characters, `note` ≤ 1000; `by` is recorded as given, not verified | *(documented, openapi.yaml `Feedback` schema; migrations/0001 comment "who corrected it, as given by the client")* |
 | `GET /v1/stats/{profile}` | `{profile}`, `?days` | yes (token holder) | resource-name, data | none — scope checked; `days` 1–90 | *(documented, openapi.yaml `/v1/stats/{profile}`)* |
 | `GET /v1/reviews` | `?profile` | yes (token holder) | resource-name | none — scope checked; at most 100 rows returned | *(documented, docs/reviews.md "Review queue")* |
-| `POST /v1/reviews/{id}/resolve` | `action` | yes (token holder) | data | lower-case name, not `review`; it is the final action the client will act on | *(documented, docs/reviews.md "`action` is the final action")* |
+| `POST /v1/reviews/{id}/resolve` | `action` | yes (token holder) | data | one of the profile's `people_answers`, else 400; it is the final action the client will act on | *(documented, docs/reviews.md "`action` is the final answer")* |
 | `POST /v1/reviews/{id}/resolve` | `correct`, `by`, `note` | yes (token holder) | data, type-class | as for feedback; `by` is recorded as given | *(documented, docs/reviews.md "Review queue")* |
 | cron `scheduled()` | the due callbacks read from D1 | no — the engine's own records | serialized-state | none | *(documented, docs/reviews.md "Retries are run by the Worker's cron trigger")* |
 | outbound callback | the receiver's HTTP status | yes (whoever is at `callback_url`) | data | none — any 2xx is delivered; else retried up to 6 attempts, then `failed` | *(documented, docs/reviews.md "Answer with any 2xx status")* |
@@ -434,7 +440,7 @@ they are security-relevant.
 | `engine-facts` routing | the Valhalla response (`trip.summary.length`, `error_code`) | no — operator-chosen server over OpenStreetMap data | data | none — a 3xx is an error; a missing length is an error | *(documented, docs/profile-format.md "Detours")* |
 | `/mcp` | `Authorization` header: `pm_` API token or OAuth access token | yes | data | none — API tokens go to the token store, other tokens to the OAuth server (`P-AUTH-REQUIRED`) | *(documented, docs/mcp.md "Authentication")* |
 | `/mcp` `list_profiles` | none | — | — | — | *(documented, docs/mcp.md "Tools")* |
-| `/mcp` `decide` | `profile`, `state` (string or object), `ref` | yes (the agent, and the state author behind it) | resource-name, data, x-prompt-text | as for `POST /v1/decide`; only MCP-visible profiles in scope; others look unknown | *(documented, docs/mcp.md "Decisions through MCP")* |
+| `/mcp` `decide` | `profile`, `state` (string or object), `ref`, `decisions`, `idempotency_key` | yes (the agent, and the state author behind it) | resource-name, data, x-prompt-text | as for `POST /v1/decide`; only MCP-visible profiles in scope; others look unknown | *(documented, docs/mcp.md "Decisions through MCP")* |
 | `/mcp` `get_decision` | `decision_id` | yes | resource-name | none — UUID, in scope and MCP-visible, else unknown; `callback_url` and `state` are not shown | *(documented, docs/mcp.md "Tools"; `src/mcp.ts` `get_decision`)* |
 | `/mcp` `submit_feedback` | `decision_id`, `correct`, `note` | yes (a logged-in person) | data, type-class | people only; recorded under their GitHub login | *(documented, docs/mcp.md "Feedback is a person's judgement")* |
 | `GET /authorize` | the OAuth authorization request (client id, redirect URI, PKCE challenge) | yes (any MCP client) | data, resource-name | none — parsed by the OAuth library; the consent page shows the client name and redirect host, marked unverified when self-registered | *(documented, docs/mcp.md "MCP clients register themselves")* |
@@ -461,7 +467,7 @@ they are security-relevant.
 | `config-repo` Validate / Deploy workflows | `profiles/*.yaml` | no — pull-request authors are the integrator's own contributors; `main` is protected | serialized-state, x-policy-rules | protect `main`; require the Validate check | *(documented, template/config-repo/README.md "Protect `main`")* |
 | `config-repo` workflows | `engine.json` `ref` | no — the repository is fixed to `geolonia/pointsman` in the workflow; `ref` must be a 40-character SHA | resource-name | change `ENGINE_REPOSITORY` only on purpose | *(documented, docs/deployment.md "Updating the engine")* |
 | `config-repo` workflows | `wrangler.jsonc`, `ai-gateway.json`, the `production` environment secrets | no — operator | serialized-state | placeholders refused (`check-config.mjs`); secrets only in the three Cloudflare steps | *(documented, docs/deployment.md "What the workflows do")* |
-| `scripts/tokens.mjs` | `--client`, `--profiles`, `--test`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret | *(documented, README "API tokens")* |
+| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client | *(documented, README "API tokens")* |
 
 ### Size, shape and rate
 
@@ -581,8 +587,8 @@ docs/profile-format.md "A missing fact is never guessed")*.
 
 | Output channel | Component | Taint | Downstream must not assume | Provenance |
 | --- | --- | --- | --- | --- |
-| the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens)* |
-| the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]` | engine-api | constrained as above; `callback_url` is never returned; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API")* |
+| the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`, `requires`, `replaces`, `review`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens)* |
+| the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]`, `requires`, `idempotency_key` | engine-api | constrained as above; `callback_url` and `request_digest` are never returned; a required decision of a profile outside the reader's scope is shown as `{decision: null}`; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API")* |
 | the review list (`GET /v1/reviews`) | engine-api | constrained; `callback_url` and `callback` are stripped | — | *(documented, docs/reviews.md "Review queue")* |
 | stats (`GET /v1/stats/{profile}`) | engine-api | counts only; no single decision, no state | — | *(documented, docs/decision-log.md "Counts only, no single decisions")* |
 | error bodies (`{error: {code, message}}`) | engine-api | assembled from fixed messages; a validation message can name a field, a profile id and version, or an option list from the profile, never the state or a token | — | *(maintainer, 2026-10)* |
@@ -669,7 +675,7 @@ what voids it.
   Voided by: nothing. Search:
   `grep -n "app\.\(get\|post\|all\|use\)(" src/app.ts` — every `/v1/*` route
   is registered after the `app.use('/v1/*', …)` middleware at
-  `src/app.ts:77`; `/mcp` authenticates on lines 269 (OAuth resource server) and 271 (API tokens) of `src/app.ts`; the remaining
+  `src/app.ts:82`; `/mcp` authenticates on lines 288 (OAuth resource server) and 290 (API tokens) of `src/app.ts`; the remaining
   routes are the OAuth flow (which issues grants only after GitHub membership)
   and the 404 handler.
 - **`P-TOKEN-SCOPE`** — a token acts only on the profiles in its record;
@@ -682,8 +688,12 @@ what voids it.
   exist")*. Voided by: a token created with `--profiles '*'`
   (`src/auth.ts:93`, `record.profiles.includes('*')`), and a person logged in
   through OAuth, whose scope is `['*']` over MCP-visible profiles
-  (`src/mcp.ts:24`). Both are documented behaviour, and the maintainer confirmed them as the
-  only two off-switches *(maintainer, 2026-10)*.
+  (`src/mcp.ts:25`). Both are documented behaviour, and the maintainer confirmed them as the
+  only two off-switches *(maintainer, 2026-10)*. The scope also covers the
+  decisions a chained profile reads: a required decision of a profile outside
+  the scope is refused like an unknown id, and `GET /v1/decisions/{id}` and
+  MCP `get_decision` show it as `{decision: null}` (`visibleRequires` in
+  `src/chains.ts`).
 - **`P-TOKEN-HASHED`** — only the SHA-256 hash of a token is stored; the
   token is 32 random bytes and is printed once; a leaked `TOKENS` namespace
   does not yield usable tokens. Symptom: `info-leak`. Tier:
@@ -691,7 +701,7 @@ what voids it.
   of each token is stored"; `src/auth.ts` header: "Tokens are 32 random bytes,
   so a plain hash is enough")*. Voided by: nothing. Search:
   `grep -rn "TOKENS\|tokenKey" src scripts/tokens.mjs` — the only write is
-  `scripts/tokens.mjs:85` with `tokenKey(hash)`.
+  `scripts/tokens.mjs:108` with `tokenKey(hash)`.
 - **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide` and
   `GET /v1/profiles`; its decisions are marked `test: true`, are not logged,
   never reach the review queue or the stats, get no callback, and `/mcp`
@@ -699,8 +709,10 @@ what voids it.
   Tier: security-critical. *(documented, README "API tokens": "A test token
   may only decide (and list its profiles) over the REST API, not over MCP,
   and gets no callbacks")*. Voided by: nothing. Search:
-  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 89 and 264 of `src/app.ts`, the unlogged return at
-  `src/app.ts:394`, and the callback refusal in `makeDecision`.
+  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 94 and 283 of `src/app.ts`, the unlogged return at
+  `src/app.ts:466`, and the callback refusal in `makeDecision`. A test token
+  also cannot send `decisions` or decide a profile with `requires`, so it
+  never reads logged decisions (`makeDecision`, docs/decision-chains.md).
 - **`P-ANSWER-SHAPE`** — a model answer is accepted only when every question
   of the profile is answered with the right type, every option or level is
   one the profile lists, every probability is in 0–1 and a score is within
@@ -712,15 +724,28 @@ what voids it.
   format": "Answers that do not fit the profile ... are rejected with a
   `model_error`")*. Voided by: nothing. Search:
   `grep -rn "normalizeAnswers" src` — called on the only decision path,
-  `src/app.ts:365`, for every adapter.
+  `src/app.ts:431`, for every adapter.
 - **`P-ACTION-FROM-POLICY`** — the action is the first rule whose condition
-  is true over the typed answers and facts, else the profile's default; a
+  is true over the typed answers, facts and required decisions, else the
+  profile's default; a
   model cannot name an action, and a rule never matches on an unknown
   (missing-fact) comparison. Symptom: `x-unauthorized-action`. Tier:
   security-critical. *(documented, README "People's rules decide ... The AI
   does not decide alone"; docs/profile-format.md "Policy conditions")*.
   Voided by: nothing in the engine; a profile whose default action is a
   consequential one is the integrator's choice (§1.13 `R-REVIEW-PATH`).
+- **`P-CHAIN-INPUTS-FROM-LOG`** — what a profile with `requires` reads from
+  earlier decisions comes from the decision log, never from the request: the
+  caller sends only ids, and each must be a logged decision of the named
+  profile, in the token's scope, with the request's `ref`, made by the same
+  client and not replaced; the earlier decisions must fit each other; every
+  other id gives the same 400, so a token cannot learn which decisions exist.
+  The decision keeps what its rules read (`requires`). Symptom:
+  `x-authorization-bypass`, `x-unauthorized-action`, `info-leak`. Tier:
+  security-critical. *(documented, docs/profile-format.md "Decision chains":
+  "Pointsman reads them from the decision log; the caller cannot claim a
+  result")*. Voided by: nothing; test tokens cannot use it
+  (`P-TEST-TOKEN-ISOLATED`). Search: `loadRequired` in `src/chains.ts`.
 - **`P-POLICY-NOT-CODE`** — profile conditions are parsed by the engine's own
   parser and evaluated as data; nothing from a profile or a state is
   executed; conditions are compiled at validation time so a bad reference
@@ -737,7 +762,7 @@ what voids it.
   docs/profile-format.md "A missing fact is never guessed"; "The model does
   not see the facts")*. Voided by: nothing. Search:
   `grep -n "missing" src/policy.ts src/facts.ts` — the three-valued
-  evaluation at `src/policy.ts:288`.
+  evaluation at `src/policy.ts:387`.
 - **`P-FACT-LOOKUP-BOUNDED`** — a fact lookup does bounded work for any
   geometry: at most 1000 positions, 200 samples, 16 flood tiles, 9 shelter
   tiles, a 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour) and 10 s per tile load;
@@ -754,7 +779,7 @@ what voids it.
   log. Symptom: `x-unlogged-decision`, `integrity-bypass`. Tier:
   security-critical. *(documented, docs/decision-log.md "Every decision is
   stored in D1 ... before it is returned"; docs/mcp.md "Decisions through
-  MCP")*. Voided by: a test token (`src/app.ts:394`, `if (client.test)
+  MCP")*. Voided by: a test token (`src/app.ts:466`, `if (client.test)
   return`), by design and marked in the response.
 - **`P-PROFILE-VERSION-IMMUTABLE`** — a published profile id and version never
   change content: the deploy registers each version's content hash in D1 and
@@ -774,7 +799,7 @@ what voids it.
   returned; tokens never appear in logs, responses or the decision log.
   Symptom: `info-leak`. Tier: security-critical. *(documented,
   docs/decision-log.md "By default only the hash of the state is kept")*.
-  Voided by: `log.store_state: true` on a profile (`src/app.ts:401`), the AI
+  Voided by: `log.store_state: true` on a profile (`src/app.ts:474`), the AI
   Gateway's `collect_logs: true` (`ai-gateway.json`; documented in
   docs/models.md "Logs hold the state"), and a model server's own retention
   (`D-STATE-TO-BACKEND`). The first two are §1.6 rows. Narrowed by: `route:
@@ -795,6 +820,12 @@ what voids it.
   feedback in the same transaction only when the resolve succeeded. Symptom:
   `data-race`, `x-double-resolution`. Tier: correctness-only. *(documented,
   docs/reviews.md "A review can be resolved once")*. No switch affects it.
+  A review replaced by a newer decision of a chained profile is
+  `superseded`: it cannot be resolved (409, checked in the same `UPDATE`) and
+  sends no callback. A chained decision made while a person resolved the one
+  it replaces is logged as discarded (`discarded_at`) and answered with 409
+  `resolved_by_person`, also on a retry with the same idempotency key, so the
+  person's answer stays.
 - **`P-CALLBACK-SIGNED`** — every callback carries `x-pointsman-timestamp` and
   `x-pointsman-signature`, an HMAC-SHA256 over `<timestamp>.<body>` with
   `CALLBACK_SECRET`; without the secret no callback is sent; attempts are

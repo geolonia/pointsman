@@ -1,0 +1,10 @@
+# expect: is reserved for required decisions
+id: requires-reserved-question
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: decisions.check, type: noul, instructions: Is it ok? }
+policy:
+  default: review

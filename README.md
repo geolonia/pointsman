@@ -131,10 +131,19 @@ is stored (KV namespace `TOKENS`); the token is shown once when it is created.
 ```sh
 node scripts/tokens.mjs create --client github-triage --profiles issue-triage --local
 node scripts/tokens.mjs list --local
+node scripts/tokens.mjs rotate --client github-triage --local
 node scripts/tokens.mjs revoke --hash <hash from list> --local
 ```
 
 Use `--remote` (and `--config <your wrangler config>`) for a deployed Worker.
+
+Each client name has one token: decisions are logged per client, and a
+[decision chain](docs/profile-format.md#decision-chains) only builds on the
+same client's decisions. `create` refuses a name in use. `rotate` gives the
+client a new token with the same profiles and revokes the old one; with
+`--keep-old` the old one stays until you revoke it, so you can switch the
+client over first. `list` marks names that older setups gave to several
+tokens: rotate or rename those.
 
 A **test token** (`--test`) is for checking profiles and their examples
 against the real model, for example in a scheduled job. Its decisions are

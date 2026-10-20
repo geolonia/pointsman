@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compileCondition, compilePolicy, policyErrors, PolicyError } from '../../src/policy';
-import type { Answer, Fact, FactSpec, Profile, Question } from '../../src/types';
+import { compileCondition, compilePolicy, peopleAnswers, policyErrors, PolicyError, type PolicyProfile, type RequiredProfiles } from '../../src/policy';
+import type { Answer, Fact, FactSpec, Profile, Question, RequiredDecisionInput } from '../../src/types';
 
 const questions: Question[] = [
   { name: 'stuck', type: 'noul', instructions: 'Stuck?' },
@@ -216,5 +216,107 @@ describe('facts', () => {
 
   it('refuses fact references in profiles without facts', () => {
     expect(() => compileCondition('facts.flood.rank >= 1', questions)).toThrow(PolicyError);
+  });
+});
+
+// Decision chains (docs/decision-chains.md): rules read earlier decisions.
+describe('decisions', () => {
+  const check: PolicyProfile = {
+    questions: [
+      { name: 'danger', type: 'noul', instructions: 'Danger?' },
+      { name: 'category', type: 'choice', instructions: 'Why?', criteria: [{ value: 'weather' }, { value: 'works' }] },
+    ],
+    facts: [{ name: 'flood', type: 'inside', layer: 'flood', at: '$.location' }],
+    policy: { rules: [{ when: 'danger.yes >= 0.7', action: 'urgent' }, { when: 'danger.yes < 0.5', action: 'publish' }], default: 'review' },
+  };
+  const evacuation: PolicyProfile = {
+    questions: [{ name: 'foot_passable', type: 'noul', instructions: 'Passable?' }],
+    facts: [{ name: 'walk', type: 'detour', mode: 'walk', at: '$.location' }],
+    policy: { rules: [{ when: 'foot_passable.yes < 0.5', action: 'alert' }], default: 'none' },
+  };
+  const required: RequiredProfiles = { 'road-check': check, evacuation };
+  const requires = [{ name: 'check', profile: 'road-check' }, { name: 'evacuation', profile: 'evacuation', optional: true }];
+  const final = (rules: { when: string; action: string }[]): PolicyProfile => ({ questions: [], requires, policy: { rules, default: 'review' } });
+  const compile = (when: string) => compileCondition(when, [], [], requires, required);
+
+  const checkInput: RequiredDecisionInput = {
+    action: 'review', outcome: 'urgent', reviewed: true,
+    answers: {
+      danger: { type: 'noul', value: true, p: 0.8, yes: 0.8 },
+      category: { type: 'choice', value: 'weather', p: 0.9, probabilities: { weather: 0.9, works: 0.1 } },
+    },
+    facts: { flood: { missing: false, values: { inside: true, rank: 5, class: '3 to 5 m' }, source: 's' } },
+  };
+  const evacInput: RequiredDecisionInput = {
+    action: 'alert', outcome: 'alert', reviewed: false,
+    answers: { foot_passable: { type: 'noul', value: false, p: 0.9, yes: 0.1 } },
+    facts: { walk: { missing: false, values: { possible: true, extra_m: 316, route: null }, source: 's' } },
+  };
+
+  it.each([
+    ["decisions.check.outcome == 'urgent'", true],
+    ["decisions.check.action == 'review'", true],
+    ['decisions.check.reviewed == true', true],
+    ['decisions.check.answers.danger.yes >= 0.7', true],
+    ["decisions.check.answers.category.value == 'weather'", true],
+    ['decisions.check.facts.flood.rank >= 5', true],
+    ['decisions.evacuation.missing == false', true],
+    ['decisions.evacuation.facts.walk.extra_m >= 200', true],
+    ["decisions.evacuation.action == 'alert' and decisions.check.outcome == 'urgent'", true],
+  ])('%s with both decisions → %s', (when, expected) => {
+    const r = compilePolicy(final([{ when, action: 'hit' }]), required).decide({}, {}, { check: checkInput, evacuation: evacInput });
+    expect(r.action === 'hit').toBe(expected);
+  });
+
+  it('treats an optional decision that was not given as missing, and its fields as unknown', () => {
+    const policy = (when: string) => compilePolicy(final([{ when, action: 'hit' }]), required).decide({}, {}, { check: checkInput }).action;
+    expect(policy('decisions.evacuation.missing == true')).toBe('hit');
+    // Unknown: neither true nor false, so neither rule matches.
+    expect(policy("decisions.evacuation.action == 'alert'")).toBe('review');
+    expect(policy("not (decisions.evacuation.action == 'alert')")).toBe('review');
+  });
+
+  it('treats a value of another type, or an answer the decision lacks, as unknown (an older version)', () => {
+    const old: RequiredDecisionInput = { ...checkInput, answers: { danger: { type: 'choice', value: 'yes', p: 1, probabilities: {} } as unknown as Answer } };
+    const policy = compilePolicy(final([{ when: 'decisions.check.answers.danger.yes >= 0', action: 'a' }, { when: "decisions.check.answers.category.value == 'works'", action: 'b' }]), required);
+    expect(policy.decide({}, {}, { check: old }).action).toBe('review');
+  });
+
+  it('records every value the rules read, also of rules that did not match', () => {
+    const policy = compilePolicy(final([
+      { when: "decisions.evacuation.action == 'alert'", action: 'urgent' },
+      { when: "decisions.check.outcome == 'urgent' and decisions.check.answers.danger.yes >= 0.5", action: 'urgent' },
+    ]), required);
+    expect(policy.read({ check: checkInput })).toEqual({
+      evacuation: { action: null },
+      check: { outcome: 'urgent', 'answers.danger.yes': 0.8 },
+    });
+  });
+
+  it('knows the answers a person may give: people_answers, or the actions without review plus reject', () => {
+    expect(peopleAnswers(check)).toEqual(['urgent', 'publish', 'reject']);
+    expect(peopleAnswers({ policy: { default: 'review', people_answers: ['publish'] } })).toEqual(['publish']);
+  });
+
+  it.each([
+    ["decisions.other.action == 'urgent'", 'does not refer to a required decision'],
+    ["decisions.check.action == 'reject'", '"reject" is not an action of decisions.check (urgent, publish, review)'],
+    ["decisions.check.outcome == 'later'", 'is not an outcome of decisions.check'],
+    ["decisions.check.answers.category.value == 'rain'", '"rain" is not an option of "category" in road-check'],
+    ['decisions.check.answers.nothing.yes >= 1', 'does not refer to a question'],
+    ['decisions.check.facts.flood.depth >= 1', 'inside facts have missing, inside, rank, class'],
+    ['decisions.check.rule == 0', 'decisions have missing, action, outcome, reviewed'],
+    ["decisions.check.outcome >= 'urgent'", 'works only on numbers'],
+  ])('refuses %s', (when, message) => {
+    expect(() => compile(when)).toThrow(message);
+  });
+
+  it('accepts reject as an outcome (a default answer of a person)', () => {
+    expect(() => compile("decisions.check.outcome == 'reject'")).not.toThrow();
+  });
+
+  it('refuses decisions when the required profile is not known', () => {
+    expect(() => compileCondition("decisions.check.action == 'urgent'", [], [], requires, {})).toThrow('the required profile "road-check" is not known');
+    expect(policyErrors(final([{ when: "decisions.check.action == 'urgent'", action: 'x' }]))).toEqual([[0, expect.stringContaining('is not known')]]);
   });
 });

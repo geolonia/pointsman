@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { parse as parseYaml } from 'yaml';
 // The same condition parser the Worker uses (Node.js strips the types).
-import { FACTS_PREFIX, policyErrors } from '../../src/policy.ts';
+import { DECISIONS_PREFIX, FACTS_PREFIX, policyErrors, profileActions } from '../../src/policy.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const schemaPath = join(here, '..', '..', 'schema', 'profile-v1.schema.json');
@@ -52,9 +52,11 @@ function duplicates(values) {
 
 /**
  * Validate a parsed profile. Returns a list of error messages (empty = valid).
- * `fileName`, when given, must be `<id>.<ext>`.
+ * `fileName`, when given, must be `<id>.<ext>`. `profiles`, a Map from id to
+ * profile, is the set it is validated with: the profiles it `requires` must
+ * be in it (docs/decision-chains.md "Checked both ways").
  */
-export function validateProfile(profile, { fileName } = {}) {
+export function validateProfile(profile, { fileName, profiles = new Map() } = {}) {
   if (!validateSchema(profile)) return schemaErrors();
 
   const errors = [];
@@ -75,14 +77,42 @@ export function validateProfile(profile, { fileName } = {}) {
       errors.push(`/questions/${i}/name: "${q.name}" is reserved for facts (facts.<name>.<field>)`);
     }
   });
+  // decisions.<name>.<field> is reserved for required decisions in the same way.
+  profile.questions.forEach((q, i) => {
+    if (q.name === 'decisions' || q.name.startsWith(DECISIONS_PREFIX)) {
+      errors.push(`/questions/${i}/name: "${q.name}" is reserved for required decisions (decisions.<name>.<field>)`);
+    }
+  });
+  const requires = profile.requires ?? [];
+  for (const d of duplicates(requires.map(name))) {
+    errors.push(`/requires: duplicate name "${d}"`);
+  }
+  const required = {};
+  requires.forEach((r, i) => {
+    if (r.profile === profile.id) errors.push(`/requires/${i}/profile: a profile cannot require itself`);
+    else if (!profiles.has(r.profile)) errors.push(`/requires/${i}/profile: "${r.profile}" is not among the profiles validated with it`);
+    // Its own errors are reported with it; its rules cannot be read here.
+    else if (!validateSchema(profiles.get(r.profile))) errors.push(`/requires/${i}/profile: "${r.profile}" is not a valid profile`);
+    else required[r.profile] = profiles.get(r.profile);
+  });
+  const cycle = requiresCycle(profile, profiles);
+  if (cycle) errors.push(`/requires: the profiles require each other in a circle: ${cycle.join(' → ')}`);
+  const actions = profileActions(profile);
+  (profile.policy.people_check ?? []).forEach((a, i) => {
+    if (!actions.includes(a)) errors.push(`/policy/people_check/${i}: "${a}" is not an action of this profile (${actions.join(', ')})`);
+  });
   profile.questions.forEach((q, i) => {
     if (q.type !== 'choice') return;
     for (const d of duplicates(q.criteria.map((c) => c.value))) {
       errors.push(`/questions/${i}/criteria: duplicate value "${d}"`);
     }
   });
-  for (const [i, message] of policyErrors(profile)) {
+  for (const [i, message] of policyErrors(profile, required)) {
     errors.push(`/policy/rules/${i}/when: ${message}`);
+  }
+  // "none" means no model call: only for rules-only profiles (no questions).
+  if (profile.questions.length > 0 && [profile.model, ...(profile.fallback_models ?? [])].includes('none')) {
+    errors.push('/model: "none" is only for profiles without questions (rules only)');
   }
   if ((profile.fallback_models ?? []).includes(profile.model)) {
     errors.push(`/fallback_models: repeats the primary model "${profile.model}"`);
@@ -96,15 +126,32 @@ export function validateProfile(profile, { fileName } = {}) {
   return errors;
 }
 
-/** Read, parse and validate one file. Returns a list of error messages. */
-export function validateProfileFile(path) {
+/** The first circle of requires through `profile`, as a list of ids, or null. */
+function requiresCycle(profile, profiles) {
+  const visit = (id, path) => {
+    const p = id === profile.id ? profile : profiles.get(id);
+    for (const r of p?.requires ?? []) {
+      if (r.profile === profile.id) return [...path, r.profile];
+      if (path.includes(r.profile) || r.profile === id) continue;
+      const found = visit(r.profile, [...path, r.profile]);
+      if (found) return found;
+    }
+    return null;
+  };
+  // A profile requiring itself is reported on its own.
+  const found = visit(profile.id, [profile.id]);
+  return found && found.length > 2 ? found : null;
+}
+
+/** Read, parse and validate one file (with `profiles`, the set it belongs to). Returns error messages. */
+export function validateProfileFile(path, { profiles } = {}) {
   let profile;
   try {
     profile = parseProfile(readFileSync(path, 'utf8'), path);
   } catch (err) {
     return [`(parse): ${err.message.split('\n')[0]}`];
   }
-  return validateProfile(profile, { fileName: path });
+  return validateProfile(profile, { fileName: path, profiles });
 }
 
 /**

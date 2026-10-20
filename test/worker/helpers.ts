@@ -7,7 +7,7 @@ import type { DecisionLog } from '../../src/log';
 export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
   return {
     insert: async () => {},
-    stats: async () => ({ decisions: 0, actions: {}, reviews: { pending: 0, resolved: 0, final_actions: {} }, corrected: 0 }),
+    stats: async () => ({ decisions: 0, actions: {}, reviews: { pending: 0, resolved: 0, superseded: 0, final_actions: {} }, corrected: 0 }),
     get: async () => null,
     addFeedback: async () => {},
     pendingReviews: async () => [],
@@ -15,6 +15,10 @@ export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
     dueCallbacks: async () => [],
     claimCallback: async () => true,
     recordCallback: async () => true,
+    byIdempotencyKey: async () => null,
+    latestFor: async () => null,
+    supersede: async () => [],
+    discard: async () => {},
     ...overrides,
   };
 }

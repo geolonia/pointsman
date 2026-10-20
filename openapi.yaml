@@ -34,6 +34,16 @@ paths:
           required: false
           description: Profile version. The latest version when not given.
           schema: { type: integer, minimum: 1 }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            A repeated request with the same key from the same client gets the
+            decision already logged, when the request is the same (profile and
+            version, state, ref, decisions); a different request with the same
+            key is refused (409 idempotency_conflict). Ignored for test tokens,
+            whose decisions are not logged.
+          schema: { type: string, pattern: '^[\x21-\x7e]{1,200}$' }
       requestBody:
         required: true
         content:
@@ -56,6 +66,14 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: |
+            `resolved_by_person`: the decision this one would replace was resolved by a
+            person, and a person's answer stays (docs/decision-chains.md).
+            `idempotency_conflict`: the Idempotency-Key was used for a different request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '502': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
   /v1/decisions/{id}:
@@ -294,6 +312,40 @@ components:
           type: string
           format: uri
           pattern: '^https://'
+        decisions:
+          description: |
+            For a profile with `requires` (docs/decision-chains.md): the ids of
+            the earlier decisions, by the names in `requires`. They are read from
+            the decision log and must be of the named profile, in the token's
+            scope, with this request's `ref` (then required) and from the same
+            client; every other case gives the same 400. Not for test tokens.
+          type: object
+          minProperties: 1
+          maxProperties: 8
+          additionalProperties: { type: string, format: uuid }
+    RequiredSnapshot:
+      description: What the rules read from one required decision, when this decision was made.
+      type: object
+      additionalProperties: false
+      required: [decision, profile, profile_version, action, outcome, reviewed, read]
+      properties:
+        decision: { type: string, format: uuid }
+        profile: { type: string }
+        profile_version: { type: integer, minimum: 1 }
+        action: { type: string }
+        outcome: { type: string, description: The person's answer when a review was resolved, otherwise the action. }
+        reviewed: { type: boolean }
+        read:
+          type: object
+          description: Every value the rules read from it, by path; null = unknown.
+          additionalProperties: {}
+    HiddenRequired:
+      description: A required decision of a profile the reader may not see.
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision: { type: 'null' }
     Decision:
       type: object
       additionalProperties: false
@@ -323,6 +375,24 @@ components:
           description: Present (true) only for a test token's decision, which is not logged.
           type: boolean
           const: true
+        requires:
+          description: For a profile with `requires`, by name. A required decision of a profile the token may no longer use is hidden.
+          type: object
+          additionalProperties:
+            oneOf:
+              - { $ref: '#/components/schemas/RequiredSnapshot' }
+              - { $ref: '#/components/schemas/HiddenRequired' }
+        replaces:
+          description: The earlier decision of the same profile, ref and client that this one replaces.
+          type: string
+          format: uuid
+        review:
+          description: Present when a person checks the decision before it counts (the profile's people_check).
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { type: string, const: pending }
     ProfileStats:
       type: object
       additionalProperties: false
@@ -339,10 +409,11 @@ components:
         reviews:
           type: object
           additionalProperties: false
-          required: [pending, resolved, final_actions]
+          required: [pending, resolved, superseded, final_actions]
           properties:
             pending: { type: integer, minimum: 0 }
             resolved: { type: integer, minimum: 0 }
+            superseded: { type: integer, minimum: 0, description: Reviews closed because a newer decision replaced theirs. }
             final_actions:
               type: object
               description: Resolved reviews per final action.
@@ -385,13 +456,29 @@ components:
         state_hash: { type: string, pattern: '^[0-9a-f]{64}$', description: SHA-256 of the state sent to the model (keys sorted). }
         state: { description: 'The state sent to the model. Only when the profile sets log.store_state.' }
         review: { $ref: '#/components/schemas/Review' }
+        requires:
+          description: For a profile with `requires`, by name. A required decision of a profile the reader may not see is hidden.
+          type: object
+          additionalProperties:
+            oneOf:
+              - { $ref: '#/components/schemas/RequiredSnapshot' }
+              - { $ref: '#/components/schemas/HiddenRequired' }
+        idempotency_key: { type: string, description: The Idempotency-Key the decision was made with. }
+        replaces: { type: string, format: uuid, description: The earlier decision of the same profile, ref and client that this one replaced. }
+        discarded_at:
+          type: string
+          format: date-time
+          description: Made while a person resolved the decision it would replace; the client got 409 resolved_by_person and it never counts.
     Review:
-      description: Only for decisions with action `review`.
+      description: Only for decisions whose action a person checks (the profile's people_check; default review).
       type: object
       additionalProperties: false
       required: [status]
       properties:
-        status: { type: string, enum: [pending, resolved] }
+        status:
+          description: '`superseded`: a newer decision replaced this one while the review was open.'
+          type: string
+          enum: [pending, resolved, superseded]
         resolved_at: { type: string, format: date-time }
         resolved_by: { type: string }
         final_action: { type: string }
@@ -563,5 +650,5 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_pending, not_found, model_error, internal_error]
+              enum: [invalid_request, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_pending, not_found, resolved_by_person, idempotency_conflict, model_error, internal_error]
             message: { type: string }

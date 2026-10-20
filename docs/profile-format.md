@@ -17,12 +17,13 @@ Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
 | `id` | yes | Used in the URL: `POST /v1/decide/{id}`. Lower case, digits, `-`. |
 | `version` | yes | Integer, starts at 1. Increase it on every change. Each decision records the version it used. |
 | `title`, `description` | yes | Text in English (`en`) and Japanese (`ja`), so that non-engineers can read the profile. |
-| `model` | yes | Model id, for example `clef-flash`. |
+| `model` | yes | Model id, for example `clef-flash`. `none` for a profile with no questions (rules only, no model call). |
 | `fallback_models` | no | Models to try, in order, when the primary model fails. |
 | `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
-| `questions` | yes | 1 to 64 questions (see below). |
+| `questions` | yes | Up to 64 questions (see below). At least 1, unless the profile has `requires`. |
+| `requires` | no | Up to 8 earlier decisions the rules read, as `{ name, profile, optional }` (see [Decision chains](#decision-chains)). |
 | `facts` | no | Up to 16 spatial facts to look up for each decision, for rules (see [Facts](#facts)). |
-| `policy` | yes | `rules` (checked in order, first match wins) and a `default` action. |
+| `policy` | yes | `rules` (checked in order, first match wins) and a `default` action; optionally `people_check` and `people_answers` (see [People](#people-check-and-answers)). |
 | `mcp` | no | `visible: true` lists the profile and allows calling it through MCP (default false, see [mcp.md](mcp.md)). |
 | `log` | no | `store_state: true` keeps the full state in the decision log (default: only a hash, see [decision-log.md](decision-log.md)). |
 
@@ -142,6 +143,7 @@ A condition compares a question field with a value:
 | `<question>.score` | `score` | number: weighted level |
 | `<question>.probabilities.<option>` | `choice`, `score` (level index) | number |
 | `facts.<fact>.<field>` | facts (see [Facts](#facts)) | as the field |
+| `decisions.<name>.<field>` | `requires` (see [Decision chains](#decision-chains)) | as the field |
 
 - Comparisons: `==`, `!=`, `>=`, `>`, `<=`, `<`. Only numbers can be ordered.
 - Combine with `and`, `or`, `not` and parentheses. `and` binds tighter than `or`.
@@ -152,6 +154,88 @@ Conditions are checked when the profile is validated: a question name that
 does not exist, a field the question type does not have, an option that the
 question does not list, or a comparison of different types fails validation.
 The engine evaluates conditions with its own parser; nothing is run as code.
+
+## Decision chains
+
+A profile can build on earlier decisions about the same report: a final step
+that reads the first check and the map checks. The design, with the DMN
+mapping, is in [decision-chains.md](decision-chains.md).
+
+```yaml
+model: none
+requires:
+  - { name: check, profile: road-restriction-check }
+  - { name: evacuation, profile: evacuation-access-check, optional: true }
+questions: []
+policy:
+  rules:
+    - when: "decisions.evacuation.action == 'alert'"
+      action: urgent
+    - when: "decisions.check.outcome == 'publish' and decisions.check.facts.flood.rank < 5"
+      action: publish
+  default: review
+```
+
+The request sends the ids of the earlier decisions, by name, and a `ref`:
+`{"state": {}, "ref": "report-7", "decisions": {"check": "<decision_id>"}}`.
+Pointsman reads them from the decision log; the caller cannot claim a result.
+Each one must be of the named profile, in the token's scope, with the same
+`ref` and made by the same client, and the newest decision of its profile
+for that report (an older one was replaced). Every
+other case gives the same `400` (`decisions.<name> is not a usable
+decision`), so a token cannot find out which decisions exist. Test tokens
+cannot send `decisions`.
+
+Rules read these fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `decisions.<name>.missing` | boolean | the decision was not given (only for `optional`); always known |
+| `decisions.<name>.action` | text | the action Pointsman decided |
+| `decisions.<name>.outcome` | text | what counts now: the person's answer when its review was resolved, otherwise the action |
+| `decisions.<name>.reviewed` | boolean | a person resolved its review |
+| `decisions.<name>.answers.<question>.<field>` | as for questions | its answers; a person's corrected values when the review was resolved with corrections |
+| `decisions.<name>.facts.<fact>.<field>` | as for facts | its facts |
+
+A missing optional decision makes every field but `missing` unknown, as for
+a missing fact. The decision keeps what the rules read from each one in
+`requires` (see [decision-log.md](decision-log.md)).
+
+When profiles are validated, they are checked as one set: each required
+profile must be in the set, a profile cannot require itself or form a cycle,
+and every field and value a rule reads must exist in the required profile (its
+questions, facts, actions and `people_answers`). So a change to a required
+profile that breaks a profile built on it fails validation and names it. The
+name `decisions` cannot be used for a question.
+
+A newer decision of the same profile, `ref` and client replaces the earlier
+one: the response has `replaces` with the earlier id, and its open review is
+closed as `superseded`; it can no longer be resolved. Once a person has
+resolved a review of a profile with `requires`, a new decision for that
+report is refused (`409 resolved_by_person`): a person's answer stays. When
+the person resolves it while the new decision is being made, the new one is
+logged as discarded (`discarded_at`; it never counts) and the answer is the
+same `409`, also for a retry with the same idempotency key.
+
+### People: check and answers
+
+- `policy.people_check` lists the actions a person checks before they count
+  (default `[review]`). Each decision with one of these actions opens a review
+  (see [reviews.md](reviews.md)); the decide response then has
+  `review: {status: pending}`.
+- `policy.people_answers` lists the answers a person may give when resolving
+  a review (default: the profile's actions without `review`, plus `reject`).
+  Any other answer is refused (`400`). `review` is never an answer.
+
+```yaml
+policy:
+  rules:
+    - when: "closed.yes >= 0.8"
+      action: urgent
+  default: review
+  people_check: [review, urgent]
+  people_answers: [publish, reject]
+```
 
 ## Facts
 

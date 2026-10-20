@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 329,
+    "documented": 332,
     "inferred": 0
   },
   "components": [
@@ -283,6 +283,24 @@
     },
     {
       "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "decisions",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-CHAIN-INPUTS-FROM-LOG",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Decision chains\""
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "Idempotency-Key",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "1–200 printable ASCII characters; keys are per client",
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"Repeated requests\""
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
       "parameter": "callback_url",
       "attacker_controllable": "yes",
       "component": "engine-api",
@@ -385,9 +403,9 @@
       "parameter": "action",
       "attacker_controllable": "yes",
       "component": "engine-api",
-      "caller_must_enforce": "lower-case name, not review; it is the final action the client will act on",
+      "caller_must_enforce": "one of the profile's people_answers, else 400; it is the final action the client will act on",
       "provenance": "documented",
-      "source": "docs/reviews.md \"action is the final action\""
+      "source": "docs/reviews.md \"action is the final answer\""
     },
     {
       "entry_point": "POST /v1/reviews/{id}/resolve",
@@ -463,7 +481,7 @@
     },
     {
       "entry_point": "/mcp decide",
-      "parameter": "profile-state-ref",
+      "parameter": "profile-state-ref-decisions-idempotency_key",
       "attacker_controllable": "yes",
       "component": "engine-mcp",
       "caller_must_enforce": "treat state as untrusted data: never in a shell, query or template; no secrets or personal data unless log.store_state and gateway logging are intended",
@@ -709,7 +727,7 @@
       "parameter": "cli-arguments",
       "attacker_controllable": "no",
       "component": "config-repo",
-      "caller_must_enforce": "one token per client limited to its profiles; --profiles '*' only on purpose; store the printed token as a secret",
+      "caller_must_enforce": "one token per client limited to its profiles; client names are unique (create refuses a name in use, rotate replaces the token); --profiles '*' only on purpose; store the printed token as a secret",
       "provenance": "documented",
       "source": "README \"API tokens\""
     }
@@ -898,7 +916,7 @@
       "property": "P-TOKEN-SCOPE",
       "violation_symptom": "x-authorization-bypass, info-leak",
       "severity_tier": "security",
-      "conditions": "a token with a profile list; scope checked before the profile lookup; voided by --profiles '*' tokens and OAuth people",
+      "conditions": "a token with a profile list; scope checked before the profile lookup; also for required decisions, which are hidden as {decision: null} outside the scope; voided by --profiles '*' tokens and OAuth people",
       "provenance": "documented",
       "source": "docs/decision-log.md \"A token sees and corrects only decisions of profiles in its scope\""
     },
@@ -914,7 +932,7 @@
       "property": "P-TEST-TOKEN-ISOLATED",
       "violation_symptom": "x-unlogged-decision-acted-on, info-leak",
       "severity_tier": "security",
-      "conditions": "a token record with test: true",
+      "conditions": "a token record with test: true; it cannot send decisions or decide a profile with requires",
       "provenance": "documented",
       "source": "README \"API tokens\": \"A test token may only decide (and list its profiles) over the REST API, not over MCP, and gets no callbacks\""
     },
@@ -930,9 +948,17 @@
       "property": "P-ACTION-FROM-POLICY",
       "violation_symptom": "x-unauthorized-action",
       "severity_tier": "security",
-      "conditions": "the first true rule over typed answers and facts, else the default; unknown comparisons never match",
+      "conditions": "the first true rule over typed answers, facts and required decisions, else the default; unknown comparisons never match",
       "provenance": "documented",
       "source": "README \"People's rules decide ... The AI does not decide alone\""
+    },
+    {
+      "property": "P-CHAIN-INPUTS-FROM-LOG",
+      "violation_symptom": "x-authorization-bypass, x-unauthorized-action, info-leak",
+      "severity_tier": "security",
+      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""
     },
     {
       "property": "P-POLICY-NOT-CODE",
@@ -994,7 +1020,7 @@
       "property": "P-REVIEW-RESOLVED-ONCE",
       "violation_symptom": "data-race, x-double-resolution",
       "severity_tier": "correctness",
-      "conditions": "a pending review; concurrent or repeated resolves answer 409",
+      "conditions": "a pending review; concurrent or repeated resolves answer 409; a superseded review cannot be resolved",
       "provenance": "documented",
       "source": "docs/reviews.md \"A review can be resolved once\""
     },

@@ -5,7 +5,7 @@
 // Exits 1 when any profile is invalid, or when no profile is found.
 
 import { readFileSync } from 'node:fs';
-import { collectProfileFiles, duplicateIdErrors, parseProfile, validateProfileFile } from './lib/profile.mjs';
+import { collectProfileFiles, duplicateIdErrors, parseProfile, validateProfile } from './lib/profile.mjs';
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -25,9 +25,20 @@ if (files.length === 0) {
   process.exit(1);
 }
 
+// All files are read first: a profile is validated together with the ones
+// it requires (docs/decision-chains.md "Checked both ways").
+const parsed = files.map((f) => {
+  try {
+    return [f, parseProfile(readFileSync(f, 'utf8'), f), null];
+  } catch (err) {
+    return [f, null, `(parse): ${err.message.split('\n')[0]}`];
+  }
+});
+const profiles = new Map(parsed.filter(([, p]) => p && typeof p.id === 'string').map(([, p]) => [p.id, p]));
+
 let failed = 0;
-for (const file of files) {
-  const errors = validateProfileFile(file);
+for (const [file, profile, parseError] of parsed) {
+  const errors = parseError ? [parseError] : validateProfile(profile, { fileName: file, profiles });
   if (errors.length === 0) {
     console.log(`ok    ${file}`);
     continue;
@@ -38,13 +49,6 @@ for (const file of files) {
 }
 
 // Ids must be unique across all files given (a config repository's profiles/).
-const parsed = files.map((f) => {
-  try {
-    return [f, parseProfile(readFileSync(f, 'utf8'), f)];
-  } catch {
-    return [f, null];
-  }
-});
 const duplicates = duplicateIdErrors(parsed);
 for (const d of duplicates) console.log(`FAIL  ${d}`);
 if (duplicates.length > 0) failed += 1;

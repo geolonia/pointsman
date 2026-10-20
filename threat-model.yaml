@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:5ef0e6634831728163ca1462fdb9f37c4f1c666a2021f89ac4cff8c5304cb76b"
+prose_version: "threat-model.md@sha256:e0081f816a31c26a58e652cdd811da61ea7a1cafc36b1d34b68a8e4e97dba308"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 260, maintainer: 69, inferred: 0, assumption: 0}
+confidence: {documented: 263, maintainer: 69, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1)"
@@ -176,6 +176,16 @@ entry_points:
         obligation_id: ref-no-secrets
         caller_must_enforce: "1–200 characters; it is logged and returned, so no secrets"
         provenance: {kind: documented, source: "openapi.yaml DecideRequest.ref"}
+      - name: decisions
+        attacker_controllable: true
+        control_kinds: [resource-name]
+        caller_must_enforce: "none — P-CHAIN-INPUTS-FROM-LOG"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Decision chains\""}
+      - name: Idempotency-Key
+        attacker_controllable: true
+        control_kinds: [data]
+        caller_must_enforce: "1–200 printable ASCII characters; keys are per client"
+        provenance: {kind: documented, source: "docs/decision-log.md \"Repeated requests\""}
       - name: callback_url
         attacker_controllable: true
         control_kinds: [resource-name]
@@ -253,8 +263,8 @@ entry_points:
         attacker_controllable: true
         control_kinds: [data]
         obligation_id: final-action-is-acted-on
-        caller_must_enforce: "lower-case name, not review; it is the final action the client will act on"
-        provenance: {kind: documented, source: "docs/reviews.md \"action is the final action\""}
+        caller_must_enforce: "one of the profile's people_answers, else 400; it is the final action the client will act on"
+        provenance: {kind: documented, source: "docs/reviews.md \"action is the final answer\""}
       - name: correct-by-note
         attacker_controllable: true
         control_kinds: [data, type-class]
@@ -317,7 +327,7 @@ entry_points:
   - id: "/mcp decide"
     component: engine-mcp
     parameters:
-      - name: profile-state-ref
+      - name: profile-state-ref-decisions-idempotency_key
         attacker_controllable: true
         control_kinds: [resource-name, data, x-prompt-text]
         obligation_id: treat-state-as-data
@@ -507,7 +517,7 @@ entry_points:
         attacker_controllable: false
         control_kinds: [data]
         obligation_id: scoped-tokens
-        caller_must_enforce: "one token per client limited to its profiles; --profiles '*' only on purpose; store the printed token as a secret"
+        caller_must_enforce: "one token per client limited to its profiles; client names are unique (create refuses a name in use, rotate replaces the token); --profiles '*' only on purpose; store the printed token as a secret"
         provenance: {kind: documented, source: "README \"API tokens\""}
 
 contract_dimensions:
@@ -1071,7 +1081,7 @@ properties_claimed:
     kind: x-authorization
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "a token with a profile list; scope checked before the profile lookup; voided by --profiles '*' tokens and OAuth people"
+    conditions: "a token with a profile list; scope checked before the profile lookup; also for required decisions, which are hidden as {decision: null} outside the scope; voided by --profiles '*' tokens and OAuth people"
     violation_symptoms: [x-authorization-bypass, info-leak]
     provenance: {kind: documented, source: "docs/decision-log.md \"A token sees and corrects only decisions of profiles in its scope\""}
   - id: P-TOKEN-HASHED
@@ -1085,7 +1095,7 @@ properties_claimed:
     kind: integrity
     components: [engine-api, engine-mcp, engine-callbacks]
     tier: security-critical
-    conditions: "a token record with test: true"
+    conditions: "a token record with test: true; it cannot send decisions or decide a profile with requires"
     violation_symptoms: [x-unlogged-decision-acted-on, info-leak]
     provenance: {kind: documented, source: "README \"API tokens\": \"A test token may only decide (and list its profiles) over the REST API, not over MCP, and gets no callbacks\""}
   - id: P-ANSWER-SHAPE
@@ -1099,9 +1109,16 @@ properties_claimed:
     kind: integrity
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "the first true rule over typed answers and facts, else the default; unknown comparisons never match"
+    conditions: "the first true rule over typed answers, facts and required decisions, else the default; unknown comparisons never match"
     violation_symptoms: [x-unauthorized-action]
     provenance: {kind: documented, source: "README \"People's rules decide ... The AI does not decide alone\""}
+  - id: P-CHAIN-INPUTS-FROM-LOG
+    kind: x-authorization
+    components: [engine-api, engine-mcp]
+    tier: security-critical
+    conditions: "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400"
+    violation_symptoms: [x-authorization-bypass, x-unauthorized-action, info-leak]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""}
   - id: P-POLICY-NOT-CODE
     kind: memory-safety
     components: [engine-api, config-repo]
@@ -1155,7 +1172,7 @@ properties_claimed:
     kind: correctness
     components: [engine-api]
     tier: correctness-only
-    conditions: "a pending review; concurrent or repeated resolves answer 409"
+    conditions: "a pending review; concurrent or repeated resolves answer 409; a superseded review cannot be resolved"
     violation_symptoms: [data-race, x-double-resolution]
     provenance: {kind: documented, source: "docs/reviews.md \"A review can be resolved once\""}
   - id: P-CALLBACK-SIGNED

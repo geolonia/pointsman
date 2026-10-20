@@ -2,6 +2,7 @@
 // Create, revoke and list API tokens in the TOKENS KV namespace (via wrangler).
 //
 //   node scripts/tokens.mjs create --client <name> --profiles <id,id|*> [--test] (--local|--remote) [--config <file>]
+//   node scripts/tokens.mjs rotate --client <name> [--profiles <id,id|*>] [--keep-old] (--local|--remote) [--config <file>]
 //   node scripts/tokens.mjs revoke --hash <sha256> (--local|--remote) [--config <file>]
 //   node scripts/tokens.mjs list (--local|--remote) [--config <file>]
 //
@@ -11,6 +12,13 @@
 // --test makes a test token: its decisions are not logged, and it may only
 // decide (for checks of profiles and examples).
 // --dry-run prints what would be written instead of calling wrangler.
+//
+// Client names are unique: decisions are logged per client, and chained
+// decisions (docs/decision-chains.md) must come from the same client, so two
+// tokens with one name would share them. `create` refuses a name in use;
+// `rotate` gives the client a new token (same profiles and --test unless
+// --profiles is given) and revokes its old ones, or with --keep-old leaves
+// them for you to revoke once the new token is in place.
 
 import { parseArgs } from 'node:util';
 // Same token format and hashing as the Worker (Node.js strips the types).
@@ -36,6 +44,7 @@ const { values, positionals } = (() => {
         config: { type: 'string' },
         local: { type: 'boolean', default: false },
         test: { type: 'boolean', default: false },
+        'keep-old': { type: 'boolean', default: false },
         remote: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
       },
@@ -46,8 +55,8 @@ const { values, positionals } = (() => {
 })();
 
 const [command] = positionals;
-if (positionals.length !== 1 || !['create', 'revoke', 'list'].includes(command)) {
-  fail('Usage: tokens.mjs create|revoke|list ... (see the comment at the top of this file)');
+if (positionals.length !== 1 || !['create', 'rotate', 'revoke', 'list'].includes(command)) {
+  fail('Usage: tokens.mjs create|rotate|revoke|list ... (see the comment at the top of this file)');
 }
 // No default target: writing to the wrong namespace should not be one typo away.
 if (values.local === values.remote) fail('Give exactly one of --local or --remote.');
@@ -66,25 +75,71 @@ function wrangler(args) {
   }
 }
 
+/** The stored tokens: hash and metadata (client, profiles, test, created_at). */
+function listTokens() {
+  // A dry run reads nothing; tests give the stored tokens in TOKENS_DRY_RUN_LIST
+  // (wrangler's `kv key list` output).
+  const out = values['dry-run'] ? process.env.TOKENS_DRY_RUN_LIST ?? '[]' : wrangler(['list', '--prefix', 'token:']);
+  return JSON.parse(out).map((key) => ({ hash: key.name.slice('token:'.length), ...(key.metadata ?? {}) }));
+}
+
+function clientArg() {
+  if (!values.client || !NAME.test(values.client)) {
+    fail('--client must be lower case letters, digits and "-" (max 63)');
+  }
+  return values.client;
+}
+
+function profilesArg() {
+  const profiles = (values.profiles ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+  if (profiles.length === 0 || !profiles.every((p) => p === '*' || NAME.test(p))) {
+    fail('--profiles must be a comma-separated list of profile ids, or *');
+  }
+  if (profiles.includes('*') && profiles.length > 1) fail('--profiles: * cannot be combined with ids');
+  return profiles;
+}
+
+async function putToken(client, profiles, test) {
+  const token = newToken();
+  const hash = await hashToken(token);
+  const record = { client, profiles, created_at: new Date().toISOString(), ...(test && { test: true }) };
+  const json = JSON.stringify(record);
+  // Metadata makes `list` show the client without reading every value.
+  wrangler(['put', tokenKey(hash), json, '--metadata', json]);
+  console.log(`client:  ${record.client}${record.test ? ' (test token: not logged, decide only)' : ''}\nprofiles: ${profiles.join(',')}\nhash:    ${hash}`);
+  console.log(`\ntoken (shown once, store it as a secret):\n${token}`);
+}
+
 switch (command) {
   case 'create': {
-    if (!values.client || !NAME.test(values.client)) {
-      fail('--client must be lower case letters, digits and "-" (max 63)');
+    const client = clientArg();
+    const profiles = profilesArg();
+    if (listTokens().some((t) => t.client === client)) {
+      fail(`client "${client}" already has a token: use \`rotate --client ${client}\` for a new one, or another name`);
     }
-    const profiles = (values.profiles ?? '').split(',').map((p) => p.trim()).filter(Boolean);
-    if (profiles.length === 0 || !profiles.every((p) => p === '*' || NAME.test(p))) {
-      fail('--profiles must be a comma-separated list of profile ids, or *');
+    await putToken(client, profiles, values.test);
+    break;
+  }
+  case 'rotate': {
+    const client = clientArg();
+    if (values.test) fail('rotate keeps the old token\'s --test setting; leave out --test');
+    const old = listTokens().filter((t) => t.client === client);
+    if (old.length === 0) fail(`client "${client}" has no token; use create`);
+    if (old.some((t) => !!t.test !== !!old[0].test)) fail(`client "${client}" has both test and normal tokens; revoke one kind first`);
+    if (values.profiles === undefined && old.some((t) => (t.profiles ?? []).join(',') !== (old[0].profiles ?? []).join(','))) {
+      fail(`client "${client}" has tokens with different profiles; give --profiles`);
     }
-    if (profiles.includes('*') && profiles.length > 1) fail('--profiles: * cannot be combined with ids');
-
-    const token = newToken();
-    const hash = await hashToken(token);
-    const record = { client: values.client, profiles, created_at: new Date().toISOString(), ...(values.test && { test: true }) };
-    const json = JSON.stringify(record);
-    // Metadata makes `list` show the client without reading every value.
-    wrangler(['put', tokenKey(hash), json, '--metadata', json]);
-    console.log(`client:  ${record.client}${record.test ? ' (test token: not logged, decide only)' : ''}\nprofiles: ${profiles.join(',')}\nhash:    ${hash}`);
-    console.log(`\ntoken (shown once, store it as a secret):\n${token}`);
+    const profiles = values.profiles !== undefined ? profilesArg() : old[0]?.profiles ?? [];
+    if (profiles.length === 0) fail('--profiles is needed (the old token\'s profiles are unknown)');
+    await putToken(client, profiles, !!old[0]?.test);
+    for (const t of old) {
+      if (values['keep-old']) {
+        console.log(`\nold token kept; revoke it once the new one is in place:\n  node scripts/tokens.mjs revoke --hash ${t.hash} ${values.local ? '--local' : '--remote'}`);
+      } else {
+        wrangler(['delete', tokenKey(t.hash)]);
+        console.log(`\nrevoked old token ${t.hash}`);
+      }
+    }
     break;
   }
   case 'revoke': {
@@ -94,11 +149,12 @@ switch (command) {
     break;
   }
   case 'list': {
-    const out = wrangler(['list', '--prefix', 'token:']);
-    if (values['dry-run']) break;
-    for (const key of JSON.parse(out)) {
-      const m = key.metadata ?? {};
-      console.log(`${key.name.slice('token:'.length)}  ${m.client ?? '?'}${m.test ? ' (test)' : ''}  ${(m.profiles ?? []).join(',')}  ${m.created_at ?? ''}`);
+    const tokens = listTokens();
+    const count = new Map();
+    for (const t of tokens) count.set(t.client, (count.get(t.client) ?? 0) + 1);
+    for (const t of tokens) {
+      const shared = count.get(t.client) > 1 ? '  (name used by several tokens: rotate or rename)' : '';
+      console.log(`${t.hash}  ${t.client ?? '?'}${t.test ? ' (test)' : ''}  ${(t.profiles ?? []).join(',')}  ${t.created_at ?? ''}${shared}`);
     }
     break;
   }

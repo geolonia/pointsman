@@ -13,5 +13,7 @@ SELECT d.profile_id, d.profile_version,
        ) THEN f.decision_id END)     AS overridden
 FROM decisions d
 LEFT JOIN feedback f ON f.decision_id = d.id
+-- A discarded decision never counts (docs/decision-log.md).
+WHERE d.discarded_at IS NULL
 GROUP BY d.profile_id, d.profile_version
 ORDER BY d.profile_id, d.profile_version;
