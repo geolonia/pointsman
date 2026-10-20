@@ -954,7 +954,7 @@
       "property": "P-FACT-LOOKUP-BOUNDED",
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
-      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s per detour), 10 s per tile load; exceeding is error or timeout",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; exceeding is error or timeout",
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
     },

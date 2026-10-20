@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:f8383c4fc77d24f02839e6ac56aa9bcf9edf6e7ace992c62e494d5427f0803a9"
+prose_version: "threat-model.md@sha256:ebfb6790540727ac4f437434a2c188f231fb976ff3a2753ccf069163fa11a666"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 259, maintainer: 70, inferred: 0, assumption: 0}
@@ -530,7 +530,7 @@ contract_dimensions:
   - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\""}}
   - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s per detour), 10 s per tile load", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
@@ -1120,7 +1120,7 @@ properties_claimed:
     kind: resource-bound
     components: [engine-facts]
     tier: correctness-only
-    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s per detour), 10 s per tile load; exceeding is error or timeout"
+    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; exceeding is error or timeout"
     violation_symptoms: [hang, unbounded-allocation]
     provenance: {kind: maintainer, date: "2026-10"}
   - id: P-DECISION-LOGGED-FIRST

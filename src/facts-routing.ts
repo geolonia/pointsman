@@ -19,7 +19,8 @@ import type { DetourMode } from './types';
 import { distance, offset } from './geo';
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
-const TIMEOUT_MS = 10_000;
+/** Per call; below the detour fact's 8 s, so a retry can still fit. */
+const TIMEOUT_MS = 6_000;
 /** Metres around the closed section that the polygon covers. */
 const HALF_WIDTH = 10;
 /** Metres at each end that stay open. */
@@ -39,7 +40,12 @@ const POLYLINE = /^[?-~]+$/;
 
 /** Valhalla error 176: the exclusion polygons have more vertices than the server allows. */
 class TooManyVertices extends FactError {}
-/** No connection, or a 5xx answer: worth one more try. */
+/**
+ * No connection, or a gateway answer (502, 504): worth one more try. Not
+ * 503 or 429: a server that says it is overloaded is not asked again. At
+ * most 6 calls per detour fact: 2 at once, each retried once, plus the
+ * smaller closure.
+ */
 class RoutingUnavailable extends FactError {}
 const RETRY_PAUSE_MS = 250;
 
@@ -97,13 +103,20 @@ export class ValhallaRouter {
 
     // The way with and without the section at the same time: a server that
     // starts cold then delays the answer once, not twice.
-    const aroundOf = (polygons: Position[][]) => settle(this.route(a, b, polygons, costing, signal));
-    const [directResult, firstAround] = await Promise.all([settle(this.route(a, b, undefined, costing, signal)), aroundOf(usable[0]!)]);
+    // A failed direct call stops the other one (no quota spent on an answer that is thrown away).
+    const stop = new AbortController();
+    const both = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
+    const aroundOf = (polygons: Position[][], s: AbortSignal | undefined) => settle(this.route(a, b, polygons, costing, s));
+    const directCall = settle(this.route(a, b, undefined, costing, both)).then((r) => {
+      if (r.error !== undefined) stop.abort();
+      return r;
+    });
+    const [directResult, firstAround] = await Promise.all([directCall, aroundOf(usable[0]!, both)]);
     if (directResult.error !== undefined) throw directResult.error;
     const direct = directResult.value ?? null;
     if (direct === null) throw new FactError('no route along the section itself');
     for (let i = 0; i < usable.length; i++) {
-      const attempt = i === 0 ? firstAround : await aroundOf(usable[i]!);
+      const attempt = i === 0 ? firstAround : await aroundOf(usable[i]!, signal);
       if (attempt.error !== undefined) {
         // A server with a lower vertex limit than the default refuses the
         // closure (error 176): try the next, smaller one.
@@ -124,8 +137,8 @@ export class ValhallaRouter {
 
   /**
    * The route by car (`auto`) or on foot (`pedestrian`), or null when
-   * Valhalla finds no route. A failed connection or a 5xx answer is tried
-   * once more, after a short pause, if the lookup's time is not up.
+   * Valhalla finds no route. A failed connection or a 502/504 answer is
+   * tried once more, after a short pause, if the lookup's time is not up.
    */
   private async route(from: Position, to: Position, exclude: Position[][] | undefined, costing: 'auto' | 'pedestrian', signal?: AbortSignal): Promise<Trip | null> {
     try {
@@ -168,7 +181,7 @@ export class ValhallaRouter {
     if (!res.ok) {
       if (json?.error_code === 442) return null; // no path
       if (json?.error_code === 176) throw new TooManyVertices('routing: too many polygon vertices');
-      if (res.status >= 500) throw new RoutingUnavailable(`routing ${res.status}`);
+      if (res.status === 502 || res.status === 504) throw new RoutingUnavailable(`routing ${res.status}`);
       throw new FactError(`routing ${res.status}${typeof json?.error_code === 'number' ? ` (${json.error_code})` : ''}`);
     }
     const km = json?.trip?.summary?.length;

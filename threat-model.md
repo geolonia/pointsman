@@ -505,7 +505,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-facts | serialization/reconstruction | claimed | tile PNGs are decoded by the engine's own decoder (8-bit, non-interlaced only); GeoJSON tiles are parsed and reduced to point lists; anything else is `error` | §1.11 `P-FACTS-NEVER-GUESSED` | *(maintainer, 2026-10)* |
 | engine-facts | reference lifecycle | claimed | tiles are cached for a day in memory (64 entries) and in the Workers cache; a failed load is not kept | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(documented, docs/profile-format.md "Tiles are cached for a day")* |
 | engine-facts | concurrency/reentrancy | claimed | a tile load is shared between lookups in one isolate and is not cancelled by one lookup's timeout | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
-| engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles, ≤ 5 km detour section, 3 s per fact (8 s per detour), 10 s per tile load | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
+| engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles, ≤ 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
 | engine-facts | x-prompt-injection | N/A — the model does not see the facts, and facts do not reach the model | — | — | *(documented, docs/profile-format.md "The model does not see the facts")* |
 | engine-facts | x-probabilistic-result | N/A — facts are measured, not estimated | — | — | *(documented, docs/profile-format.md "Facts are computed by spatial operations instead")* |
 | engine-callbacks | numeric domain | claimed | at most 6 attempts with fixed delays (1 min, 5 min, 30 min, 2 h, 12 h); timestamps are Unix seconds | §1.11 `P-CALLBACK-SIGNED` | *(documented, docs/reviews.md "Callbacks")* |
@@ -738,7 +738,7 @@ what voids it.
   evaluation at `src/policy.ts:288`.
 - **`P-FACT-LOOKUP-BOUNDED`** — a fact lookup does bounded work for any
   geometry: at most 1000 positions, 200 samples, 16 flood tiles, 9 shelter
-  tiles, a 5 km detour section, 3 s per fact (8 s per detour) and 10 s per tile load;
+  tiles, a 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour) and 10 s per tile load;
   exceeding a bound is `error` or `timeout`, never a hang. Symptom: `hang`,
   `unbounded-allocation`. Tier: correctness-only.
   *(maintainer, 2026-10)*. Voided by: nothing found. Search:
