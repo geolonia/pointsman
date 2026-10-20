@@ -169,12 +169,20 @@ requires:
 questions: []
 policy:
   rules:
-    - when: "decisions.evacuation.action == 'alert'"
+    - when: "decisions.check.outcome == 'reject'"
+      action: reject
+    - when: "decisions.evacuation.outcome == 'alert'"
       action: urgent
-    - when: "decisions.check.outcome == 'publish' and decisions.check.facts.flood.rank < 5"
+    - when: "decisions.check.outcome == 'publish'"
       action: publish
   default: review
+  people_check: []
 ```
+
+A rule that leads to an action nobody answers keeps a report there: here
+`review` only means the first step's review is still open, and answering it
+runs the final step again (the first step sends deep flood zones to a person;
+see examples/profiles/).
 
 The request sends the ids of the earlier decisions, by name, and a `ref`:
 `{"state": {}, "ref": "report-7", "decisions": {"check": "<decision_id>"}}`.

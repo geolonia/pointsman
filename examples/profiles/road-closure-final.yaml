@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../../schema/profile-v1.schema.json
-# Example of a decision chain (docs/decision-chains.md): the final decision on
-# a road closure report, from the first check (road-restriction-check) and,
-# when it ran, the evacuation check. Rules only: no questions, no model call.
-# The map checks count here: the flood zone of the first check, and the way
-# around on foot of the evacuation check.
+# Example of a decision chain (docs/decision-chains.md), as in the FIWARE demo: the final
+# decision on a road closure report, from the first check
+# (road-restriction-check) and, when it ran, the evacuation check. Rules only: no questions, no model call.
+# The map checks count here: the way around on foot of the evacuation check
+# (an alert makes it urgent); the flood zone counts in the first check.
 id: road-closure-final
 version: 1
 title:
@@ -19,14 +19,22 @@ requires:
 questions: []
 policy:
   rules:
-    # People on foot are cut off from their evacuation site.
-    - when: "decisions.evacuation.action == 'alert'"
+    # A person said the report is wrong: that answer stays, also over an alert
+    # (an alert already sent stays sent).
+    - when: "decisions.check.outcome == 'reject'"
+      action: reject
+    # People on foot are cut off from their evacuation site (also when a
+    # person answered alert on the evacuation check's review).
+    - when: "decisions.evacuation.outcome == 'alert'"
       action: urgent
     - when: "decisions.check.outcome == 'urgent'"
       action: urgent
-    - when: "decisions.check.outcome == 'reject'"
-      action: reject
-    # Published only outside deep flood zones, also after a person said publish.
-    - when: "decisions.check.outcome == 'publish' and decisions.check.facts.flood.rank < 5"
+    # The first check (or a person) published it; deep flood zones went to a
+    # person there first (road-restriction-check).
+    - when: "decisions.check.outcome == 'publish'"
       action: publish
+  # The person who checks the first step has not answered yet; when they do,
+  # this decision is made again.
   default: review
+  # This step is rules only: nobody checks it. People check the first step.
+  people_check: []

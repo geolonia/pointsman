@@ -1,7 +1,8 @@
 # Decision chains (design)
 
 Status: **agreed design**, for #101 (agreed points of 2026-10-20 at the
-end). Nothing here is built yet.
+end). Built: the engine (#107) and the bridge (#108); the demo shows it.
+Still open: the graph for DMN tools (below).
 
 A decision can build on earlier decisions: the report is evaluated, more
 checks run, and a final decision uses all of it. This document says how a
@@ -68,20 +69,30 @@ version: 1
 requires:
   - { name: check, profile: road-restriction-check }
   - { name: evacuation, profile: evacuation-access-check, optional: true }
-facts:
-  - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
+model: none
+questions: []
 policy:
   rules:
-    - when: "decisions.evacuation.action == 'alert'"
+    - when: "decisions.check.outcome == 'reject'"
+      action: reject
+    - when: "decisions.evacuation.outcome == 'alert'"
       action: urgent
     - when: "decisions.check.outcome == 'urgent'"
       action: urgent
-    - when: "decisions.check.outcome == 'publish' and facts.flood.rank < 5"
+    - when: "decisions.check.outcome == 'publish'"
       action: publish
-    - when: "decisions.check.outcome == 'reject'"
-      action: reject
   default: review
+  people_check: []
 ```
+
+As built (examples/profiles/road-closure-final.yaml): a person's `reject`
+comes first, also over an alert; an alert counts when a person gave it on
+the evacuation check's review too (`outcome`, not `action`). The flood zone
+is checked in the first step, which sends a report in a deep flood zone to a
+person before it can be published: so `default: review` always means "the
+first step's review is still open", and answering it runs the final step
+again. A first version read the flood zone here, which left reports at
+`review` with nobody to answer them.
 
 The final profile has no `people_check` of its own: people check the first
 step (its profile lists `people_check: [review, urgent]` and
