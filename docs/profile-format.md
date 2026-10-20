@@ -304,7 +304,8 @@ only when its condition is true:
   `facts.walk.missing == true and facts.walk.reason != 'no_location'` sends
   only a real failure to a person, not a report that marks a point. A
   `reason` that is not one of the four is refused when the profile is
-  validated.
+  validated. A `reason` comparison on its own never matches a fact that was
+  found (its reason is unknown): keep the `missing == true` part.
 
 The facts are looked up while the model answers. Each decision returns them
 and the decision log keeps them (`facts`):

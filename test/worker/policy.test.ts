@@ -337,6 +337,26 @@ describe('decisions', () => {
 // The example chain (examples/profiles, as in the FIWARE demo) over every
 // flow: a rule-order change that loses urgency or a person's answer fails here.
 
+describe('decisions.<name>.facts.<fact>.reason', () => {
+  const required: RequiredProfiles = {
+    'road-check': { questions, facts: [{ name: 'walk', type: 'detour', mode: 'walk', at: '$.location' }], policy: { default: 'review' } } as unknown as Profile,
+  };
+  const chained = { questions: [], requires: [{ name: 'check', profile: 'road-check' }], policy: { rules: [{ when: "decisions.check.facts.walk.reason == 'timeout'", action: 'hit' }], default: 'miss' } };
+  const input = (walk: Fact): RequiredDecisionInput => ({ action: 'review', outcome: 'review', reviewed: false, answers: {}, facts: { walk } });
+
+  it('reads the reason of a required decision, and keeps it in what the rules read', () => {
+    const policy = compilePolicy(chained as never, required);
+    expect(policy.decide({}, {}, { check: input({ missing: true, reason: 'timeout' }) }).action).toBe('hit');
+    expect(policy.decide({}, {}, { check: input({ missing: false, values: { possible: true, extra_m: 10 }, source: 'x' }) }).action).toBe('miss');
+    expect(policy.read({ check: input({ missing: true, reason: 'timeout' }) }).check).toMatchObject({ 'facts.walk.reason': 'timeout' });
+  });
+
+  it('refuses a reason that does not exist, naming the required profile', () => {
+    const bad = { ...chained, policy: { rules: [{ when: "decisions.check.facts.walk.reason == 'gone'", action: 'hit' }], default: 'miss' } };
+    expect(policyErrors(bad as never, required).map(([, m]) => m).join()).toMatch(/is not a reason a fact can be missing/);
+  });
+});
+
 describe('the example final decision (road-closure-final)', () => {
   const all = bundledProfiles as Profile[];
   const final = all.find((p) => p.id === 'road-closure-final')!;

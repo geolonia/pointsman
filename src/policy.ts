@@ -40,12 +40,15 @@
 // uses only TypeScript syntax that Node can strip (no enums, no parameter
 // properties) and imports types only.
 
-import type { Answer, Fact, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
+import type { Answer, Fact, FactMissingReason, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
 
 type Kind = 'number' | 'string' | 'boolean';
 
-/** Why a fact can be missing (types.ts FactMissingReason), for facts.<fact>.reason. */
-const MISSING_REASONS: string[] = ['no_location', 'unavailable', 'timeout', 'error'];
+/** Why a fact can be missing, for facts.<fact>.reason: every FactMissingReason (tsc checks both ways). */
+const REASONS = ['no_location', 'unavailable', 'timeout', 'error'] as const satisfies readonly FactMissingReason[];
+const ALL_REASONS: Exclude<FactMissingReason, (typeof REASONS)[number]> extends never ? true : never = true;
+void ALL_REASONS;
+const MISSING_REASONS: string[] = [...REASONS];
 type Value = number | string | boolean;
 type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
 
@@ -194,7 +197,9 @@ function resolveFact(word: string, facts: FactSpec[]): Operand {
   if (!f) throw new PolicyError(`"${word}" does not refer to a fact of this profile`);
   const field = rest.slice(f.name.length + 1);
   if (field === 'missing') return { kind: 'boolean', fact: f.name, field };
-  // Why a fact is missing; unknown when it is not missing.
+  // Why a fact is missing; unknown when it is not missing (also when it was
+  // never looked up). Checked before the type's fields: no fact type may
+  // have a field named reason.
   if (field === 'reason') return { kind: 'string', fact: f.name, field };
   const display = DISPLAY_FIELDS[f.type] ?? [];
   const kind = Object.hasOwn(FACT_FIELDS[f.type], field) && !display.includes(field) ? FACT_FIELDS[f.type][field] : undefined;
