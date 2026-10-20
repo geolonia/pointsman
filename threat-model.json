@@ -727,12 +727,12 @@
       "read environment variables beyond Worker bindings and vars (the Actions read INPUT_* and GITHUB_*)",
       "touch a filesystem (the Actions append to GITHUB_OUTPUT and the step summary)",
       "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com and OAuth client-ID metadata URLs (engine), or the broker and Pointsman (bridge)",
-      "follow redirects on outbound calls that carry a key or the state (engine); the bridge does follow them",
+      "follow redirects on outbound calls that carry a key, a token or the state (engine and bridge)",
       "write to the TOKENS or PROFILES namespaces (only the operator's scripts do)",
       "log the state, a token, an API key or a model response"
     ],
     "provenance": "documented",
-    "source": "maintainer ruling, 2026-10 (host side effects and bridge redirects)"
+    "source": "maintainer ruling, 2026-10 (host side effects); bridge/README.md \"Configuration\" (bridge redirects)"
   },
   "build_variants": [
     {

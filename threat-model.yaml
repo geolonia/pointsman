@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:ebfb6790540727ac4f437434a2c188f231fb976ff3a2753ccf069163fa11a666"
+prose_version: "threat-model.md@sha256:82b8237364ff1263bca189afaea6a809fb45000c19a0bfd32eedc5d4ba5a4294"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 259, maintainer: 70, inferred: 0, assumption: 0}
+confidence: {documented: 260, maintainer: 69, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1)"
@@ -107,10 +107,10 @@ host_side_effects:
     conditions: "outbound calls to the model server, the routing server and callback_url use redirect: 'manual' and treat a 3xx as an error"
     provenance: {kind: documented, source: "docs/profile-format.md \"Detours\": \"Redirects are not followed\""}
   - effect: redirect-following
-    stance: present
+    stance: absent
     components: [bridge]
-    conditions: "calls to the broker and to Pointsman use the default fetch redirect mode; both URLs are operator-set"
-    provenance: {kind: maintainer, date: "2026-10"}
+    conditions: "calls to the broker and to Pointsman use redirect: 'manual' and treat a 3xx as an error that is not retried"
+    provenance: {kind: documented, source: "bridge/README.md \"Configuration\": \"The bridge does not follow redirects\""}
   - effect: global-state
     stance: conditional
     components: [engine-api, engine-facts, engine-mcp]

@@ -338,6 +338,10 @@ Secrets (`wrangler secret put <NAME> --config bridge/wrangler.jsonc`, or
 | `BROKER_API_KEY` | Optional, instead of `BROKER_TOKEN`: sent as `X-Api-Key` (for example a GeonicDB API key; its `allowedOrigins` must include `*`, because the bridge sends no `Origin`) |
 
 URLs must use https; plain http is accepted only for `localhost`.
+The bridge does not follow redirects: a 3xx from the broker or from Pointsman
+is an error, so the broker credentials, the Pointsman token and the entity
+are never sent to another URL. Set the URL the service answers on, not one
+that redirects to it.
 
 ## The subscription
 
@@ -367,7 +371,8 @@ attribute names in the notification match the ones in `BRIDGE_ROUTES`.
 
 The bridge answers `502` when an entity failed in a way a second try may fix
 (Pointsman or the broker not reachable, a 5xx or 429), and `200` otherwise,
-also when Pointsman refused the input (a retry would fail the same way). The
+also when Pointsman refused the input or the broker or Pointsman answered
+with a redirect (a retry would fail the same way). The
 response lists what happened to each entity. Entities that succeeded are
 skipped on a retry because of the input hash.
 
