@@ -1421,7 +1421,7 @@ describe('decision chains', () => {
     expect(await key(entity({ check: result('c-1', { finalAction: P('publish') }) }))).not.toBe(ask.headers.get('idempotency-key'));
     expect(await key(entity({ check: result('c-1'), note: P('x') }))).not.toBe(ask.headers.get('idempotency-key'));
     // The same entity in another attribute order: the same request.
-    const { check: _, ...rest } = entity({ check: result('c-1') });
+    const { check: _, ...rest } = entity({ check: result('c-1') }) as Record<string, unknown>;
     expect(await key({ check: result('c-1'), ...rest })).toBe(ask.headers.get('idempotency-key'));
   });
 
