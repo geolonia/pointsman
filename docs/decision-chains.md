@@ -25,7 +25,7 @@ flowchart LR
   check --> evac
   check --> final
   evac --> final
-  final --> result(["publish · review · urgent<br/>(+ alert for the site)"])
+  final --> result(["publish · review · urgent · reject<br/>(+ alert for the site)"])
 ```
 
 Each box is one decision with its own profile, its own decision log row and
@@ -81,8 +81,12 @@ policy:
     - when: "decisions.check.outcome == 'reject'"
       action: reject
   default: review
-  people_check: [review, urgent]
 ```
+
+The final profile has no `people_check` of its own: people check the first
+step (its profile lists `people_check: [review, urgent]` and
+`people_answers: [publish, reject]`), and the final step only applies rules.
+So one report never waits for two people.
 
 - `optional: true`: the decision may not exist. In the demo the evacuation
   check runs only for urgent and review reports; a published report has none.
@@ -95,16 +99,26 @@ policy:
 - `decisions` is reserved, like `facts`: no question may be named
   `decisions` or start with `decisions.`.
 
-### `people_check`: the actions a person checks
+### `people_check` and `people_answers`: what a person checks and may answer
 
-`policy.people_check` lists the actions a person looks at before they count
-(default: `[review]`, as today). Pointsman opens a review for each decision
-whose action is in the list, and records the person's answer
-(`final_action`) when the review is resolved. Today only `review` opens a
-review; a correction of an `urgent` report reaches Pointsman only as
-feedback, so a later decision could not see it. With `people_check`, the
-bridge resolves those reviews the way it resolves `review` today (its
-`reviewActions` follow the profile).
+- `policy.people_check` lists the actions a person looks at before they
+  count (default: `[review]`, as today). Pointsman opens a review for each
+  decision whose action is in the list, and records the person's answer
+  (`final_action`) when the review is resolved. Today only `review` opens a
+  review; a correction of an `urgent` report reaches Pointsman only as
+  feedback, so a later decision could not see it.
+- `policy.people_answers` lists the answers a person may give (default:
+  the profile's actions without `review`, plus `reject`). Resolving a
+  review with another answer is refused (`400`); today any lower-case word
+  is accepted. So the values of `outcome` are known when profiles are
+  validated.
+- The decide response says when a review was opened (`review: { "status":
+  "pending" }`). The bridge creates the Task and resolves the review from
+  that, instead of its own `reviewActions` setting. `reviewActions` keeps
+  working for profiles without `people_check` while routes are moved over.
+  Migration note: a route with `reviewActions: ["review", "urgent"]` needs
+  its profile to list `people_check: [review, urgent]`; the bridge then
+  resolves `urgent` as a review, not as feedback.
 
 ### What rules can read
 
@@ -115,9 +129,9 @@ the required profile:
 |---|---|---|
 | `missing` | boolean | no such decision was given (only for `optional`); always known |
 | `action` | text, one of the required profile's actions | the automatic action |
-| `outcome` | text | what counts now: the person's answer when a review of it was resolved, otherwise the automatic action |
+| `outcome` | text, one of the required profile's actions or `people_answers` | what counts now: the person's answer when a review of it was resolved, otherwise the automatic action |
 | `reviewed` | boolean | a person has resolved a review of it |
-| `answers.<question>.<field>` | as for questions | the required decision's answers (`value`, `p`, `yes`, …) |
+| `answers.<question>.<field>` | as for questions | the required decision's answers (`value`, `p`, `yes`, …): a person's corrected answers when the review was resolved with corrections, otherwise the model's |
 | `facts.<fact>.<field>` | as for facts | the required decision's facts |
 
 A profile's own questions are read as `<question>.<field>`; another
@@ -141,8 +155,8 @@ or looked up again by the final profile itself (`facts.flood.rank`).
 - A profile with `requires` is checked against the required profiles when it
   is validated: they must be in the same set of profiles (the folder that
   is validated or published), every field its rules read must exist with
-  the right type, and every action it compares with must be one the
-  required profile can give.
+  the right type, and every action or answer it compares with must be one
+  the required profile can give (its actions and `people_answers`).
 - Publishing a new version of a required profile checks every profile that
   requires it, so a question, fact or action it removes or changes fails the
   publish in CI and names the profile to update.
@@ -178,11 +192,15 @@ POST /v1/decide/road-closure-final
 - **The decisions fit each other.** If a required decision itself required
   one that is also given (the evacuation check required `check`), the ids
   must match: an old evacuation result cannot be combined with a new check.
+- **Not replaced decisions only.** A required decision that was itself
+  replaced (`superseded`, below) is refused with the same answer.
 - **Test tokens may not send `decisions`** (`400`). Their decisions are not
   logged, so they cannot have any, and they must not read logged decisions
-  (`P-TEST-TOKEN-ISOLATED`).
+  (`P-TEST-TOKEN-ISOLATED`). So a chained profile cannot be tried with a
+  test token; the weekly examples check covers single profiles.
 - MCP's `decide` tool gets the same `decisions` input; tokens and people go
-  through the same checks.
+  through the same checks. MCP's `get_decision` also hides required
+  decisions of profiles that are not `mcp.visible` to the caller.
 
 ### What is logged
 
@@ -191,10 +209,16 @@ decision, at the moment it was decided:
 
 ```json
 "requires": {
-  "check": { "decision": "1f0c…", "profile_version": 2, "action": "review", "outcome": "urgent", "reviewed": true },
-  "evacuation": { "decision": "8a2d…", "profile_version": 2, "action": "alert", "outcome": "alert", "reviewed": false }
+  "check": { "decision": "1f0c…", "profile_version": 2, "action": "review", "outcome": "urgent", "reviewed": true,
+             "read": { "outcome": "urgent", "answers.danger.yes": 0.81 } },
+  "evacuation": { "decision": "8a2d…", "profile_version": 2, "action": "alert", "outcome": "alert", "reviewed": false,
+                  "read": { "action": "alert" } }
 }
 ```
+
+`read` holds every value the profile's rules read from that decision (all
+rules, not only the matching one), so the log explains the result even
+after later corrections.
 
 This is the trace of the chain for this decision: direct requirements only,
 taken when it was decided (a later review of a required decision does not
@@ -203,7 +227,7 @@ Apache KIE and Camunda traces where they fit (see "Standards considered").
 
 `GET /v1/decisions/{id}` returns `requires` filtered by the reader's scope:
 a required decision of a profile the reader may not see is shown as
-`{ "decision": null }`, as if unknown. The Decision entity gets one
+`{ "decision": null }` with no other fields, as if unknown. The Decision entity gets one
 `wasInformedBy` per required decision.
 
 ### Who runs the chain
@@ -222,19 +246,28 @@ Agreed point 1: the final step decides **at once** on the automatic results
 (an urgent alert is not delayed), and **again** when a person resolves a
 required decision.
 
-- **What starts it again.** The bridge's loop guard (the hash of the
-  inputs) includes, for a required attribute, its decision id and
-  `finalAction`, so a resolved review is a new input and the final route
-  runs again. The rules read `outcome`, which now holds the person's answer.
+- **What starts it again.** For a requirement with `rerunOnReview: true` in
+  the route (default `false`), the bridge's loop guard (the hash of the
+  inputs) includes the required attribute's decision id and `finalAction`,
+  so a resolved review is a new input and the route runs again. The rules
+  read `outcome`, which now holds the person's answer. In the demo the
+  final route sets it for `check`; the evacuation route does not, so a
+  resolved check does not run the evacuation check (and its alert) twice.
+- **A person's answer stays** (agreed point 7). A final decision that a
+  person has resolved is never replaced: a decide request that would
+  replace it is refused (`409`), and the bridge logs and skips it.
 - **The new final decision replaces the older ones** for the same profile,
-  `ref` and client:
+  `ref` and client, for profiles with `requires` only (other profiles keep
+  today's behaviour):
   - "Latest" is the newest `created_at` in the decision log. The bridge
     writes the result attribute only when its decision is newer than the
-    one already there, so two runs finishing out of order cannot leave the
-    older one.
+    `observedAt` of the one already there. NGSI-LD has no conditional
+    update, so this makes an older result winning unlikely, not impossible;
+    the next run corrects it.
   - An older final decision whose review is still open gets the review
-    status `superseded`: it leaves the review queue, and the bridge closes
-    its Task.
+    status `superseded`: it leaves the review queue (no callback is sent
+    for it), the bridge closes its Task, and the stats count it as
+    replaced, not as reviewed.
   - The new Decision entity links the one it replaces (`wasRevisionOf`).
   - An alert that was already sent stays sent (agreed point 2): the
     evacuation site's staff were told; the new decision is shown as
@@ -251,7 +284,8 @@ result is:
 ```json
 { "type": "RoadRestriction", "profile": "road-closure-final", "name": "final",
   "inputs": ["description", "check", "evacuation"], "attribute": "final",
-  "requires": { "check": "check", "evacuation": "evacuation" }, "decisionEntity": true }
+  "requires": { "check": { "attribute": "check", "rerunOnReview": true }, "evacuation": "evacuation" },
+  "decisionEntity": true }
 ```
 
 - The bridge reads each required attribute's `decisionId` and sends it in
@@ -270,6 +304,8 @@ result is:
   (geolonia/datamodels#302).
 - Work orders (#85) resolve only the type's main route; a review of the
   final route is resolved in the broker or the review queue.
+- A rules-only decision is written with the model `none` on the entity and
+  the Decision entity, like any model id.
 
 ## In the demo
 
@@ -318,14 +354,17 @@ Conditions stay our own small language (`src/policy.ts`), now with
 `=`, CEL combines with `&&`, and our names contain `-`). Most conditions
 translate directly; **missing values** need care: in our rules a
 comparison with a missing value is *unknown*, while in FEEL `null = "x"` is
-false (so `a != "x"` is true) and in CEL a missing field is an error. A
-translation therefore guards each reference. The docs get a semantics note
-and this mapping:
+false (so `a != "x"` is true) and in CEL a missing field is an error.
+Guarding each comparison is not enough under `not` (`not(a = "x")` with a
+missing `a` is true in FEEL, *unknown* in ours), so a translation guards
+the whole condition: every reference it uses must be present. The docs get
+a semantics note and this mapping (for conditions whose references are all
+present):
 
 | Ours | FEEL | CEL |
 |---|---|---|
-| `a == 'x'` | `a != null and a = "x"` | `has(a) && a == "x"` |
-| `a != 'x'` | `a != null and a != "x"` | `has(a) && a != "x"` |
+| `a == 'x'` | `a = "x"` | `a == "x"` |
+| `a != 'x'` | `a != "x"` | `a != "x"` |
 | `x and y`, `x or y` | `x and y`, `x or y` | `x && y`, `x \|\| y` |
 | `not x` | `not(x)` | `!x` |
 | `decisions.check.outcome` | `decisions.check.outcome` (context path) | `decisions.check.outcome` |
@@ -355,13 +394,19 @@ The design adds an input that reads other decisions. The threat model gets:
      `GET`, filtered by scope;
    - reviews for every `people_check` action; the review status
      `superseded`;
-   - unique client names in `tokens.mjs`;
+   - unique client names in `tokens.mjs`, with a `rotate` command that
+     creates the new token under the same name and revokes the old one
+     (today rotation creates a second token with the same name; existing
+     deployments with duplicate names are told to rotate or rename);
+   - `policy.people_answers`, checked when a review is resolved; `review`
+     in the decide response;
    - docs, OpenAPI, threat model, tests, an example profile.
 2. **datamodels.jp:** the Decision model with several `wasInformedBy`,
    `requiredDecisions` and `wasRevisionOf` (geolonia/datamodels#302).
-3. **Bridge:** `requires` on routes, the loop guard with `finalAction`,
-   writes only when newer, closing the Task of a superseded decision,
-   route cycles.
+3. **Bridge:** `requires` on routes (with `rerunOnReview`), reviews and
+   Tasks from the decide response's `review`, writes only when newer,
+   closing the Task of a superseded decision, skipping a `409`, route
+   cycles.
 4. **pointsman-config:** the `road-closure-final` profile and its route.
 5. **Demo:** three stages, the third decision in the developer view.
 6. **Later:** the graph endpoint and the DMN 1.3 export (with DMNDI); a
@@ -373,7 +418,7 @@ Checked on 2026-10-20. Used where they fit, recorded where not:
 
 | Candidate | Status | Used? | Why |
 |---|---|---|---|
-| OMG DMN, decision requirements graph | 1.6 is the current formal version; tools read 1.3 | **Yes**: names and the export | The graph structure is exactly ours; see the mapping above |
+| OMG DMN, decision requirements graph | Newer versions than 1.3 are formal; tools read 1.3 | **Yes**: names and the export | The graph structure is exactly ours; see the mapping above |
 | DMN decision logic (FEEL, S-FEEL, tables) | Same | No | Spike #13: +25 % Worker size, separate validation; our rules read better at this size |
 | DMN TCK | Active (Apache-2.0) | No | Tests decision logic, which we do not export |
 | Apache KIE (Drools/Kogito) DMN, Camunda DMN | Mature engines | Names only | They run the whole graph in one call; we take their trace field names |
@@ -402,6 +447,9 @@ Checked on 2026-10-20. Used where they fit, recorded where not:
 4. **Versions:** checked both ways when profiles are validated and
    published.
 5. **People's answers for any action:** a profile lists the actions a
-   person checks (`people_check`); chained rules read the person's answer
-   as `outcome`.
+   person checks (`people_check`) and the answers they may give
+   (`people_answers`); chained rules read the person's answer as `outcome`.
 6. **Demo:** three stages, the final result as the headline.
+7. **A person's answer stays:** a final decision a person has resolved is
+   never replaced by a run again. In the demo people check only the first
+   step; the final step is rules only.
