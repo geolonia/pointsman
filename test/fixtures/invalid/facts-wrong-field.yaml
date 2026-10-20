@@ -1,4 +1,4 @@
-# expect: /policy/rules/0/when: "facts.flood.distance_m": inside facts have missing, inside, rank, class
+# expect: /policy/rules/0/when: "facts.flood.distance_m": inside facts have missing, reason, inside, rank, class
 id: facts-wrong-field
 version: 1
 title: { en: Test, ja: テスト }

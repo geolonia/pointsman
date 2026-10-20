@@ -286,10 +286,12 @@ policy:
 | `nearest` | `found` (boolean), `distance_m` (number), `name` (text) | The nearest feature of the layer. None found: `found` false, no distance or name. |
 | `detour` | `possible` (boolean), `extra_m` (number), `route` (text) | Extra metres around a closed section, by car or on foot (`mode`). Needs a `LineString`. No way around: `possible` false, no `extra_m`. `route` is the way around, from one end of the section to the other, as an encoded polyline with precision 6 (as Valhalla sends it), so that apps can draw it. It has a value only when the fact sets `route: true`, the server sent a valid shape, and it is at most 6,000 characters. Rules cannot refer to it. |
 
-Every fact also has `missing` (boolean).
+Every fact also has `missing` (boolean) and `reason` (text: why it is
+missing; unknown when it is not missing).
 
 **A missing fact is never guessed.** A lookup can fail: no location in the
-state (`no_location`), no fact provider (`unavailable`), too slow
+state, or not of the kind the fact needs, for example a point for a
+`detour`, which needs a road section (`no_location`), no fact provider (`unavailable`), too slow
 (`timeout`, 3 s per fact, 8 s for `detour`) or an error (`error`). A comparison with a missing
 fact, or with a field that has no value, is *unknown*, and a rule matches
 only when its condition is true:
@@ -298,6 +300,11 @@ only when its condition is true:
   unknown;
 - `facts.<name>.missing == true` is always known: use it to send decisions
   with missing facts to a person.
+- `facts.<name>.reason` tells a failed lookup from one that does not apply:
+  `facts.walk.missing == true and facts.walk.reason != 'no_location'` sends
+  only a real failure to a person, not a report that marks a point. A
+  `reason` that is not one of the four is refused when the profile is
+  validated.
 
 The facts are looked up while the model answers. Each decision returns them
 and the decision log keeps them (`facts`):
