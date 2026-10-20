@@ -71,7 +71,7 @@ describe('lookups', () => {
       detour: { missing: false, values: { possible: true, extra_m: 0, route: null }, source: 'mock' },
     });
     // A detour always says how: by car unless the profile says walk.
-    expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', geometry: line }]);
+    expect(calls).toEqual([{ type: 'inside', layer: 'flood', geometry: line }, { type: 'detour', mode: 'drive', route: false, geometry: line }]);
   });
 
   it('record why a fact is missing, and never throw', async () => {

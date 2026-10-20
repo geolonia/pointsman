@@ -104,6 +104,9 @@ export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
   detour: { possible: 'boolean', extra_m: 'number', route: 'string' },
 };
 
+/** Fields for people and maps, not for rules: a rule cannot refer to them. */
+const DISPLAY_FIELDS: Partial<Record<FactType, string[]>> = { detour: ['route'] };
+
 /** Reserved prefix of fact references; no question name may start with it. */
 export const FACTS_PREFIX = 'facts.';
 
@@ -114,8 +117,10 @@ function resolveFact(word: string, facts: FactSpec[]): Operand {
   if (!f) throw new PolicyError(`"${word}" does not refer to a fact of this profile`);
   const field = rest.slice(f.name.length + 1);
   if (field === 'missing') return { kind: 'boolean', fact: f.name, field };
-  const kind = Object.hasOwn(FACT_FIELDS[f.type], field) ? FACT_FIELDS[f.type][field] : undefined;
-  if (!kind) throw new PolicyError(`"${word}": ${f.type} facts have missing, ${Object.keys(FACT_FIELDS[f.type]).join(', ')}`);
+  const display = DISPLAY_FIELDS[f.type] ?? [];
+  const kind = Object.hasOwn(FACT_FIELDS[f.type], field) && !display.includes(field) ? FACT_FIELDS[f.type][field] : undefined;
+  const fields = Object.keys(FACT_FIELDS[f.type]).filter((x) => !display.includes(x));
+  if (!kind) throw new PolicyError(`"${word}": ${f.type} facts have missing, ${fields.join(', ')}`);
   return { kind, fact: f.name, field };
 }
 

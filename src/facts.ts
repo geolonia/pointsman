@@ -14,6 +14,8 @@ export interface FactQuery {
   layer?: string;
   /** For `detour`; always set for detours (default drive). */
   mode?: DetourMode;
+  /** For `detour`: also return the way around; always set for detours (default false). */
+  route?: boolean;
   geometry: Geometry;
 }
 
@@ -104,7 +106,7 @@ export async function lookupFacts(
         provider.lookup({
           type: spec.type,
           ...(spec.layer !== undefined && { layer: spec.layer }),
-          ...(spec.type === 'detour' && { mode: spec.mode ?? 'drive' }),
+          ...(spec.type === 'detour' && { mode: spec.mode ?? 'drive', route: spec.route === true }),
           geometry,
         }, controller.signal),
         timeout,

@@ -35,6 +35,7 @@ const MAX_RECTS = 19;
  * stored with every decision.
  */
 const MAX_ROUTE_CHARS = 6000;
+const POLYLINE = /^[?-~]+$/;
 
 /** Valhalla error 176: the exclusion polygons have more vertices than the server allows. */
 class TooManyVertices extends FactError {}
@@ -56,7 +57,7 @@ export class ValhallaRouter {
    * The detour fact for a closed section (a LineString). `signal` is the
    * lookup's time limit: once it fires, no further request starts.
    */
-  async detour(g: Geometry, signal?: AbortSignal, mode: DetourMode = 'drive'): Promise<FactResult> {
+  async detour(g: Geometry, signal?: AbortSignal, mode: DetourMode = 'drive', withRoute = false): Promise<FactResult> {
     const costing = mode === 'walk' ? 'pedestrian' : 'auto';
     if (g.type !== 'LineString') throw new FactError('a detour needs a LineString');
     const ps = g.coordinates;
@@ -99,7 +100,7 @@ export class ValhallaRouter {
         throw err;
       }
       if (around !== null) {
-        const route = around.shape !== null && around.shape.length <= MAX_ROUTE_CHARS ? around.shape : null;
+        const route = withRoute && around.shape !== null && around.shape.length <= MAX_ROUTE_CHARS ? around.shape : null;
         return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: SOURCE };
       }
     }
@@ -116,6 +117,7 @@ export class ValhallaRouter {
       locations: [{ lon: from[0], lat: from[1] }, { lon: to[0], lat: to[1] }],
       costing,
       units: 'kilometers',
+      shape_format: 'polyline6',
       ...(exclude && { exclude_polygons: exclude }),
     };
     const limit = AbortSignal.timeout(TIMEOUT_MS);
@@ -139,7 +141,9 @@ export class ValhallaRouter {
     if (typeof km !== 'number' || !Number.isFinite(km)) throw new FactError('routing answer has no length');
     // Two locations make one leg; its shape is the route as an encoded polyline (precision 6).
     const legs = json?.trip?.legs;
-    const shape = Array.isArray(legs) && legs.length === 1 && typeof legs[0]?.shape === 'string' && legs[0].shape !== '' ? legs[0].shape : null;
+    // An encoded polyline uses only the characters ? to ~; anything else is not one.
+    const raw = Array.isArray(legs) && legs.length === 1 ? legs[0]?.shape : undefined;
+    const shape = typeof raw === 'string' && POLYLINE.test(raw) ? raw : null;
     return { m: Math.round(km * 1000), shape };
   }
 }

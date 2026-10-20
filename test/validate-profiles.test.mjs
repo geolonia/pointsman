@@ -123,7 +123,7 @@ facts:
   - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
   - { name: shelter, type: nearest, layer: gsi-shelters-flood, at: $.location.value }
   - { name: detour, type: detour, at: $.location.value }
-  - { name: walk, type: detour, mode: walk, at: $.location.value }
+  - { name: walk, type: detour, mode: walk, route: true, at: $.location.value }
 policy:
   rules:
     - when: "facts.flood.rank >= 5 and danger.yes >= 0.4"

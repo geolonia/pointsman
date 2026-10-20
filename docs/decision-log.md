@@ -32,6 +32,12 @@ confidential data (issue text, sensor data). The hash still shows when the
 same input was decided twice. Turn on `log.store_state` for a profile when you
 need the inputs, for example to build a training set later.
 
+Facts are stored as looked up, also without `log.store_state`. They are
+derived values (a flood class, the nearest site and its distance, extra
+metres), with one exception: a `detour` fact with `route: true` keeps the way
+around, which starts and ends at the place in the state. Set it only where
+that place may be kept.
+
 ## Feedback
 
 `POST /v1/decisions/{id}/feedback` stores a correction:

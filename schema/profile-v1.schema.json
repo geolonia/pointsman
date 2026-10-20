@@ -156,6 +156,10 @@
         "mode": {
           "description": "For detour: by car (drive, the default) or on foot (walk).",
           "enum": ["drive", "walk"]
+        },
+        "route": {
+          "description": "For detour: also return the way around (route, an encoded polyline). Default false: the route starts and ends at the section, so it is stored with each decision.",
+          "type": "boolean"
         }
       },
       "allOf": [
@@ -170,6 +174,10 @@
         {
           "if": { "properties": { "type": { "enum": ["inside", "nearest"] } }, "required": ["type"] },
           "then": { "not": { "properties": { "mode": true }, "required": ["mode"] } }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["inside", "nearest"] } }, "required": ["type"] },
+          "then": { "not": { "properties": { "route": true }, "required": ["route"] } }
         }
       ]
     },

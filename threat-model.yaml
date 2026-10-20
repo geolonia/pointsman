@@ -1022,6 +1022,12 @@ build_flags:
     maintainer_stance: supported
     affects_properties: [{property_id: P-STATE-NOT-STORED, effect: voids}]
     provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\""}
+  - name: profile-fact-detour-route
+    default: "false"
+    security_relevant: true
+    maintainer_stance: supported
+    affects_properties: [{property_id: P-STATE-NOT-STORED, effect: narrows}]
+    provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\""}
   - name: profile-mcp.visible
     default: "false"
     security_relevant: true
@@ -1135,7 +1141,7 @@ properties_claimed:
     kind: confidentiality
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs"
+    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept)"
     violation_symptoms: [info-leak]
     provenance: {kind: documented, source: "docs/decision-log.md \"By default only the hash of the state is kept\""}
   - id: P-SECRETS-NOT-LOGGED

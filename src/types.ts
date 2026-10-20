@@ -42,6 +42,11 @@ export interface FactSpec {
   layer?: string;
   /** For `detour`: by car (`drive`, the default) or on foot (`walk`). */
   mode?: DetourMode;
+  /**
+   * For `detour`: also return the way around (`route`). Off by default: the
+   * route starts and ends at the section, so it is stored with each decision.
+   */
+  route?: boolean;
 }
 
 export type DetourMode = 'drive' | 'walk';

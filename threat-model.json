@@ -816,6 +816,14 @@
       "source": "docs/decision-log.md \"What is stored\""
     },
     {
+      "name": "profile-fact-detour-route",
+      "default": "false",
+      "effect": "narrows P-STATE-NOT-STORED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"What is stored\""
+    },
+    {
       "name": "profile-mcp.visible",
       "default": "false",
       "effect": "narrows P-MCP-VISIBILITY",
@@ -970,7 +978,7 @@
       "property": "P-STATE-NOT-STORED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs",
+      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept)",
       "provenance": "documented",
       "source": "docs/decision-log.md \"By default only the hash of the state is kept\""
     },

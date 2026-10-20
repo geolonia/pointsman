@@ -1,0 +1,15 @@
+# expect: detour facts have missing, possible, extra_m
+id: facts-route-in-rule
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+facts:
+  - { name: walk, type: detour, mode: walk, route: true, at: $.location }
+policy:
+  rules:
+    - when: "facts.walk.route == 'x'"
+      action: review
+  default: review
