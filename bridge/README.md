@@ -57,7 +57,7 @@ sequenceDiagram
   participant P as Pointsman
   Broker->>Bridge: notification (entity) + shared secret
   opt with a queue
-    Bridge-->>Broker: 202 at once; the queue handler goes on
+    Bridge-->>Broker: 202 at once, the queue handler goes on
   end
   Bridge->>Bridge: inputs unchanged since the last decision? then stop
   Bridge->>P: POST /v1/decide/{profile} {state, ref, decisions?} + Idempotency-Key

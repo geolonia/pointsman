@@ -193,10 +193,10 @@ flowchart LR
   Page["Demo page"] -->|"report, poll"| W["Demo Worker<br/>(Cloudflare, runs the bridge)"]
   W -->|"create report"| B["GeonicDB<br/>(tenant pointsman_demo)"]
   B -->|"notifications<br/>(5 subscriptions)"| W
-  W -->|"first check, additional check,<br/>final result; resolve review"| P["Pointsman"]
+  W -->|"first check, additional check,<br/>final result, resolve review"| P["Pointsman"]
   P -->|"fixed questions"| AI["AI model<br/>(Workers AI)"]
-  P -->|"flood zone, evacuation site,<br/>way around on foot"| Geo["Public map data<br/>(GSI; Valhalla on OpenStreetMap)"]
-  W -->|"write check, evacuation, final;<br/>Decision, Task, Alert"| B
+  P -->|"flood zone, evacuation site,<br/>way around on foot"| Geo["Public map data<br/>(GSI, Valhalla on OpenStreetMap)"]
+  W -->|"write check, evacuation, final,<br/>Decision, Task, Alert"| B
   W -->|"urgent / review<br/>(prepared reports only)"| G["GitHub issues<br/>(geolonia/pointsman-demo)"]
   G -->|"/publish, /reject<br/>(webhook)"| W
 ```
