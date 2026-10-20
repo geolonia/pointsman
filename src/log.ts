@@ -301,7 +301,8 @@ export class D1DecisionLog implements DecisionLog {
     await this.db
       .prepare(
         `UPDATE decisions SET discarded_at = COALESCE(discarded_at, ?),
-           review_status = CASE WHEN review_status = 'pending' THEN 'superseded' ELSE review_status END
+           review_status = CASE WHEN review_status = 'pending' THEN 'superseded' ELSE review_status END,
+           callback_status = NULL, callback_next_at = NULL
          WHERE id = ?`,
       )
       .bind(at, decisionId)
@@ -389,13 +390,9 @@ export class D1DecisionLog implements DecisionLog {
            callback_status = CASE WHEN callback_url IS NULL THEN NULL ELSE 'pending' END,
            callback_next_at = CASE WHEN callback_url IS NULL THEN NULL ELSE ? END
          WHERE id = ? AND review_status = 'pending' AND discarded_at IS NULL
-           -- A decision of a chain step that a newer one replaced cannot be
-           -- resolved, also when the newer one was logged a moment ago.
-           AND (requires IS NULL OR NOT EXISTS (
-             SELECT 1 FROM decisions AS n WHERE n.profile_id = decisions.profile_id AND n.ref = decisions.ref
-               AND n.client = decisions.client AND n.id != decisions.id
-               AND (n.created_at > decisions.created_at OR (n.created_at = decisions.created_at AND n.rowid > decisions.rowid))
-               AND (n.review_status IS NULL OR n.review_status != 'superseded') AND n.discarded_at IS NULL))`,
+           -- A decision that a newer one replaced cannot be resolved, also
+           -- when the newer one was logged a moment ago (it names it in replaces).
+           AND NOT EXISTS (SELECT 1 FROM decisions AS n WHERE n.replaces = decisions.id AND n.discarded_at IS NULL)`,
       ).bind(r.resolved_at, r.resolved_by, r.client, r.final_action, JSON.stringify(r.final_answers),
         r.callback_next_at ?? r.resolved_at, decisionId),
     ];

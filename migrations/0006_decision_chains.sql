@@ -27,3 +27,5 @@ ALTER TABLE decisions ADD COLUMN discarded_at TEXT;
 CREATE UNIQUE INDEX decisions_idempotency ON decisions (client, idempotency_key) WHERE idempotency_key IS NOT NULL;
 -- The earlier decisions of a chain step for one report: same profile, ref and client.
 CREATE INDEX decisions_chain ON decisions (profile_id, ref, client, created_at);
+-- For the check that a decision was not replaced before it is resolved.
+CREATE INDEX decisions_replaces ON decisions (replaces) WHERE replaces IS NOT NULL;
