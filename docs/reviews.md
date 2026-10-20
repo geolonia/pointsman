@@ -1,8 +1,11 @@
 # Reviews and callbacks
 
 When a policy returns the action `review`, the decision waits for a person.
-The client gets the decision right away (with `action: review`) and can pass a
-`callback_url` to receive the final answer later.
+The client gets the decision right away (with `action: review` and
+`review: {status: pending}`) and can pass a `callback_url` to receive the
+final answer later. A profile can list other actions that a person checks too
+(`policy.people_check`, see
+[profile-format.md](profile-format.md#people-check-and-answers)).
 
 ## Review queue
 
@@ -15,8 +18,9 @@ curl -s -X POST "$POINTSMAN/v1/reviews/$ID/resolve" -H "authorization: Bearer $T
   -d '{"action": "auto", "correct": {"team": "frontend"}, "by": "reviewer@example.com"}'
 ```
 
-- `action` is the final action (for example `auto`, or a custom one); it
-  cannot be `review` again.
+- `action` is the final answer: one of the profile's `people_answers`
+  (default: its actions without `review`, plus `reject`). Any other answer
+  is refused (`400`).
 - Answers in `correct` replace the model's (`source: human`); the others are
   kept (`source: model`). `correct` is also stored as feedback, so it counts
   in the accuracy numbers (see [decision-log.md](decision-log.md)).
@@ -24,6 +28,10 @@ curl -s -X POST "$POINTSMAN/v1/reviews/$ID/resolve" -H "authorization: Bearer $T
   answers `409 not_pending`.
 - `GET /v1/decisions/{id}` shows `review` (status, final action and answers)
   and `callback` (delivery status).
+- For a profile with `requires`, a newer decision for the same report
+  replaces the earlier one: the earlier review leaves the queue with status
+  `superseded`, cannot be resolved (`409 not_pending`), and sends no
+  callback. See [decision-chains.md](decision-chains.md).
 
 ## Callbacks
 
