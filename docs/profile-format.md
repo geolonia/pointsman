@@ -173,6 +173,8 @@ policy:
       action: reject
     - when: "decisions.evacuation.outcome == 'alert'"
       action: urgent
+    - when: "decisions.check.outcome == 'urgent'"
+      action: urgent
     - when: "decisions.check.outcome == 'publish'"
       action: publish
   default: review

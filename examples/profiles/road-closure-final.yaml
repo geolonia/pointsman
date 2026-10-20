@@ -1,9 +1,10 @@
 # yaml-language-server: $schema=../../schema/profile-v1.schema.json
-# Example of a decision chain (docs/decision-chains.md), as in the FIWARE demo: the final
-# decision on a road closure report, from the first check
-# (road-restriction-check) and, when it ran, the evacuation check. Rules only: no questions, no model call.
-# The map checks count here: the way around on foot of the evacuation check
-# (an alert makes it urgent); the flood zone counts in the first check.
+# Example of a decision chain (docs/decision-chains.md), as in the FIWARE
+# demo: the final decision on a road closure report, from the first check
+# (road-restriction-check) and, when it ran, the evacuation check. Rules
+# only: no questions, no model call. The map checks count here: the way
+# around on foot of the evacuation check (an alert makes it urgent); the
+# flood zone counts in the first check.
 id: road-closure-final
 version: 1
 title:

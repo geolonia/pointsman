@@ -158,8 +158,11 @@ The rule's index is not readable: index 0 can be a different rule in
 another version. Rules use the action or outcome instead.
 
 This is what #101 asks for: **the map checks count in the final decision**,
-from the decision that looked them up (`decisions.evacuation.facts.walk.extra_m`)
-or looked up again by the final profile itself (`facts.flood.rank`).
+from the decision that looked them up (`decisions.evacuation.facts.walk.extra_m`),
+or, as in the demo, through the earlier decisions' results (the evacuation
+check's alert; the first check sends deep flood zones to a person). A final
+profile could also look up facts of its own (`facts.flood.rank`); then every
+action it leaves a report at needs a way out (see the example above).
 
 ### Checked both ways
 
@@ -268,8 +271,9 @@ required decision.
   `reviewedAt`, so a resolved review is a new input and the route runs
   again, also when the person only corrected answers. The rules
   read `outcome`, which now holds the person's answer. In the demo the
-  final route sets it for `check`; the evacuation route does not, so a
-  resolved check does not run the evacuation check (and its alert) twice.
+  final route sets it for `check` and `evacuation` (a person may answer
+  either); the evacuation route does not set it for `check`, so a resolved
+  check does not run the evacuation check (and its alert) twice.
 - **A person's answer stays** (agreed point 7). A final decision that a
   person has resolved is never replaced: a decide request that would
   replace it is refused (`409`, code `resolved_by_person`). The bridge
@@ -327,7 +331,8 @@ result is:
 ```json
 { "type": "RoadRestriction", "profile": "road-closure-final", "name": "final",
   "inputs": ["description", "check", "evacuation"], "attribute": "final",
-  "requires": { "check": { "attribute": "check", "rerunOnReview": true }, "evacuation": "evacuation" },
+  "requires": { "check": { "attribute": "check", "rerunOnReview": true },
+                "evacuation": { "attribute": "evacuation", "optional": true, "rerunOnReview": true } },
   "decisionEntity": true }
 ```
 

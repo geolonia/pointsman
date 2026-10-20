@@ -311,7 +311,7 @@ their ids, from the result attributes the earlier routes wrote.
 { "type": "RoadRestriction", "profile": "road-closure-final", "name": "final",
   "inputs": ["description", "check", "evacuation"], "attribute": "final", "decisionEntity": true,
   "requires": { "check": { "attribute": "check", "rerunOnReview": true },
-                "evacuation": { "attribute": "evacuation", "optional": true } } }
+                "evacuation": { "attribute": "evacuation", "optional": true, "rerunOnReview": true } } }
 ```
 
 - `requires` maps the names in the profile's `requires` to the attributes

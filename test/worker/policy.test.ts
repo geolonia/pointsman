@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compileCondition, compilePolicy, peopleAnswers, policyErrors, PolicyError, type PolicyProfile, type RequiredProfiles } from '../../src/policy';
 import type { Answer, Fact, FactSpec, Profile, Question, RequiredDecisionInput } from '../../src/types';
+import bundledProfiles from '../../generated/profiles.json';
 
 const questions: Question[] = [
   { name: 'stuck', type: 'noul', instructions: 'Stuck?' },
@@ -318,5 +319,32 @@ describe('decisions', () => {
   it('refuses decisions when the required profile is not known', () => {
     expect(() => compileCondition("decisions.check.action == 'urgent'", [], [], requires, {})).toThrow('the required profile "road-check" is not known');
     expect(policyErrors(final([{ when: "decisions.check.action == 'urgent'", action: 'x' }]))).toEqual([[0, expect.stringContaining('is not known')]]);
+  });
+});
+
+// The example chain (examples/profiles, as in the FIWARE demo) over every
+// flow: a rule-order change that loses urgency or a person's answer fails here.
+
+describe('the example final decision (road-closure-final)', () => {
+  const all = bundledProfiles as Profile[];
+  const final = all.find((p) => p.id === 'road-closure-final')!;
+  const required: RequiredProfiles = Object.fromEntries(all.filter((p) => ['road-restriction-check', 'evacuation-access-check'].includes(p.id)).map((p) => [p.id, p]));
+  const policy = compilePolicy(final, required);
+  const step = (action: string, answer?: string): RequiredDecisionInput => ({ action, outcome: answer ?? action, reviewed: answer !== undefined, answers: {}, facts: {} });
+  const decide = (check: RequiredDecisionInput, evacuation?: RequiredDecisionInput) =>
+    policy.decide({}, {}, { check, ...(evacuation && { evacuation }) }).action;
+
+  it.each([
+    ['check publish, no evacuation check', step('publish'), undefined, 'publish'],
+    ['check urgent, evacuation none', step('urgent'), step('none'), 'urgent'],
+    ['check review, evacuation none, nobody answered', step('review'), step('none'), 'review'],
+    ['check review, evacuation alert', step('review'), step('alert'), 'urgent'],
+    ['a person published the check, evacuation none', step('review', 'publish'), step('none'), 'publish'],
+    ['a person published the check, evacuation alert', step('urgent', 'publish'), step('alert'), 'urgent'],
+    ['a person rejected the check, also over an alert', step('urgent', 'reject'), step('alert'), 'reject'],
+    ['a person answered alert on the evacuation review', step('review', 'publish'), step('review', 'alert'), 'urgent'],
+    ['a person answered none on the evacuation review', step('review', 'publish'), step('review', 'none'), 'publish'],
+  ] as const)('%s → %s', (_, check, evacuation, expected) => {
+    expect(decide(check, evacuation)).toBe(expected);
   });
 });
