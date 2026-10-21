@@ -815,7 +815,8 @@ class Snapshot {
         if (removed || (k !== 'workflow' && k !== 'action')) return file;
         // Not in the head tree (a submodule, a link GitHub does not list): it cannot be read.
         if (!at || at.size > MAX_FILE_BYTES || ++parsed > MAX_PARSED_FILES) return { ...file, unreadable: true };
-        const before = base.get(previous);
+        // A file renamed into the scope is new there: its earlier version was not a workflow or action.
+        const before = kindOf(previous, folders) === k ? base.get(previous) : undefined;
         const [h, b] = await Promise.all([
           this.blob(at.sha),
           before && before.size <= MAX_FILE_BYTES ? this.blob(before.sha) : Promise.resolve(null),

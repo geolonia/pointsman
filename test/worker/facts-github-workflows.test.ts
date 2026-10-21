@@ -143,6 +143,9 @@ describe('github_workflows', () => {
     expect(v).toMatchObject({ changed: 1, privileged: 1, privileged_new: 0 });
     const out = await values(routes(changed({ filename: 'old/ci.yml', status: 'renamed', previous_filename: '.github/workflows/ci.yml' }), { 'old/ci.yml': PWN }, { '.github/workflows/ci.yml': PWN }));
     expect(out).toMatchObject({ changed: 0, removed: 1, privileged: 0 });
+    // Moved into the scope: new there, not compared with the file it was before.
+    const into = await values(routes(changed({ filename: '.github/workflows/ci.yml', status: 'renamed', previous_filename: 'old/ci.yml' }), { '.github/workflows/ci.yml': PWN }, { 'old/ci.yml': PWN }));
+    expect(into).toMatchObject({ changed: 1, privileged: 1, privileged_new: 1 });
   });
 
   it('scanner settings count as changed exceptions', async () => {
