@@ -5,7 +5,10 @@ which track it goes on, or calls a human when it is not sure.
 
 Website: https://geolonia.github.io/pointsman/
 
-Status: early proof of concept. See the [PoC milestone](https://github.com/geolonia/pointsman/milestone/1).
+Status: 0.1.0, the first release. It is not 1.0 yet: the API and the profile
+format may still change between 0.x releases. See
+[CHANGELOG.md](CHANGELOG.md) and the
+[release notes](https://github.com/geolonia/pointsman/releases).
 
 ## What it does, in plain words
 

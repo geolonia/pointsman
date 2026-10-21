@@ -8,6 +8,8 @@
 <meta property="og:title" content="Pointsman – オープンソースの判定サービス">
 <meta property="og:description" content="システムが質問を送ると、Pointsman がどの線路に進めるかを決め、確信がないときは人に判断を任せます。">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Pointsman">
+<meta property="og:image:alt" content="Pointsman：オープンソースの判定サービス">
 <meta property="og:locale" content="ja_JP">
 <meta property="og:url" content="https://geolonia.github.io/pointsman/ja/">
 <meta property="og:image" content="https://geolonia.github.io/pointsman/assets/social-preview-1280x640.png">
@@ -16,6 +18,8 @@
 <meta name="theme-color" content="#F5F2EC" media="(prefers-color-scheme: light)">
 <link rel="alternate" hreflang="en" href="https://geolonia.github.io/pointsman/">
 <link rel="alternate" hreflang="ja" href="https://geolonia.github.io/pointsman/ja/">
+<link rel="alternate" hreflang="x-default" href="https://geolonia.github.io/pointsman/">
+<link rel="canonical" href="https://geolonia.github.io/pointsman/ja/">
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../assets/tile-ink-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -65,7 +69,7 @@
       </div>
       <div class="chips">
         <span class="chip">Cloudflare Workers</span>
-        <span class="chip">モデルを選ばない</span>
+        <span class="chip">モデルを差し替えられる</span>
         <span class="chip">REST + MCP</span>
         <span class="chip">OpenAPI</span>
         <span class="chip">MIT</span>
@@ -80,15 +84,17 @@
 } } <span class="k">}</span></pre>
       </div>
       <div class="card-code">
-        <div class="bar"><span>200 OK</span><span>判定</span></div>
+        <div class="bar"><span>200 OK</span><span>判定（一部）</span></div>
 <pre>{
+  <span class="k">"decision_id"</span>: <span class="s">"8c0f…"</span>,
+  <span class="k">"profile"</span>: <span class="s">"issue-triage"</span>, <span class="k">"profile_version"</span>: <span class="n">1</span>,
   <span class="k">"answers"</span>: {
     <span class="k">"team"</span>:   { <span class="k">"value"</span>: <span class="s">"backend"</span>, <span class="k">"p"</span>: <span class="n">0.9</span> },
     <span class="k">"urgent"</span>: { <span class="k">"value"</span>: <span class="n">false</span>, <span class="k">"p"</span>: <span class="n">0.8</span> },
     <span class="k">"effort"</span>: { <span class="k">"value"</span>: <span class="n">0</span>, <span class="k">"p"</span>: <span class="n">0.7</span> }
   },
-  <span class="k">"action"</span>: <span class="go-val">"auto"</span>,
-  <span class="k">"profile_version"</span>: <span class="n">1</span>
+  <span class="k">"rule"</span>: <span class="n">0</span>,
+  <span class="k">"action"</span>: <span class="go-val">"auto"</span>
 }</pre>
       </div>
     </div>
@@ -99,7 +105,7 @@
   <div class="wrap">
     <div class="section-head">
       <h2><span class="phrase">Pointsman が</span><span class="phrase">すること</span></h2>
-      <p>多くのシステムには、まず誰かが確認すべきものが届きます。住民から道路の通行止めの通報が届く。新しい Issue が届く。デプロイが止まっているように見える。はっきりしていて、すぐに対応できることもあれば、はっきりせず、人が確認したほうがよいこともあります。Pointsman は、この最初の判断をします。そして、すべての判断の記録を残します。</p>
+      <p>多くのシステムには、まず誰かが確認すべきものが届きます。住民から通行止めの通報が届く。新しい Issue が届く。デプロイが止まっているように見える。はっきりしていて、すぐに対応できることもあれば、はっきりせず、人が確認したほうがよいこともあります。Pointsman は、この最初の判定をします。そして、すべての判定の記録を残します。</p>
     </div>
     <ol class="flow flow-wrap flow-3">
       <li>
@@ -108,7 +114,7 @@
       </li>
       <li>
         <h3>人が書いたルールで決める</h3>
-        <p>ルールは人が書きます。たとえば「危険が 70 % 以上なら urgent（緊急）」です。AI だけで決めることはありません。ルールでは、公開データからの事実も使えます。たとえば、その場所が浸水想定区域にあるかどうかです。</p>
+        <p>ルールは人が書きます。たとえば「危険が 70 % 以上なら urgent（緊急）」です。AI だけで決めることはありません。ルールでは、公開データから得た情報も使えます。たとえば、その場所が浸水想定区域にあるかどうかです。</p>
       </li>
       <li>
         <h3>答えを返し、記録を残す</h3>
@@ -128,16 +134,16 @@
     </div>
     <div class="grid3">
       <div class="card">
-        <h3>型のある質問</h3>
+        <h3>形式の決まった質問</h3>
         <p>はい／いいえ、選択、スコアの質問です。どの答えにも確率が付くので、モデルがどれだけ確信しているかが分かります。</p>
       </div>
       <div class="card">
         <h3><span class="phrase">プロンプトではなく</span><span class="phrase">ポリシー</span></h3>
-        <p><code>team.p &gt;= 0.85</code> のようなルールで、答えをアクションに変えます。ポリシーはただの設定で、読み込むときに検査され、コードとして実行されることはありません。</p>
+        <p><code>team.p &gt;= 0.85</code> のようなルールで、答えをアクションに変えます。ポリシーは設定ファイルに書くだけで、読み込むときに検査され、コードとして実行されることはありません。</p>
       </div>
       <div class="card">
         <h3>迷ったら人へ</h3>
-        <p>しきい値に届かなければ、アクションは <code>review</code> です。判定はレビュー待ちの一覧に入り、最終的な答えは署名付きでコールバック先に送られます。</p>
+        <p>しきい値に届かなければ、アクションは <code>review</code> です。判定はレビュー待ちの一覧に入ります。リクエストに <code>callback_url</code> があれば、最終的な答えが署名付きでそこに送られます。</p>
       </div>
       <div class="card">
         <h3><span class="phrase">バージョン付きの</span><span class="phrase">プロファイル</span></h3>
@@ -148,8 +154,20 @@
         <p>人が判定を訂正すると、その訂正が答えの横に記録されます。しきい値を上げる前に、プロファイルのバージョンごとの正解率を測れます。</p>
       </div>
       <div class="card">
-        <h3>モデルを選ばない</h3>
-        <p>モデルはアダプターでつなぎます。いまは Cloudflare AI Gateway 経由の Workers AI のモデルと、開発とテスト用のモックモデルが使えます。</p>
+        <h3>モデルを差し替えられる</h3>
+        <p>モデルはアダプターでつなぎます。いまは Cloudflare Workers AI（<code>clef-flash</code>、<code>clef</code>。AI Gateway 経由にもできます）、自分たちのモデルサーバー（たとえば手元の Strands Decider）、開発とテスト用のモックモデルが使えます。</p>
+      </div>
+      <div class="card">
+        <h3><span class="phrase">公開データから</span><span class="phrase">得た情報</span></h3>
+        <p>場所について、浸水想定区域と最寄りの避難場所（国土地理院のデータ）、通れない道路を車や徒歩で迂回する道のり（OpenStreetMap と Valhalla）を調べられます。AI はこれを見ません。ルールが使い、判定には出典が残ります。</p>
+      </div>
+      <div class="card">
+        <h3><span class="phrase">前の判定を</span><span class="phrase">もとにする判定</span></h3>
+        <p>プロファイルは、同じ対象についての前の判定を <code>requires</code> で指定できます。前の判定は ID でログから読みます。最終判定は AI を使わず、ルールだけで決めることもできます。前の段階に人が答えていれば、その答えが使われます。</p>
+      </div>
+      <div class="card">
+        <h3><span class="phrase">判定の流れを</span><span class="phrase">図にする</span></h3>
+        <p><code>GET /v1/profiles/{id}/graph</code> は、判定のつながりを SVG の図にします。DMN 1.3 として書き出し、dmn-js や Camunda Modeler などの DMN ツールで開くこともできます。DMN の用語を使いますが、決定表は使いません。</p>
       </div>
     </div>
   </div>
@@ -164,19 +182,19 @@
     <ol class="flow flow-wrap">
       <li>
         <h3>状態を送る</h3>
-        <p>システムが分かっていること（Issue、デプロイのイベント、フォームなど）を、JSON かテキストでプロファイルに送ります。</p>
+        <p>システムが持っている情報（Issue、デプロイのイベント、フォームなど）を、JSON かテキストでプロファイルに送ります。</p>
       </li>
       <li>
         <h3>質問に答える</h3>
-        <p>プロファイルのモデルが、型のある質問に答えます。失敗したときは予備のモデルが引き継ぎます。</p>
+        <p>プロファイルのモデルが、形式の決まった質問に答えます。失敗したときは予備のモデルが引き継ぎます。</p>
       </li>
       <li>
-        <h3>ポリシーを当てる</h3>
+        <h3>ポリシーを適用する</h3>
         <p>ルールが答えと確率を比べます。最初に当てはまったルールがアクションを決めます。</p>
       </li>
       <li>
-        <h3>動く</h3>
-        <p>システムはアクションに従います。または人が決めます。</p>
+        <h3>実行する</h3>
+        <p>システムがアクションに従うか、人が決めます。</p>
         <div class="outcomes"><code class="auto">auto</code><code>review</code><code>独自のアクション</code></div>
       </li>
     </ol>
@@ -201,6 +219,10 @@
       <div class="bar"><span>profiles/issue-triage.yaml</span><span>YAML</span></div>
 <pre><span class="k">id</span>: issue-triage
 <span class="k">version</span>: <span class="n">1</span>
+<span class="k">title</span>: { <span class="k">en</span>: Issue triage, <span class="k">ja</span>: Issue の振り分け }
+<span class="k">description</span>:
+  <span class="k">en</span>: <span class="s">Route a new issue to the right team.</span>
+  <span class="k">ja</span>: <span class="s">新しい Issue を担当チームに振り分ける。</span>
 <span class="k">model</span>: clef-flash
 <span class="k">fallback_models</span>: [clef]
 <span class="k">questions</span>:
@@ -214,6 +236,10 @@
   - <span class="k">name</span>: urgent
     <span class="k">type</span>: noul
     <span class="k">instructions</span>: <span class="s">Does this block someone's work today?</span>
+  - <span class="k">name</span>: effort
+    <span class="k">type</span>: score
+    <span class="k">instructions</span>: <span class="s">How much work does this look like?</span>
+    <span class="k">criteria</span>: [<span class="s">"under an hour"</span>, <span class="s">"a few hours"</span>, <span class="s">"a few days"</span>, <span class="s">"more than a week"</span>]
 <span class="k">policy</span>:
   <span class="k">rules</span>:
     - <span class="k">when</span>: <span class="s">"team.p >= 0.85"</span>
@@ -226,34 +252,34 @@
 <section class="band alt" id="clients">
   <div class="wrap">
     <div class="section-head">
-      <h2><span class="phrase">どこからでも</span><span class="phrase">聞ける</span></h2>
+      <h2><span class="phrase">どこからでも</span><span class="phrase">使える</span></h2>
       <p>誰が聞いても、同じプロファイル、同じポリシー、同じ判定ログです。</p>
     </div>
     <div class="grid2">
       <div class="card">
         <h3>REST API</h3>
-        <p>判定、判定の取得、フィードバック、レビュー待ちの処理ができます。OpenAPI で記述されています。クライアントごとに API トークンがあり、必要なプロファイルだけに限れます。</p>
+        <p>判定、判定の取得、フィードバック、レビュー待ちの処理、プロファイルの判定グラフの取得ができます。OpenAPI で記述されています。クライアントごとに API トークンがあり、必要なプロファイルだけに限れます。</p>
         <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml（英語）→</a>
       </div>
       <div class="card">
         <h3>エージェント向けの MCP</h3>
-        <p>Pointsman をコネクタとして追加すると、エージェントは推測する代わりに <code>decide</code> を呼びます。機械は API トークンを、人は GitHub でログインして使い、判定を訂正することもできます。</p>
+        <p>Model Context Protocol（MCP）で Pointsman をコネクタとして追加すると、エージェントは推測する代わりに <code>decide</code> を呼びます。機械は API トークンを、人は GitHub でログインして使い、判定を訂正することもできます。</p>
         <a class="more" href="https://github.com/geolonia/pointsman/blob/main/docs/mcp.md">docs/mcp.md（英語）→</a>
       </div>
       <div class="card">
         <h3><span class="phrase">GitHub の</span> <span class="phrase">Issue 振り分け</span></h3>
-        <p>GitHub Action が、判定に基づいて新しい Issue にラベルを付けます。使うのは指定したラベルだけです。確信がないときは、代わりに「要確認」のラベルを付けます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage →</a>
+        <p>GitHub Action が、判定に基づいて新しい Issue にラベルを付けます。使うのは指定したラベルだけです。確信がないときや Pointsman につながらないときは、代わりに <code>needs-triage</code> ラベル（変更できます）を付けます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage（英語）→</a>
       </div>
       <div class="card">
-        <h3>デプロイの見張り</h3>
-        <p>CloudFormation のデプロイを見張る GitHub Action です。タイムアウトを待たずに、Pointsman が止まっていると判断したところで止めます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch →</a>
+        <h3>デプロイの監視</h3>
+        <p>CloudFormation のデプロイを監視する GitHub Action です。タイムアウトを待たずに、Pointsman が進んでいないと判定した時点で中止します。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch（英語）→</a>
       </div>
       <div class="card">
         <h3>FIWARE ブリッジ</h3>
-        <p>FIWARE は、スマートシティのデータ基盤のためのオープンソースのソフトウェア群です。データには NGSI-LD というオープンな標準を使います。ブリッジは、こうしたデータ基盤と Pointsman をつなぎます。データが変わるとブリッジが Pointsman に聞き、その判断をデータ基盤に書き戻します。ほかのアプリもその判断を使えます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/bridge">bridge →</a>
+        <p>FIWARE は、スマートシティのデータ基盤のためのオープンソースのソフトウェア群です。データには NGSI-LD というオープンな標準を使います。ブリッジは、こうしたデータ基盤と Pointsman をつなぎます。データが変わるとブリッジが Pointsman に聞き、その判定をデータ基盤に書き戻します。ほかのアプリもその判定を使えます。<code>Decision</code> や <code>Task</code> のエンティティ（datamodels.jp のモデル）も作れます。データ基盤で人が答えると、レビューが完了します。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/bridge">bridge（英語）→</a>
       </div>
     </div>
   </div>
@@ -264,13 +290,13 @@
     <div>
       <div class="section-head" style="margin-bottom:28px">
         <h2>はじめる</h2>
-        <p>サンプルのプロファイルとモックモデルを使えば、数分で手元で動かせます。Cloudflare のアカウントは要りません。</p>
+        <p>サンプルのプロファイルとモックモデルを使えば、数分で手元で動かせます。Cloudflare のアカウントは要りません。モックモデルは決まった答えを返します。手元で本物の答えを得る方法は <a href="https://github.com/geolonia/pointsman/blob/main/docs/models.md">docs/models.md（英語）</a>にあります。</p>
       </div>
       <ol class="steps">
         <li>
           <div>
             <h3>インストール</h3>
-            <p>Node.js 24 と pnpm が必要です。</p>
+            <p>Node.js 24 と pnpm 12 が必要です。</p>
           </div>
         </li>
         <li>
@@ -315,7 +341,7 @@ curl -s localhost:8787/v1/decide/issue-triage \
   -H 'content-type: application/json' \
   -d '{"state": {"issue": {"title": "ログイン画面が真っ白"}}}'</pre>
       </div>
-      <p class="status">Pointsman はまだ初期の試作段階です。<a href="https://github.com/geolonia/pointsman/milestone/1">PoC マイルストーン</a>で進み具合を確認できます。試したら、ぜひ Issue で教えてください。ドキュメントは英語です。</p>
+      <p class="status">Pointsman 0.1.0 は最初のリリースです。まだ 1.0 ではないため、API やプロファイルの形式は 0.x の間に変わることがあります。<a href="https://github.com/geolonia/pointsman/releases">リリースノート（英語）</a>をご覧ください。試したら、ぜひ Issue で教えてください。ドキュメントは英語です。</p>
     </div>
   </div>
 </section>
