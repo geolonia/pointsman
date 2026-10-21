@@ -64,13 +64,27 @@ describe('the date of the routing data', () => {
       return ok(JSON.parse(String(init?.body)).exclude_polygons ? 0.85 : 0.24);
     }) as typeof fetch;
     const router = new ValhallaRouter(URL_, fetchFn);
+    let clock = Date.parse('2026-10-21T00:00:00Z');
+    router.now = () => clock;
     for (let i = 0; i < 3; i++) {
       const fact = await router.detour(section);
       expect(fact.values.extra_m).toBe(610);
       expect(fact.source).toMatch(/\(routing data 日付不明\)$/);
+      // Within five minutes of a failure /status is not asked again.
+      await router.detour(section);
+      expect(status).toBe(i + 1);
+      clock += 5 * 60_000;
     }
     expect((await router.detour(section)).source).toMatch(/2026-10-17 時点\)$/);
     expect(status).toBe(4);
+    // An answer is kept for a day, then asked again.
+    clock += 23 * 3600_000;
+    await router.detour(section);
+    expect(status).toBe(4);
+    clock += 2 * 3600_000;
+    // A day later /status is asked again (the fake has no fifth answer: 日付不明).
+    expect((await router.detour(section)).source).toMatch(/日付不明\)$/);
+    expect(status).toBe(5);
   });
 
   it('does not hold up a finished detour: a slow /status gives 日付不明 after a second', async () => {
