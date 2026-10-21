@@ -46,8 +46,11 @@ function jaSpace(word: string, before: boolean): string {
 const W = {
   en: {
     model: (m: string, f: string[]) => `The AI model ${m} answers the questions${f.length ? ` (if it fails: ${f.join(', then ')})` : ''}.`,
-    noModel: 'No AI is asked: this profile decides with rules only, from earlier decisions.',
+    noModel: 'No AI is asked: this profile decides with rules only.',
     input: (parts: string[]) => `The AI sees these parts of the request: ${parts.join(', ')}.`,
+    inputPart: (name: string, path: string) => `${name} (${path})`,
+    heading: (title: string, id: string, v: number) => `${title} (${id}, v${v})`,
+    join: ' ',
     wholeInput: 'The AI sees the whole request.',
     noInput: 'No AI is asked, so no part of the request is sent to a model.',
     noul: (q: string, i: string) => `${q} (yes or no): ${i}`,
@@ -72,9 +75,10 @@ const W = {
     default: (a: string) => `If no rule matches, the action is ${a}.`,
     check: (a: string[]) => `A person checks these actions before they count: ${a.join(', ')}.`,
     answers: (a: string[]) => `The person answers with one of: ${a.join(', ')}.`,
-    unknown: 'When a fact or an earlier decision is missing, a comparison with it is unknown. A rule matches only when its condition is certainly true, so a missing value never makes a rule match by itself.',
+    unknown: 'When a fact or an earlier decision is missing, comparisons with its values are unknown. A rule matches only when its condition is certainly true, so a missing value never makes a rule match by itself; only a check whether something is missing (and why) can.',
     asWritten: 'The question texts are shown as they are written in the profile.',
     outcome: 'The outcome of an earlier decision is the person\'s answer when a person checked it, otherwise its action.',
+    corrected: 'The answers of an earlier decision are a person\'s corrected answers when a person corrected them, otherwise the AI\'s.',
     unreadable: (when: string, msg: string) => `this condition, which could not be read (${msg}): ${when}`,
     hidden: (when: string) => `this condition on an earlier decision that is not shown here: ${when}`,
     // conditions
@@ -87,7 +91,7 @@ const W = {
     probYes: (q: string) => `the probability that ${q} is yes`,
     probOption: (q: string, o: string) => `the probability that ${q} is ${o}`,
     sure: (q: string) => `the AI's certainty about ${q}`,
-    level: (q: string) => `the level of ${q}`,
+    level: (q: string) => `the most likely level of ${q}`,
     weighted: (q: string) => `the weighted level of ${q}`,
     levelName: (n: number, name: string) => `${n} ("${name}")`,
     orHigher: (v: string) => `${v} or higher`,
@@ -118,8 +122,11 @@ const W = {
   },
   ja: {
     model: (m: string, f: string[]) => `質問には AI モデル ${m} が答えます${f.length ? `（失敗したときは ${f.join('、次に ')}）` : ''}。`,
-    noModel: 'AI は使いません。このプロファイルは、前の判定をもとにルールだけで決めます。',
+    noModel: 'AI は使いません。このプロファイルはルールだけで決めます。',
     input: (parts: string[]) => `AI が見るのは、リクエストの次の部分です：${parts.join('、')}。`,
+    inputPart: (name: string, path: string) => `${name}（${path}）`,
+    heading: (title: string, id: string, v: number) => `${title}（${id}、v${v}）`,
+    join: '',
     wholeInput: 'AI はリクエスト全体を見ます。',
     noInput: 'AI を使わないので、リクエストはモデルに送られません。',
     noul: (q: string, i: string) => `${q}（はい／いいえ）：${i}`,
@@ -144,9 +151,10 @@ const W = {
     default: (a: string) => `どのルールにも当てはまらなければ、アクションは ${a} です。`,
     check: (a: string[]) => `次のアクションは、人が確認してから有効になります：${a.join('、')}。`,
     answers: (a: string[]) => `人は次のどれかで答えます：${a.join('、')}。`,
-    unknown: '事実や前の判定が欠けているとき、それとの比較は「不明」になります。ルールは条件が確かに成り立つときだけ当てはまるので、欠けた値だけでルールが当てはまることはありません。',
+    unknown: '事実や前の判定が欠けているとき、その値との比較は「不明」になります。ルールは条件が確かに成り立つときだけ当てはまるので、欠けた値だけでルールが当てはまることはありません。当てはまるのは、欠けているかどうか（とその理由）を確かめる条件だけです。',
     asWritten: '質問の文は、プロファイルに書かれたとおりに示します。',
     outcome: '前の判定の結果は、人が確認した場合はその人の答え、そうでなければその判定のアクションです。',
+    corrected: '前の判定の答えは、人が直した場合はその答え、そうでなければ AI の答えです。',
     unreadable: (when: string, msg: string) => `読めなかった条件（${msg}）：${when} `,
     hidden: (when: string) => `ここでは示さない前の判定についての条件：${when} `,
     q: (name: string) => `「${name}」`,
@@ -158,13 +166,13 @@ const W = {
     probYes: (q: string) => `${q}が「はい」である確率`,
     probOption: (q: string, o: string) => `${q}が${jaSpace(o, true)}${o}${jaSpace(o, false)}である確率`,
     sure: (q: string) => `${q}についての AI の確信度`,
-    level: (q: string) => `${q}のレベル`,
+    level: (q: string) => `${q}で最も可能性が高いレベル`,
     weighted: (q: string) => `${q}の加重平均のレベル`,
     levelName: (n: number, name: string) => `${n}（${name}）`,
-    orHigher: (v: string) => `${v} 以上`,
-    orLower: (v: string) => `${v} 以下`,
-    above: (v: string) => `${v} を超える`,
-    below: (v: string) => `${v} 未満`,
+    orHigher: (v: string) => `${v}${jaSpace(v, false)}以上`,
+    orLower: (v: string) => `${v}${jaSpace(v, false)}以下`,
+    above: (v: string) => `${v}${jaSpace(v, false)}を超える`,
+    below: (v: string) => `${v}${jaSpace(v, false)}未満`,
     factMissing: (f: string, missing: boolean) => (missing ? `事実${f}が得られない` : `事実${f}が得られた`),
     factReason: (f: string) => `事実${f}が得られない理由`,
     reasons: { no_location: 'リクエストに位置がない', unavailable: 'データが使えない', timeout: '調べるのに時間がかかりすぎた', error: 'エラー' } as Record<string, string>,
@@ -180,7 +188,7 @@ const W = {
     decAction: (d: string) => `前の判定${d}のアクション`,
     decOutcome: (d: string) => `前の判定${d}の結果`,
     decReviewed: (d: string, yes: boolean) => (yes ? `前の判定${d}を人が確認した` : `前の判定${d}を人が確認していない`),
-    inDecision: (text: string, d: string) => `前の判定${d}で、${text}`,
+    inDecision: (text: string, d: string) => `前の判定${d}の${text}`,
     and: '、かつ',
     or: '、または',
     not: (s: string) => `（${s}）ではない`,
@@ -393,8 +401,13 @@ export function explainProfile(profile: Profile, lang: Lang, required: Record<st
 
   // Rules on a required profile that was not given are not compiled: the
   // parser's message would name that profile.
-  const hidden = (profile.requires ?? []).filter((r) => !(Object.hasOwn(required, r.profile) && required[r.profile])).map((r) => r.name);
-  const readsHidden = (when: string) => hidden.some((name) => when.includes(`decisions.${name}.`));
+  // Each decisions.<name>. reference is matched like the parser does: the
+  // longest name first, since names may contain dots.
+  const names = [...(profile.requires ?? [])].sort((a, b) => b.name.length - a.name.length);
+  const readsHidden = (when: string) => [...when.matchAll(/decisions\.[A-Za-z0-9_.-]+/g)].some(([word]) => {
+    const r = names.find((x) => word.startsWith(`decisions.${x.name}.`));
+    return r !== undefined && !(Object.hasOwn(required, r.profile) && required[r.profile]);
+  });
   const rules = (profile.policy.rules ?? []).map((r, i) => {
     let when: string;
     if (readsHidden(r.when)) return { rule: i, when: r.when, action: r.action, text: w.rule(w.hidden(r.when), r.action) };
@@ -416,6 +429,7 @@ export function explainProfile(profile: Profile, lang: Lang, required: Record<st
   if (profile.facts?.length) notes.push(w.factsHidden);
   if (profile.facts?.length || profile.requires?.length) notes.push(w.unknown);
   if ((profile.policy.rules ?? []).some((r) => /\bdecisions\.\S+\.outcome\b/.test(r.when))) notes.push(w.outcome);
+  if ((profile.policy.rules ?? []).some((r) => /\bdecisions\.\S+\.answers\./.test(r.when))) notes.push(w.corrected);
 
   return {
     profile: profile.id,
@@ -424,7 +438,7 @@ export function explainProfile(profile: Profile, lang: Lang, required: Record<st
     title: profile.title[lang],
     description: profile.description[lang],
     model: asksModel ? w.model(profile.model, profile.fallback_models ?? []) : w.noModel,
-    input: !asksModel ? w.noInput : profile.input?.length ? w.input(profile.input.map((i) => `${i.name} (${i.path})`)) : w.wholeInput,
+    input: !asksModel ? w.noInput : profile.input?.length ? w.input(profile.input.map((i) => w.inputPart(i.name, i.path))) : w.wholeInput,
     questions: profile.questions.map((q) => questionText(q, w)),
     facts: (profile.facts ?? []).map((f) => factText(f, w)),
     // A required profile is named only when it was given: the caller may not be allowed to see it.
@@ -446,12 +460,13 @@ const HEADINGS = {
 export function explanationText(e: Explanation): string {
   const h = HEADINGS[e.lang];
   const list = (items: string[]) => items.map((s) => `- ${s}`).join('\n');
-  const out = [`# ${e.title} (${e.profile}, v${e.version})`, e.description, `${e.model} ${e.input}`];
+  const w = W[e.lang];
+  const out = [`# ${w.heading(e.title, e.profile, e.version)}`, e.description, `${e.model}${w.join}${e.input}`];
   if (e.questions.length) out.push(`## ${h.questions}`, list(e.questions));
   if (e.facts.length) out.push(`## ${h.facts}`, list(e.facts));
   if (e.requires.length) out.push(`## ${h.requires}`, list(e.requires));
   out.push(`## ${h.rules}`, e.order, e.rules.map((r, i) => `${i + 1}. ${r.text}`).join('\n'), e.default);
-  if (e.people.length) out.push(`## ${h.people}`, e.people.join(e.lang === 'ja' ? '' : ' '));
+  if (e.people.length) out.push(`## ${h.people}`, e.people.join(w.join));
   if (e.notes.length) out.push(`## ${h.notes}`, list(e.notes));
   return `${out.filter((s) => s !== '').join('\n\n')}\n`;
 }

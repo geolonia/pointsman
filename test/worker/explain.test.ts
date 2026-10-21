@@ -51,7 +51,7 @@ describe('explainProfile: conditions', () => {
       ['team.value != "backend"', '"team" is not "backend"', '「team」が「backend」以外'],
       ['team.p > 0.855', 'the AI\'s certainty about "team" is more than 85.5 %', '「team」についての AI の確信度が 85.5 % を超える'],
       ['team.probabilities.frontend < 0.2', 'the probability that "team" is "frontend" is less than 20 %', '「team」が「frontend」である確率が 20 % 未満'],
-      ['clarity.value >= 2', 'the level of "clarity" is 2 ("Clear") or higher', '「clarity」のレベルが 2（Clear） 以上'],
+      ['clarity.value >= 2', 'the most likely level of "clarity" is 2 ("Clear") or higher', '「clarity」で最も可能性が高いレベルが 2（Clear）以上'],
       ['clarity.score <= 1.5', 'the weighted level of "clarity" is at most 1.5', '「clarity」の加重平均のレベルが 1.5 以下'],
     ];
     for (const [when, en, ja] of cases) {
@@ -88,7 +88,7 @@ describe('explainProfile: conditions', () => {
 
   it('puts earlier decisions into words, and explains outcome once', () => {
     const e = explainProfile(byId('road-closure-final'), 'en', required);
-    expect(e.model).toBe('No AI is asked: this profile decides with rules only, from earlier decisions.');
+    expect(e.model).toBe('No AI is asked: this profile decides with rules only.');
     expect(e.rules.map((r) => r.text)).toEqual([
       'If the outcome of the earlier decision "check" is reject, the action is reject.',
       'If the outcome of the earlier decision "evacuation" is alert, the action is urgent.',
@@ -106,9 +106,22 @@ describe('explainProfile: conditions', () => {
       facts: [],
       requires: [{ name: 'check', profile: 'road-restriction-check' }],
     });
-    expect(explainProfile(p, 'en', required).rules[0]!.text).toBe(
-      'If the probability that "danger" is yes is at least 40 % (in the earlier decision "check"), the action is urgent.',
-    );
+    const e = explainProfile(p, 'en', required);
+    expect(e.rules[0]!.text).toBe('If the probability that "danger" is yes is at least 40 % (in the earlier decision "check"), the action is urgent.');
+    expect(e.notes).toContain('The answers of an earlier decision are a person\'s corrected answers when a person corrected them, otherwise the AI\'s.');
+    expect(explainProfile(p, 'ja', required).rules[0]!.text).toBe('前の判定「check」の「danger」が「はい」である確率が 40 % 以上なら、アクションは urgent です。');
+  });
+
+  it('matches required names longest first, like the parser: a hidden prefix does not hide a visible name', () => {
+    const p = withRule("decisions.chk.x.outcome == 'publish' or decisions.chk.outcome == 'urgent'", {
+      questions: [],
+      facts: [],
+      requires: [{ name: 'chk', profile: 'hidden-profile' }, { name: 'chk.x', profile: 'road-restriction-check' }],
+      policy: { rules: [{ when: "decisions.chk.x.outcome == 'publish'", action: 'publish' }, { when: "decisions.chk.outcome == 'urgent'", action: 'urgent' }], default: 'review' },
+    });
+    const e = explainProfile(p, 'en', required);
+    expect(e.rules[0]!.text).toBe('If the outcome of the earlier decision "chk.x" is publish, the action is publish.');
+    expect(e.rules[1]!.text).toMatch(/^If this condition on an earlier decision that is not shown here: /);
   });
 
   it('does not name a required profile it was not given, and shows a rule on it as written', () => {
@@ -136,7 +149,8 @@ describe('explainProfile: the profile', () => {
 
   it('is plain Markdown, numbered like the rules', () => {
     const text = explanationText(explainProfile(byId('road-restriction-check'), 'ja', required));
-    expect(text).toMatch(/^# 通行規制の確認 \(road-restriction-check, v\d+\)\n\n/);
+    expect(text).toMatch(/^# 通行規制の確認（road-restriction-check、v\d+）\n\n/);
+    expect(text).toContain('（失敗したときは clef）。AI が見るのは、リクエストの次の部分です：road（$.roadName.value）、');
     expect(text).toContain('## ルール\n\nルールは上から順に確かめ、最初に当てはまったルールでアクションが決まります。\n\n1. 「danger」が「はい」である確率が 70 % 以上なら、アクションは urgent です。\n2. ');
     expect(text).toContain('review、urgent。人は次のどれかで答えます');
     expect(text.endsWith('\n')).toBe(true);
