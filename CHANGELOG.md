@@ -2,8 +2,9 @@
 
 Pointsman follows [semantic versioning](https://semver.org/). Before 1.0, a
 minor release (0.x) may change the API, the profile format or the decision
-log; the notes say how. Each release is a tag on `main`; a deployment pins
-the engine by commit in its config repository (`engine.json`).
+log; the notes say how. Each release is a tag on `main`. A deployment pins
+the engine by commit in its config repository: to use a release, set
+`ref` in `engine.json` to the commit of its tag (`git rev-parse v0.1.0`).
 
 ## 0.1.0 (2026-10-21)
 
@@ -25,15 +26,16 @@ The first release: what the proof of concept and the FIWARE demo built.
 - Decision chains: a profile `requires` earlier decisions about the same
   `ref`, read from the decision log by id. A final decision can be rules
   only. A person's answer on an earlier step counts, and a final decision a
-  person resolved is never replaced. An optional earlier step made for an
-  older decision is left out.
+  person resolved is never replaced. An optional earlier step that was based
+  on an older version of another step in the same request is left out.
 - `GET /v1/profiles/{id}/graph`: the chain as JSON, SVG (a left-to-right
   flow) or DMN 1.3 with DMNDI for DMN tools.
 
 ### People in the loop
 
-- A review queue for decisions below the thresholds, resolved by API, MCP
-  or the FIWARE bridge; the final answer goes to a signed callback.
+- A review queue for decisions below the thresholds, resolved through the
+  API (`POST /v1/reviews/{id}/resolve`) or the FIWARE bridge; the final
+  answer is sent, signed, to the request's `callback_url` if it gave one.
 - Feedback and corrections next to the answers; accuracy per profile
   version and `GET /v1/stats/{profile}`.
 
@@ -41,8 +43,9 @@ The first release: what the proof of concept and the FIWARE demo built.
 
 - Per-client API tokens, limited to profiles; test tokens check profiles
   without logging decisions.
-- MCP server (`list_profiles`, `decide`, `get_decision`, `submit_feedback`),
-  with GitHub login for people.
+- MCP server: `list_profiles`, `decide` and `get_decision` for API tokens;
+  people log in with GitHub and can also correct decisions
+  (`submit_feedback`).
 - OpenAPI description of the REST API.
 
 ### Models
