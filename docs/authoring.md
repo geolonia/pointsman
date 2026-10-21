@@ -190,10 +190,10 @@ Read it with its limits in mind:
 
 When the questions, facts or `requires` change, a replay cannot help: the
 log holds the answers, facts and earlier decisions of the old version, and
-the replay refuses such a draft. Then: test cases with answers, test cases
-with real requests through the deployed model once the new questions are
-published (not for profiles with `requires`), and a careful start as in
-step 5.
+the replay refuses such a draft. Then: test cases with answers; test cases
+with real requests once the new questions and facts are published, since
+those cases use the deployed profile's model and facts (not for profiles
+with `requires`); and a careful start as in step 5.
 
 ## What the assistant does not do
 
