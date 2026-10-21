@@ -24,6 +24,8 @@ const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 const PER_PAGE = 100;
 /** Larger pull requests fail path facts (`error`): 10 calls are enough. GitHub itself lists 3,000. */
 export const MAX_FILES = 1000;
+/** Pages of the activity list (100 pushes each) read for pushed_by_author; older pushes stay unknown. */
+export const MAX_PUSH_PAGES = 5;
 /** GitHub lists at most 250 commits of a pull request. */
 const MAX_COMMITS = 250;
 /** Check runs and statuses on the head: more fail `github_checks` (`error`). */
@@ -399,8 +401,8 @@ function propertyValue(v: unknown, name: string): string {
   throw new FactError('GitHub custom properties: unexpected answer');
 }
 
-/** A push to the head branch, from the repository activity list. */
-interface Push { before: string; after: string; actor: string; at: string }
+/** A push to the head branch, from the repository activity list. `created`: the push that created the branch. */
+interface Push { before: string; after: string; actor: string; at: string; created: boolean }
 
 function pushes(v: unknown): Push[] {
   if (!Array.isArray(v)) throw new FactError('GitHub activity: unexpected answer');
@@ -408,7 +410,7 @@ function pushes(v: unknown): Push[] {
     if (!isObject(a) || typeof a.after !== 'string' || typeof a.before !== 'string') throw new FactError('GitHub activity: unexpected answer');
     // A deleted account has no login: it is not the author.
     const actor = isObject(a.actor) && typeof a.actor.login === 'string' ? a.actor.login : '';
-    return { before: a.before.toLowerCase(), after: a.after.toLowerCase(), actor, at: String(a.timestamp ?? '') };
+    return { before: a.before.toLowerCase(), after: a.after.toLowerCase(), actor, at: String(a.timestamp ?? ''), created: a.activity_type === 'branch_creation' };
   });
 }
 
@@ -434,6 +436,18 @@ export function pushedByAuthor(commits: { sha: string }[] | null, list: Push[] |
   }
   if ([...by.values()].some((actor) => actor !== author.toLowerCase())) return 'no';
   return commits.length > 0 && by.size === commits.length ? 'yes' : 'unavailable';
+}
+
+/** The "after" cursor of a Link header's next page; null when there is none. Only the cursor is used, never the URL. */
+export function nextCursor(link: string | null): string | null {
+  const m = link ? /<([^>]+)>;\s*rel="next"/.exec(link) : null;
+  if (!m) return null;
+  try {
+    const after = new URL(m[1]!).searchParams.get('after');
+    return after && after.length <= 500 ? after : null;
+  } catch {
+    return null;
+  }
 }
 
 const base64Text = (b64: string): string => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0)));
@@ -467,6 +481,13 @@ class Snapshot {
 
   private async json(path: string, what: string): Promise<unknown> {
     return getJson(this.fetchFn, path, await this.token, this.signal, what);
+  }
+
+  /** A page of a list, and the cursor of the next page from the Link header. */
+  private async page(path: string, what: string): Promise<{ body: unknown; next: string | null }> {
+    const res = await get(this.fetchFn, path, await this.token, this.signal);
+    const next = nextCursor(res.headers.get('link'));
+    return { body: await readJson(res, what), next };
   }
 
   private async loadBase(): Promise<{ pr: PullRequest; commits: Commit[] | null }> {
@@ -599,19 +620,39 @@ class Snapshot {
     });
   }
 
-  /** The pushes to the head branch (newest 100); null when GitHub does not show them to this token. */
+  /**
+   * The pushes to the head branch, newest first, page by page back to the
+   * push that created the branch, at most MAX_PUSH_PAGES pages; null when
+   * GitHub does not show them to this token. Pushes older than the pages
+   * read stay unknown, which pushedByAuthor turns into "unavailable".
+   */
   pushes(): Promise<Push[] | null> {
     return this.part('pushes', async () => {
       const { pr } = await this.base;
       if (!pr.headRepo) return null;
-      const q = new URLSearchParams({ ref: `refs/heads/${pr.headRef}`, per_page: String(PER_PAGE) });
-      try {
-        return pushes(await this.json(`/repos/${pr.headRepo}/activity?${q}`, 'activity'));
-      } catch (err) {
-        // Not shown (no access, or a private fork): not known. Other failures fail the fact.
-        if (err instanceof FactUnavailableError) return null;
-        throw err;
+      const all: Push[] = [];
+      let after: string | null = null;
+      for (let p = 0; p < MAX_PUSH_PAGES; p++) {
+        const q = new URLSearchParams({ ref: `refs/heads/${pr.headRef}`, per_page: String(PER_PAGE) });
+        if (after) q.set('after', after);
+        let page: { body: unknown; next: string | null };
+        try {
+          page = await this.page(`/repos/${pr.headRepo}/activity?${q}`, 'activity');
+        } catch (err) {
+          // Not shown (no access, or a private fork): not known; a later page that
+          // is not shown leaves the older pushes unknown. Other failures fail the fact.
+          if (err instanceof FactUnavailableError) return p === 0 ? null : all;
+          throw err;
+        }
+        const list = pushes(page.body);
+        // Newest first: pushes older than the one that created the branch belong
+        // to an earlier branch of the same name.
+        const created = list.findIndex((x) => x.created);
+        all.push(...(created < 0 ? list : list.slice(0, created + 1)));
+        if (list.length === 0 || created >= 0 || !page.next) break;
+        after = page.next;
       }
+      return all;
     });
   }
 
