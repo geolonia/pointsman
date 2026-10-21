@@ -41,7 +41,7 @@ so the person runs the replay and pastes the summary: the counts, and only
 those listed decisions whose refs and answers hold no personal data. Use a
 token with the smallest scope, short-lived, for only those profiles
 (comma-separated: `node engine/scripts/tokens.mjs create --client replay --profiles <id>,<required id> --expires 1d --remote --config wrangler.jsonc`;
-revoke it afterwards with `tokens.mjs revoke --hash <hash>`, the hash that
+revoke it afterwards with `node engine/scripts/tokens.mjs revoke --hash <hash> --remote --config wrangler.jsonc`, the hash that
 `create` printed), and never leave it in `POINTSMAN_TOKEN` for test cases.
 
 ## Commands

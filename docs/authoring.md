@@ -60,7 +60,7 @@ go into the chat, a file or a commit:
   (comma-separated:
   `node engine/scripts/tokens.mjs create --client replay --profiles <id>,<required id>
   --expires 1d --remote --config wrangler.jsonc`; revoked afterwards with
-  `tokens.mjs revoke --hash <hash>`, the hash that `create` printed), and
+  `node engine/scripts/tokens.mjs revoke --hash <hash> --remote --config wrangler.jsonc`, the hash that `create` printed), and
   pastes the summary: the counts, and only those listed decisions whose refs
   and answers hold no personal data (a replay lists decision ids, refs and
   people's answers). Never leave a replay token in `POINTSMAN_TOKEN`
