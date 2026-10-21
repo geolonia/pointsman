@@ -12,7 +12,13 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # The config repository template's workflows too: config repositories
+    # copy them, so their pins should be as current as this repository's.
+    # Only "/" also scans .github/workflows; any other directory is read
+    # as is, so the template's workflows folder is named itself.
+    directories:
+      - /
+      - /template/config-repo/.github/workflows
     schedule:
       interval: weekly
     cooldown:

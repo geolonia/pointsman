@@ -30,8 +30,10 @@ the pinned commit (`engine/` is in `.gitignore`; check it out again when
 `engine.json` changes). The scripts need Node.js 24 or newer.
 
 ```sh
+# the first time:
 git clone https://github.com/geolonia/pointsman engine
-git -C engine checkout "$(jq -r .ref engine.json)" && pnpm --dir engine install
+# the first time, and after every change of engine.json:
+git -C engine fetch origin && git -C engine checkout "$(jq -r .ref engine.json)" && pnpm --dir engine install --frozen-lockfile
 ```
 
 | Step | Command |
@@ -39,8 +41,8 @@ git -C engine checkout "$(jq -r .ref engine.json)" && pnpm --dir engine install
 | Validate | `node engine/scripts/validate-profiles.mjs profiles` |
 | Explain | `node engine/scripts/explain-profile.mjs profiles/<id>.yaml` (`--lang ja`) |
 | Test cases | `node engine/scripts/test-profile.mjs cases --profiles profiles` |
-| Test cases on real requests | `POINTSMAN_TOKEN=<test token> node engine/scripts/test-profile.mjs cases --profiles profiles --url <pointsman url>` |
-| Replay (the person runs it) | `POINTSMAN_TOKEN=<token> node engine/scripts/replay-profile.mjs profiles/<id>.yaml --url <pointsman url>` |
+| Test cases on real requests (`POINTSMAN_TOKEN`: a test token) | `node engine/scripts/test-profile.mjs cases --profiles profiles --url <pointsman url>` |
+| Replay (the person runs it; `POINTSMAN_TOKEN`: a replay token) | `node engine/scripts/replay-profile.mjs profiles/<id>.yaml --url <pointsman url>` |
 
 The assistant runs the first four itself and shows the output. Tokens never
 go into the chat, a file or a commit:
@@ -50,13 +52,18 @@ go into the chat, a file or a commit:
   person creates it (`node engine/scripts/tokens.mjs create --client authoring
   --profiles <id> --test --remote --config wrangler.jsonc`) and sets it in the
   shell before starting the assistant.
-- **A replay** needs a token that is **not** a test token, because it reads
-  logged decisions. Such a token can also make real decisions and answer
-  reviews as a person, so the assistant should not hold it. The person runs
-  the replay and pastes the summary, or creates a short-lived token for just
-  that profile (`node engine/scripts/tokens.mjs create --client replay
-  --profiles <id> --expires 1d --remote --config wrangler.jsonc`) and revokes
-  it afterwards. Never leave a replay token in `POINTSMAN_TOKEN`
+- **A replay** needs a token that is **not** a test token and that may use
+  the profile and every profile it requires, because it reads their logged
+  decisions. Such a token can also make real decisions and answer reviews as
+  a person, so the assistant should not hold it. The person runs the replay
+  with a token of the smallest scope, short-lived, for only those profiles
+  (comma-separated:
+  `node engine/scripts/tokens.mjs create --client replay --profiles <id>,<required id>
+  --expires 1d --remote --config wrangler.jsonc`; revoked afterwards with
+  `node engine/scripts/tokens.mjs revoke --hash <hash> --remote --config wrangler.jsonc`, the hash that `create` printed), and
+  pastes the summary: the counts, and only those listed decisions whose refs
+  and answers hold no personal data (a replay lists decision ids, refs and
+  people's answers). Never leave a replay token in `POINTSMAN_TOKEN`
   when test cases run with `--url`: test cases refuse a token that is not a
   test token only after its first answer, which is then logged.
 
