@@ -360,22 +360,22 @@ curl -s localhost:8787/v1/decide/issue-triage \
       </details>
       <details>
         <summary>Do I have to train a model first?</summary>
-        <p>No. You write the questions and the rules, and the model answers the questions as they are. Pointsman does not train models. If you already have a model trained on your own data, you can connect it through a model server. Each decision keeps the AI's answers next to people's corrections, so you can see how well a model does before you let it decide more on its own.</p>
+        <p>No. You write the questions and the rules, and the model answers the questions as they are. Pointsman does not train models. If you already have a model trained on your own data, you can connect it through a model server, as long as it answers the same kinds of questions: yes or no, a choice, or a score, each with a probability. Each decision keeps the AI's answers next to people's corrections, so you can see how well a model does before you let it decide more on its own.</p>
       </details>
       <details>
         <summary>Isn't this just a model plus a script that acts on its confidence?</summary>
         <p>That is the idea, yes. Pointsman is the script part, built so that people can read and check it:</p>
         <ul>
           <li>The rules are config that the city or team writes, not code.</li>
-          <li>Facts about the place, from public map data, are added before the rules run.</li>
-          <li>When no rule is sure enough, a person is asked.</li>
+          <li>When the profile asks for them, facts about the place from public map data are added before the rules run.</li>
+          <li>When no rule matches, the profile's default action applies, often a person's review.</li>
           <li>Each decision records the answers, the facts, the rule and the profile version.</li>
           <li>A later decision can build on an earlier one.</li>
         </ul>
       </details>
       <details>
         <summary>How is this different from GIS tools that train models on spatial data?</summary>
-        <p>Those tools help you make a model, for example one that finds buildings in aerial photos. Pointsman does not make models. It takes a model's answers, adds facts about the place, and lets written rules decide what to do. The two can work together: a model trained elsewhere can answer Pointsman's questions if it takes the same kind of input.</p>
+        <p>Those tools help you make a model, for example one that finds buildings in aerial photos. Pointsman does not make models. It takes a model's answers, adds facts about the place, and lets written rules decide what to do. The two can work together: a model trained elsewhere can answer Pointsman's questions through a model server, if it gives the same kinds of answers (yes or no, a choice, or a score, each with a probability).</p>
       </details>
       <details>
         <summary>What happens when the AI is not sure?</summary>
