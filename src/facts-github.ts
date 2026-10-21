@@ -33,7 +33,8 @@ const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const PASSED = new Set(['success', 'neutral', 'skipped']);
 /** A repository as "owner/name"; "." and ".." are not names. */
 const FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
-const TEAM = /^@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
+/** A team owner "@org/slug"; "." and ".." are not slugs (they would change the API path). */
+const TEAM = /^@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/(?!\.\.?$)([A-Za-z0-9._-]{1,100})$/;
 /** Where GitHub looks for CODEOWNERS, in its order. */
 const CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'];
 

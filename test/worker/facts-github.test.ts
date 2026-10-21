@@ -245,6 +245,15 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     expect(await sole(routes({ [PR]: () => pullRequest({ changed_files: 0 }), [`${PR}/files`]: () => [] }))).toBe(false);
   });
 
+  it('"@org/." and "@org/.." are not teams: false, and the organization\'s members are never read', async () => {
+    for (const owner of ['@octo-org/..', '@octo-org/.']) {
+      const server = fakeGitHub(owners(`* ${owner}`, { '/orgs/octo-org/members': () => [{ login: 'alice' }] }));
+      const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+      expect(f.missing === false && f.values.author_sole_code_owner, owner).toBe(false);
+      expect(server.calls.some((c) => c.url.pathname === '/orgs/octo-org/members' || c.url.pathname.includes('/teams/')), owner).toBe(false);
+    }
+  });
+
   it('a renamed file counts with both names', async () => {
     const renamed = owners('* @alice\nsecret/ @bob', { [PR]: () => pullRequest({ changed_files: 1 }), [`${PR}/files`]: () => [file('docs/a.md', 'secret/a.md')] });
     expect(await sole(renamed)).toBe(false);
