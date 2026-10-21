@@ -583,7 +583,7 @@ decide on a state the client did not see.
 
 | Type | Fields | Notes |
 |---|---|---|
-| `github_pr` | `open`, `merged`, `draft`, `wip_title`, `base_is_default`, `author_member`, `author_dependabot`, `fork`, `all_commits_verified` (booleans); `files`, `changed_lines` (numbers) | `wip_title`: "WIP" is a word in the title (`WIP: …`, `[WIP] …`). `changed_lines`: lines added plus lines removed. `base_is_default`: the pull request targets the default branch. `author_member`: the author is a member of the organization that owns the repository (for a person's repository: the author is that person); no value when GitHub does not tell (the token cannot see private members, or may not read members). `author_dependabot`: the author is the `dependabot[bot]` app. `fork`: the changes come from another repository. `all_commits_verified`: every commit has a signature that GitHub verified; no value for more than 250 commits (GitHub lists no more). |
+| `github_pr` | `open`, `merged`, `draft`, `wip_title`, `base_is_default`, `author_member`, `author_dependabot`, `fork`, `all_commits_verified`, `author_sole_code_owner` (booleans); `files`, `changed_lines` (numbers); `pushed_by_author` (text) | `wip_title`: "WIP" is a word in the title (`WIP: …`, `[WIP] …`). `changed_lines`: lines added plus lines removed. `base_is_default`: the pull request targets the default branch. `author_member`: the author is a member of the organization that owns the repository (for a person's repository: the author is that person); no value when GitHub does not tell (the token cannot see private members, or may not read members). `author_dependabot`: the author is the `dependabot[bot]` app. `fork`: the changes come from another repository. `all_commits_verified`: every commit has a signature that GitHub verified; no value for more than 250 commits (GitHub lists no more). `pushed_by_author`: who pushed the commits, from the repository's activity list (pushes to the head branch): `yes` when every commit came in a push by the author, `no` when one came in a push by someone else (for example "Update branch" clicked by a reviewer), `unavailable` when GitHub does not show it (pushes older than the newest 100, a fork the token cannot see, more than 250 commits). A signature cannot show who pushed, so this is the only source. `author_sole_code_owner`: the author is the only code owner of every changed file (both names of a renamed file), by the `CODEOWNERS` file of the base branch; a team owns as its members. False when another person, team or email address owns a file, a file has no owner, there is no `CODEOWNERS` file, no file changed, or more than 1,000 files changed. A `CODEOWNERS` file or team that cannot be read makes the whole fact missing. |
 | `github_paths` | `any`, `all` (booleans), `count` (number) | The changed files that match `paths` and none of `except`: `any` is true when there is one, `all` when every changed file matches, `count` says how many. `all` is false when no file changed. A renamed file has two names: it counts for `any` when one of them matches, and for `all` only when both do. |
 | `github_checks` | `required` (number), `green`, `pending`, `failed` (booleans) | The required checks of the base branch (rulesets and branch protection) and the workflows that a ruleset requires, on the head commit. `green`: every one passed (success, neutral or skipped). `failed`: one failed. `pending`: none failed, and one has not finished or not reported yet. `green` is false when there are no required checks. |
 | `github_property` | `value` (text) | The repository's custom property `property`. A property that is not set is `unset`: a known value, not a missing fact. A list (multi-select) is sorted and joined with commas. |
@@ -653,7 +653,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | `FACTS_GITHUB` | GitHub facts |
 |---|---|
 | `off` (default) | none: every GitHub fact is missing (`unavailable`) |
-| `mock` | fixed answers for development and tests: an open pull request by a member, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset` |
+| `mock` | fixed answers for development and tests: an open pull request by a member who pushed every commit and is not the only code owner, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset` |
 | `token` | read with the Worker secret `FACTS_GITHUB_TOKEN` |
 | `app` | read as a GitHub App: `FACTS_GITHUB_APP_ID` and the Worker secret `FACTS_GITHUB_APP_PRIVATE_KEY` (the PEM file GitHub gives you) |
 
@@ -675,12 +675,12 @@ Permissions (all read) for a fine-grained token or an app:
 | Permission | For |
 |---|---|
 | Pull requests | `github_pr`, `github_paths` |
-| Contents | the commits of the pull request |
+| Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS` |
 | Metadata | always (every app has it) |
 | Checks, Commit statuses | `github_checks` |
 | Actions | `github_checks`, when a ruleset requires workflows |
 | Custom properties | `github_property` |
-| Organization: Members | `author_member` for members who hide their membership |
+| Organization: Members | `author_member` for members who hide their membership; the members of a team in `CODEOWNERS` |
 
 The required checks come from the branch's rules and its protection, as
 GitHub shows them to anyone who can read the repository: no administration

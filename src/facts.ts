@@ -251,9 +251,10 @@ export async function lookupFacts(
  * Fixed answers for development and tests (FACTS_MODE "mock", FACTS_GITHUB
  * "mock"), like the mock model: every place is inside (rank 1), the nearest
  * feature is 250 m away, and a detour adds nothing. Every pull request is
- * open, by a member, with one changed file (10 lines) that matches every
- * path list, signed commits and one required check that passed; every
- * custom property is unset.
+ * open, by a member who pushed every commit and is not the only code
+ * owner, with one changed file (10 lines) that matches every path list,
+ * signed commits and one required check that passed; every custom property
+ * is unset.
  */
 export class MockFactProvider implements FactProvider {
   async lookup(query: FactQuery): Promise<FactResult> {
@@ -269,6 +270,7 @@ export class MockFactProvider implements FactProvider {
           values: {
             open: true, merged: false, draft: false, wip_title: false, files: 1, changed_lines: 10, base_is_default: true,
             author_member: true, author_dependabot: false, fork: false, all_commits_verified: true,
+            pushed_by_author: 'yes', author_sole_code_owner: false,
           },
           source: 'mock',
         };

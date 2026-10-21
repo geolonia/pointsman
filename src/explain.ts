@@ -64,7 +64,7 @@ const W = {
     nearest: (f: string, layer: string, at: string) => `${f}: the nearest feature of the layer "${layer}" to the place (${at}), with its distance and name.`,
     detour: (f: string, mode: string, at: string, route: boolean) =>
       `${f}: how much longer the way around the closed section (${at}) is ${mode}${route ? '; the way itself is kept for people and maps' : ''}.`,
-    githubPr: (f: string, at: string) => `${f}: the pull request (${at}), read from GitHub: open, merged or draft, its title, size, author, base branch, fork, and commit signatures.`,
+    githubPr: (f: string, at: string) => `${f}: the pull request (${at}), read from GitHub: open, merged or draft, its title, size, author, base branch, fork, commit signatures, who pushed the commits, and whether the author is the only code owner.`,
     githubPaths: (f: string, at: string, paths: string[], except: string[]) =>
       `${f}: which changed files of the pull request (${at}) match ${paths.join(', ')}${except.length ? `, except ${except.join(', ')}` : ''}.`,
     githubChecks: (f: string, at: string) => `${f}: the results of the required checks of the pull request (${at}) on its head commit.`,
@@ -124,6 +124,8 @@ const W = {
       'github_pr.author_dependabot': ['% is by Dependabot', '% is not by Dependabot'],
       'github_pr.fork': ['% comes from a fork', '% does not come from a fork'],
       'github_pr.all_commits_verified': ['every commit of % has a verified signature', 'not every commit of % has a verified signature'],
+      'github_pr.pushed_by_author': 'the answer to "did the author of % push every commit"',
+      'github_pr.author_sole_code_owner': ['the author of % is the only code owner of every changed file', 'the author of % is not the only code owner of every changed file'],
       'github_pr.files': 'the number of changed files of %',
       'github_pr.changed_lines': 'the number of changed lines of %',
       'github_paths.any': ['a changed file matches %', 'no changed file matches %'],
@@ -167,7 +169,7 @@ const W = {
     nearest: (f: string, layer: string, at: string) => `${f}：場所（${at}）から最も近い、レイヤー「${layer}」の地物と、その距離と名前。`,
     detour: (f: string, mode: string, at: string, route: boolean) =>
       `${f}：通れない区間（${at}）を${mode}避けると、どれだけ遠回りになるか${route ? '。迂回路そのものも、人と地図のために残します' : ''}。`,
-    githubPr: (f: string, at: string) => `${f}：GitHub から読むプルリクエスト（${at}）の状態（オープン、マージ済み、ドラフト）、タイトル、大きさ、作成者、ベースブランチ、フォーク、コミットの署名。`,
+    githubPr: (f: string, at: string) => `${f}：GitHub から読むプルリクエスト（${at}）の状態（オープン、マージ済み、ドラフト）、タイトル、大きさ、作成者、ベースブランチ、フォーク、コミットの署名、コミットを push した人、作成者が唯一のコードオーナーか。`,
     githubPaths: (f: string, at: string, paths: string[], except: string[]) =>
       `${f}：プルリクエスト（${at}）の変更ファイルのうち ${paths.join('、')} に合うもの${except.length ? `（${except.join('、')} を除く）` : ''}。`,
     githubChecks: (f: string, at: string) => `${f}：プルリクエスト（${at}）の head コミットでの必須チェックの結果。`,
@@ -225,6 +227,8 @@ const W = {
       'github_pr.author_dependabot': ['%が Dependabot によるもの', '%が Dependabot によるものでない'],
       'github_pr.fork': ['%がフォークから', '%がフォークからでない'],
       'github_pr.all_commits_verified': ['%のすべてのコミットに検証済みの署名がある', '%に検証済みの署名がないコミットがある'],
+      'github_pr.pushed_by_author': '「%のすべてのコミットを作成者が push したか」の答え',
+      'github_pr.author_sole_code_owner': ['%の作成者が変更ファイルすべての唯一のコードオーナー', '%の作成者が変更ファイルすべての唯一のコードオーナーではない'],
       'github_pr.files': '%の変更ファイル数',
       'github_pr.changed_lines': '%の変更行数',
       'github_paths.any': ['%に合う変更ファイルがある', '%に合う変更ファイルがない'],

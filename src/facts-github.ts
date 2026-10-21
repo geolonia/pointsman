@@ -16,6 +16,7 @@ import {
   FactError, FactStaleError, FactUnavailableError, GITHUB_TIMEOUT_MS,
   type FactProvider, type FactResult, type FactScope, type GitHubFactQuery, type PullRequestRef,
 } from './facts';
+import { ownersOf, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 
 const API = 'https://api.github.com';
@@ -30,6 +31,11 @@ const MAX_CHECKS = 300;
 const DEPENDABOT = 'dependabot[bot]';
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const PASSED = new Set(['success', 'neutral', 'skipped']);
+/** A repository as "owner/name"; "." and ".." are not names. */
+const FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
+const TEAM = /^@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
+/** Where GitHub looks for CODEOWNERS, in its order. */
+const CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'];
 
 // ---- authentication ----
 
@@ -209,6 +215,9 @@ interface PullRequest {
   draft: boolean;
   title: string;
   head: string;
+  /** The head branch and its repository ("owner/name"; null when a fork was deleted). */
+  headRef: string;
+  headRepo: string | null;
   fork: boolean;
   base: string;
   defaultBranch: string;
@@ -234,6 +243,8 @@ function pullRequest(v: unknown): PullRequest {
     draft: v.draft,
     title: v.title,
     head: typeof head.sha === 'string' ? head.sha.toLowerCase() : null,
+    headRef: head.ref,
+    headRepo: isObject(headRepo) && typeof headRepo.full_name === 'string' && FULL_NAME.test(headRepo.full_name) ? headRepo.full_name : null,
     // A fork that was deleted has no head repository: treat it as a fork.
     fork: !isObject(headRepo) || headRepo.id !== baseRepo.id,
     base: base.ref,
@@ -247,10 +258,10 @@ function pullRequest(v: unknown): PullRequest {
     commits: n(v.commits),
   };
   if (typeof v.state !== 'string' || typeof pr.merged !== 'boolean' || typeof pr.draft !== 'boolean' || typeof pr.title !== 'string'
-    || pr.head === null || typeof pr.base !== 'string' || typeof pr.defaultBranch !== 'string' || typeof pr.author !== 'string'
+    || pr.head === null || typeof pr.headRef !== 'string' || typeof pr.base !== 'string' || typeof pr.defaultBranch !== 'string' || typeof pr.author !== 'string'
     || pr.additions === null || pr.deletions === null || pr.files === null || pr.commits === null || typeof baseRepo.id !== 'number') throw bad();
   return {
-    open: pr.open, merged: pr.merged, draft: pr.draft, title: pr.title, head: pr.head, fork: pr.fork,
+    open: pr.open, merged: pr.merged, draft: pr.draft, title: pr.title, head: pr.head, headRef: pr.headRef, headRepo: pr.headRepo, fork: pr.fork,
     base: pr.base, defaultBranch: pr.defaultBranch, repoId: baseRepo.id as number, ownerIsOrg: pr.ownerIsOrg, author: pr.author, authorIsBot: pr.authorIsBot,
     changedLines: pr.additions + pr.deletions, files: pr.files, commits: pr.commits,
   };
@@ -386,6 +397,41 @@ function propertyValue(v: unknown, name: string): string {
   if (Array.isArray(value) && value.every((x) => typeof x === 'string')) return value.length === 0 ? 'unset' : [...value].sort().join(',');
   throw new FactError('GitHub custom properties: unexpected answer');
 }
+
+/** A push to the head branch, from the repository activity list. */
+interface Push { before: string; after: string; actor: string; at: string }
+
+function pushes(v: unknown): Push[] {
+  if (!Array.isArray(v)) throw new FactError('GitHub activity: unexpected answer');
+  return v.map((a) => {
+    if (!isObject(a) || typeof a.after !== 'string' || typeof a.before !== 'string') throw new FactError('GitHub activity: unexpected answer');
+    // A deleted account has no login: it is not the author.
+    const actor = isObject(a.actor) && typeof a.actor.login === 'string' ? a.actor.login : '';
+    return { before: a.before.toLowerCase(), after: a.after.toLowerCase(), actor, at: String(a.timestamp ?? '') };
+  });
+}
+
+/**
+ * Who pushed the pull request's commits: "yes" when every commit came in a
+ * push by the author, "no" when one came in a push by someone else, and
+ * "unavailable" otherwise (pushes older than the activity list, or more
+ * commits than GitHub lists). A push brings its head commit and the commits
+ * before it that no earlier push brought.
+ */
+export function pushedByAuthor(commits: { sha: string }[] | null, list: Push[] | null, author: string): 'yes' | 'no' | 'unavailable' {
+  if (!commits || !list) return 'unavailable';
+  const index = new Map(commits.map((c, i) => [c.sha, i]));
+  const by = new Map<number, string>();
+  for (const push of [...list].sort((a, b) => a.at.localeCompare(b.at))) {
+    const k = index.get(push.after);
+    if (k === undefined) continue;
+    for (let j = k; j >= 0 && !by.has(j); j--) by.set(j, push.actor.toLowerCase());
+  }
+  if ([...by.values()].some((actor) => actor !== author.toLowerCase())) return 'no';
+  return commits.length > 0 && by.size === commits.length ? 'yes' : 'unavailable';
+}
+
+const base64Text = (b64: string): string => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0)));
 
 // ---- the snapshot ----
 
@@ -548,6 +594,89 @@ class Snapshot {
     });
   }
 
+  /** The pushes to the head branch (newest 100); null when GitHub does not show them to this token. */
+  pushes(): Promise<Push[] | null> {
+    return this.part('pushes', async () => {
+      const { pr } = await this.base;
+      if (!pr.headRepo) return null;
+      const q = new URLSearchParams({ ref: `refs/heads/${pr.headRef}`, per_page: String(PER_PAGE) });
+      try {
+        return pushes(await this.json(`/repos/${pr.headRepo}/activity?${q}`, 'activity'));
+      } catch (err) {
+        // Not shown (no access, or a private fork): not known. Other failures fail the fact.
+        if (err instanceof FactUnavailableError) return null;
+        throw err;
+      }
+    });
+  }
+
+  /** The CODEOWNERS file of the base branch; null when there is none. */
+  codeowners(): Promise<string | null> {
+    return this.part('codeowners', async () => {
+      const { pr } = await this.base;
+      const ref = encodeURIComponent(pr.base);
+      const found = await Promise.all(CODEOWNERS_PATHS.map(async (path) => {
+        try {
+          return await this.json(`${this.repoPath}/contents/${path}?ref=${ref}`, 'CODEOWNERS');
+        } catch (err) {
+          // 404: not at this place. Anything else (403, 5xx): CODEOWNERS cannot be read.
+          if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return null;
+          throw err;
+        }
+      }));
+      const file = found.find((f) => f !== null);
+      if (file === undefined) return null;
+      if (!isObject(file) || file.encoding !== 'base64' || typeof file.content !== 'string') throw new FactError('GitHub CODEOWNERS: unexpected answer');
+      return base64Text(file.content);
+    });
+  }
+
+  /** The members of a team, by login (at most 100; more is "more than one"). */
+  private team(org: string, slug: string): Promise<string[]> {
+    return this.part(`team:${org}/${slug}`.toLowerCase(), async () => {
+      const v = await this.json(`/orgs/${org}/teams/${slug}/members?per_page=${PER_PAGE}`, 'team members');
+      if (!Array.isArray(v)) throw new FactError('GitHub team members: unexpected answer');
+      return v.map((m) => (isObject(m) && typeof m.login === 'string' ? m.login.toLowerCase() : ''));
+    });
+  }
+
+  /**
+   * Whether the author is the only code owner of every changed file (both
+   * names of a renamed file), by CODEOWNERS on the base branch. A team owns
+   * as its members. False without CODEOWNERS, for a file without an owner,
+   * for an email owner, for no changed files, and for more files than are
+   * read. CODEOWNERS or a team that cannot be read fails the fact.
+   */
+  soleCodeOwner(): Promise<boolean> {
+    return this.part('owner', async () => {
+      const { pr } = await this.base;
+      if (pr.files === 0 || pr.files > MAX_FILES) return false;
+      const [files, text] = await Promise.all([this.files(), this.codeowners()]);
+      if (text === null) return false;
+      const rules = parseCodeowners(text);
+      const author = pr.author.toLowerCase();
+      const owners = new Set<string>();
+      for (const names of files) {
+        for (const name of names) {
+          const o = ownersOf(rules, name);
+          if (!o || o.length === 0) return false;
+          for (const x of o) owners.add(x);
+        }
+      }
+      for (const owner of owners) {
+        const team = TEAM.exec(owner);
+        if (team) {
+          const members = await this.team(team[1]!, team[2]!);
+          if (members.length !== 1 || members[0] !== author) return false;
+        } else if (owner.toLowerCase() !== `@${author}`) {
+          // Another person, or an email address that cannot be tied to the author.
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
   properties(): Promise<unknown> {
     return this.part('properties', () => this.json(`${this.repoPath}/properties/values`, 'custom properties'));
   }
@@ -601,6 +730,8 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
             author_dependabot: pr.author === DEPENDABOT && pr.authorIsBot,
             fork: pr.fork,
             all_commits_verified: list ? list.every((c) => c.verified) : null,
+            pushed_by_author: pushedByAuthor(list, await s.pushes(), pr.author),
+            author_sole_code_owner: await s.soleCodeOwner(),
           },
           source,
         };

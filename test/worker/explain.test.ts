@@ -91,6 +91,8 @@ describe('explainProfile: conditions', () => {
     expect(gh("facts.pr.missing == true and facts.pr.reason == 'stale'")).toBe(
       'If the fact "pr" is missing and the reason the fact "pr" is missing is stale (the pull request has a newer commit), the action is urgent.',
     );
+    expect(gh("facts.pr.pushed_by_author != 'no'")).toBe('If the answer to "did the author of "pr" push every commit" is not "no", the action is urgent.');
+    expect(gh('facts.pr.author_sole_code_owner == true')).toBe('If the author of "pr" is the only code owner of every changed file, the action is urgent.');
     expect(gh('facts.docs.all == true', 'ja')).toBe('すべての変更ファイルが「docs」に合うなら、アクションは urgent です。');
   });
 

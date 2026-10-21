@@ -9,6 +9,7 @@ import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { FactRouter, lookupFacts, MockFactProvider, resultError, toPullRequest, type FactProvider } from '../../src/facts';
 import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, privateKeyDer, TokenAuth } from '../../src/facts-github';
+import { codeownersMatch, parseCodeowners } from '../../src/codeowners';
 import { matchGlob } from '../../src/glob';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log';
@@ -39,7 +40,7 @@ type Handler = (url: URL, init: RequestInit) => Json | Response | Promise<Json |
 function pullRequest(over: Record<string, unknown> = {}) {
   return {
     state: 'open', merged: false, draft: false, title: 'Fix a typo in the guide',
-    head: { sha: HEAD, repo: { id: 1 } },
+    head: { sha: HEAD, ref: 'fix-typo', repo: { id: 1, full_name: 'octo-org/demo' } },
     base: { ref: 'main', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } },
     user: { login: 'alice', type: 'User' },
     additions: 3, deletions: 1, changed_files: 2, commits: 1,
@@ -49,6 +50,8 @@ function pullRequest(over: Record<string, unknown> = {}) {
 const commit = (sha: string, verified = true) => ({ sha, commit: { verification: { verified } } });
 const file = (filename: string, previous?: string) => ({ filename, ...(previous && { previous_filename: previous }) });
 const run = (name: string, status = 'completed', conclusion: string | null = 'success', app = 15368) => ({ name, status, conclusion, app: { id: app }, started_at: '2026-10-21T00:00:00Z' });
+const push = (after: string, actor = 'alice', before = '0'.repeat(40), timestamp = '2026-10-21T00:00:00Z') => ({ activity_type: 'push', before, after, actor: { login: actor }, timestamp });
+const codeowners = (text: string) => ({ type: 'file', encoding: 'base64', content: btoa(text) });
 const requiredRule = (...checks: { context: string; integration_id?: number }[]) => [{ type: 'required_status_checks', parameters: { required_status_checks: checks } }];
 
 /** The answers of a small, docs-only pull request in an organization repo; override by path. */
@@ -63,6 +66,7 @@ function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
     [`${REPO}/commits/${HEAD}/check-runs`]: () => ({ total_count: 1, check_runs: [run('test')] }),
     [`${REPO}/commits/${HEAD}/status`]: () => ({ total_count: 0, statuses: [] }),
     [`${REPO}/properties/values`]: () => [{ property_name: 'security-level', value: 'high' }],
+    [`${REPO}/activity`]: (url) => (expect(url.searchParams.get('ref')).toBe('refs/heads/fix-typo'), [push(HEAD)]),
     ...over,
   };
 }
@@ -107,6 +111,7 @@ describe('the pull request (github_pr)', () => {
       values: {
         open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 4, base_is_default: true,
         author_member: true, author_dependabot: false, fork: false, all_commits_verified: true,
+        pushed_by_author: 'yes', author_sole_code_owner: false,
       },
       source: `GitHub octo-org/demo#7 at ${HEAD.slice(0, 7)}`,
     });
@@ -126,8 +131,8 @@ describe('the pull request (github_pr)', () => {
   it('base branch, fork and a deleted fork', async () => {
     expect(await values('pr', routes({ [PR]: () => pullRequest({ base: { ref: 'release', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } } }) })))
       .toMatchObject({ base_is_default: false });
-    expect(await values('pr', routes({ [PR]: () => pullRequest({ head: { sha: HEAD, repo: { id: 2 } } }) }))).toMatchObject({ fork: true });
-    expect(await values('pr', routes({ [PR]: () => pullRequest({ head: { sha: HEAD, repo: null } }) }))).toMatchObject({ fork: true });
+    expect(await values('pr', routes({ [PR]: () => pullRequest({ head: { sha: HEAD, ref: 'fix-typo', repo: { id: 2 } } }) }))).toMatchObject({ fork: true });
+    expect(await values('pr', routes({ [PR]: () => pullRequest({ head: { sha: HEAD, ref: 'fix-typo', repo: null } }) }))).toMatchObject({ fork: true });
   });
 
   it('author: member, not a member, not known, and owner of a user repo', async () => {
@@ -165,6 +170,111 @@ describe('the pull request (github_pr)', () => {
     const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
     expect(f.missing === false && f.values.all_commits_verified).toBe(true);
     expect(server.count(`${PR}/commits`)).toBe(2);
+  });
+});
+
+describe('who pushed (github_pr.pushed_by_author)', () => {
+  const C1 = '1'.repeat(40);
+  const C2 = '2'.repeat(40);
+  const three = (activity: Handler) => routes({
+    [PR]: () => pullRequest({ commits: 3 }),
+    [`${PR}/commits`]: () => [commit(C1), commit(C2), commit(HEAD)],
+    [`${REPO}/activity`]: activity,
+  });
+  const pushed = async (table: Record<string, Handler>) => (await values('pr', table)).pushed_by_author;
+
+  it('yes when the author pushed every commit, in one push or several', async () => {
+    expect(await pushed(three(() => [push(HEAD)]))).toBe('yes');
+    expect(await pushed(three(() => [push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z'), push(C2, 'Alice', C1, '2026-10-21T01:00:00Z'), push(C1)]))).toBe('yes');
+  });
+
+  it('no when someone else pushed a commit, for example "Update branch"', async () => {
+    expect(await pushed(three(() => [push(HEAD, 'bob', C2, '2026-10-21T02:00:00Z'), push(C2)]))).toBe('no');
+    // Known to be someone else, even when other commits are not known.
+    expect(await pushed(three(() => [push(HEAD, 'bob', C2)]))).toBe('no');
+    // A deleted account is not the author.
+    expect(await pushed(three(() => [{ ...push(HEAD), actor: null }]))).toBe('no');
+  });
+
+  it('unavailable when not every commit is known', async () => {
+    // A push brings the commits before it that no earlier push brought.
+    expect(await pushed(three(() => [push(HEAD, 'alice', C2)]))).toBe('yes');
+    // The head commit is in no listed push (for example older than the list): not known.
+    expect(await pushed(three(() => [push(C2)]))).toBe('unavailable');
+    expect(await pushed(routes({ [`${REPO}/activity`]: () => [] }))).toBe('unavailable');
+    expect(await pushed(routes({ [`${REPO}/activity`]: () => new Response('{}', { status: 403 }) }))).toBe('unavailable');
+    expect(await pushed(routes({ [PR]: () => pullRequest({ head: { sha: HEAD, ref: 'x', repo: null } }) }))).toBe('unavailable');
+    expect(await pushed(routes({ [PR]: () => pullRequest({ commits: 251 }), [`${PR}/commits`]: () => Array.from({ length: 100 }, () => commit(OTHER)) }))).toBe('unavailable');
+  });
+
+  it('reads a fork\'s pushes from the fork', async () => {
+    const server = fakeGitHub(routes({
+      [PR]: () => pullRequest({ head: { sha: HEAD, ref: 'fix-typo', repo: { id: 2, full_name: 'carol/demo' } } }),
+      '/repos/carol/demo/activity': () => [push(HEAD)],
+    }));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values).toMatchObject({ fork: true, pushed_by_author: 'yes' });
+  });
+
+  it('a failing activity list fails the fact', async () => {
+    expect(await reasonOf('pr', routes({ [`${REPO}/activity`]: () => new Response('{}', { status: 500 }) }))).toEqual({ missing: true, reason: 'error' });
+  });
+});
+
+describe('code owners (github_pr.author_sole_code_owner)', () => {
+  const owners = (text: string, extra: Record<string, Handler> = {}) => routes({ [`${REPO}/contents/.github/CODEOWNERS`]: (url) => (expect(url.searchParams.get('ref')).toBe('main'), codeowners(text)), ...extra });
+  const sole = async (table: Record<string, Handler>) => (await values('pr', table)).author_sole_code_owner;
+
+  it('true when the author owns every changed file alone', async () => {
+    expect(await sole(owners('* @alice\n'))).toBe(true);
+    expect(await sole(owners('# owners\n*.md @bob\ndocs/ @alice\nREADME.md @Alice  # me\n'))).toBe(true);
+    // A team owns as its members.
+    expect(await sole(owners('* @octo-org/writers', { '/orgs/octo-org/teams/writers/members': () => [{ login: 'alice' }] }))).toBe(true);
+  });
+
+  it('false when someone else owns a file, a file has no owner, or there is no CODEOWNERS', async () => {
+    expect(await sole(owners('* @alice @bob'))).toBe(false);
+    expect(await sole(owners('* @alice\ndocs/ @bob'))).toBe(false);
+    expect(await sole(owners('docs/ @alice'))).toBe(false); // README.md has no owner
+    expect(await sole(owners('* @alice\nREADME.md'))).toBe(false); // a line without owners
+    expect(await sole(owners('* alice@example.com'))).toBe(false);
+    expect(await sole(owners('* @octo-org/writers', { '/orgs/octo-org/teams/writers/members': () => [{ login: 'alice' }, { login: 'bob' }] }))).toBe(false);
+    expect(await sole(routes())).toBe(false);
+    expect(await sole(routes({ [PR]: () => pullRequest({ changed_files: 0 }), [`${PR}/files`]: () => [] }))).toBe(false);
+  });
+
+  it('a renamed file counts with both names', async () => {
+    const renamed = owners('* @alice\nsecret/ @bob', { [PR]: () => pullRequest({ changed_files: 1 }), [`${PR}/files`]: () => [file('docs/a.md', 'secret/a.md')] });
+    expect(await sole(renamed)).toBe(false);
+  });
+
+  it('reads CODEOWNERS where GitHub does, in its order', async () => {
+    expect(await sole(routes({ '/repos/octo-org/demo/contents/docs/CODEOWNERS': () => codeowners('* @alice') }))).toBe(true);
+    expect(await sole(routes({
+      [`${REPO}/contents/CODEOWNERS`]: () => codeowners('* @bob'),
+      [`${REPO}/contents/docs/CODEOWNERS`]: () => codeowners('* @alice'),
+    }))).toBe(false);
+  });
+
+  it('CODEOWNERS or a team that cannot be read, or a pattern it cannot read safely: the fact is missing', async () => {
+    expect(await reasonOf('pr', routes({ [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 403 }) }))).toEqual({ missing: true, reason: 'unavailable' });
+    expect(await reasonOf('pr', owners('* @octo-org/writers'))).toEqual({ missing: true, reason: 'unavailable' });
+    expect(await reasonOf('pr', owners('* @alice\n!docs/ @bob'))).toEqual({ missing: true, reason: 'error' });
+    expect(await reasonOf('pr', owners('* @alice\n[ab].md @bob'))).toEqual({ missing: true, reason: 'error' });
+  });
+
+  it('matches patterns like GitHub', () => {
+    const cases: [string, string, boolean][] = [
+      ['*', 'a/b/c.js', true], ['*.js', 'a/b/c.js', true], ['*.js', 'c.ts', false],
+      ['/build/logs/', 'build/logs/x/y.log', true], ['/build/logs/', 'src/build/logs/y.log', false],
+      ['apps/', 'apps/a.js', true], ['apps/', 'src/apps/a.js', true],
+      ['docs/*', 'docs/a.md', true], ['docs/*', 'docs/b/a.md', false],
+      ['**/logs', 'build/logs/a.log', true], ['**/logs', 'logs', true],
+      ['/scripts', 'scripts/a.sh', true], ['src/app.ts', 'src/app.ts', true], ['src/app.ts', 'lib/src/app.ts', false],
+      ['README.md', 'docs/README.md', true],
+    ];
+    for (const [pattern, path, match] of cases) expect(codeownersMatch(pattern, path), `${pattern} ${path}`).toBe(match);
+    expect(parseCodeowners('a\\#b.md @x # comment\n\n# only a comment')).toEqual([{ pattern: 'a#b.md', owners: ['@x'] }]);
   });
 });
 
@@ -215,7 +325,7 @@ describe('changed paths (github_paths)', () => {
 
   it('a push while the files were read: stale', async () => {
     let reads = 0;
-    const moved = routes({ [PR]: () => (++reads === 1 ? pullRequest() : pullRequest({ head: { sha: OTHER, repo: { id: 1 } } })) });
+    const moved = routes({ [PR]: () => (++reads === 1 ? pullRequest() : pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1 } } })) });
     expect(await reasonOf('docs', moved)).toEqual({ missing: true, reason: 'stale' });
   });
 
@@ -375,7 +485,7 @@ describe('missing facts', () => {
     Object.values((await facts(table, specs, s)).facts);
 
   it('another head commit: every GitHub fact is stale', async () => {
-    expect(await all(routes({ [PR]: () => pullRequest({ head: { sha: OTHER, repo: { id: 1 } } }) }))).toEqual(specs.map(() => ({ missing: true, reason: 'stale' })));
+    expect(await all(routes({ [PR]: () => pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1 } } }) }))).toEqual(specs.map(() => ({ missing: true, reason: 'stale' })));
     // A push while the snapshot was read: the commits end with another commit.
     expect(await all(routes({ [`${PR}/commits`]: () => [commit(OTHER)] }))).toEqual(specs.map(() => ({ missing: true, reason: 'stale' })));
   });

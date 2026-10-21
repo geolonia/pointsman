@@ -105,7 +105,7 @@ test('a fact that is not given counts as missing; facts take the shape the engin
 
 test('GitHub facts: every field is needed, null only where the engine can give none', () => {
   const p = profile('pr-docs-check');
-  const pr = { open: true, merged: false, draft: false, wip_title: false, files: 1, changed_lines: 5, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true };
+  const pr = { open: true, merged: false, draft: false, wip_title: false, files: 1, changed_lines: 5, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true, pushed_by_author: 'yes', author_sole_code_owner: false };
   const docs = { any: true, all: true, count: 1 };
   const ci = { required: 1, green: true, pending: false, failed: false };
   const answers = { changes_behaviour: 0.1 };

@@ -136,6 +136,8 @@ export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
     open: 'boolean', merged: 'boolean', draft: 'boolean', wip_title: 'boolean',
     files: 'number', changed_lines: 'number', base_is_default: 'boolean',
     author_member: 'boolean', author_dependabot: 'boolean', fork: 'boolean', all_commits_verified: 'boolean',
+    // "yes", "no" or "unavailable": who pushed the commits (src/facts-github.ts).
+    pushed_by_author: 'string', author_sole_code_owner: 'boolean',
   },
   // Changed files that match the fact's paths and none of its except list.
   // all is false when no file changed.
