@@ -27,9 +27,10 @@ decision, and a review queue for people.
 
 ## Pointsman as a GitHub App
 
-Seen from a repository, Pointsman is a bot:
+Seen from a repository, Pointsman is a reviewer, like CodeRabbit. Its GitHub
+App is simply called **Pointsman**, with no "bot" in the name.
 
-- An org admin installs the **Pointsman app** on selected repositories (or
+- An org admin installs the Pointsman app on selected repositories (or
   all of them). That is how Pointsman "joins" a repo.
 - On each PR it shows its decision as a check run **"Pointsman: next step"**
   (for example "Waiting for a free CodeRabbit review, about 12 min"), with a
@@ -48,6 +49,14 @@ holds write access:
 The executor carries out only a fixed list of actions, like the label
 allow-list in `actions/triage`. It checks the webhook signature, ignores
 replayed deliveries, and keeps the app's private key as a Worker secret.
+
+Configuration lives in the deployment's private config repository, as
+CodeRabbit's org settings live in a private repository of their own: the
+profiles, path lists, caps and the list of orgs that can pay. A change is a
+PR there, reviewed like code, and each decision logs the profile version it
+used. A per-repo file (like `.coderabbit.yaml`) is not planned: a PR could
+change it in the same PR it is judged on. If one is added later, it is read
+from the base branch and can only make rules stricter.
 
 The read-only app needs: metadata, contents, pull requests, checks, commit
 statuses and custom properties, all read.
@@ -386,7 +395,7 @@ cover only the spatial types today.
 - A compromised member account could open docs PRs that the app approves.
   Limits: the narrow path list, the line limit, and the log shows every
   approval by author.
-- Whether a bot may approve at all is a team and security decision (open
+- Whether an app may approve at all is a team and security decision (open
   question 1).
 
 ### Confirmed approvals
@@ -451,7 +460,7 @@ gap later.
 
 ## Open questions for the team
 
-1. May a bot approve PRs? In which repos, and on which branches?
+1. May the Pointsman app approve PRs? In which repos, and on which branches?
 2. What may be approved: docs only up to 40 lines? Dependabot patch bumps of
    dev dependencies only, or more?
 3. Caps and Copilot settings: one team setting in the profile, or per person
@@ -462,8 +471,8 @@ gap later.
 5. Can an app request a Copilot review through the API?
 6. Who answers `ask-person` and `security-review`: code owners, a rotation, or
    the author's choice?
-7. Where do the profiles, path lists and repo properties live: here as
-   examples, or in the private deployment config?
+7. Which repo properties exist, and who sets them (the profiles and path
+   lists live in the private config repository)?
 8. Which repos join the shadow phase?
 
 ## What this does not fix
