@@ -41,6 +41,7 @@
       <a href="#profiles">Profiles</a>
       <a href="#clients">Clients</a>
       <a href="#start">Get started</a>
+      <a href="#faq">FAQ</a>
     </nav>
     <a class="lang" href="ja/" hreflang="ja" lang="ja">日本語</a>
     <button class="theme-toggle" type="button" aria-label="Switch to the light theme" data-label-light="Switch to the light theme" data-label-dark="Switch to the dark theme">
@@ -342,6 +343,44 @@ curl -s localhost:8787/v1/decide/issue-triage \
   -d '{"state": {"issue": {"title": "Login page is blank"}}}'</pre>
       </div>
       <p class="status">Pointsman is not 1.0 yet: the API and the profile format may still change between 0.x releases. See the <a href="https://github.com/geolonia/pointsman/releases">release notes</a>, and open an issue if you try it.</p>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Questions people ask</h2>
+      <p>Short answers to questions we got about Pointsman.</p>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Does this need a large AI model?</summary>
+        <p>No. Pointsman asks the AI only a few questions, each with a fixed kind of answer: yes or no, a choice, or a score. A small, low-cost model is enough for that. By default Pointsman uses the <code>clef</code> models on Cloudflare Workers AI. You can also connect a model that runs on your own server.</p>
+      </details>
+      <details>
+        <summary>Do I have to train a model first?</summary>
+        <p>No. You write the questions and the rules, and the model answers the questions as they are. Pointsman does not train models. If you already have a model trained on your own data, you can connect it through a model server. Each decision keeps the AI's answers next to people's corrections, so you can see how well a model does before you let it decide more on its own.</p>
+      </details>
+      <details>
+        <summary>Isn't this just a model plus a script that acts on its confidence?</summary>
+        <p>That is the idea, yes. Pointsman is the script part, built so that people can read and check it:</p>
+        <ul>
+          <li>The rules are config that the city or team writes, not code.</li>
+          <li>Facts about the place, from public map data, are added before the rules run.</li>
+          <li>When no rule is sure enough, a person is asked.</li>
+          <li>Each decision records the answers, the facts, the rule and the profile version.</li>
+          <li>A later decision can build on an earlier one.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>How is this different from GIS tools that train models on spatial data?</summary>
+        <p>Those tools help you make a model, for example one that finds buildings in aerial photos. Pointsman does not make models. It takes a model's answers, adds facts about the place, and lets written rules decide what to do. The two can work together: a model trained elsewhere can answer Pointsman's questions if it takes the same kind of input.</p>
+      </details>
+      <details>
+        <summary>What happens when the AI is not sure?</summary>
+        <p>Every answer comes with a probability, and the rules compare it with a threshold you set. If no rule matches, the profile's default action applies, usually <code>review</code>: the decision waits for a person. The person's answer is recorded and counts in later steps.</p>
+      </details>
     </div>
   </div>
 </section>
