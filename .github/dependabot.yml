@@ -12,7 +12,11 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # The config repository template's workflows too: config repositories
+    # copy them, so their pins should be as current as this repository's.
+    directories:
+      - /
+      - /template/config-repo
     schedule:
       interval: weekly
     cooldown:
