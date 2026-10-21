@@ -5,8 +5,8 @@
 - **Project**: Pointsman (geolonia/pointsman), a decision service on Cloudflare
   Workers: typed questions in, typed answers with probabilities and an action
   out.
-- **Version binding**: commit `@@SHA@@` on
-  `main` (@@DATE@@), the merge of pointsman#135 (GitHub pull-request facts).
+- **Version binding**: commit `65ec5dae4da01027133f4861df60de3b5847f199` on
+  `main` (2026-10-22), the merge of pointsman#135 (GitHub pull-request facts).
   The model was first bound to commit
   `e1d3591e1b2f6c782f2941e4477923fd88e2addc` (2026-10-16) and was re-bound
   when the GitHub facts were added. The repository has no release tags, so
@@ -24,7 +24,7 @@
   and the new `P-CHAIN-INPUTS-FROM-LOG`; and for the bridge's routes with
   `requires`: `P-BRIDGE-LOOP-GUARD` and `P-BRIDGE-SAFE-TO-REPEAT`; and for
   the decision graph export (`GET /v1/profiles/{id}/graph`, §1.7 and §1.8
-  rows). Amended @@DATE@@ for GitHub pull-request facts (pointsman#135) and
+  rows). Amended 2026-10-22 for GitHub pull-request facts (pointsman#135) and
   re-bound to its merge commit, including the `github_pr` fields
   `pushed_by_author` (the head repository's activity list) and
   `author_sole_code_owner` (the base branch's `CODEOWNERS` and team
@@ -72,7 +72,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 265 documented / 69 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 300 documented / 70 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the

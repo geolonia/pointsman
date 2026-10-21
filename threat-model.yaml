@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:36635ed1958a2d091ff552df51f6ed24258d8638f1ec59c143fcf113dd0acaa8"
+prose_version: "threat-model.md@sha256:0299b8fdebcfbb1ac666c13b7cd6686996082570b8a3bbd88faabd5e1e27adbe"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 265, maintainer: 69, inferred: 0, assumption: 0}
+confidence: {documented: 300, maintainer: 70, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment: Claude Opus 5.5 (claude-opus-5-5)"
