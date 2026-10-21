@@ -121,7 +121,7 @@ header.nav { position: sticky; top: 0; z-index: 10; background: var(--header-bg)
 header.nav .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
 header.nav .brand { margin-right: auto; display: flex; }
 header.nav .brand img { height: 28px; width: auto; }
-header.nav nav { display: flex; gap: 22px; font-size: 15px; }
+header.nav nav { display: flex; gap: 16px; font-size: 15px; }
 header.nav nav a { text-decoration: none; color: var(--muted); }
 header.nav nav a:hover { color: var(--fg); }
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 8px; font: 500 15px/1 var(--sans); text-decoration: none; border: 1px solid var(--line); white-space: nowrap; }
@@ -239,9 +239,9 @@ footer a:hover { color: var(--fg); }
 }
 .phrase { display: inline-block; }
 
-/* The menu needs about 1080px on one line (Japanese is the widest). */
-header.nav nav a { white-space: nowrap; }
-@media (max-width: 1100px) {
+/* The menu needs about 1120px on one line (Japanese is the widest). */
+header.nav nav a, .lang { white-space: nowrap; }
+@media (max-width: 1180px) {
   header.nav nav { display: none; }
 }
 @media (max-width: 900px) {

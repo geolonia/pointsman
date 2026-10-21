@@ -38,6 +38,7 @@
       <a href="#overview">概要</a>
       <a href="#features">特長</a>
       <a href="#how">仕組み</a>
+      <a href="#use-cases">使いみち</a>
       <a href="#profiles">プロファイル</a>
       <a href="#clients">クライアント</a>
       <a href="#start">はじめる</a>
@@ -202,7 +203,36 @@
   </div>
 </section>
 
-<section class="band" id="profiles">
+<section class="band" id="use-cases">
+  <div class="wrap">
+    <div class="section-head">
+      <h2><span class="phrase">Pointsman の</span><span class="phrase">使いみち</span></h2>
+      <p>エンジンは 1 つで、いろいろな仕事に使えます。使いみちごとに、今動くプロファイルの例、事実、クライアントをまとめました。そのまま使うことも、自分たちのプロファイルの出発点にすることもできます。</p>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>防災・災害対応</h3>
+        <p>報告された通行止めを、公開の地図に載せる前に確認します。浸水想定区域、近くの避難場所、迂回路は公開の地図データから調べます。急ぎの報告とはっきりしない報告は人に回します。歩く人が避難場所へ行けなくなるときは知らせます。ブリッジを通して FIWARE と連携できます。</p>
+        <div class="outcomes"><code>road-restriction-check</code><code>evacuation-access-check</code><code>road-closure-final</code></div>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/disaster-response">examples/disaster-response（英語）→</a>
+      </div>
+      <div class="card">
+        <h3>DevOps</h3>
+        <p>動きの止まったデプロイは、止まっているのか、遅いだけなのか。GitHub Action は、スタックがしばらく静かになってから Pointsman に聞き、はっきりした答えが 2 回続いたときだけデプロイを止めます。Pointsman につながらないときは何も止めません。</p>
+        <div class="outcomes"><code>deploy-progress</code></div>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/devops">examples/devops（英語）→</a>
+      </div>
+      <div class="card">
+        <h3>開発の流れ</h3>
+        <p>新しい Issue はどのチームが担当するか、今日の作業を止めているか、どのくらいの作業か。GitHub Action は、Pointsman が確かなときはラベルを付け、確かでないときは人に任せます。エージェントも MCP で同じプロファイルに聞けます。</p>
+        <div class="outcomes"><code>issue-triage</code></div>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/developer-workflow">examples/developer-workflow（英語）→</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="profiles">
   <div class="wrap split">
     <div>
       <div class="section-head" style="margin-bottom:0">
@@ -250,7 +280,7 @@
   </div>
 </section>
 
-<section class="band alt" id="clients">
+<section class="band" id="clients">
   <div class="wrap">
     <div class="section-head">
       <h2><span class="phrase">どこからでも</span><span class="phrase">使える</span></h2>
@@ -286,7 +316,7 @@
   </div>
 </section>
 
-<section class="band" id="start">
+<section class="band alt" id="start">
   <div class="wrap split">
     <div>
       <div class="section-head" style="margin-bottom:28px">
@@ -347,7 +377,7 @@ curl -s localhost:8787/v1/decide/issue-triage \
   </div>
 </section>
 
-<section class="band alt" id="faq">
+<section class="band" id="faq">
   <div class="wrap">
     <div class="section-head">
       <h2>よくある質問</h2>
