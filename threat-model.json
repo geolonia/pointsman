@@ -1151,10 +1151,10 @@
     },
     {
       "property": "D-TOKEN-EXPIRY",
-      "reason": "token expiry or rotation; basis: a maintainer ruling (2026-10)",
+      "reason": "a token without --expires lives until revoked; the expiry is optional (scripts/tokens.mjs --expires, added 2026-10-21 in #99) and rotation is tokens.mjs rotate; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
       "provenance": "documented",
-      "source": "README \"API tokens\" names create, list and revoke only"
+      "source": "README \"API tokens\": optional expiry with --expires, rotation with rotate"
     },
     {
       "property": "D-REVOCATION-IMMEDIATE",

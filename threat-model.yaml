@@ -1286,10 +1286,10 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/models.md \"rate limit 600 calls per minute\" is the only limit named"}
   - id: D-TOKEN-EXPIRY
     components: [engine-api, engine-mcp]
-    conditions: "token expiry or rotation; basis: a maintainer ruling (2026-10)"
+    conditions: "a token without --expires lives until revoked; the expiry is optional (scripts/tokens.mjs --expires, added 2026-10-21 in #99) and rotation is tokens.mjs rotate; basis: a maintainer ruling (2026-10)"
     tier: correctness-only
     false_friend: false
-    provenance: {kind: documented, source: "README \"API tokens\" names create, list and revoke only"}
+    provenance: {kind: documented, source: "README \"API tokens\": optional expiry with --expires, rotation with rotate"}
   - id: D-REVOCATION-IMMEDIATE
     components: [engine-api, engine-mcp]
     conditions: "a revoked API token can work for up to about 60 seconds elsewhere; basis: stated"
