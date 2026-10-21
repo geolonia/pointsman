@@ -403,7 +403,7 @@ configuration is in-model even when the configuration is not the default.
 
 ### Per-input-operand trust table
 
-Coverage: 59 rows cover all 8 REST routes, the `/mcp` endpoint with its 4
+Coverage: 66 rows cover all 10 REST routes, the `/mcp` endpoint with its 6
 tools, the 7 OAuth routes (grouped), the bridge's 2 routes and queue
 consumer, both Actions, and the config repository's inputs. Every route in
 `src/app.ts` has at least one row. Headers and indirect inputs (model
@@ -416,6 +416,11 @@ they are security-relevant.
 | every `/v1/*` route | the token record (`client`, `profiles`, `test`) read from KV | no — written only by the operator with `scripts/tokens.mjs` | serialized-state | keep `TOKENS` writable only by operators | *(documented, docs/deployment.md "Deployment" table)* |
 | `GET /v1/profiles` | none beyond the token | — | — | — | *(documented, openapi.yaml `/v1/profiles`)* |
 | `GET /v1/profiles/{id}/graph` | `{id}` path, `format` and `lang` query | yes (token holder) | resource-name, data | none — scope checked before the lookup; the graph holds only profiles in scope (`P-TOKEN-SCOPE`); `format` must be `json`, `dmn` or `svg` and `lang` `en` or `ja`, else 400 | *(documented, openapi.yaml `/v1/profiles/{id}/graph`)* |
+| `GET /v1/profiles/{id}/explain` | `{id}` path, `version`, `lang` and `format` query | yes (token holder, also a test token) | resource-name, data | none — scope checked before the lookup (`P-TOKEN-SCOPE`); a required profile out of scope is not read or named; it reads no decisions, so test tokens may use it; `version` must match `^[1-9][0-9]{0,8}$`, `lang` `en` or `ja`, `format` `json` or `text`, else 400 | *(documented, docs/profile-format.md "Explain")* |
+| `POST /v1/profiles/{id}/replay` | `{id}` path | yes (token holder) | resource-name | none — scope checked before the lookup, then every profile it requires, before anything in the body is compared, so a 409 never confirms a guessed hidden profile id (`P-TOKEN-SCOPE`); test tokens refused | *(documented, docs/profile-format.md "Replay")* |
+| `POST /v1/profiles/{id}/replay` | `policy` body (rules, default, people_check, people_answers) | yes (token holder) | data | none — shape checked (action names, at most 500 rules), then compiled with the engine's parser before the log is read; never evaluated as code | *(documented, openapi.yaml `/v1/profiles/{id}/replay`)* |
+| `POST /v1/profiles/{id}/replay` | `questions`, `facts`, `requires`, `version`, `limit` body | yes (token holder) | data, size | none — lists only, compared with sorted keys and at most 20 levels deep (deeper is a 409); `limit` 1–500 decisions | *(documented, openapi.yaml `/v1/profiles/{id}/replay`)* |
+| `POST /v1/profiles/{id}/replay` | the response | n/a | data | it lists up to 50 changed decisions of the profile with their ids, refs and the person's answer, from every client, as `GET /v1/reviews` does for pending ones; give replay only to tokens that may see the profile's decisions | *(maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | `{profile}` path | yes (token holder) | resource-name | none — scope checked before the lookup (`P-TOKEN-SCOPE`) | *(documented, docs/decision-log.md "A token sees and corrects only decisions of profiles in its scope")* |
 | `POST /v1/decide/{profile}` | `?version` query | yes (token holder) | data | none — must match `^[1-9][0-9]{0,8}$`, else 400 | *(documented, openapi.yaml `/v1/decide/{profile}` `version` parameter)* |
 | `POST /v1/decide/{profile}` | `state` body field (string, object or array) | **yes, by the state author** through the client | data, size, x-prompt-text | treat it as untrusted data: never put it in a shell, a query or a template; do not include secrets or personal data unless `log.store_state` and gateway logging are intended | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
@@ -445,6 +450,8 @@ they are security-relevant.
 | `/mcp` `list_profiles` | none | — | — | — | *(documented, docs/mcp.md "Tools")* |
 | `/mcp` `decide` | `profile`, `state` (string or object), `ref`, `decisions`, `idempotency_key` | yes (the agent, and the state author behind it) | resource-name, data, x-prompt-text | as for `POST /v1/decide`; only MCP-visible profiles in scope; others look unknown | *(documented, docs/mcp.md "Decisions through MCP")* |
 | `/mcp` `get_decision` | `decision_id` | yes | resource-name | none — UUID, in scope and MCP-visible, else unknown; `callback_url` and `state` are not shown | *(documented, docs/mcp.md "Tools"; `src/mcp.ts` `get_decision`)* |
+| `/mcp` `explain_profile` | `profile`, `lang`, `version` | yes | resource-name | none — only MCP-visible profiles in scope; others look unknown; a required profile that is not visible is not read or named | *(documented, docs/mcp.md "Tools")* |
+| `/mcp` `replay_profile` | `profile`, `policy`, `version`, `limit`, `questions`, `facts`, `requires` | yes | resource-name, data | as for `POST /v1/profiles/{id}/replay`, with MCP visibility in place of the token scope; a profile that is not visible looks unknown | *(documented, docs/mcp.md "Tools")* |
 | `/mcp` `submit_feedback` | `decision_id`, `correct`, `note` | yes (a logged-in person) | data, type-class | people only; recorded under their GitHub login | *(documented, docs/mcp.md "Feedback is a person's judgement")* |
 | `GET /authorize` | the OAuth authorization request (client id, redirect URI, PKCE challenge) | yes (any MCP client) | data, resource-name | none — parsed by the OAuth library; the consent page shows the client name and redirect host, marked unverified when self-registered | *(documented, docs/mcp.md "MCP clients register themselves")* |
 | `POST /authorize` | form `handle`, `decision` | yes (the person's browser) | data | none — the library binds the handle to the consent | *(maintainer, 2026-10)* |

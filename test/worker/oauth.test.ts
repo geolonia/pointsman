@@ -173,7 +173,7 @@ describe('GitHub login for /mcp', () => {
     ]);
 
     const tools = (await rpc(t, token, 'tools/list')).message.result.tools.map((x: any) => x.name).sort();
-    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles', 'submit_feedback']);
+    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles', 'replay_profile', 'submit_feedback']);
 
     const d = JSON.parse((await call(t, token, 'decide', { profile: 'issue-triage', state: { title: 'Login page is blank' } })).text);
     const row = await DB.prepare('SELECT client FROM decisions WHERE id = ?').bind(d.decision_id).first();
@@ -254,7 +254,7 @@ describe('GitHub login for /mcp', () => {
     const token = newToken();
     await env.TOKENS.put(tokenKey(await hashToken(token)), JSON.stringify({ client: 'agent', profiles: ['*'], created_at: '' }));
     const tools = (await rpc(t, token, 'tools/list')).message.result.tools.map((x: any) => x.name).sort();
-    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles']);
+    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles', 'replay_profile']);
     // A revoked or unknown API token is not tried as an OAuth token.
     expect((await rpc(t, newToken(), 'tools/list')).status).toBe(401);
   });

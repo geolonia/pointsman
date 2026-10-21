@@ -253,6 +253,55 @@ The examples in this repository have cases in
 from the template runs `cases/` in its validation workflow when the folder
 exists.
 
+## Replay
+
+A replay shows what a changed policy would have decided on the decisions a
+deployment has already made, before the change is published:
+
+```text
+road-restriction-check: the draft's rules on 200 decisions of version 4 (2026-10-14 01:00 to 2026-10-21 03:00 UTC).
+  12 would get another action.
+    review → publish: 9
+    urgent → review: 3
+  To a person: 64 now, 55 with the new rules.
+  Of the 30 a person answered, the new rules give the person's answer for 18.
+```
+
+The last two lines are about people: how many decisions go to a person now
+(an action in the published `people_check`) and would with the new policy
+(the draft's `people_check`), and, for the decisions a person answered, how
+often the new rules would have given that answer by themselves.
+
+Only the **policy** changes: the logged answers and facts are used as they
+were, so no model is called, and the questions, facts and requires must be
+the same as in the published version (for new questions, publish them first
+and use [test cases](#test-cases) meanwhile). Earlier decisions are read from
+the snapshot each decision keeps: their action, outcome and whether a person
+checked them, and the values the old rules read. When a new rule reads a
+value the old rules did not keep, the decision is not replayed: it is counted
+as **inexact** and left out of every other number (every rule's reads count,
+so this errs on the side of inexact). A decision whose log lacks an answer
+the new rules read is **skipped** the same way. The profiles a profile
+requires are read at their latest version, as for a new decision.
+
+The newest decisions of the version are replayed, including ones a later
+decision about the same thing replaced (they were made), so one ref can
+count more than once.
+
+- **A draft (a file):** `POINTSMAN_TOKEN=pm_… node scripts/replay-profile.mjs <file> --url <pointsman url>`
+  (`--limit N`, default 200, at most 500; `--version N`; `--lang ja`;
+  `--json`). The draft is validated first. Its questions, facts and requires
+  are sent along and checked to be the same.
+- **API:** `POST /v1/profiles/{id}/replay` with `{ "policy": { … } }` (and
+  optionally `version`, `limit`, `questions`, `facts`, `requires`).
+- **MCP:** the tool `replay_profile`.
+
+A replay reads logged decisions, so the token must be allowed to use the
+profile and every profile it requires, and test tokens cannot replay. It lists
+at most 50 changed decisions (id, time, ref, before and after, and the
+person's answer), from every client of the profile; the counts cover all of
+them.
+
 ## Decision chains
 
 A profile can build on earlier decisions about the same report: a final step
