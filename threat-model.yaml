@@ -337,6 +337,16 @@ entry_points:
         control_kinds: [data, size]
         caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
         provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\", \"Missing GitHub facts\""}
+      - name: head-repository-activity
+        attacker_controllable: true
+        control_kinds: [data]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, pushed_by_author"}
+      - name: base-codeowners-and-teams
+        attacker_controllable: false
+        control_kinds: [data, size]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, author_sole_code_owner"}
       - name: installation-token-response
         attacker_controllable: false
         control_kinds: [data]
@@ -571,10 +581,10 @@ contract_dimensions:
   - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule; another head commit or a push while reading makes every GitHub fact stale", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\"; \"Missing GitHub facts\""}}
   - {component: engine-facts, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "geometries are flat lists of positions (Point or LineString)", provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}}
   - {component: engine-facts, dimension: callback-execution, status: not-applicable, conditions: "no caller-supplied code; providers are operator-configured", provenance: {kind: documented, source: "docs/profile-format.md \"Fact providers\""}}
-  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; GitHub JSON checked field by field; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, unsupported patterns make the fact missing; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept; GitHub App installation tokens kept in memory until 5 minutes before they expire, never stored", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\"; \"Settings\""}}
   - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout; one GitHub snapshot per decision, each part read once, the pull request read again after its files", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤100 globs per list matched in linear time", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤100 pushes, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
@@ -740,6 +750,9 @@ outputs:
       - id: property-value-safe
         statement: "that a custom property value is safe for any grammar"
         provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, github_property"}
+      - id: push-and-owner-fields-as-review
+        statement: "that pushed_by_author yes shows who wrote the commits, or that author_sole_code_owner means nobody else should look"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, author_sole_code_owner"}
       - id: green-means-intended-jobs
         statement: "that github_checks.green means the intended jobs ran"
         provenance: {kind: maintainer, date: "2026-10"}
@@ -825,7 +838,7 @@ adversaries:
   - name: pull-request-author
     scope: in
     capabilities: [choose-changed-files-and-names, choose-title-and-commits, push-at-any-time, change-workflows-in-same-repo-pull-request]
-    excluded_capabilities: [change-base-branch-rules, change-ruleset-required-workflows, change-custom-properties, choose-profile-or-rules, choose-head-the-client-names]
+    excluded_capabilities: [change-base-branch-rules, change-ruleset-required-workflows, change-base-branch-codeowners, change-push-record, change-custom-properties, choose-profile-or-rules, choose-head-the-client-names]
     goals: [allowing-rule-matches-wrongly, faked-green-check, decision-for-another-commit]
     provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
   - name: github-facts-collaborator
@@ -1015,8 +1028,8 @@ dependencies:
     violation_disposition: "OUT-OF-MODEL: dependency-contract"
     provenance: {kind: documented, source: "docs/mcp.md \"GitHub is only the login step\""}
   - name: github-rest-api-facts
-    relied_on_for: "the pull request, its commits and files, the base branch's rules and protection, check runs, statuses, workflow runs, membership and custom properties as GitHub shows them to the credential; creating a GitHub App installation token"
-    relied_on_properties: [pull-request-state, branch-rules, check-results, installation-tokens]
+    relied_on_for: "the pull request, its commits and files, the base branch's rules and protection, check runs, statuses, workflow runs, membership, custom properties, the head repository's activity list, the base branch's CODEOWNERS and team members as GitHub shows them to the credential; creating a GitHub App installation token"
+    relied_on_properties: [pull-request-state, branch-rules, check-results, push-record, codeowners-and-teams, installation-tokens]
     caller_obligations_acknowledged: []
     adversary_capabilities_forwarded: [choose-changed-files-and-names, change-workflows-in-same-repo-pull-request]
     outputs_consumed: []
@@ -1232,14 +1245,14 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; the model never sees facts"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or unsupported patterns make author_sole_code_owner missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
     kind: resource-bound
     components: [engine-facts]
     tier: correctness-only
-    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, globs without regular expressions; exceeding is error or timeout"
+    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; exceeding is error or timeout"
     violation_symptoms: [hang, unbounded-allocation]
     provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}
   - id: P-DECISION-LOGGED-FIRST
@@ -1461,7 +1474,7 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""}
   - id: D-FACT-DATA-AS-PUBLISHED
     components: [engine-facts]
-    conditions: "facts are what GSI publishes, what Valhalla routes over OpenStreetMap and what GitHub reports about a pull request; shape and legend are checked, not truth; basis: stated"
+    conditions: "facts are what GSI publishes, what Valhalla routes over OpenStreetMap, what GitHub reports about a pull request (including who pushed) and what the base branch's CODEOWNERS says; shape and legend are checked, not truth; basis: stated"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/profile-format.md \"Layers of gsi\", \"Detours\"; \"GitHub pull requests\" table"}
@@ -1473,7 +1486,7 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-GITHUB-CREDENTIAL-REACH
     components: [engine-facts]
-    conditions: "no repository allow-list per profile or token: a GitHub fact reads the pull request the state names in any repository the GitHub credential can read; the credential's reach is the boundary; the API token's profile scope still applies; basis: a maintainer ruling (2026-10)"
+    conditions: "no repository allow-list per profile or token: a GitHub fact reads the pull request the state names in any repository the GitHub credential can read; the credential's reach is the boundary; members of teams named in that repository's CODEOWNERS are read the same way; the API token's profile scope still applies; basis: a maintainer ruling (2026-10)"
     tier: security-critical
     false_friend: false
     provenance: {kind: maintainer, date: "2026-10"}
@@ -1681,6 +1694,11 @@ known_misuses:
     pattern: "reading github_checks.green as proof that the intended jobs ran when required checks are matched by name only"
     safer_alternative: "require checks as ruleset workflows or tie them to their app"
     provenance: {kind: maintainer, date: "2026-10"}
+  - id: sole-code-owner-without-protected-codeowners
+    components: [engine-facts]
+    pattern: "using author_sole_code_owner to skip a review while CODEOWNERS itself is not protected on the base branch"
+    safer_alternative: "protect CODEOWNERS on the base branch, for example with a code-owner review for changes to it"
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table: \"by the CODEOWNERS file of the base branch\""}
   - id: acting-on-later-push
     components: [engine-facts]
     pattern: "acting on a decision for a later push of the same pull request"
