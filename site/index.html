@@ -212,13 +212,13 @@
     <div class="grid3">
       <div class="card">
         <h3>Disaster response</h3>
-        <p>Check reported road closures before they go on the public map. Flood zones and the nearest evacuation site come from public data for Japan; the way around comes from a routing server. Urgent and unclear reports go to a person, and the result is <code>alert</code> when people on foot are cut off from an evacuation site. Works with FIWARE through the bridge.</p>
+        <p>Check reported road closures before they go on the public map. Flood zones and the nearest evacuation site come from public data for Japan; the way around comes from a routing server. Urgent and unclear reports go to a person. When people on foot are cut off from an evacuation site, the evacuation check returns <code>alert</code>, and the final decision makes the report urgent. Works with FIWARE through the bridge.</p>
         <div class="outcomes"><code>road-restriction-check</code><code>evacuation-access-check</code><code>road-closure-final</code></div>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/disaster-response">examples/disaster-response →</a>
       </div>
       <div class="card">
         <h3>DevOps</h3>
-        <p>Is a quiet AWS CloudFormation deploy stuck, or only slow? A GitHub Action asks Pointsman only after the stack has been quiet for a while, and stops the deploy only after two clear answers in a row. If Pointsman cannot be reached, nothing is stopped.</p>
+        <p>Is a quiet AWS CloudFormation deploy stuck, or only slow? A GitHub Action asks Pointsman only after the stack has been quiet for a while, and stops the deploy only after two <code>cancel</code> answers in a row. If Pointsman cannot be reached, nothing is stopped.</p>
         <div class="outcomes"><code>deploy-progress</code></div>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/devops">examples/devops →</a>
       </div>
