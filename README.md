@@ -67,7 +67,8 @@ answers into an action: `auto`, `review`, or a custom one.
 
 A profile is versioned config: typed questions plus a policy. See
 [docs/profile-format.md](docs/profile-format.md) and the examples in
-[examples/profiles/](examples/profiles/).
+[examples/profiles/](examples/profiles/). [examples/](examples/) groups them
+by use case: disaster response, DevOps and developer workflow.
 
 This repository holds only example profiles. Real profiles live in your own
 private configuration repository; see [docs/deployment.md](docs/deployment.md)

@@ -38,6 +38,7 @@
       <a href="#overview">Overview</a>
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
+      <a href="#use-cases">Use cases</a>
       <a href="#profiles">Profiles</a>
       <a href="#clients">Clients</a>
       <a href="#start">Get started</a>
@@ -202,7 +203,36 @@
   </div>
 </section>
 
-<section class="band" id="profiles">
+<section class="band" id="use-cases">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Pointsman for …</h2>
+      <p>One engine, many kinds of work. Each use case is a set of example profiles, facts and clients that run today. Use them as they are, or as a start for your own.</p>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>Disaster response</h3>
+        <p>Check reported road closures before they go on the public map. Flood zones and the nearest evacuation site come from public data for Japan; the way around comes from a routing server. Urgent and unclear reports go to a person. When people on foot are cut off from an evacuation site, the evacuation check returns <code>alert</code>, and the final decision makes the report urgent. Works with FIWARE through the bridge.</p>
+        <div class="outcomes"><code>road-restriction-check</code><code>evacuation-access-check</code><code>road-closure-final</code></div>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/disaster-response">examples/disaster-response →</a>
+      </div>
+      <div class="card">
+        <h3>DevOps</h3>
+        <p>Is a quiet AWS CloudFormation deploy stuck, or only slow? A GitHub Action asks Pointsman only after the stack has been quiet for a while, and stops the deploy only after two <code>cancel</code> answers in a row. If Pointsman cannot be reached, nothing is stopped.</p>
+        <div class="outcomes"><code>deploy-progress</code></div>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/devops">examples/devops →</a>
+      </div>
+      <div class="card">
+        <h3>Developer workflow</h3>
+        <p>Which team gets a new issue, does it block work today, how big is it? A GitHub Action labels the issue when Pointsman is sure, and asks a person when it is not. Agents can ask the same profile through MCP.</p>
+        <div class="outcomes"><code>issue-triage</code></div>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/developer-workflow">examples/developer-workflow →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="profiles">
   <div class="wrap split">
     <div>
       <div class="section-head" style="margin-bottom:0">
@@ -250,7 +280,7 @@
   </div>
 </section>
 
-<section class="band alt" id="clients">
+<section class="band" id="clients">
   <div class="wrap">
     <div class="section-head">
       <h2>Ask from anywhere</h2>
@@ -286,7 +316,7 @@
   </div>
 </section>
 
-<section class="band" id="start">
+<section class="band alt" id="start">
   <div class="wrap split">
     <div>
       <div class="section-head" style="margin-bottom:28px">
@@ -347,7 +377,7 @@ curl -s localhost:8787/v1/decide/issue-triage \
   </div>
 </section>
 
-<section class="band alt" id="faq">
+<section class="band" id="faq">
   <div class="wrap">
     <div class="section-head">
       <h2>Questions people ask</h2>
