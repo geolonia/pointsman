@@ -42,10 +42,9 @@
   reading `CODEOWNERS` (pointsman#143): `D-CODEOWNERS-SIZE` is lifted, and
   its size, pattern and matching limits are now part of
   `P-FACT-LOOKUP-BOUNDED` (the §1.7 rows follow). The re-binding also takes
-  in pointsman#142 (the activity list read page by page, up to 500 entries)
-  and updates the code citations that it moved. The
-  re-binding also updated code citations that had moved; the rest still
-  stands as of the bound commit.
+  in pointsman#142 (the activity list read page by page, up to 500 entries).
+  Each re-binding also updated the code citations that had moved; the rest
+  still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
   Fable 5.1 (`claude-fable-5-1`) in Claude Code; effort: default. Skills used:
   the Alpha-Omega `threat-model` plugin, version 1.2.1 at commit
