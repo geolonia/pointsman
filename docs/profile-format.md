@@ -407,6 +407,8 @@ A language model is weak at geometry: given coordinates, it guesses
 distances and areas. Facts are computed by spatial operations instead, and
 rules use them directly, so measurable things stay exact and explainable.
 Background and measurements: [spikes/spatial-facts.md](spikes/spatial-facts.md).
+Facts can also come from GitHub: the state of a pull request, read by
+Pointsman itself ([GitHub pull requests](#github-pull-requests)).
 
 ```yaml
 facts:
@@ -428,7 +430,7 @@ policy:
 | Field | Meaning |
 |---|---|
 | `name` | Used in rules as `facts.<name>.<field>`. Same characters as question names. No question may be named `facts` or start with `facts.`. |
-| `type` | `inside`, `nearest` or `detour` (below). |
+| `type` | `inside`, `nearest` or `detour` (below), or a [GitHub fact](#github-pull-requests). |
 | `at` | JSONPath to a GeoJSON `Point` or `LineString` (WGS 84) in the request state, for example `$.location.value` for an NGSI-LD `GeoProperty`. Read from what the client sends, before the `input` mapping. Through MCP, clients send the input fields themselves, so there `at` reads those (for example `$.location`). |
 | `layer` | For `inside` and `nearest`: the layer to look in. Layers are set up per deployment (source, licence, attribution), not in the profile. |
 | `mode` | For `detour`: `drive` (default) or `walk`, the way around by car or on foot. |
@@ -446,7 +448,9 @@ missing; unknown when it is not missing).
 **A missing fact is never guessed.** A lookup can fail: no location in the
 state, or not of the kind the fact needs, for example a point for a
 `detour`, which needs a road section (`no_location`), no fact provider (`unavailable`), too slow
-(`timeout`, 3 s per fact, 8 s for `detour`) or an error (`error`). A comparison with a missing
+(`timeout`, 3 s per fact, 8 s for `detour`, 5 s for GitHub facts) or an error (`error`).
+GitHub facts have two more reasons, `no_pr` and `stale`
+([below](#missing-github-facts)). A comparison with a missing
 fact, or with a field that has no value, is *unknown*, and a rule matches
 only when its condition is true:
 
@@ -457,7 +461,7 @@ only when its condition is true:
 - `facts.<name>.reason` tells a failed lookup from one that does not apply:
   `facts.walk.missing == true and facts.walk.reason != 'no_location'` sends
   only a real failure to a person, not a report that marks a point. A
-  `reason` that is not one of the four is refused when the profile is
+  `reason` that is not one of the reasons is refused when the profile is
   validated. A `reason` comparison on its own never matches a fact that was
   found (its reason is unknown): keep the `missing == true` part.
 
@@ -476,7 +480,8 @@ raised `danger` even where they were reassuring.
 
 ### Fact providers
 
-`FACTS_MODE` in the wrangler config:
+`FACTS_MODE` in the wrangler config sets the provider of spatial facts
+(GitHub facts have their own setting, [`FACTS_GITHUB`](#settings)):
 
 | `FACTS_MODE` | Facts |
 |---|---|
@@ -546,4 +551,138 @@ followed (they would carry the key to another host): a 3xx answer is an
   adds waiting only when it is the slowest part: at most 8 s for a decide.
 
 Geocoding is still open (issue #65).
+
+### GitHub pull requests
+
+Pointsman can read a pull request from GitHub itself, so rules can use its
+state: is it a draft, which files does it change, did the required checks
+pass? The client names only the pull request. It cannot claim "docs only"
+or "the checks passed".
+
+```yaml
+facts:
+  - { name: pr, type: github_pr, at: $.pull_request }
+  - name: docs
+    type: github_paths
+    at: $.pull_request
+    paths: ["docs/**", "**/*.md"]
+    except: ["**/AGENTS.md"]
+  - { name: ci, type: github_checks, at: $.pull_request }
+  - { name: level, type: github_property, at: $.pull_request, property: security-level }
+```
+
+`at` points to the pull request in the request state:
+
+```json
+{ "pull_request": { "repo": "octo-org/demo", "number": 7, "head": "<the full 40-character commit id>" } }
+```
+
+`head` is the commit the client saw. If the pull request on GitHub has
+another head commit, every GitHub fact is missing (`stale`), so rules never
+decide on a state the client did not see.
+
+| Type | Fields | Notes |
+|---|---|---|
+| `github_pr` | `open`, `merged`, `draft`, `wip_title`, `base_is_default`, `author_member`, `author_dependabot`, `fork`, `all_commits_verified`, `author_sole_code_owner` (booleans); `files`, `changed_lines` (numbers); `pushed_by_author` (text) | `wip_title`: "WIP" is a word in the title (`WIP: …`, `[WIP] …`). `changed_lines`: lines added plus lines removed. `base_is_default`: the pull request targets the default branch. `author_member`: the author is a member of the organization that owns the repository (for a person's repository: the author is that person); no value when GitHub does not tell (the token cannot see private members, or may not read members). `author_dependabot`: the author is the `dependabot[bot]` app. `fork`: the changes come from another repository. `all_commits_verified`: every commit has a signature that GitHub verified; no value for more than 250 commits (GitHub lists no more). `pushed_by_author`: who pushed the commits, from the repository's activity list (pushes to the head branch; a push brings the commits after its previous head): `yes` when every commit came in a push by the author, `no` when one came in a push by someone else (for example "Update branch" clicked by a reviewer), `unavailable` when GitHub does not show it (pushes older than the newest 100, a fork the token cannot see, more than 250 commits). A signature cannot show who pushed, so this is the only source. `author_sole_code_owner`: the author is the only code owner of every changed file (both names of a renamed file), by the `CODEOWNERS` file of the base branch; a team owns as its members. False when another person, team or email address owns a file, a file has no owner, there is no `CODEOWNERS` file, no file changed, or more than 1,000 files changed. A `CODEOWNERS` file or team that cannot be read makes the whole fact missing. |
+| `github_paths` | `any`, `all` (booleans), `count` (number) | The changed files that match `paths` and none of `except`: `any` is true when there is one, `all` when every changed file matches, `count` says how many. `all` is false when no file changed. A renamed file has two names: it counts for `any` when one of them matches, and for `all` only when both do. |
+| `github_checks` | `required` (number), `green`, `pending`, `failed` (booleans) | The required checks of the base branch (rulesets and branch protection) and the workflows that a ruleset requires, on the head commit. `green`: every one passed (success, neutral or skipped). `failed`: one failed. `pending`: none failed, and one has not finished or not reported yet. `green` is false when there are no required checks. |
+| `github_property` | `value` (text) | The repository's custom property `property`. A property that is not set is `unset`: a known value, not a missing fact. A list (multi-select) is sorted and joined with commas. |
+
+Fact settings:
+
+| Field | For | Meaning |
+|---|---|---|
+| `paths` | `github_paths` | The files that count: 1 to 100 globs from the top of the repository. `*` is any characters except `/`, `**` is any number of folders (also none), `?` is one character. `*.md` matches `README.md` but not `docs/a.md`; use `**/*.md` for every folder. |
+| `except` | `github_paths` | Files that never count, even when they match `paths`: the except list wins. |
+| `property` | `github_property` | The name of the custom property. |
+
+**Safety.** A rule with a missing fact never matches. But a missing fact
+can also stop an earlier rule that blocks something, so that a later rule
+that allows it matches instead. So check for missing facts first, and in
+rules that allow something (approve, skip a review), write every condition
+as a known, positive value (`facts.risky.any == false`), instead of
+counting on an earlier rule:
+
+```yaml
+rules:
+  - when: "facts.pr.missing == true or facts.docs.missing == true or facts.ci.missing == true"
+    action: retry
+  - when: "facts.docs.all == true and facts.ci.green == true and facts.pr.all_commits_verified == true"
+    action: light
+```
+
+The example profile [`pr-docs-check`](../examples/profiles/pr-docs-check.yaml)
+follows these rules.
+
+#### One snapshot
+
+All GitHub facts of a decision come from one read of the pull request.
+First the pull request and its commits (both checked against `head`), then
+only the parts the facts need (files, membership, checks, properties), each
+once, at the same time. The facts share 5 seconds. Globs are matched
+without regular expressions, so a long pattern cannot slow a decision down.
+
+- Files are read 100 per page, all pages at once. A pull request with more
+  than 1,000 changed files makes `github_paths` facts missing (`error`);
+  `github_pr` still knows the number of files.
+- Commits: up to 250 (GitHub lists no more).
+- Check runs: up to 300 on the head commit. Commit statuses and workflow
+  runs: up to 100.
+- A workflow that a ruleset requires counts only through a run that GitHub
+  started for the ruleset, not through a workflow at the same path in the
+  repository (a pull request can change that one).
+- The file list is the pull request's current one, so the pull request is
+  read once more after it: a push in between makes the facts `stale`.
+- A check run and a commit status with the same name that disagree: the
+  stricter result counts.
+
+#### Missing GitHub facts
+
+| Reason | When |
+|---|---|
+| `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id. Nothing is sent to GitHub. |
+| `stale` | GitHub's head commit is not `head`, or a push came in while the snapshot was read. Every GitHub fact of the decision is `stale`. |
+| `unavailable` | No GitHub provider (`FACTS_GITHUB` is off), or the token cannot see the repository (GitHub answers 404 or 403, or the app is not installed there). |
+| `timeout` | GitHub took longer than 5 seconds. |
+| `error` | Anything else: a GitHub error (5xx), a rate limit, a redirect (not followed: it would carry the token elsewhere), an answer of the wrong shape, too many files or checks. |
+
+#### Settings
+
+`FACTS_GITHUB` in the wrangler config:
+
+| `FACTS_GITHUB` | GitHub facts |
+|---|---|
+| `off` (default) | none: every GitHub fact is missing (`unavailable`) |
+| `mock` | fixed answers for development and tests: an open pull request by a member who pushed every commit and is not the only code owner, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset` |
+| `token` | read with the Worker secret `FACTS_GITHUB_TOKEN` |
+| `app` | read as a GitHub App: `FACTS_GITHUB_APP_ID` and the Worker secret `FACTS_GITHUB_APP_PRIVATE_KEY` (the PEM file GitHub gives you) |
+
+- `FACTS_MODE` and `FACTS_GITHUB` are separate: `FACTS_MODE: mock` does not
+  answer GitHub facts, and `FACTS_GITHUB: mock` does not answer spatial ones.
+- With `app`, Pointsman finds the app's installation for the repository and
+  makes an installation token. The token is kept until 5 minutes before it
+  expires (after one hour). Making the token is the only request that is
+  not a read. Give the app read permissions only.
+- `FACTS_GITHUB_IGNORE_CHECK`: the name of the check run that your own
+  Pointsman client adds to pull requests. It never counts as a required
+  check, so Pointsman never waits for itself. It is a deployment setting,
+  not a profile field, so a profile cannot drop a real check.
+- The token and the key are never logged. A fact's `source` names only the
+  pull request: `GitHub octo-org/demo#7 at 1a2b3c4`.
+
+Permissions (all read) for a fine-grained token or an app:
+
+| Permission | For |
+|---|---|
+| Pull requests | `github_pr`, `github_paths` |
+| Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS` |
+| Metadata | always (every app has it) |
+| Checks, Commit statuses | `github_checks` |
+| Actions | `github_checks`, when a ruleset requires workflows |
+| Custom properties | `github_property` |
+| Organization: Members | `author_member` for members who hide their membership; the members of a team in `CODEOWNERS` |
+
+The required checks come from the branch's rules and its protection, as
+GitHub shows them to anyone who can read the repository: no administration
+permission is needed.
 

@@ -1,0 +1,14 @@
+# expect: "facts.pr.green": github_pr facts have
+id: facts-github-wrong-field
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+facts:
+  - { name: pr, type: github_pr, at: $.pr }
+policy:
+  rules:
+    - { when: "facts.pr.green == true", action: auto }
+  default: review

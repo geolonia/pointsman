@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# Example profile: does a pull request change only documentation, so that a
+# light review is enough? The facts come from GitHub (FACTS_GITHUB); the
+# client sends only the pull request: { repo, number, head }, plus its title
+# and description for the AI. Neutral example content.
+id: pr-docs-check
+version: 1
+title:
+  en: "Pull request: documentation only?"
+  ja: プルリクエスト：ドキュメントだけ？
+description:
+  en: Decide whether a pull request changes only documentation and can get a light review, or needs a full review.
+  ja: プルリクエストがドキュメントだけを変えていて軽いレビューで足りるか、通常のレビューが要るかを決める。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: title, path: $.pull_request.title }
+  - { name: description, path: $.pull_request.body }
+questions:
+  - name: changes_behaviour
+    type: noul
+    instructions: Could this change alter something that runs, for example a command that people copy, a script, or a build setting?
+    criteria:
+      true: Something that runs may work differently after this change.
+      false: Only text for people to read changes.
+facts:
+  - { name: pr, type: github_pr, at: $.pull_request }
+  - name: docs
+    type: github_paths
+    at: $.pull_request
+    paths: ["docs/**", "**/*.md"]
+    # Files that instruct tools or agents are never "only documentation".
+    except: ["**/AGENTS.md", "**/CLAUDE.md", "**/GEMINI.md", "**/.claude/**", ".github/**"]
+  - { name: ci, type: github_checks, at: $.pull_request }
+policy:
+  rules:
+    # A pull request that is closed or merged needs nothing, even when other facts are missing.
+    - when: "facts.pr.open == false"
+      action: done
+    # A missing fact never leads to a light review: ask again later.
+    - when: "facts.pr.missing == true or facts.docs.missing == true or facts.ci.missing == true"
+      action: retry
+    - when: "facts.pr.draft == true or facts.pr.wip_title == true or facts.ci.pending == true"
+      action: wait
+    # Every condition is a known, positive value.
+    - when: >-
+        facts.docs.all == true and facts.pr.changed_lines <= 200 and facts.pr.fork == false
+        and facts.pr.all_commits_verified == true and facts.ci.green == true and changes_behaviour.yes < 0.2
+      action: light
+  default: review

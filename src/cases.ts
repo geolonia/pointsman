@@ -46,7 +46,7 @@ export interface CaseResult {
   message?: string;
 }
 
-const MISSING_REASONS: FactMissingReason[] = ['no_location', 'unavailable', 'timeout', 'error'];
+const MISSING_REASONS: FactMissingReason[] = ['no_location', 'no_pr', 'stale', 'unavailable', 'timeout', 'error'];
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const isProbability = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 1;
@@ -167,14 +167,29 @@ function factsOf(profile: Pick<Profile, 'facts'>, given: unknown, where: string)
  * the others. Not inside: rank 0, class "". Not found, or no way around: no
  * values. Otherwise every field is needed, except a name and a route.
  */
-const SHAPES: Record<FactType, { key: string; absent: Record<string, string | number | null>; optional: string[] }> = {
+const SHAPES: Partial<Record<FactType, { key: string; absent: Record<string, string | number | null>; optional: string[] }>> = {
   inside: { key: 'inside', absent: { rank: 0, class: '' }, optional: [] },
   nearest: { key: 'found', absent: { distance_m: null, name: null }, optional: ['name'] },
   detour: { key: 'possible', absent: { extra_m: null, route: null }, optional: ['route'] },
 };
 
+/**
+ * GitHub facts have no such field: a case gives every field, and null only
+ * where the engine can give no value (author_member, all_commits_verified).
+ */
+const GITHUB_NULLABLE = ['author_member', 'all_commits_verified'];
+
 function shaped(type: FactType, values: Record<string, string | number | boolean | null>, where: string): Record<string, string | number | boolean | null> {
-  const { key, absent, optional } = SHAPES[type];
+  const shape = SHAPES[type];
+  if (!shape) {
+    for (const field of Object.keys(FACT_FIELDS[type])) {
+      if (values[field] === undefined || (values[field] === null && !GITHUB_NULLABLE.includes(field))) {
+        throw new CaseError(`${where}.${field}: needed`);
+      }
+    }
+    return { ...values };
+  }
+  const { key, absent, optional } = shape;
   if (typeof values[key] !== 'boolean') throw new CaseError(`${where}.${key}: give true or false`);
   if (values[key] === false) {
     for (const [field, v] of Object.entries(values)) {

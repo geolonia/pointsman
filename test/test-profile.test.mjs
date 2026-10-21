@@ -66,7 +66,7 @@ test('a case that does not fit its profile cannot run, and says where', () => {
     ['error', 'answers: "colour" is not a question of this profile'],
     ['error', 'facts: "river" is not a fact of this profile'],
     ['error', 'facts.flood.rank: must be a number (or null for no value)'],
-    ['error', 'facts.flood: missing must be true or a reason (no_location, unavailable, timeout, error), and alone'],
+    ['error', 'facts.flood: missing must be true or a reason (no_location, no_pr, stale, unavailable, timeout, error), and alone'],
   ]);
 });
 
@@ -101,6 +101,31 @@ test('a fact that is not given counts as missing; facts take the shape the engin
   }, evacuation);
   assert.equal(noName.status, 'pass');
   assert.equal(notFound.status, 'pass');
+});
+
+test('GitHub facts: every field is needed, null only where the engine can give none', () => {
+  const p = profile('pr-docs-check');
+  const pr = { open: true, merged: false, draft: false, wip_title: false, files: 1, changed_lines: 5, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true, pushed_by_author: 'yes', author_sole_code_owner: false };
+  const docs = { any: true, all: true, count: 1 };
+  const ci = { required: 1, green: true, pending: false, failed: false };
+  const answers = { changes_behaviour: 0.1 };
+  const results = runCases({
+    profile: p.id,
+    cases: [
+      { name: 'all given', expect: 'light', answers, facts: { pr, docs, ci } },
+      { name: 'author not known', expect: 'light', answers, facts: { pr: { ...pr, author_member: null }, docs, ci } },
+      { name: 'stale', expect: 'retry', answers, facts: { pr: { missing: 'stale' }, docs, ci } },
+      { name: 'a field left out', expect: 'light', answers, facts: { pr, docs: { any: true, all: true }, ci } },
+      { name: 'null where the engine always gives a value', expect: 'light', answers, facts: { pr, docs, ci: { ...ci, green: null } } },
+    ],
+  }, p);
+  assert.deepEqual(results.map((r) => [r.status, r.rule ?? r.message]), [
+    ['pass', 3],
+    ['pass', 3],
+    ['pass', 1],
+    ['error', 'facts.docs.count: needed'],
+    ['error', 'facts.ci.green: needed'],
+  ]);
 });
 
 test('earlier decisions are checked against the profile they come from', () => {

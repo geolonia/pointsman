@@ -73,6 +73,29 @@ describe('explainProfile: conditions', () => {
     expect(say("facts.walk.reason != 'no_location'", 'ja')).toBe('事実「walk」が得られない理由が no_location（リクエストに位置がない）以外なら、アクションは urgent です。');
   });
 
+  it('puts GitHub facts into words', () => {
+    const gh = (when: string, lang: 'en' | 'ja' = 'en') => explainProfile(withRule(when, {
+      facts: [
+        { name: 'pr', type: 'github_pr', at: '$.pull_request' },
+        { name: 'docs', type: 'github_paths', at: '$.pull_request', paths: ['docs/**'] },
+        { name: 'ci', type: 'github_checks', at: '$.pull_request' },
+        { name: 'level', type: 'github_property', at: '$.pull_request', property: 'security-level' },
+      ],
+    }), lang).rules[0]!.text;
+    expect(gh('facts.pr.open == false')).toBe('If the pull request "pr" is not open, the action is urgent.');
+    expect(gh('facts.pr.all_commits_verified == true')).toBe('If every commit of "pr" has a verified signature, the action is urgent.');
+    expect(gh('facts.pr.changed_lines <= 40')).toBe('If the number of changed lines of "pr" is at most 40, the action is urgent.');
+    expect(gh('facts.docs.all == true')).toBe('If every changed file matches "docs", the action is urgent.');
+    expect(gh('facts.ci.green != true')).toBe('If not every required check ("ci") passed, the action is urgent.');
+    expect(gh("facts.level.value == 'high'")).toBe('If the value of "level" is "high", the action is urgent.');
+    expect(gh("facts.pr.missing == true and facts.pr.reason == 'stale'")).toBe(
+      'If the fact "pr" is missing and the reason the fact "pr" is missing is stale (the pull request has a newer commit), the action is urgent.',
+    );
+    expect(gh("facts.pr.pushed_by_author != 'no'")).toBe('If the answer to "did the author of "pr" push every commit" is not "no", the action is urgent.');
+    expect(gh('facts.pr.author_sole_code_owner == true')).toBe('If the author of "pr" is the only code owner of every changed file, the action is urgent.');
+    expect(gh('facts.docs.all == true', 'ja')).toBe('すべての変更ファイルが「docs」に合うなら、アクションは urgent です。');
+  });
+
   it('reads a literal on the left the right way round', () => {
     expect(say('0.7 <= danger.yes')).toBe(say('danger.yes >= 0.7'));
     expect(say('5 > facts.flood.rank')).toBe(say('facts.flood.rank < 5'));
@@ -145,6 +168,12 @@ describe('explainProfile: the profile', () => {
     expect(e.default).toBe('If no rule matches, the action is review.');
     expect(e.people).toEqual(['A person checks these actions before they count: review, urgent.', 'The person answers with one of: publish, reject.']);
     expect(e.notes).toHaveLength(3);
+  });
+
+  it('explains the GitHub example: the facts and their paths', () => {
+    const e = explainProfile(byId('pr-docs-check'), 'en', required);
+    expect(e.facts[1]).toBe('"docs": which changed files of the pull request ($.pull_request) match docs/**, **/*.md, except **/AGENTS.md, **/CLAUDE.md, **/GEMINI.md, **/.claude/**, .github/**.');
+    expect(explainProfile(byId('pr-docs-check'), 'ja', required).facts[2]).toBe('「ci」：プルリクエスト（$.pull_request）の head コミットでの必須チェックの結果。');
   });
 
   it('is plain Markdown, numbered like the rules', () => {

@@ -52,7 +52,7 @@
       "items": { "$ref": "#/$defs/question" }
     },
     "facts": {
-      "description": "Spatial facts to look up for each decision, for example whether the place is inside a flood zone. Rules refer to them as facts.<name>.<field>. See docs/profile-format.md#facts.",
+      "description": "Facts to look up for each decision, for example whether the place is inside a flood zone, or whether a pull request changes only documentation. Rules refer to them as facts.<name>.<field>. See docs/profile-format.md#facts.",
       "type": "array",
       "minItems": 1,
       "maxItems": 16,
@@ -182,11 +182,11 @@
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "type": {
-          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString).",
-          "enum": ["inside", "nearest", "detour"]
+          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property.",
+          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property"]
         },
         "at": {
-          "description": "JSONPath to a GeoJSON Point or LineString (WGS 84) in the request state, for example $.location.value.",
+          "description": "JSONPath into the request state: a GeoJSON Point or LineString (WGS 84) for spatial facts, for example $.location.value; a pull request { repo, number, head } for GitHub facts.",
           "type": "string",
           "pattern": "^\\$(\\.[A-Za-z0-9_-]+|\\[[0-9]+\\])*$"
         },
@@ -202,6 +202,26 @@
         "route": {
           "description": "For detour: also return the way around (route, an encoded polyline). Default false: the route starts and ends at the section, so it is stored with each decision.",
           "type": "boolean"
+        },
+        "paths": {
+          "description": "For github_paths: the files that count, as globs from the top of the repository (*, ** and ? only), for example docs/**.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/glob" }
+        },
+        "except": {
+          "description": "For github_paths: files that never count, even when they match paths.",
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/glob" }
+        },
+        "property": {
+          "description": "For github_property: the name of a repository custom property.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_$#-]{1,75}$"
         }
       },
       "allOf": [
@@ -220,8 +240,35 @@
         {
           "if": { "properties": { "type": { "enum": ["inside", "nearest"] } }, "required": ["type"] },
           "then": { "not": { "properties": { "route": true }, "required": ["route"] } }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["github_pr", "github_paths", "github_checks", "github_property"] } }, "required": ["type"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "properties": { "layer": true }, "required": ["layer"] },
+                { "properties": { "mode": true }, "required": ["mode"] },
+                { "properties": { "route": true }, "required": ["route"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "github_paths" } }, "required": ["type"] },
+          "then": { "properties": { "paths": true }, "required": ["paths"] },
+          "else": { "not": { "anyOf": [{ "properties": { "paths": true }, "required": ["paths"] }, { "properties": { "except": true }, "required": ["except"] }] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "github_property" } }, "required": ["type"] },
+          "then": { "properties": { "property": true }, "required": ["property"] },
+          "else": { "not": { "properties": { "property": true }, "required": ["property"] } }
         }
       ]
+    },
+    "glob": {
+      "description": "A path glob: * (any characters but /), ** (any folders), ? (one character). Not starting with /, without .. parts, without [ ] { } ! or backslashes.",
+      "type": "string",
+      "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\s\\[\\]{}!\\\\]{1,200}$"
     },
     "question": {
       "type": "object",

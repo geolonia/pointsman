@@ -29,14 +29,21 @@ export interface ScoreQuestion {
 
 export type Question = NoulQuestion | ChoiceQuestion | ScoreQuestion;
 
-/** Kinds of spatial fact; their fields are in FACT_FIELDS (src/policy.ts). */
-export type FactType = 'inside' | 'nearest' | 'detour';
+/** Kinds of spatial fact. */
+export type SpatialFactType = 'inside' | 'nearest' | 'detour';
+/** Kinds of GitHub pull-request fact (docs/profile-format.md#github-pull-requests). */
+export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property';
+/** Kinds of fact; their fields are in FACT_FIELDS (src/policy.ts). */
+export type FactType = SpatialFactType | GitHubFactType;
 
-/** A spatial fact a profile asks for (docs/profile-format.md#facts). */
+/** A fact a profile asks for (docs/profile-format.md#facts). */
 export interface FactSpec {
   name: string;
   type: FactType;
-  /** JSONPath to a GeoJSON geometry in the request state. */
+  /**
+   * JSONPath into the request state: a GeoJSON geometry for spatial facts,
+   * a pull request ({ repo, number, head }) for GitHub facts.
+   */
   at: string;
   /** Layer id for `inside` and `nearest`, configured per deployment. */
   layer?: string;
@@ -47,6 +54,12 @@ export interface FactSpec {
    * route starts and ends at the section, so it is stored with each decision.
    */
   route?: boolean;
+  /** For `github_paths`: the files that count (globs). */
+  paths?: string[];
+  /** For `github_paths`: files that never count, even when they match `paths`. */
+  except?: string[];
+  /** For `github_property`: the name of a repository custom property. */
+  property?: string;
 }
 
 export type DetourMode = 'drive' | 'walk';
@@ -62,11 +75,11 @@ export type Fact =
     }
   | {
       missing: true;
-      /** no_location, unavailable, timeout or error. */
+      /** no_location, no_pr, stale, unavailable, timeout or error. */
       reason: FactMissingReason;
     };
 
-export type FactMissingReason = 'no_location' | 'unavailable' | 'timeout' | 'error';
+export type FactMissingReason = 'no_location' | 'no_pr' | 'stale' | 'unavailable' | 'timeout' | 'error';
 
 export interface Profile {
   id: string;

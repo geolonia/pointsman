@@ -3,7 +3,8 @@
 
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth';
-import { MockFactProvider, type FactProvider } from './facts';
+import { FactRouter, MockFactProvider, type FactProvider } from './facts';
+import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth } from './facts-github';
 import { GsiFactProvider } from './facts-gsi';
 import { ValhallaRouter } from './facts-routing';
 import { D1DecisionLog } from './log';
@@ -27,6 +28,16 @@ interface PointsmanEnv {
   FACTS_ROUTING_URL?: string | undefined;
   /** Worker secret: sent as `x-api-key` to the routing server. */
   FACTS_ROUTING_API_KEY?: string | undefined;
+  /** GitHub pull-request facts: "token", "app", "mock"; "off" or unset: they are missing. */
+  FACTS_GITHUB?: string | undefined;
+  /** Worker secret, with FACTS_GITHUB "token": a token that can read the repositories. */
+  FACTS_GITHUB_TOKEN?: string | undefined;
+  /** With FACTS_GITHUB "app": the GitHub App's id. */
+  FACTS_GITHUB_APP_ID?: string | undefined;
+  /** Worker secret, with FACTS_GITHUB "app": the app's private key (PEM). */
+  FACTS_GITHUB_APP_PRIVATE_KEY?: string | undefined;
+  /** The name of Pointsman's own check run, never counted as a required check. */
+  FACTS_GITHUB_IGNORE_CHECK?: string | undefined;
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
   DB?: D1Database | undefined;
@@ -146,7 +157,52 @@ const mockFacts = new MockFactProvider();
 // One per isolate (and routing server), so its memory cache of tiles is shared between requests.
 const gsiFacts = new Map<string, GsiFactProvider>();
 
+// One per isolate and settings, so a GitHub App's installation tokens are reused between requests.
+const githubFacts = new Map<string, GitHubFactProvider>();
+
+function githubFor(env: PointsmanEnv): FactProvider | undefined {
+  const mode = env.FACTS_GITHUB || 'off';
+  const token = env.FACTS_GITHUB_TOKEN || undefined;
+  const appId = env.FACTS_GITHUB_APP_ID || undefined;
+  const key = env.FACTS_GITHUB_APP_PRIVATE_KEY || undefined;
+  const ignoreCheck = env.FACTS_GITHUB_IGNORE_CHECK || undefined;
+  if (token && mode !== 'token') throw new ConfigError('FACTS_GITHUB_TOKEN needs FACTS_GITHUB "token"');
+  if ((appId || key) && mode !== 'app') throw new ConfigError('FACTS_GITHUB_APP_ID and FACTS_GITHUB_APP_PRIVATE_KEY need FACTS_GITHUB "app"');
+  if (ignoreCheck && (mode === 'off' || mode === 'mock')) throw new ConfigError('FACTS_GITHUB_IGNORE_CHECK needs FACTS_GITHUB "token" or "app"');
+  switch (mode) {
+    case 'off':
+      return undefined;
+    case 'mock':
+      return mockFacts;
+    case 'token':
+    case 'app': {
+      if (mode === 'token' && !token) throw new ConfigError('FACTS_GITHUB "token" needs the secret FACTS_GITHUB_TOKEN');
+      if (mode === 'app' && (!appId || !/^[0-9]+$/.test(appId))) throw new ConfigError('FACTS_GITHUB "app" needs FACTS_GITHUB_APP_ID (a number)');
+      if (mode === 'app' && (!key || !privateKeyDer(key))) throw new ConfigError('FACTS_GITHUB "app" needs the secret FACTS_GITHUB_APP_PRIVATE_KEY (a PEM private key)');
+      // Keyed by every setting, so a new token or key never reuses the old one.
+      const id = JSON.stringify([mode, token ?? '', appId ?? '', key ?? '', ignoreCheck ?? '']);
+      let p = githubFacts.get(id);
+      if (!p) {
+        p = new GitHubFactProvider({ auth: mode === 'token' ? new TokenAuth(token!) : new GitHubAppAuth(appId!, key!), ignoreCheck });
+        githubFacts.set(id, p);
+      }
+      return p;
+    }
+    default:
+      throw new ConfigError('FACTS_GITHUB must be "off", "mock", "token" or "app"');
+  }
+}
+
+/** Spatial facts (FACTS_MODE) and GitHub facts (FACTS_GITHUB); undefined when there are none. */
 function factsFor(env: PointsmanEnv): FactProvider | undefined {
+  const spatial = spatialFor(env);
+  const github = githubFor(env);
+  if (!spatial && !github) return undefined;
+  // Always routed: FACTS_MODE "mock" must not answer GitHub facts, nor FACTS_GITHUB "mock" spatial ones.
+  return new FactRouter({ spatial, github });
+}
+
+function spatialFor(env: PointsmanEnv): FactProvider | undefined {
   const routingUrl = env.FACTS_ROUTING_URL || undefined;
   if (routingUrl && env.FACTS_MODE !== 'gsi') throw new ConfigError('FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
   const routing = routingUrl ? checkServerUrl(routingUrl) : undefined;
