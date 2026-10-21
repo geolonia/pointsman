@@ -137,7 +137,8 @@ already logged, and how often it would match what people answered. See
 [docs/profile-format.md](docs/profile-format.md#replay).
 
 [docs/authoring.md](docs/authoring.md) puts these together: how a person and
-an AI assistant write a profile, with the checks deciding whether it is right.
+an AI assistant write a profile, with the checks showing whether the rules do
+what the examples say.
 
 ## Clients
 
