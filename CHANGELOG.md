@@ -2,7 +2,9 @@
 
 Pointsman follows [semantic versioning](https://semver.org/). Before 1.0, a
 minor release (0.x) may change the API, the profile format or the decision
-log; the notes say how. Each release is a tag on `main`. A deployment pins
+log; the notes say how. Each release is a tag on `main`; its version is in
+`package.json`, `openapi.yaml` (`info.version`) and `src/mcp.ts` (the MCP
+server's version). A deployment pins
 the engine by commit in its config repository: to use a release, set
 `ref` in `engine.json` to the commit of its tag
 (`git rev-parse 'v0.1.0^{commit}'`, which also works for annotated tags).
@@ -19,10 +21,13 @@ the engine by commit in its config repository: to use a release, set
   (#99).
 - Detour facts name the date of the routing data in `source`, like the GSI
   facts: `… routed with Valhalla (routing data 2026-10-17 時点)`, from the
-  routing server's `GET /status` (`tileset_last_modified`), kept for a day;
-  `日付不明` when the server cannot say (#114).
-- Example profile `road-restriction-check` v4 asks for the way around by
-  car (`drive`) for a closed section, as context: no rule reads it.
+  routing server's `GET /status` (`tileset_last_modified`), kept for a day.
+  `日付不明` when the server cannot say or answers more than a second after
+  the routes; a failed `/status` is asked again after five minutes. It is one
+  more call to the routing server (with its API key), about once a day per
+  Worker instance (#114).
+- Example profile `road-restriction-check` v4 looks up the way around by
+  car (`drive`) for a closed section, as context: no rule reads it (#122).
 
 ### Changed
 
