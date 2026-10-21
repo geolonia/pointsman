@@ -361,7 +361,13 @@ server: https, http only for localhost; no credentials, query or fragment;
 only with `FACTS_MODE=gsi`), `detour` facts are answered: the way between
 the two ends of the closed section, with and without the section, by car
 or on foot (`mode`; Valhalla's `auto` and `pedestrian` costing;
-OpenStreetMap data, `source`: © OpenStreetMap contributors).
+OpenStreetMap data). `source` names the data and the date of the routing
+tiles, for example `© OpenStreetMap contributors (ODbL), routed with
+Valhalla (routing data 2026-10-17 時点)`: the build time of the tiles
+(`tileset_last_modified` in the server's `GET /status`, UTC), kept for a
+day per Worker instance. Without it the date is `日付不明`, and `/status` is
+asked again after five minutes; a failed or slow `/status` (more than a
+second after the routes) never fails the fact.
 A server that needs a key (such as Geolonia's hosted Valhalla) gets it from
 the Worker secret `FACTS_ROUTING_API_KEY`, sent as the `x-api-key` header.
 The key is never logged and never sent to browsers. Redirects are not

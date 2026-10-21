@@ -43,11 +43,23 @@ class TooManyVertices extends FactError {}
 /**
  * No connection, or a gateway answer (502, 504): worth one more try. Not
  * 503 or 429: a server that says it is overloaded is not asked again. At
- * most 6 calls per detour fact: 2 at once, each retried once, plus the
- * smaller closure.
+ * most 6 route calls per detour fact: 2 at once, each retried once, plus
+ * the smaller closure (and now and then one `GET /status` for the date).
  */
 class RoutingUnavailable extends FactError {}
 const RETRY_PAUSE_MS = 250;
+/** How long a finished detour waits for a slow `/status` before it says 日付不明. */
+const DATE_GRACE_MS = 1_000;
+/** How long the date of the routing data is kept: a day after an answer, five minutes after a failure. */
+const DATE_TTL_MS = 24 * 3600_000;
+const DATE_FAIL_TTL_MS = 5 * 60_000;
+
+/** The promise's value, or `fallback` after `ms` (the promise keeps running). */
+function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T>((resolve) => { timer = setTimeout(() => resolve(fallback), ms); });
+  return Promise.race([p, late]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+}
 
 /** A promise's value or error, without throwing (two calls run at once; both are awaited). */
 function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> {
@@ -55,10 +67,26 @@ function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> {
 }
 const SOURCE = '© OpenStreetMap contributors (ODbL), routed with Valhalla';
 
+/**
+ * The source with the date of the routing data, like the GSI facts
+ * (`YYYY-MM-DD 時点`, UTC, or `日付不明`). Valhalla's `tileset_last_modified`
+ * is when the routing tiles were built, not the OpenStreetMap extract date.
+ */
+export function routingSource(date: string): string {
+  return `${SOURCE} (routing data ${date})`;
+}
+
 export class ValhallaRouter {
   private readonly url: string;
   private readonly fetchFn: typeof fetch;
   private readonly apiKey: string | undefined;
+  /**
+   * The date of the routing data, kept per router (the router lives as long
+   * as the isolate): a day after an answer, five minutes after a failure.
+   */
+  private dataDate: { value: Promise<string | null>; until: number } | null = null;
+  /** The clock for the date's cache (tests set it). */
+  now: () => number = () => Date.now();
 
   /** `apiKey` is sent as `x-api-key` (hosted servers such as Geolonia's); never logged. */
   constructor(url: string, fetchFn?: typeof fetch, apiKey?: string) {
@@ -100,6 +128,8 @@ export class ValhallaRouter {
     if (half >= 1) closures.push([corridor([pointAt(run, total / 2)], half)]);
     const usable = closures.filter((polys) => polys.every((poly) => !inside(a, poly) && !inside(b, poly)));
     if (usable.length === 0) throw new FactError('section too short to close without closing its ends');
+    // At the same time as the routes, so the date costs no extra wait.
+    const date = this.tilesDate();
 
     // The way with and without the section at the same time: a server that
     // starts cold then delays the answer once, not twice.
@@ -126,13 +156,48 @@ export class ValhallaRouter {
       const around = attempt.value ?? null;
       if (around !== null) {
         const route = withRoute && around.shape !== null && around.shape.length <= MAX_ROUTE_CHARS ? around.shape : null;
-        return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: SOURCE };
+        return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: routingSource(await within(date, DATE_GRACE_MS, '日付不明')) };
       }
     }
     // Valhalla closes whole road edges: if one edge runs past an end, "no
     // path" may only mean that the route cannot start. That is not proof of
     // no way around, so it is an error, never possible: false.
     throw new FactError('no route with the section closed (no way around, or a closed road edge at an end)');
+  }
+
+  /**
+   * The date of the routing tiles from `GET /status` (`tileset_last_modified`,
+   * Unix seconds), as `YYYY-MM-DD 時点` in UTC. Never throws: without an
+   * answer it is `日付不明`. A status failure never turns a good detour into
+   * an error, and a server without `/status` is asked only every five
+   * minutes. The call has its own time limit, not one lookup's: lookups
+   * share it.
+   */
+  private tilesDate(): Promise<string> {
+    const now = this.now();
+    if (!this.dataDate || this.dataDate.until <= now) {
+      const value = (async () => {
+        const res = await this.fetchFn(`${this.url}/status`, {
+          headers: { 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
+          // A redirect would carry the key to another host.
+          redirect: 'manual',
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+        if (!res.ok) {
+          await res.body?.cancel().catch(() => {});
+          return null;
+        }
+        const t = ((await res.json().catch(() => null)) as { tileset_last_modified?: unknown } | null)?.tileset_last_modified;
+        if (typeof t !== 'number' || !Number.isFinite(t) || t <= 0) return null;
+        const day = new Date(t * 1000);
+        return Number.isNaN(day.getTime()) ? null : `${day.toISOString().slice(0, 10)} 時点`;
+      })().catch(() => null);
+      const entry = { value, until: now + DATE_FAIL_TTL_MS };
+      this.dataDate = entry;
+      // An answer is kept for a day (tiles are rebuilt now and then); a failure for five minutes.
+      void value.then((d) => { if (d !== null) entry.until = this.now() + DATE_TTL_MS; });
+    }
+    return this.dataDate.value.then((d) => d ?? '日付不明');
   }
 
   /**
