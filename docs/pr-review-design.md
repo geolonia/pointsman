@@ -46,7 +46,16 @@ holds write access:
 | Executor (small Worker, deployed with the engine) | Receives webhooks, calls the engine, carries out the action, re-decides waiting PRs from a cron | The Pointsman app: `pull_requests: write`, `checks: write` |
 
 The executor carries out only a fixed list of actions, like the label
-allow-list in `actions/triage`.
+allow-list in `actions/triage`. It checks the webhook signature, ignores
+replayed deliveries, and keeps the app's private key as a Worker secret.
+
+The read-only app needs: metadata, contents, pull requests, checks, commit
+statuses and custom properties, all read.
+
+Several webhooks for one PR can arrive at once. The executor handles one PR
+at a time (for example one Durable Object per PR) and carries out each
+decision at most once, so two events cannot both post a review command, pay
+or approve.
 
 Other ways to run it, and why not first:
 
@@ -57,21 +66,24 @@ Other ways to run it, and why not first:
 
 ### One job of several
 
-Seen more widely, the app is an assistant of the operations team: PR review
-routing is its first job, and more can follow (security checks by repo
-level, alert triage, repo settings). The team owns the rules; the app applies
-them the same way every time and logs each decision. To keep that safe as it
-grows:
+Seen more widely, the app can take on more operations work over time: PR
+review routing is the first job; security checks by repo level and alert
+triage could follow. The team owns the rules; the app applies them the same
+way every time and logs each decision. To keep that safe as it grows:
 
 - Each job is its own profile, with its own list of actions the executor may
-  carry out. A new job adds a profile and, only if needed, a permission.
-- The app gets the GitHub permissions of the jobs it has, no more.
-- Every decision is in the log, so the team can check its work like a new
-  colleague's, and correct it through the review queue.
+  carry out.
+- A GitHub App has one set of permissions, so the executor asks GitHub for a
+  short-lived token with only the permissions of the job at hand
+  (installation tokens can be limited to fewer permissions than the app has).
+- Jobs that need admin rights (repo settings) get their own app and threat
+  model, not more rights on this one.
+- Every decision is in the log, and people correct it through the review
+  queue.
 
 ## The decision chain
 
-Two profiles, linked with `requires` ([decision-chains.md](decision-chains.md)):
+Profiles linked with `requires` ([decision-chains.md](decision-chains.md)):
 
 ```mermaid
 flowchart LR
@@ -80,25 +92,30 @@ flowchart LR
     N --> X[executor carries out the action]
 ```
 
-- **`pr-risk`** runs once per head commit (`ref: github:<owner>/<repo>#<n>@<sha>`).
-  It classifies the change: `approvable`, `bump`, `normal`, `sensitive` or
-  `high`. It is the only profile with AI questions, so the model is asked once
-  per push.
+- **`pr-risk`** classifies the change: `approvable`, `bump`, `normal`,
+  `sensitive` or `high`. It is the only profile with AI questions. It runs
+  once per head commit (`ref: github:<owner>/<repo>#<n>@<sha>`), and again
+  when the title, description or base branch changes (an `edited` event) or
+  when its last answer came from missing facts. A newer `pr-risk` decision
+  replaces the earlier one.
 - **`pr-next-step`** runs again on PR events and on a timer while a PR waits.
   It reads `pr-risk` and the current review state and returns the action. It
   has no AI questions (`model: none`), so re-running it is cheap.
+- **`pr-approve-confirm`** is used only while people confirm approvals
+  (rollout step 5, see [Confirmed approvals](#confirmed-approvals)).
 
-A new push gives a new `ref`, so both run again.
+A new push gives a new `ref`, so all of them run again.
 
 ## Actions
 
 | Action | The executor does | Was in `review-next` |
 | --- | --- | --- |
-| `done` | Nothing (merged, closed, or already reviewed) | `done` |
+| `done` | Nothing (merged, closed, already reviewed or approved) | `done` |
 | `wait-ready` | Nothing; the author marks the PR ready once | `wait-ready` |
 | `in-progress` | Nothing; decide again in 5 min | `in-progress` |
-| `retry` | Nothing; a fact could not be read; decide again in 5 min | new (was `error` or an unknown state) |
+| `retry` | Nothing; a fact could not be read; decide again in 5, 10, 20 min, then only on the next event, with "Pointsman cannot read this PR" in its check run | new (was `error` or an unknown state) |
 | `approve` | Approve the head commit as the Pointsman app (see [Approval](#approval-and-rulesets)) | new; replaces `skip` |
+| `confirm-approve` | Open a `pr-approve-confirm` decision, so a person confirms the approval | new, rollout step 5 only |
 | `coderabbit-approve` | Post `@coderabbitai approve` | `approve` |
 | `request-review` | Post `@coderabbitai review` | `review` |
 | `check` | Post `@coderabbitai rate limit` (free) | `check` |
@@ -110,7 +127,7 @@ A new push gives a new `ref`, so both run again.
 | `copilot` | Request a Copilot review | `copilot` |
 | `fleet` | As `use-copilot`, with the "Same change as" line | `fleet` |
 | `restore-coderabbit` | Remove the ignore line | `restore-coderabbit` |
-| `security-review` | Run the full-repository security review and request code owners (see [Security levels](#repository-security-levels)) | new |
+| `security-review` | Start the repository's security review and request code owners (see [Security levels](#repository-security-levels)) | new |
 | `split` | Ask the author to split the PR | new |
 | `ask-person` | Request a review from a person | `human` |
 
@@ -120,7 +137,7 @@ Names chosen on purpose:
   (asking CodeRabbit to approve) are different things.
 - `review` is a reserved action in Pointsman ("a person decides", the default
   of `people_check`), so posting `@coderabbitai review` is `request-review`.
-  Both profiles set `people_check` explicitly.
+  `pr-risk` and `pr-next-step` set `people_check: []`.
 
 Pointsman has no `retryAt`: rules cannot compute times. The executor takes
 the wait from the decision's facts (`facts.queue.wait_minutes`) and decides
@@ -136,36 +153,55 @@ repository, the PR number and the head commit it was told about. A caller
 cannot claim "docs only" or "CI is green"; Pointsman looks it up.
 
 All GitHub facts of one decision come from one snapshot, read once at the
-start (PR, files, reviews, statuses, checks, comments), so they describe the
-same moment. The snapshot records its head commit; if it differs from the
-commit in the request, every GitHub fact is missing and the rules return
-`retry`.
+start (PR, files, reviews, statuses, checks, comments, repo properties), so
+they describe the same moment. The snapshot records its head commit; if it
+differs from the commit in the request, every GitHub fact is missing and the
+rules return `retry`.
 
 Proposed facts (names and fields are a sketch):
 
 | Fact | Fields (examples) | From |
 | --- | --- | --- |
-| `pr` | `open`, `merged`, `draft`, `wip_title`, `files`, `changed_lines`, `author_member`, `author_dependabot`, `all_commits_by_author`, `fork` | GitHub PR |
-| `repo` | `approve_allowed`, `handles_personal_data`, `visibility`, `archived` | repository custom properties |
+| `pr` | `open`, `merged`, `draft`, `wip_title`, `files`, `changed_lines`, `author_member`, `author_dependabot` (login `dependabot[bot]` and type Bot), `all_commits_by_author`, `fork` | GitHub PR |
+| `repo` | `approve_allowed`, `handles_personal_data`, `can_pay` (owner in the profile's list of orgs with CodeRabbit credits), `visibility`, `archived` | repository custom properties |
 | `risky` | `any`, `count` for the risky path list | changed paths |
 | `approvable_paths` | `all` for the list of paths that may be approved; false for an empty diff | changed paths |
 | `sensitive_paths` | `any` for persistence, logging, API, auth and infrastructure paths | changed paths |
-| `bump` | `version_only`, `semver`, `dev_only`, `registry_changed` | manifest and lockfile diff |
-| `ci` | `green`, `pending`: required checks only, without Pointsman's own check run | checks and statuses on the head |
+| `bump` | `applies`, `version_only`, `semver`, `dev_only`, `registry_changed`, `manifest_lines`, `release_age_days` | manifest and lockfile diff |
+| `ci` | `green`, `pending`: required checks only, without Pointsman's own check run; `green` is false when the repo has no required checks | checks and statuses on the head |
 | `changes_requested` | `any` (CodeRabbit, Copilot or a person) | reviews |
+| `pointsman` | `approved_head`, `security_review_head` (`none`, `running`, `passed`, `failed`) | the app's own reviews, the security review's check run |
 | `coderabbit` | `installed`, `ignored`, `reviewed_head`, `in_progress`, `approved_head`, `rebase_only`, `changes_requested`, `unresolved_threads`, `outside_diff_findings`, `billable_files`, `price_stated` | statuses, reviews, comments |
 | `copilot` | `requested`, `reviewed_head`, `approved_head`, `reviews` | reviews, requested reviewers |
 | `fleet` | `claimed`, `same`, `approved` | the PR named in "Same change as", only in repos where the read app is installed |
-| `budget` | `available`, `wait_minutes`, `allowance_per_hour`, `observed_minutes_ago`, `taken_by_other_pr` | CodeRabbit's rate limit replies |
+| `budget` | `known`, `available`, `wait_minutes`, `allowance_per_hour`, `observed_minutes_ago`, `taken_by_other_pr` | CodeRabbit's rate limit replies |
 | `queue` | `ahead`, `wait_minutes` (the wait plus the PRs ahead) | Pointsman's log: the author's other waiting PRs |
 | `spend` | `per_pr_usd_after`, `per_5h_usd_after`, `paid_for_head` | Pointsman's log (see [Ledger](#the-spend-ledger)) |
 
+**Missing and not applicable are different.** A fact is *missing* when it
+could not be read (GitHub down, rate limited, too slow). A fact that does not
+apply is still known: `bump.applies` is false on a docs PR, `fleet.claimed`
+is false without a claim, `budget.known` is false before CodeRabbit's first
+reply. Rules test these fields; they never count as missing.
+
+A custom property that is not set is missing, not false: a repo without
+`handles-personal-data` is treated as unknown, so nothing is approved there
+until someone sets it. Only org admins may change these properties (the
+property is not editable by repository admins), so a repo admin cannot opt a
+repo into approvals or clear its personal-data flag.
+
 Path lists are fact settings in the profile, like a fact's `layer` today, so
 changing them is a profile change with a new version. The list of paths that
-may be approved is **narrower** than `review-next`'s trivial list, because an
-approval is a stronger outcome than skipping CodeRabbit: it excludes
-lockfiles, `*.txt`, and files that instruct agents (`AGENTS.md`,
-`CLAUDE.md`, `.claude/**`, `**/SKILL.md`, prompt files).
+may be approved is an **allow-list**, narrower than `review-next`'s trivial
+list, because an approval is a stronger outcome than skipping CodeRabbit:
+
+```yaml
+approvable_paths: ["docs/**/*.md", "README.md", "**/README.md", "CHANGELOG.md", "changes/*.md"]
+```
+
+So lockfiles, `*.txt`, and files that instruct agents (`AGENTS.md`,
+`CLAUDE.md`, `.claude/**`, `**/SKILL.md`, prompt files) are never
+approvable.
 
 AI questions, in `pr-risk` only:
 
@@ -182,8 +218,9 @@ with a missing fact never matches. That protects positive conditions
 (`facts.ci.green == true`) but not negative ones: a missing `risky` fact
 would just skip the `high` rule. So:
 
-- The first rule of each profile catches missing facts: `pr-risk` returns
-  `high`, `pr-next-step` returns `retry`.
+- An early rule of each profile catches missing facts: `pr-risk` returns
+  `high`, `pr-next-step` returns `retry` (after "not open: `done`", so a
+  merged PR is never stuck).
 - Rules that lead to `approvable`, `bump`, `approve` or `pay` write every
   condition as a positive, known value (`facts.risky.any == false`, not
   `not facts.risky.any`).
@@ -196,27 +233,37 @@ the AI answers to be harmless; an AI answer alone never makes a change
 approvable. If the model is tricked, the worst case is the same as having no
 AI questions, so the real protection is the facts. The thresholds (lines,
 probabilities) are public in the profile; they are not a secret and do not
-need to be.
+need to be. Between the two `personal_data` thresholds (0.2 to 0.3) a change
+is `normal` on purpose: not approved, and not sent to the security review.
 
 ## Repository security levels
 
 Repository custom properties become facts (`facts.repo.*`), so Pointsman can
-treat repos differently by their security or privacy level. Rulesets already
-target repos this way (`security-suite`, `issue-routing`).
+treat repos differently by their security or privacy level, the same way
+rulesets already target repos by property.
 
 - `approve_allowed` (for example a property `pointsman-approve: true`): the
   app approves only in repos that opted in.
 - `handles_personal_data` (a property planned by Geolonia's operations team):
-  in these repos, a PR that touches `sensitive_paths`, or where the model
-  sees personal data, is `sensitive`. It gets a full-repository security
-  review (an agent that reads the threat model, not only the diff) and needs
-  a code owner's approval. Pointsman never approves there. A PR over the
-  size limit gets `split` first.
+  in these repos, a PR that touches `sensitive_paths` or `risky` paths, or
+  where the model sees personal data, is `sensitive`. Pointsman never
+  approves there.
 - Other properties (public or private, production or not) can be added the
   same way, as one fact type that reads all properties.
 
-The same engine could later decide other security questions (alerts, repo
-settings), as separate profiles. That is out of scope here.
+A `sensitive` PR:
+
+1. Over 800 changed lines: `split` (ask the author to split it).
+2. Otherwise `security-review`: the executor starts the repository's security
+   review and requests the code owners. The review itself is not part of the
+   executor, because it reads PR text and the whole repository: it runs
+   where the repository's own CI runs (for example a workflow with an AI
+   security agent and the threat model, started by a label), with no access
+   to the Pointsman app's key. It reports as a check run on the head.
+3. When that check run passed (`facts.pointsman.security_review_head ==
+   'passed'`), the PR continues with the normal CodeRabbit flow; failed:
+   `ask-person`. The code owners' approval is required by the repo's
+   ruleset, not by Pointsman.
 
 ## Rules
 
@@ -224,10 +271,12 @@ settings), as separate profiles. That is out of scope here.
 
 First match wins:
 
-1. Any fact missing: `high` (the strictest class: CodeRabbit, no automatic payment).
-2. `high`: `facts.risky.any == true`, or `facts.pr.changed_lines > 800`.
-3. `sensitive`: `facts.repo.handles_personal_data == true`, and
-   `facts.sensitive_paths.any == true` or `personal_data.yes >= 0.3`.
+1. Any fact missing: `high` (the strictest class: CodeRabbit, no automatic
+   payment).
+2. `sensitive`: `facts.repo.handles_personal_data == true`, and
+   `facts.sensitive_paths.any == true`, `facts.risky.any == true`,
+   `facts.pr.changed_lines > 800` or `personal_data.yes >= 0.3`.
+3. `high`: `facts.risky.any == true`, or `facts.pr.changed_lines > 800`.
 4. `approvable`: `facts.repo.approve_allowed == true`,
    `facts.repo.handles_personal_data == false`, `facts.risky.any == false`,
    `facts.approvable_paths.all == true`, `facts.pr.changed_lines <= 40`,
@@ -235,26 +284,32 @@ First match wins:
    `matches_title.yes >= 0.8`, `changes_behaviour.yes < 0.2`,
    `personal_data.yes < 0.2`.
 5. `bump`: `facts.repo.approve_allowed == true`,
+   `facts.repo.handles_personal_data == false`,
    `facts.pr.author_dependabot == true`,
    `facts.pr.all_commits_by_author == true` (nobody else pushed to the
    branch), `facts.bump.version_only == true`, `facts.bump.semver == 'patch'`,
    `facts.bump.dev_only == true`, `facts.bump.registry_changed == false`,
+   `facts.bump.manifest_lines <= 10`, `facts.bump.release_age_days >= 3`,
    `facts.risky.any == false` (GitHub Actions bumps touch
    `.github/workflows/**`, so they stay `high`).
 6. Default `normal`.
 
 ### `pr-next-step`
 
-Rules 1 to 13 keep the order of `review-next` today (SKILL.md section 5),
-with the policy.json and caps values written into the rules:
+The order follows `review-next` today (SKILL.md section 5), with the
+policy.json and caps values written into the rules. New compared with
+`review-next`: rules 2, 6, 11 and the split of its `pay` into rules 15
+and 16.
 
-1. Any fact missing, or the snapshot is of another head commit: `retry`.
-2. Not open: `done`.
+1. Not open: `done`.
+2. Any fact missing, or the snapshot is of another head commit: `retry`.
 3. Draft or `WIP` in the title: `wait-ready`.
-4. CodeRabbit review running, or Copilot requested: `in-progress`.
-5. `pr-risk` is `sensitive`: `security-review` (or `split` when too large).
-6. Fleet claim holds, the head is not approved yet, no ignore line: `fleet`.
+4. CodeRabbit review running, Copilot requested, or the security review
+   running: `in-progress`.
+5. Fleet claim holds, the head is not approved yet, no ignore line: `fleet`.
    Claim fails and the ignore line is there: `restore-coderabbit`.
+6. `pr-risk` is `sensitive`: as in [Security levels](#repository-security-levels)
+   (`split`, `security-review`, `ask-person`, or on to rule 7 once passed).
 7. CodeRabbit ignored or not installed: Copilot approved the head: `done`;
    Copilot reviewed `maxReviews` times: `ask-person`; Copilot reviewed the
    head: `done`; else `copilot`.
@@ -262,26 +317,31 @@ with the policy.json and caps values written into the rules:
    findings outside the diff: `coderabbit-approve`. Approved and `high`, with
    a second Copilot review on for high risk: `copilot`. Else `done`.
 9. Approved before, `rebase_only`, not `high`: `coderabbit-approve`.
-10. `approvable` or `bump`, CodeRabbit not involved yet,
-    `facts.changes_requested.any == false`, `facts.ci.green == true`:
-    `approve`. CI still pending: `in-progress`.
-11. Budget unknown, or the free review went to another PR: `check`.
-12. A free review and no PR of the author ahead: `request-review`.
-13. Wait known and within the limit (15 min for up to 5 billable files,
-    60 min above): `wait`.
-14. Wait known and over the limit, up to 4 billable files, the org can pay,
-    price stated by CodeRabbit for this head, not `high`,
+10. Pointsman already approved the head: `done`.
+11. `approvable` or `bump`, CodeRabbit not involved yet, the repo still
+    allows approvals and does not handle personal data (read again here, in
+    case a property changed after `pr-risk`),
+    `facts.changes_requested.any == false`, `facts.ci.green == true`, no
+    "no" from a person for this head: `approve` (`confirm-approve` while
+    people confirm). CI still pending: `in-progress`.
+12. Budget not known, or the free review went to another PR: `check`.
+13. A free review and no PR of the author ahead: `request-review`.
+14. Wait within the limit (15 min for up to 5 billable files, 60 min above):
+    `wait`.
+15. Wait over the limit, up to 4 billable files, `facts.repo.can_pay`, price
+    stated by CodeRabbit for this head, not `high`,
     `spend.per_pr_usd_after` and `spend.per_5h_usd_after` within the caps,
     not `paid_for_head`: `pay`.
-15. Wait known and over the limit, up to 4 billable files, the org can pay:
+16. Wait over the limit, up to 4 billable files, `facts.repo.can_pay`:
     `pay-ask`.
-16. Wait known: `queue`. Default: `check`.
+17. Default: `queue`.
 
 Not yet placed: the Copilot-instead settings (`insteadWhenLimited`,
-`insteadAfterMin`, `trivialApprover`) and the guards around them (Copilot
-reviewed too often, CodeRabbit's open change request). They are personal in
-`caps.json` today; in a shared profile each becomes one team setting, or is
-dropped (open question 3).
+`insteadAfterMin`, `trivialApprover`) with their guards (Copilot reviewed too
+often, CodeRabbit's open change request), and `review-next`'s draft
+sub-cases (CodeRabbit not installed, drafts reviewed in this repo). The
+Copilot settings are personal in `caps.json` today; in a shared profile each
+becomes one team setting, or is dropped (open question 3).
 
 `review-next.test.mjs` has the cases for all of these. They become the
 profiles' test cases. That needs a test harness with mock GitHub facts and
@@ -291,11 +351,19 @@ cover only the spatial types today.
 ## Fact provider notes
 
 - New fact types with GitHub as the source. Each fact has 3 s today; one
-  shared snapshot per decision keeps that possible. A GitHub rate limit or
-  timeout makes the facts missing (`error` or `timeout`).
-- `queue` and `spend` read Pointsman's own log (other decisions of
-  `pr-next-step`, across clients). That is new: facts read external data
-  today.
+  shared snapshot per decision, cached per head commit for a short time,
+  keeps that possible for most PRs. Very large PRs (many pages of files or
+  reviews) may need a longer limit, or a snapshot the executor prepares in
+  the background. A GitHub rate limit or timeout makes the facts missing
+  (`error` or `timeout`).
+- `queue` and `spend` read Pointsman's own log: other decisions of
+  `pr-next-step` made by the same client (the executor's token), so token
+  scoping stays as it is. Reading the log for a fact is new: facts read
+  external data today.
+- The executor handles one PR at a time, but two PRs can still decide at the
+  same moment. For money, all `pay` decisions go through one serialized step
+  per org, so two PRs cannot both use the last of a cap. CodeRabbit's monthly
+  cap stays the last limit.
 - `budget` comes from CodeRabbit's replies to `@coderabbitai rate limit`,
   which are per developer. Pointsman reads the latest reply for the PR's
   author on any PR, not only this one.
@@ -321,15 +389,25 @@ cover only the spatial types today.
 - Whether a bot may approve at all is a team and security decision (open
   question 1).
 
-### Confirmed approvals (rollout step 5)
+### Confirmed approvals
 
-While people still confirm approvals, `approve` is in `people_check`. Two
-Pointsman behaviours matter here: a newer decision for the same `ref`
-supersedes the open review, and once a person resolved it, new decisions
-for that `ref` are refused (`409 resolved_by_person`). So the executor does
-not re-decide a PR while its approval waits for a person, and treats a `409`
-as "a person decided". The person's answer reaches the executor through the
-callback, which then approves.
+In rollout step 5, a person confirms each approval. This uses a third
+profile, `pr-approve-confirm` (`model: none`, `requires: pr-risk`, default
+`review`, `people_answers: [approve, decline]`), not `people_check` on
+`pr-next-step`. The reason: once a person resolves a review of a profile with
+`requires`, Pointsman refuses new decisions of that profile for the same
+`ref` (`409 resolved_by_person`). On `pr-next-step` that would stop the PR
+until the next push. On the separate profile only the confirmation is
+locked, which is what we want.
+
+- `pr-next-step` returns `confirm-approve`; the executor makes one
+  `pr-approve-confirm` decision and does not make another while it is open.
+- `pr-next-step` reads it as an optional earlier decision: `approve` from a
+  person leads to `approve`; `decline` skips rule 11, so the PR goes on to
+  CodeRabbit as usual.
+- The callback tells the executor when the person answered.
+- To check while building: the `409` applies per profile and `ref`, as
+  assumed here.
 
 ## The spend ledger
 
@@ -365,7 +443,8 @@ gap later.
    and no `approve` was given where a review later found a real problem.
 5. **Pointsman decides, people confirm approvals.** The executor carries out
    the actions; `review-next` becomes a thin client that prints Pointsman's
-   action. `approve` needs a person's yes (see above). The log shows how
+   action. Each approval needs a person's yes (see
+   [Confirmed approvals](#confirmed-approvals)). The log shows how
    often people said no.
 6. **The app approves on its own** in opted-in repos, then more repos. The
    decide code and the gist ledger are removed from the skill.
