@@ -4,7 +4,7 @@
 # client sends only the pull request: { repo, number, head }, plus its title
 # and description for the AI. Neutral example content.
 id: pr-docs-check
-version: 1
+version: 2
 title:
   en: "Pull request: documentation only?"
   ja: プルリクエスト：ドキュメントだけ？
@@ -45,6 +45,7 @@ policy:
     # Every condition is a known, positive value.
     - when: >-
         facts.docs.all == true and facts.pr.changed_lines <= 200 and facts.pr.fork == false
-        and facts.pr.all_commits_verified == true and facts.ci.green == true and changes_behaviour.yes < 0.2
+        and facts.pr.all_commits_verified == true and facts.pr.pushed_by_author == 'yes'
+        and facts.ci.green == true and changes_behaviour.yes < 0.2
       action: light
   default: review
