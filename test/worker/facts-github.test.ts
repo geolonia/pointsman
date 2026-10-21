@@ -319,6 +319,11 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     const start = Date.now();
     expect(() => paths.forEach(ownerLookup(rules))).toThrow(FactError);
     expect(Date.now() - start).toBeLessThan(3000);
+    // A large usual file stays within the budget: 1,000 folder patterns, anchored or not, against 2,000 deep paths.
+    for (const prefix of ['', '/']) {
+      const look = ownerLookup(parseCodeowners(Array.from({ length: 1_000 }, (_, i) => `${prefix}build${i}/ @a`).join('\n')));
+      expect(Array.from({ length: 2_000 }, (_, i) => look(`zz/${'d/'.repeat(8)}build${i % 1_200}/f.ts`)).filter((o) => o !== null)).toHaveLength(prefix ? 0 : 1_800); // build0 to build999 exist; anchored ones are not at the top
+    }
     // A usual file: last match wins, and nothing runs out.
     const owner = ownerLookup(parseCodeowners('* @a\n/docs/ @b\n*.md @c'));
     expect([owner('docs/x.ts'), owner('docs/x.md'), owner('src/x.ts')]).toEqual([['@b'], ['@c'], ['@a']]);

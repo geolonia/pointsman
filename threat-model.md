@@ -5,16 +5,17 @@
 - **Project**: Pointsman (geolonia/pointsman), a decision service on Cloudflare
   Workers: typed questions in, typed answers with probabilities and an action
   out.
-- **Version binding**: the merge of pointsman#143 (bounds on reading
-  `CODEOWNERS`) into `main`, on top of commit
-  `432366b6` on `main` (2026-10-22 JST), the merge of pointsman#138; the
-  JSON export names `432366b6` until it is re-exported at the merge commit.
-  The model was first bound to commit
-  `e1d3591e1b2f6c782f2941e4477923fd88e2addc` (2026-10-16), re-bound to
-  `65ec5dae4da01027133f4861df60de3b5847f199` (the merge of pointsman#135)
-  when the GitHub facts were added, and re-bound for pointsman#143. The repository has no release tags, so
-  the model is bound to the commit. A report against a later commit is triaged against the
-  model as it stood at that commit, not against this model.
+- **Version binding**: the merge commit of pointsman#143 (bounds on reading
+  `CODEOWNERS`) on `main`. Until that merge exists, read the code at its
+  parent, commit `432366b36684a4e2eb1c4e54b74ad0da1f9551ed` (2026-10-22 JST,
+  the merge of pointsman#138), plus pointsman#143; `threat-model.json` names
+  that parent until it is re-exported at the merge commit. History: first
+  bound to `e1d3591e1b2f6c782f2941e4477923fd88e2addc` (2026-10-16), re-bound
+  to `65ec5dae4da01027133f4861df60de3b5847f199` (pointsman#135) for the GitHub
+  facts, and re-bound for pointsman#143. The repository has no release tags,
+  so the model is bound to a commit. A report against a later commit is
+  triaged against the model as it stood at that commit, not against this
+  model.
 - **Date / author**: 2026-10-16, drafted for the maintainer, Daniel Kastl, who
   ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
   opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and

@@ -637,8 +637,8 @@ without regular expressions, so a long pattern cannot slow a decision down.
   stricter result counts.
 - `CODEOWNERS`: at most 128 KiB, and each pattern at most 1,024
   characters. Matching all changed files against its patterns is limited
-  to 50 million steps (a file of 1,000 folder patterns against 2,000 file
-  names stays within it). Past any of these limits `github_pr` is missing
+  to 50 million steps; a file of 1,000 folder patterns such as `build/`
+  against 2,000 file names stays far within it. Past any of these limits `github_pr` is missing
   (`error`), never a guessed owner. GitHub itself ignores a `CODEOWNERS`
   file over 3 MB.
 

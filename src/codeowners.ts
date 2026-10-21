@@ -57,10 +57,15 @@ export function parseCodeowners(text: string): OwnerRule[] {
   return rules;
 }
 
-/** A pattern as split globs: the path itself, or everything below it (null: not this way). */
+/**
+ * A pattern as split globs: the path itself, or everything below it (null:
+ * not this way); and its parts without wildcards, each of which can only
+ * match a part of the path that is the same.
+ */
 interface Compiled {
   exact: string[] | null;
   below: string[] | null;
+  plain: string[];
 }
 
 function compile(pattern: string): Compiled | true {
@@ -74,20 +79,36 @@ function compile(pattern: string): Compiled | true {
   const glob = anchored ? p : `**/${p}`;
   // A folder matches everything below it; "docs/*" matches only the files directly in docs/.
   const last = p.slice(p.lastIndexOf('/') + 1);
+  const parts = globParts(glob);
   return {
-    exact: folder ? null : globParts(glob),
+    exact: folder ? null : parts,
     below: folder || !last.includes('*') || last === '**' ? globParts(`${glob}/**`) : null,
+    plain: [...new Set(parts.filter((x) => !/[*?]/.test(x)))],
   };
 }
 
-function matches(c: Compiled | true, parts: string[], budget?: MatchBudget): boolean {
+/** A path split at "/", and the set of its parts. */
+interface Path {
+  parts: string[];
+  names: Set<string>;
+}
+
+const splitPath = (path: string): Path => {
+  const parts = path.split('/');
+  return { parts, names: new Set(parts) };
+};
+
+function matches(c: Compiled | true, path: Path, budget?: MatchBudget): boolean {
   if (c === true) return true;
-  return (c.exact !== null && matchParts(c.exact, parts, budget)) || (c.below !== null && matchParts(c.below, parts, budget));
+  // A quick no when a part without wildcards is not in the path, for example "build/" against src/a.ts.
+  budget?.spend(c.plain.length);
+  if (!c.plain.every((x) => path.names.has(x))) return false;
+  return (c.exact !== null && matchParts(c.exact, path.parts, budget)) || (c.below !== null && matchParts(c.below, path.parts, budget));
 }
 
 /** Whether a CODEOWNERS pattern matches a file's path. */
 export function codeownersMatch(pattern: string, path: string): boolean {
-  return matches(compile(pattern), path.split('/'));
+  return matches(compile(pattern), splitPath(path));
 }
 
 /**
@@ -99,9 +120,10 @@ export function ownerLookup(rules: OwnerRule[], maxSteps = MAX_MATCH_STEPS): (pa
   const compiled = rules.map((r) => ({ c: compile(r.pattern), owners: r.owners }));
   const budget = new MatchBudget(maxSteps, () => new FactError('CODEOWNERS: too much work to match the changed files'));
   return (path) => {
-    const parts = path.split('/');
+    budget.spend(path.length);
+    const p = splitPath(path);
     for (let i = compiled.length - 1; i >= 0; i--) {
-      if (matches(compiled[i]!.c, parts, budget)) return compiled[i]!.owners;
+      if (matches(compiled[i]!.c, p, budget)) return compiled[i]!.owners;
     }
     return null;
   };
