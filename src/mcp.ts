@@ -62,7 +62,7 @@ function describe(p: Profile, seen: Set<string>) {
 
 function server(deps: McpDeps, caller: Caller): McpServer {
   const client = clientOf(caller);
-  const mcp = new McpServer({ name: 'pointsman', version: '0.1.0' });
+  const mcp = new McpServer({ name: 'pointsman', version: '0.2.0' });
 
   /** The profiles of these ids the caller may see through MCP. */
   const seenProfiles = async (ids: string[]) => {

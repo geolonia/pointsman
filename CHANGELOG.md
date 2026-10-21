@@ -2,10 +2,40 @@
 
 Pointsman follows [semantic versioning](https://semver.org/). Before 1.0, a
 minor release (0.x) may change the API, the profile format or the decision
-log; the notes say how. Each release is a tag on `main`. A deployment pins
+log; the notes say how. Each release is a tag on `main`; its version is in
+`package.json`, `openapi.yaml` (`info.version`) and `src/mcp.ts` (the MCP
+server's version). A deployment pins
 the engine by commit in its config repository: to use a release, set
 `ref` in `engine.json` to the commit of its tag
-(`git rev-parse 'v0.1.0^{commit}'`, which also works for annotated tags).
+(`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
+works for annotated tags).
+
+## 0.2.0 (2026-10-21)
+
+### Added
+
+- API tokens can expire: `scripts/tokens.mjs create|rotate --expires <when>`
+  (a duration such as `90d`, or a date). The Worker refuses an expired token
+  like an unknown one (401), and KV deletes the key then. `rotate` asks for
+  `--expires` or `--no-expiry` when the old token had an expiry; `list`
+  shows the expiry. The README has a rotation procedure without downtime
+  (#121).
+- Detour facts name the date of the routing data in `source`, like the GSI
+  facts: `… routed with Valhalla (routing data 2026-10-17 時点)`, from the
+  routing server's `GET /status` (`tileset_last_modified`), kept for a day.
+  `日付不明` when the server cannot say or answers more than a second after
+  the routes; a failed `/status` is asked again after five minutes. It is one
+  more call to the routing server (with its API key), about once a day per
+  Worker instance (#120).
+- Example profile `road-restriction-check` v4 looks up the way around by
+  car (`drive`) for a closed section, as context: no rule reads it (#122).
+
+### Changed
+
+- The `source` text of detour facts is longer (the date is added). Code
+  that compares it with the old fixed text must match the start instead.
+- Dependencies: wrangler 4.149, zod 4.6.6, @cloudflare/vitest-plugin 1.4,
+  @cloudflare/workers-oauth-provider 1.2.3; actions/setup-node 7.1.0.
 
 ## 0.1.0 (2026-10-21)
 
