@@ -10,7 +10,7 @@
 // is in each fact's `source`. Background: docs/spikes/spatial-facts.md.
 // Tiles are cached for a day: in memory and in the Workers cache.
 
-import { FactError, FactUnavailableError, type FactProvider, type FactQuery, type FactResult, type Geometry, type Position } from './facts';
+import { FactError, FactUnavailableError, type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery } from './facts';
 import { along, distanceTo, offset, tileOf } from './geo';
 import type { ValhallaRouter } from './facts-routing';
 
@@ -65,7 +65,7 @@ export interface GsiOptions {
   routing?: ValhallaRouter | undefined;
 }
 
-export class GsiFactProvider implements FactProvider {
+export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
   private readonly fetchFn: typeof fetch;
   private readonly cache: Cache | undefined;
   private readonly memory = new Map<string, { tile: Promise<Tile<unknown>>; until: number }>();
@@ -80,7 +80,7 @@ export class GsiFactProvider implements FactProvider {
     this.routing = routing;
   }
 
-  async lookup(query: FactQuery, signal: AbortSignal): Promise<FactResult> {
+  async lookup(query: SpatialFactQuery, signal: AbortSignal): Promise<FactResult> {
     if (query.type === 'detour') {
       if (!this.routing) throw new FactUnavailableError('no routing provider');
       // Routing requests are not shared, so the lookup's time limit stops them.

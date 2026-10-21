@@ -1,0 +1,100 @@
+# Test cases for pr-docs-check: each rule, and each fact missing.
+profile: pr-docs-check
+cases:
+  - name: a small docs change with green checks gets a light review
+    expect: light
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: a docs change that may alter a command gets a full review
+    expect: review
+    answers: { changes_behaviour: 0.6 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: one code file means a full review
+    expect: review
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 3, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: false, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: an unsigned commit means a full review
+    expect: review
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: false }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: unknown signatures (too many commits) mean a full review
+    expect: review
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: null }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: no required checks means a full review
+    expect: review
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 0, green: false, pending: false, failed: false }
+
+  - name: running checks mean wait
+    expect: wait
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: false, pending: true, failed: false }
+
+  - name: a draft waits
+    expect: wait
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: true, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: a merged pull request is done, even with checks missing
+    expect: done
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: false, merged: true, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { missing: error }
+
+  - name: a newer commit means retry
+    expect: retry
+    answers: { changes_behaviour: 0.05 }
+    facts: { pr: { missing: stale }, docs: { missing: stale }, ci: { missing: stale } }
+
+  - name: missing paths mean retry
+    expect: retry
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { missing: error }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: missing checks mean retry
+    expect: retry
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { missing: timeout }
+
+  - name: no GitHub access means retry
+    expect: retry
+    answers: { changes_behaviour: 0.05 }
+    facts: { pr: missing, docs: missing, ci: missing }

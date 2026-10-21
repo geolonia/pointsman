@@ -64,6 +64,11 @@ const W = {
     nearest: (f: string, layer: string, at: string) => `${f}: the nearest feature of the layer "${layer}" to the place (${at}), with its distance and name.`,
     detour: (f: string, mode: string, at: string, route: boolean) =>
       `${f}: how much longer the way around the closed section (${at}) is ${mode}${route ? '; the way itself is kept for people and maps' : ''}.`,
+    githubPr: (f: string, at: string) => `${f}: the pull request (${at}), read from GitHub: open, merged or draft, its title, size, author, base branch, fork, and commit signatures.`,
+    githubPaths: (f: string, at: string, paths: string[], except: string[]) =>
+      `${f}: which changed files of the pull request (${at}) match ${paths.join(', ')}${except.length ? `, except ${except.join(', ')}` : ''}.`,
+    githubChecks: (f: string, at: string) => `${f}: the results of the required checks of the pull request (${at}) on its head commit.`,
+    githubProperty: (f: string, at: string, p: string) => `${f}: the custom property "${p}" of the pull request's repository (${at}); "unset" when it has no value.`,
     byCar: 'by car',
     onFoot: 'on foot',
     factsHidden: 'The AI does not see facts; only the rules use them.',
@@ -100,7 +105,7 @@ const W = {
     below: (v: string) => `below ${v}`,
     factMissing: (f: string, missing: boolean) => (missing ? `the fact ${f} is missing` : `the fact ${f} was found`),
     factReason: (f: string) => `the reason the fact ${f} is missing`,
-    reasons: { no_location: 'no location in the request', unavailable: 'the data is not available', timeout: 'the lookup took too long', error: 'an error' } as Record<string, string>,
+    reasons: { no_location: 'no location in the request', no_pr: 'no pull request in the request', stale: 'the pull request has a newer commit', unavailable: 'the data is not available', timeout: 'the lookup took too long', error: 'an error' } as Record<string, string>,
     inArea: (f: string, yes: boolean) => (yes ? `the place is inside ${f}` : `the place is not inside ${f}`),
     rank: (f: string) => `the rank of ${f}`,
     class: (f: string) => `the class of ${f}`,
@@ -108,6 +113,28 @@ const W = {
     distance: (f: string) => `the distance to the nearest ${f}`,
     name: (f: string) => `the name of the nearest ${f}`,
     possible: (f: string, yes: boolean) => (yes ? `there is a way around (${f})` : `there is no way around (${f})`),
+    // GitHub facts: [true, false] sentences for yes-or-no fields, a subject for the others. % is the fact.
+    github: {
+      'github_pr.open': ['the pull request % is open', 'the pull request % is not open'],
+      'github_pr.merged': ['the pull request % is merged', 'the pull request % is not merged'],
+      'github_pr.draft': ['the pull request % is a draft', 'the pull request % is not a draft'],
+      'github_pr.wip_title': ['the title of % says WIP', 'the title of % does not say WIP'],
+      'github_pr.base_is_default': ['% targets the default branch', '% does not target the default branch'],
+      'github_pr.author_member': ['the author of % is a member of the owner', 'the author of % is not a member of the owner'],
+      'github_pr.author_dependabot': ['% is by Dependabot', '% is not by Dependabot'],
+      'github_pr.fork': ['% comes from a fork', '% does not come from a fork'],
+      'github_pr.all_commits_verified': ['every commit of % has a verified signature', 'not every commit of % has a verified signature'],
+      'github_pr.files': 'the number of changed files of %',
+      'github_pr.changed_lines': 'the number of changed lines of %',
+      'github_paths.any': ['a changed file matches %', 'no changed file matches %'],
+      'github_paths.all': ['every changed file matches %', 'not every changed file matches %'],
+      'github_paths.count': 'the number of changed files that match %',
+      'github_checks.green': ['every required check (%) passed', 'not every required check (%) passed'],
+      'github_checks.pending': ['a required check (%) has not finished', 'no required check (%) is waiting'],
+      'github_checks.failed': ['a required check (%) failed', 'no required check (%) failed'],
+      'github_checks.required': 'the number of required checks (%)',
+      'github_property.value': 'the value of %',
+    } as Record<string, string | [string, string]>,
     extra: (f: string) => `the extra distance of the way around (${f})`,
     decMissing: (d: string, missing: boolean) => (missing ? `the earlier decision ${d} is missing` : `the earlier decision ${d} exists`),
     decAction: (d: string) => `the action of the earlier decision ${d}`,
@@ -140,6 +167,11 @@ const W = {
     nearest: (f: string, layer: string, at: string) => `${f}：場所（${at}）から最も近い、レイヤー「${layer}」の地物と、その距離と名前。`,
     detour: (f: string, mode: string, at: string, route: boolean) =>
       `${f}：通れない区間（${at}）を${mode}避けると、どれだけ遠回りになるか${route ? '。迂回路そのものも、人と地図のために残します' : ''}。`,
+    githubPr: (f: string, at: string) => `${f}：GitHub から読むプルリクエスト（${at}）の状態（オープン、マージ済み、ドラフト）、タイトル、大きさ、作成者、ベースブランチ、フォーク、コミットの署名。`,
+    githubPaths: (f: string, at: string, paths: string[], except: string[]) =>
+      `${f}：プルリクエスト（${at}）の変更ファイルのうち ${paths.join('、')} に合うもの${except.length ? `（${except.join('、')} を除く）` : ''}。`,
+    githubChecks: (f: string, at: string) => `${f}：プルリクエスト（${at}）の head コミットでの必須チェックの結果。`,
+    githubProperty: (f: string, at: string, p: string) => `${f}：プルリクエストのリポジトリ（${at}）のカスタムプロパティ「${p}」。値がないときは "unset"。`,
     byCar: '車で',
     onFoot: '歩いて',
     factsHidden: 'AI は事実を見ません。事実を使うのはルールだけです。',
@@ -175,7 +207,7 @@ const W = {
     below: (v: string) => `${v}${jaSpace(v, false)}未満`,
     factMissing: (f: string, missing: boolean) => (missing ? `事実${f}が得られない` : `事実${f}が得られた`),
     factReason: (f: string) => `事実${f}が得られない理由`,
-    reasons: { no_location: 'リクエストに位置がない', unavailable: 'データが使えない', timeout: '調べるのに時間がかかりすぎた', error: 'エラー' } as Record<string, string>,
+    reasons: { no_location: 'リクエストに位置がない', no_pr: 'リクエストにプルリクエストがない', stale: 'プルリクエストに新しいコミットがある', unavailable: 'データが使えない', timeout: '調べるのに時間がかかりすぎた', error: 'エラー' } as Record<string, string>,
     inArea: (f: string, yes: boolean) => (yes ? `場所が${f}の範囲内` : `場所が${f}の範囲外`),
     rank: (f: string) => `${f}のランク`,
     class: (f: string) => `${f}の区分`,
@@ -183,6 +215,27 @@ const W = {
     distance: (f: string) => `最寄りの${f}までの距離`,
     name: (f: string) => `最寄りの${f}の名前`,
     possible: (f: string, yes: boolean) => (yes ? `迂回路（${f}）がある` : `迂回路（${f}）がない`),
+    github: {
+      'github_pr.open': ['プルリクエスト%がオープン', 'プルリクエスト%がオープンでない'],
+      'github_pr.merged': ['プルリクエスト%がマージ済み', 'プルリクエスト%がマージされていない'],
+      'github_pr.draft': ['プルリクエスト%がドラフト', 'プルリクエスト%がドラフトでない'],
+      'github_pr.wip_title': ['%のタイトルに WIP とある', '%のタイトルに WIP とない'],
+      'github_pr.base_is_default': ['%がデフォルトブランチ向け', '%がデフォルトブランチ向けでない'],
+      'github_pr.author_member': ['%の作成者がオーナーのメンバー', '%の作成者がオーナーのメンバーでない'],
+      'github_pr.author_dependabot': ['%が Dependabot によるもの', '%が Dependabot によるものでない'],
+      'github_pr.fork': ['%がフォークから', '%がフォークからでない'],
+      'github_pr.all_commits_verified': ['%のすべてのコミットに検証済みの署名がある', '%に検証済みの署名がないコミットがある'],
+      'github_pr.files': '%の変更ファイル数',
+      'github_pr.changed_lines': '%の変更行数',
+      'github_paths.any': ['%に合う変更ファイルがある', '%に合う変更ファイルがない'],
+      'github_paths.all': ['すべての変更ファイルが%に合う', '%に合わない変更ファイルがある'],
+      'github_paths.count': '%に合う変更ファイルの数',
+      'github_checks.green': ['必須チェック（%）がすべて通った', '必須チェック（%）がすべては通っていない'],
+      'github_checks.pending': ['必須チェック（%）に終わっていないものがある', '必須チェック（%）に待っているものがない'],
+      'github_checks.failed': ['必須チェック（%）に失敗したものがある', '必須チェック（%）に失敗したものがない'],
+      'github_checks.required': '必須チェック（%）の数',
+      'github_property.value': '%の値',
+    } as Record<string, string | [string, string]>,
     extra: (f: string) => `迂回路（${f}）で遠回りになる距離`,
     decMissing: (d: string, missing: boolean) => (missing ? `前の判定${d}がない` : `前の判定${d}がある`),
     decAction: (d: string) => `前の判定${d}のアクション`,
@@ -302,6 +355,16 @@ function factSentence(ref: FactOperand, op: Op, lit: Value, ctx: Ctx): string {
       if (ref.field === 'possible') return w.possible(name, truth(op, lit));
       if (ref.field === 'extra_m') return numeric(w.extra(name), op, `${num(lit as number)} m`, w);
       break;
+    default: {
+      if (!spec) break;
+      const key = `${spec.type}.${ref.field}`;
+      const words = Object.hasOwn(w.github, key) ? w.github[key] : undefined;
+      if (Array.isArray(words)) return words[truth(op, lit) ? 0 : 1]!.replace('%', name);
+      if (typeof words === 'string') {
+        const subject = words.replace('%', name);
+        return typeof lit === 'string' ? (op === '==' ? w.is : w.isNot)(subject, quoted(lit, w)) : numeric(subject, op, num(lit as number), w);
+      }
+    }
   }
   return numeric(`${name}.${ref.field}`, op, String(lit), w);
 }
@@ -376,6 +439,14 @@ function factText(f: FactSpec, w: Words): string {
       return w.nearest(name, f.layer ?? '', f.at);
     case 'detour':
       return w.detour(name, f.mode === 'walk' ? w.onFoot : w.byCar, f.at, f.route === true);
+    case 'github_pr':
+      return w.githubPr(name, f.at);
+    case 'github_paths':
+      return w.githubPaths(name, f.at, f.paths ?? [], f.except ?? []);
+    case 'github_checks':
+      return w.githubChecks(name, f.at);
+    case 'github_property':
+      return w.githubProperty(name, f.at, f.property ?? '');
   }
 }
 

@@ -1,0 +1,14 @@
+# expect: "gone" is not a reason a fact can be missing
+id: facts-github-bad-reason
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: Is it ok? }
+facts:
+  - { name: pr, type: github_pr, at: $.pr }
+policy:
+  rules:
+    - { when: "facts.pr.missing == true and facts.pr.reason == 'gone'", action: auto }
+  default: review

@@ -7,12 +7,16 @@ import { noCallbacks } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { lookupFacts, MockFactProvider, resultError, toGeometry, type FactProvider } from '../../src/facts';
+import type { FactRouter } from '../../src/facts';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { FactSpec, Profile } from '../../src/types';
 import * as contract from '../../generated/openapi-validators.mjs';
+
+/** The spatial provider behind the deployment's fact router. */
+const spatialOf = (deps: { facts?: unknown }) => (deps.facts as FactRouter | undefined)?.providers.spatial;
 
 const line = { type: 'LineString', coordinates: [[139.7505, 35.695], [139.752, 35.6956]] };
 const point = { type: 'Point', coordinates: [139.753, 35.6855] };
@@ -216,7 +220,7 @@ describe('FACTS_MODE', () => {
   it('is off unless set, and refuses unknown modes', () => {
     expect(depsFor(base).facts).toBeUndefined();
     expect(depsFor({ ...base, FACTS_MODE: 'off' }).facts).toBeUndefined();
-    expect(depsFor({ ...base, FACTS_MODE: 'mock' }).facts).toBeInstanceOf(MockFactProvider);
+    expect(spatialOf(depsFor({ ...base, FACTS_MODE: 'mock' }))).toBeInstanceOf(MockFactProvider);
     expect(() => depsFor({ ...base, FACTS_MODE: 'osm' })).toThrow(ConfigError);
   });
 });

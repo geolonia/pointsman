@@ -217,7 +217,7 @@ describe('facts', () => {
   it.each([
     ['facts.rain.inside == true', 'does not refer to a fact of this profile'],
     ['facts.flood.distance_m > 1', 'inside facts have missing, reason, inside, rank, class'],
-    ["facts.detour.reason == 'gone'", 'is not a reason a fact can be missing (no_location, unavailable, timeout, error)'],
+    ["facts.detour.reason == 'gone'", 'is not a reason a fact can be missing (no_location, no_pr, stale, unavailable, timeout, error)'],
     ['facts.detour.reason == 1', 'cannot compare string with number'],
     // The route is for people and maps: no rule can use it.
     ["facts.detour.route == 'x'", 'detour facts have missing, reason, possible, extra_m'],

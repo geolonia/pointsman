@@ -4,10 +4,14 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { ConfigError } from '../../src/app';
 import { FactError, lookupFacts, type Geometry } from '../../src/facts';
+import type { FactRouter } from '../../src/facts';
 import { GsiFactProvider } from '../../src/facts-gsi';
 import { inside, ValhallaRouter } from '../../src/facts-routing';
 import { distance } from '../../src/geo';
 import { depsFor } from '../../src/index';
+
+/** The spatial provider behind the deployment's fact router. */
+const spatialOf = (deps: { facts?: unknown }) => (deps.facts as FactRouter | undefined)?.providers.spatial;
 
 const URL_ = 'https://routing.test/v1';
 // A 240 m section, north to south.
@@ -392,7 +396,7 @@ describe('FACTS_ROUTING_URL', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
 
   it('needs FACTS_MODE gsi and a valid https URL', () => {
-    expect(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_ }).facts).toBeInstanceOf(GsiFactProvider);
+    expect(spatialOf(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_ }))).toBeInstanceOf(GsiFactProvider);
     expect(() => depsFor({ ...base, FACTS_MODE: 'mock', FACTS_ROUTING_URL: URL_ })).toThrow(ConfigError);
     expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: 'http://routing.test' })).toThrow(ConfigError);
     expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: 'https://routing.test/v1?key=x' })).toThrow(ConfigError);
@@ -406,9 +410,9 @@ describe('FACTS_ROUTING_URL', () => {
 
   it('FACTS_ROUTING_API_KEY needs FACTS_ROUTING_URL', () => {
     const key = crypto.randomUUID();
-    expect(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_, FACTS_ROUTING_API_KEY: key }).facts).toBeInstanceOf(GsiFactProvider);
+    expect(spatialOf(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_, FACTS_ROUTING_API_KEY: key }))).toBeInstanceOf(GsiFactProvider);
     expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: key })).toThrow(ConfigError);
     // An empty secret counts as unset.
-    expect(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: '' }).facts).toBeInstanceOf(GsiFactProvider);
+    expect(spatialOf(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: '' }))).toBeInstanceOf(GsiFactProvider);
   });
 });

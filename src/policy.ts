@@ -45,7 +45,7 @@ import type { Answer, Fact, FactMissingReason, FactSpec, FactType, Profile, Ques
 export type Kind = 'number' | 'string' | 'boolean';
 
 /** Why a fact can be missing, for facts.<fact>.reason: every FactMissingReason (tsc checks both ways). */
-const REASONS = ['no_location', 'unavailable', 'timeout', 'error'] as const satisfies readonly FactMissingReason[];
+const REASONS = ['no_location', 'no_pr', 'stale', 'unavailable', 'timeout', 'error'] as const satisfies readonly FactMissingReason[];
 const ALL_REASONS: Exclude<FactMissingReason, (typeof REASONS)[number]> extends never ? true : never = true;
 void ALL_REASONS;
 const MISSING_REASONS: string[] = [...REASONS];
@@ -130,6 +130,21 @@ export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
   // extra_m. route: the way around (encoded polyline, precision 6), for
   // people and maps; null when not known.
   detour: { possible: 'boolean', extra_m: 'number', route: 'string' },
+  // A pull request, read from GitHub (src/facts-github.ts). all_commits_verified
+  // and author_member have no value when GitHub cannot tell.
+  github_pr: {
+    open: 'boolean', merged: 'boolean', draft: 'boolean', wip_title: 'boolean',
+    files: 'number', changed_lines: 'number', base_is_default: 'boolean',
+    author_member: 'boolean', author_dependabot: 'boolean', fork: 'boolean', all_commits_verified: 'boolean',
+  },
+  // Changed files that match the fact's paths and none of its except list.
+  // all is false when no file changed.
+  github_paths: { any: 'boolean', all: 'boolean', count: 'number' },
+  // Required checks of the base branch on the head commit. green is false
+  // when there are no required checks.
+  github_checks: { required: 'number', green: 'boolean', pending: 'boolean', failed: 'boolean' },
+  // A repository custom property; "unset" when it has no value.
+  github_property: { value: 'string' },
 };
 
 /** Fields for people and maps, not for rules: a rule cannot refer to them. */

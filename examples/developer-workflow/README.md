@@ -4,11 +4,16 @@ New issues need a first look: which team, is it urgent, how big is it?
 Pointsman answers these questions for every new issue. When it is sure, the
 issue gets labels at once; when it is not, a person decides.
 
-## Profile
+Pull requests need a next step too. Pointsman can read a pull request from
+GitHub itself (its files, checks and commits), so the client only names it
+and cannot claim "docs only" or "checks passed".
+
+## Profiles
 
 | Profile | Decides | Actions |
 |---|---|---|
 | [`issue-triage`](../profiles/issue-triage.yaml) | Which team should handle the issue, does it block work today, how much work does it look like? | `auto`, `review` |
+| [`pr-docs-check`](../profiles/pr-docs-check.yaml) | Does a pull request change only documentation, so that a light review is enough? Reads the pull request from GitHub ([GitHub facts](../../docs/profile-format.md#github-pull-requests)). | `light`, `review`, `wait`, `retry`, `done` |
 
 The profile is visible through MCP, so agents can ask it too
 ([docs/mcp.md](../../docs/mcp.md)).

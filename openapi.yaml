@@ -848,7 +848,7 @@ components:
           properties:
             missing: { const: false }
             values:
-              description: Field values of the fact type (inside, nearest, detour); null when a field has no value.
+              description: Field values of the fact type (inside, nearest, detour, github_pr, github_paths, github_checks, github_property); null when a field has no value.
               type: object
               additionalProperties: { type: [string, number, boolean, 'null'] }
             source: { type: string, description: Where the value came from. }
@@ -859,9 +859,11 @@ components:
             missing: { const: true }
             reason:
               description: >-
-                no_location (no Point or LineString at the fact's path), unavailable (no fact
-                provider configured), timeout, or error.
-              enum: [no_location, unavailable, timeout, error]
+                no_location (no Point or LineString at the fact's path), no_pr (no pull
+                request at the fact's path), stale (the pull request has another head commit
+                than the request names), unavailable (no fact provider configured, or no
+                access), timeout, or error.
+              enum: [no_location, no_pr, stale, unavailable, timeout, error]
     Answer:
       oneOf:
         - $ref: '#/components/schemas/NoulAnswer'
