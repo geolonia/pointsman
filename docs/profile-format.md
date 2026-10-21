@@ -583,7 +583,7 @@ decide on a state the client did not see.
 
 | Type | Fields | Notes |
 |---|---|---|
-| `github_pr` | `open`, `merged`, `draft`, `wip_title`, `base_is_default`, `author_member`, `author_dependabot`, `fork`, `all_commits_verified` (booleans); `files`, `changed_lines` (numbers) | `wip_title`: "WIP" is a word in the title (`WIP: …`, `[WIP] …`). `changed_lines`: lines added plus lines removed. `base_is_default`: the pull request targets the default branch. `author_member`: the author is a member of the organization that owns the repository (for a person's repository: the author is that person); no value when GitHub does not tell (the token cannot see private members). `author_dependabot`: the author is the `dependabot[bot]` app. `fork`: the changes come from another repository. `all_commits_verified`: every commit has a signature that GitHub verified; no value for more than 250 commits (GitHub lists no more). |
+| `github_pr` | `open`, `merged`, `draft`, `wip_title`, `base_is_default`, `author_member`, `author_dependabot`, `fork`, `all_commits_verified` (booleans); `files`, `changed_lines` (numbers) | `wip_title`: "WIP" is a word in the title (`WIP: …`, `[WIP] …`). `changed_lines`: lines added plus lines removed. `base_is_default`: the pull request targets the default branch. `author_member`: the author is a member of the organization that owns the repository (for a person's repository: the author is that person); no value when GitHub does not tell (the token cannot see private members, or may not read members). `author_dependabot`: the author is the `dependabot[bot]` app. `fork`: the changes come from another repository. `all_commits_verified`: every commit has a signature that GitHub verified; no value for more than 250 commits (GitHub lists no more). |
 | `github_paths` | `any`, `all` (booleans), `count` (number) | The changed files that match `paths` and none of `except`: `any` is true when there is one, `all` when every changed file matches, `count` says how many. `all` is false when no file changed. A renamed file has two names: it counts for `any` when one of them matches, and for `all` only when both do. |
 | `github_checks` | `required` (number), `green`, `pending`, `failed` (booleans) | The required checks of the base branch (rulesets and branch protection) and the workflows that a ruleset requires, on the head commit. `green`: every one passed (success, neutral or skipped). `failed`: one failed. `pending`: none failed, and one has not finished or not reported yet. `green` is false when there are no required checks. |
 | `github_property` | `value` (text) | The repository's custom property `property`. A property that is not set is `unset`: a known value, not a missing fact. A list (multi-select) is sorted and joined with commas. |
@@ -619,7 +619,8 @@ follows these rules.
 All GitHub facts of a decision come from one read of the pull request.
 First the pull request and its commits (both checked against `head`), then
 only the parts the facts need (files, membership, checks, properties), each
-once, at the same time. The facts share 5 seconds.
+once, at the same time. The facts share 5 seconds. Globs are matched
+without regular expressions, so a long pattern cannot slow a decision down.
 
 - Files are read 100 per page, all pages at once. A pull request with more
   than 1,000 changed files makes `github_paths` facts missing (`error`);
@@ -627,9 +628,13 @@ once, at the same time. The facts share 5 seconds.
 - Commits: up to 250 (GitHub lists no more).
 - Check runs: up to 300 on the head commit. Commit statuses and workflow
   runs: up to 100.
-- A workflow that a ruleset requires from another repository counts only
-  through a run of that required workflow, not through a workflow of the
-  same name in the repository (a pull request can change that one).
+- A workflow that a ruleset requires counts only through a run that GitHub
+  started for the ruleset, not through a workflow at the same path in the
+  repository (a pull request can change that one).
+- The file list is the pull request's current one, so the pull request is
+  read once more after it: a push in between makes the facts `stale`.
+- A check run and a commit status with the same name that disagree: the
+  stricter result counts.
 
 #### Missing GitHub facts
 

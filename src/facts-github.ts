@@ -282,7 +282,7 @@ function filePaths(v: unknown): string[][] {
 /** A required check: its name, and the app that must report it (null: any). */
 type Required = { context: string; app: number | null };
 /** A workflow that a ruleset requires: its path, and the repository it comes from. */
-type RequiredWorkflow = { path: string; repo: number | null };
+type RequiredWorkflow = { path: string };
 
 function requiredWorkflows(v: unknown): RequiredWorkflow[] {
   if (!Array.isArray(v)) throw new FactError('GitHub rules: unexpected answer');
@@ -293,7 +293,7 @@ function requiredWorkflows(v: unknown): RequiredWorkflow[] {
     if (!Array.isArray(workflows)) throw new FactError('GitHub rules: unexpected answer');
     for (const w of workflows) {
       if (!isObject(w) || typeof w.path !== 'string') throw new FactError('GitHub rules: unexpected answer');
-      out.push({ path: w.path, repo: typeof w.repository_id === 'number' ? w.repository_id : null });
+      out.push({ path: w.path });
     }
   }
   return out;
@@ -316,11 +316,14 @@ function requiredFromRules(v: unknown): Required[] {
 
 function requiredFromBranch(v: unknown): Required[] {
   if (!isObject(v)) throw new FactError('GitHub branch: unexpected answer');
+  // A protected branch whose protection this token cannot see: its required checks are not known.
+  if (v.protected === true && !isObject(v.protection)) throw new FactUnavailableError('GitHub branch: protection not visible');
   const rsc = isObject(v.protection) ? v.protection.required_status_checks : undefined;
   if (!isObject(rsc)) return [];
   if (Array.isArray(rsc.checks)) {
+    // app_id -1 or null: any app may report it.
     return rsc.checks.filter(isObject).filter((c) => typeof c.context === 'string')
-      .map((c) => ({ context: c.context as string, app: typeof c.app_id === 'number' ? c.app_id : null }));
+      .map((c) => ({ context: c.context as string, app: typeof c.app_id === 'number' && c.app_id > 0 ? c.app_id : null }));
   }
   return Array.isArray(rsc.contexts) ? rsc.contexts.filter((c): c is string => typeof c === 'string').map((context) => ({ context, app: null })) : [];
 }
@@ -453,6 +456,10 @@ class Snapshot {
       const all = (await Promise.all(pages(Math.ceil(pr.files / PER_PAGE)).map(async (p) =>
         filePaths(await this.json(`${this.repoPath}/pulls/${this.ref.number}/files?per_page=${PER_PAGE}&page=${p}`, 'files'))))).flat();
       if (all.length !== pr.files) throw new FactError('GitHub files: the list does not match the pull request');
+      // The file list is the pull request's current one, not the one at a commit:
+      // read the head once more, so a push in between makes the facts stale.
+      const again = pullRequest(await this.json(`${this.repoPath}/pulls/${this.ref.number}`, 'pull request'));
+      if (again.head !== this.ref.head) throw new FactStaleError('the pull request changed while its files were read');
       return all;
     });
   }
@@ -467,8 +474,12 @@ class Snapshot {
       const res = await get(this.fetchFn, `/orgs/${this.ref.owner}/members/${pr.author}`, await this.token, this.signal);
       if (res.status === 204) return true;
       if (res.status === 404) return false;
-      // 302: this token is not a member, so GitHub shows public members only. Not known.
-      if (res.status === 302) return null;
+      // 302: this token is not a member, so GitHub shows public members only. 403: no
+      // permission to read members. Not known either way.
+      if (res.status === 302 || (res.status === 403 && res.headers.get('x-ratelimit-remaining') !== '0' && !res.headers.has('retry-after'))) {
+        await res.body?.cancel();
+        return null;
+      }
       await readJson(res, 'organization member');
       throw new FactError(`GitHub organization member: ${res.status}`);
     });
@@ -511,18 +522,19 @@ class Snapshot {
       }
       const latest = <T extends { at: string }>(list: T[]) => list.sort((a, b) => b.at.localeCompare(a.at))[0];
       const workflowResults = workflows.map((w): Result => {
-        // From another repository: only a run of the required workflow counts, not a
-        // workflow of this repository at the same path (a pull request can change that one).
-        const run = latest(wfRuns.filter((x) => x.path === w.path && (x.required || w.repo === pr.repoId)));
+        // Only a run that GitHub started for the ruleset counts, not a workflow of this
+        // repository at the same path: a pull request can change that one.
+        const run = latest(wfRuns.filter((x) => x.path === w.path && x.required));
         return run ? run.result : 'pending';
       });
       const checkResults = [...required.values()].map((r): Result => {
         const run = latest(runs.filter((x) => x.name === r.context && (r.app === null || x.app === r.app)));
-        if (run) return run.result;
         // A commit status cannot show which app sent it: it counts only where any app may report.
         const s = r.app === null ? latest(status.runs.filter((x) => x.name === r.context)) : undefined;
-        // Not reported yet: pending.
-        return s ? s.result : 'pending';
+        const found = [run, s].filter((x): x is Run => x !== undefined).map((x) => x.result);
+        // Not reported yet: pending. A check run and a status that disagree: the stricter one.
+        if (found.length === 0) return 'pending';
+        return found.includes('failed') ? 'failed' : found.includes('pending') ? 'pending' : 'passed';
       });
       const results = [...checkResults, ...workflowResults];
       const failed = results.includes('failed');

@@ -9,7 +9,7 @@ import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { FactRouter, lookupFacts, MockFactProvider, resultError, toPullRequest, type FactProvider } from '../../src/facts';
 import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, privateKeyDer, TokenAuth } from '../../src/facts-github';
-import { globRegExp } from '../../src/glob';
+import { matchGlob } from '../../src/glob';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log';
 import { MockAdapter } from '../../src/models/mock';
@@ -132,6 +132,7 @@ describe('the pull request (github_pr)', () => {
 
   it('author: member, not a member, not known, and owner of a user repo', async () => {
     expect(await values('pr', routes({ '/orgs/octo-org/members/alice': () => new Response(null, { status: 404 }) }))).toMatchObject({ author_member: false });
+    expect(await values('pr', routes({ '/orgs/octo-org/members/alice': () => new Response('{}', { status: 403 }) }))).toMatchObject({ author_member: null });
     // 302: the token's user is not a member, so GitHub shows only public members.
     expect(await values('pr', routes({ '/orgs/octo-org/members/alice': () => new Response(null, { status: 302, headers: { location: 'https://api.github.com/orgs/octo-org/public_members/alice' } }) })))
       .toMatchObject({ author_member: null });
@@ -212,6 +213,12 @@ describe('changed paths (github_paths)', () => {
     expect(server.count(`${PR}/files`)).toBe(0);
   });
 
+  it('a push while the files were read: stale', async () => {
+    let reads = 0;
+    const moved = routes({ [PR]: () => (++reads === 1 ? pullRequest() : pullRequest({ head: { sha: OTHER, repo: { id: 1 } } })) });
+    expect(await reasonOf('docs', moved)).toEqual({ missing: true, reason: 'stale' });
+  });
+
   it('a file list that does not match the pull request is an error', async () => {
     expect(await reasonOf('docs', routes({ [PR]: () => pullRequest({ changed_files: 3 }) }))).toEqual({ missing: true, reason: 'error' });
   });
@@ -229,7 +236,16 @@ describe('globs', () => {
     ['a+b(c).md', 'a+b(c).md', true], ['a.md', 'aXmd', false],
   ];
   it.each(cases)('%s matches %s: %s', (glob, path, match) => {
-    expect(globRegExp(glob).test(path)).toBe(match);
+    expect(matchGlob(glob, path)).toBe(match);
+  });
+  it('runs of stars match like one, and stay fast', () => {
+    expect(matchGlob('a***b', 'aXb')).toBe(true);
+    expect(matchGlob('***/x', 'a/b/x')).toBe(true);
+    expect(matchGlob('**/**/**/x', 'a/b/x')).toBe(true);
+    const start = Date.now();
+    expect(matchGlob('a*a*a*a*a*a*a*a*b', 'a'.repeat(200))).toBe(false);
+    expect(matchGlob('**/**/**/**/x', 'a/'.repeat(100))).toBe(false);
+    expect(Date.now() - start).toBeLessThan(1000);
   });
 });
 
@@ -282,11 +298,25 @@ describe('required checks (github_checks)', () => {
     expect(await values('ci', withRuns(wfRun('completed', 'failure')))).toMatchObject({ required: 2, green: false, failed: true });
     expect(await values('ci', withRuns(wfRun('in_progress', null)))).toMatchObject({ green: false, pending: true });
     expect(await values('ci', withRuns())).toMatchObject({ green: false, pending: true });
-    // A workflow of this repository at the same path does not stand in for one from another repository.
+    // A workflow of the repository at the same path does not stand in for the required one.
     expect(await values('ci', withRuns(wfRun('completed', 'success', false)))).toMatchObject({ green: false, pending: true });
     // Without a workflows rule, workflow runs are not read.
     const { server } = await facts(routes(), spec('ci'));
     expect(server.count(`${REPO}/actions/runs`)).toBe(0);
+  });
+
+  it('protection that cannot be seen: unavailable; any app (-1) counts', async () => {
+    expect(await reasonOf('ci', routes({ [`${REPO}/branches/main`]: () => ({ protected: true }) }))).toEqual({ missing: true, reason: 'unavailable' });
+    const anyApp = routes({
+      [`${REPO}/rules/branches/main`]: () => [],
+      [`${REPO}/branches/main`]: () => ({ protected: true, protection: { required_status_checks: { checks: [{ context: 'test', app_id: -1 }] } } }),
+    });
+    expect(await values('ci', anyApp)).toMatchObject({ required: 1, green: true });
+  });
+
+  it('a check run and a status of the same name that disagree: the stricter one', async () => {
+    const r = routes({ [`${REPO}/commits/${HEAD}/status`]: () => ({ total_count: 1, statuses: [{ context: 'test', state: 'failure' }] }) });
+    expect(await values('ci', r)).toMatchObject({ green: false, failed: true });
   });
 
   it('commit statuses and classic branch protection count too', async () => {
@@ -316,7 +346,9 @@ describe('one snapshot per decision', () => {
   it('reads each part once for all facts', async () => {
     const { facts: f, server } = await facts();
     expect(Object.values(f).every((x) => !x.missing)).toBe(true);
-    for (const path of [PR, `${PR}/commits`, `${PR}/files`, `${REPO}/rules/branches/main`, `${REPO}/properties/values`]) expect(server.count(path), path).toBe(1);
+    for (const path of [`${PR}/commits`, `${PR}/files`, `${REPO}/rules/branches/main`, `${REPO}/properties/values`]) expect(server.count(path), path).toBe(1);
+    // The pull request once more after its files, against a push in between.
+    expect(server.count(PR)).toBe(2);
   });
 
   it('reads only the parts the facts need', async () => {
