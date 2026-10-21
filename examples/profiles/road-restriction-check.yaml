@@ -4,7 +4,7 @@
 # RoadRestriction entity (datamodels.jp, transportation subject) in
 # normalized NGSI-LD form, as the bridge receives it.
 id: road-restriction-check
-version: 3
+version: 4
 title:
   en: Road restriction check
   ja: 通行規制の確認
@@ -25,6 +25,12 @@ input:
 facts:
   - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
   - { name: shelter, type: nearest, layer: gsi-shelters-flood, at: $.location.value }
+  # Since version 4: the way around by car for a closed section (a line; a
+  # point has none: missing with no_location). No rule reads it yet: it is
+  # context for the person who checks (and the demo shows it). route: true
+  # keeps the way around for the map; its ends are the reported section,
+  # stored with every decision: fine for road closures on public roads.
+  - { name: drive, type: detour, mode: drive, route: true, at: $.location.value }
 questions:
   - name: category
     type: choice
