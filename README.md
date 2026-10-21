@@ -131,11 +131,16 @@ Test cases are examples with the action a person expects:
 a draft, and with `--url` on real requests through a deployed model. See
 [docs/profile-format.md](docs/profile-format.md#test-cases).
 
+`POST /v1/profiles/{id}/replay` (and `node scripts/replay-profile.mjs` for a
+draft file) shows what a changed policy would have decided on the decisions
+already logged, and how often it would match what people answered. See
+[docs/profile-format.md](docs/profile-format.md#replay).
+
 ## Clients
 
 - [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `explain_profile`,
-  `decide` and `get_decision`, so agents can ask a profile instead of
-  deciding themselves.
+  `replay_profile`, `decide` and `get_decision`, so agents can ask a profile
+  instead of deciding themselves.
 - [GitHub issue triage](actions/triage/): a GitHub Action that labels new
   issues from a Pointsman decision, or asks for a human review.
 - [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a

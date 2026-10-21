@@ -112,6 +112,12 @@ export interface DecisionLog {
   addFeedback(decisionId: string, feedback: FeedbackRecord): Promise<void>;
   /** Pending reviews, oldest first, for the given profile ids ("*" = all). */
   pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]>;
+  /**
+   * The newest decisions of one profile version, newest first, for a replay
+   * (src/replay.ts). Superseded decisions are included (they were made);
+   * discarded ones are not (they never counted).
+   */
+  recent(profile: string, version: number, limit: number): Promise<DecisionRecord[]>;
   /** Resolve a pending review. False when it is not pending (any more). */
   resolve(decisionId: string, resolution: Resolution): Promise<boolean>;
   /** The decision a client made with this idempotency key, if any. */
@@ -366,6 +372,14 @@ export class D1DecisionLog implements DecisionLog {
       }
     }
     return stats;
+  }
+
+  async recent(profile: string, version: number, limit: number): Promise<DecisionRecord[]> {
+    const { results } = await this.db
+      .prepare('SELECT * FROM decisions WHERE profile_id = ? AND profile_version = ? AND discarded_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT ?')
+      .bind(profile, version, limit)
+      .all<DecisionRow>();
+    return results.map(fromRow);
   }
 
   async pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]> {

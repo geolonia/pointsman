@@ -1,13 +1,13 @@
 // MCP server (Streamable HTTP, stateless) at /mcp. See docs/mcp.md.
 //
-// Tools: list_profiles, explain_profile, decide, get_decision, and submit_feedback for people
+// Tools: list_profiles, explain_profile, replay_profile, decide, get_decision, and submit_feedback for people
 // logged in through OAuth (not for API tokens). Only profiles that set
 // `mcp.visible: true` and are in the caller's scope are listed or callable;
 // any other profile looks unknown. People may use every MCP-visible profile.
 
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { makeDecision, type Deps } from './app';
+import { makeDecision, makeReplay, type Deps } from './app';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
 import { explainProfile, explanationText } from './explain';
@@ -118,6 +118,35 @@ function server(deps: McpDeps, caller: Caller): McpServer {
       }
       const explanation = explainProfile(p, lang ?? 'en', required);
       return json({ ...explanation, text: explanationText(explanation) });
+    },
+  );
+
+  mcp.registerTool(
+    'replay_profile',
+    {
+      description:
+        'Try a changed policy on the decisions already made: what the new rules would have decided on the last logged '
+        + 'decisions of a profile version, with the logged answers and facts (no model is called). Returns how many actions '
+        + 'would change, from what to what, how often they would match what a person answered, and the changed decisions. '
+        + 'Only the policy may change; send questions, facts and requires too to check that they are the same.',
+      inputSchema: {
+        profile: z.string().describe('Profile id from list_profiles'),
+        policy: z.record(z.string(), z.unknown()).describe('The new policy: { rules: [{ when, action }], default, people_check?, people_answers? }'),
+        version: z.number().int().positive().optional().describe('The published version to replay (default: the latest)'),
+        limit: z.number().int().min(1).max(500).optional().describe('How many of the newest decisions (default 200)'),
+        questions: z.array(z.unknown()).optional().describe("The draft's questions, to check they did not change"),
+        facts: z.array(z.unknown()).optional().describe("The draft's facts, to check they did not change"),
+        requires: z.array(z.unknown()).optional().describe("The draft's requires, to check they did not change"),
+      },
+    },
+    async ({ profile, ...body }) => {
+      // Hidden profiles look unknown, as for decide.
+      const seen = async (id: string) => visible(await deps.store.get(id), client);
+      if (!(await seen(profile))) return failure(`unknown profile "${profile}"`);
+      const given = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
+      const result = await makeReplay(deps, profile, given, seen);
+      if (!result.ok) return failure(`${result.code}: ${result.message}`);
+      return json(result.replay);
     },
   );
 

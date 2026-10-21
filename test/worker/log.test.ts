@@ -294,3 +294,27 @@ describe('profile stats (GET /v1/stats)', () => {
     expect(data.days).toBe(7);
   });
 });
+
+describe('replay on the decision log (D1)', () => {
+  it('replays the newest decisions of the version, without discarded ones, newest first', async () => {
+    const ids = [];
+    for (const ref of ['replay:1', 'replay:2', 'replay:3']) ids.push(await decide('issue-triage', { state: issue, ref }));
+    const { D1DecisionLog } = await import('../../src/log');
+    await new D1DecisionLog(DB).discard(ids[1]!, new Date().toISOString());
+    const triage = (bundled as Profile[]).find((p) => p.id === 'issue-triage')!;
+    const before = await (await call('POST', '/v1/profiles/issue-triage/replay', { policy: triage.policy, limit: 500 })).json<any>();
+    expect(contract.replayResult(before), JSON.stringify(contract.replayResult.errors)).toBe(true);
+    expect(before.changed).toBe(0);
+    // Every decision to a person: each one that was not review changes.
+    const res = await call('POST', '/v1/profiles/issue-triage/replay', { policy: { default: 'review' }, limit: 2 });
+    expect(res.status).toBe(200);
+    const r = await res.json<any>();
+    expect(r.replayed).toBe(2);
+    const listed = r.changes.map((c: { decision_id: string }) => c.decision_id);
+    expect(listed).not.toContain(ids[1]);
+    // The mock model answers the same each time: either both changed, or neither.
+    expect(r.changed).toBe(2 - (r.actions.before.review ?? 0));
+    expect(listed).toEqual(r.changed === 2 ? [ids[2], ids[0]] : []);
+    expect(r.to >= r.from).toBe(true);
+  });
+});

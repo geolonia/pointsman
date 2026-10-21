@@ -34,6 +34,7 @@ const responses = {
   profileList: api.paths['/v1/profiles'].get.responses['200'].content['application/json'].schema,
   decisionGraph: { $ref: '#/components/schemas/DecisionGraph' },
   profileExplanation: { $ref: '#/components/schemas/ProfileExplanation' },
+  replayResult: { $ref: '#/components/schemas/ReplayResult' },
 };
 ajv.addSchema({ $id: base, components: api.components, responses });
 const ids = Object.fromEntries(Object.keys(responses).map((name) => [name, `${base}#/responses/${name}`]));

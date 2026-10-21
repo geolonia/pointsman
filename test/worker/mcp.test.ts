@@ -54,7 +54,7 @@ describe('/mcp', () => {
     const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
     expect(init.message.result.serverInfo.name).toBe('pointsman');
     const tools = (await rpc('tools/list')).message.result.tools.map((t: any) => t.name).sort();
-    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles']);
+    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles', 'replay_profile']);
   });
 
   it('explains an MCP-visible profile in scope, and hides the others', async () => {

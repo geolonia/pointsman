@@ -348,6 +348,61 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
+  /v1/profiles/{id}/replay:
+    post:
+      operationId: replayProfile
+      summary: Try a changed policy on the logged decisions
+      description: |
+        What a changed policy would have decided on the newest logged decisions
+        of a published version (docs/profile-format.md#replay). Policy only: the
+        logged answers and facts are used, no model is called, and questions,
+        facts and requires must stay the same (send them to have them checked).
+        Earlier decisions are read from the snapshot kept with each decision; a
+        new rule that reads a value the snapshot did not keep is unknown there,
+        and the decision is counted as inexact. The token must be allowed to use
+        the profile and every profile it requires. Not for test tokens.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [policy]
+              properties:
+                policy:
+                  description: The new policy, in the profile format (rules, default, people_check, people_answers).
+                  type: object
+                version: { type: integer, minimum: 1, description: The published version to replay; the latest when not given. }
+                limit: { type: integer, minimum: 1, maximum: 500, default: 200, description: How many of the newest decisions. }
+                questions: { type: array, description: "The draft's questions: checked to be the same." }
+                facts: { type: array, description: "The draft's facts: checked to be the same." }
+                requires: { type: array, description: "The draft's requires: checked to be the same." }
+      responses:
+        '200':
+          description: The replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReplayResult' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The token may not use this profile or a profile it requires (also a test token).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: The draft's questions, facts or requires differ from the version (not_policy_only).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
 components:
   parameters:
     DecisionId:
@@ -449,6 +504,69 @@ components:
         default: { type: string, description: The action when no rule matches, as a sentence. }
         people: { type: array, items: { type: string }, description: Which actions a person checks, and the answers they can give. }
         notes: { type: array, items: { type: string } }
+    ReplayResult:
+      description: A changed policy replayed on logged decisions (docs/profile-format.md#replay).
+      type: object
+      additionalProperties: false
+      required: [profile, version, replayed, skipped, from, to, changed, inexact, actions, transitions, people, changes]
+      properties:
+        profile: { type: string }
+        version: { type: integer, minimum: 1, description: The version whose decisions were replayed. }
+        replayed: { type: integer, minimum: 0 }
+        skipped: { type: integer, minimum: 0, description: Decisions the new rules could not run on. }
+        from: { type: [string, 'null'], format: date-time, description: The oldest replayed decision. }
+        to: { type: [string, 'null'], format: date-time, description: The newest replayed decision. }
+        changed: { type: integer, minimum: 0, description: Decisions whose action would change. }
+        inexact: { type: integer, minimum: 0, description: Decisions where a new rule read a value of an earlier decision that was not kept. }
+        actions:
+          type: object
+          additionalProperties: false
+          required: [before, after]
+          properties:
+            before: { type: object, additionalProperties: { type: integer } }
+            after: { type: object, additionalProperties: { type: integer } }
+        transitions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [from, to, count]
+            properties:
+              from: { type: string }
+              to: { type: string }
+              count: { type: integer, minimum: 1 }
+        people:
+          description: Decisions a person checked, and how often the person's answer matched the logged and the new action.
+          type: object
+          additionalProperties: false
+          required: [checked, matched_before, matched_after]
+          properties:
+            checked: { type: integer, minimum: 0 }
+            matched_before: { type: integer, minimum: 0 }
+            matched_after: { type: integer, minimum: 0 }
+        changes:
+          description: Up to 50 changed decisions, newest first.
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [decision_id, created_at, before, after]
+            properties:
+              decision_id: { type: string, format: uuid }
+              created_at: { type: string, format: date-time }
+              ref: { type: string }
+              before: { $ref: '#/components/schemas/ReplayAction' }
+              after: { $ref: '#/components/schemas/ReplayAction' }
+              person: { type: string, description: "The person's answer, when a person checked it." }
+              inexact: { const: true }
+    ReplayAction:
+      type: object
+      additionalProperties: false
+      required: [action, rule]
+      properties:
+        action: { type: string }
+        rule: { type: [integer, 'null'], minimum: 0 }
     DecisionGraph:
       description: A DMN decision requirements graph; node and edge types are DMN's names.
       type: object
