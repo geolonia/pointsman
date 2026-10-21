@@ -188,10 +188,12 @@ Read it with its limits in mind:
   change between two automatic actions has nothing to compare with; look at
   those listed decisions yourself.
 
-When the questions or facts change, a replay cannot help (the logged answers
-are for the old questions). Then: test cases with answers, test cases with
-real requests through the deployed model once the new questions are
-published, and a careful start as in step 5.
+When the questions, facts or `requires` change, a replay cannot help: the
+log holds the answers, facts and earlier decisions of the old version, and
+the replay refuses such a draft. Then: test cases with answers, test cases
+with real requests through the deployed model once the new questions are
+published (not for profiles with `requires`), and a careful start as in
+step 5.
 
 ## What the assistant does not do
 
