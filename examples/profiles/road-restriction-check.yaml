@@ -19,8 +19,10 @@ input:
   - { name: status_label, path: $.statusLabel.value }
   - { name: description, path: $.description.value }
 # Spatial facts: looked up for the report's place (FACTS_MODE, see
-# docs/profile-format.md#facts) and used only by the rules; the model does
-# not see them. With FACTS_MODE "mock" (pnpm dev) every place is inside a
+# docs/profile-format.md#facts) for the rules and the people who check; the
+# model does not see them. A detour's `route` (with route: true) is kept for
+# people and maps only: rules cannot read it (DISPLAY_FIELDS in
+# src/policy.ts). With FACTS_MODE "mock" (pnpm dev) every place is inside a
 # flood zone of rank 1.
 facts:
   - { name: flood, type: inside, layer: gsi-flood-max, at: $.location.value }
