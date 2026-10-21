@@ -7,6 +7,30 @@ the engine by commit in its config repository: to use a release, set
 `ref` in `engine.json` to the commit of its tag
 (`git rev-parse 'v0.1.0^{commit}'`, which also works for annotated tags).
 
+## 0.2.0 (2026-10-21)
+
+### Added
+
+- API tokens can expire: `scripts/tokens.mjs create|rotate --expires <when>`
+  (a duration such as `90d`, or a date). The Worker refuses an expired token
+  like an unknown one (401), and KV deletes the key then. `rotate` asks for
+  `--expires` or `--no-expiry` when the old token had an expiry; `list`
+  shows the expiry. The README has a rotation procedure without downtime
+  (#99).
+- Detour facts name the date of the routing data in `source`, like the GSI
+  facts: `… routed with Valhalla (routing data 2026-10-17 時点)`, from the
+  routing server's `GET /status` (`tileset_last_modified`), kept for a day;
+  `日付不明` when the server cannot say (#114).
+- Example profile `road-restriction-check` v4 asks for the way around by
+  car (`drive`) for a closed section, as context: no rule reads it.
+
+### Changed
+
+- The `source` text of detour facts is longer (the date is added). Code
+  that compares it with the old fixed text must match the start instead.
+- Dependencies: wrangler 4.149, zod 4.6.6, @cloudflare/vitest-plugin 1.4,
+  @cloudflare/workers-oauth-provider 1.2.3; actions/setup-node 7.1.0.
+
 ## 0.1.0 (2026-10-21)
 
 The first release: what the proof of concept and the FIWARE demo built.

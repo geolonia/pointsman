@@ -5,8 +5,8 @@ which track it goes on, or calls a human when it is not sure.
 
 Website: https://geolonia.github.io/pointsman/
 
-Status: 0.1.0, the first release. It is not 1.0 yet: the API and the profile
-format may still change between 0.x releases. See
+Status: 0.x, not 1.0 yet: the API and the profile format may still change
+between 0.x releases. See
 [CHANGELOG.md](CHANGELOG.md) and the
 [release notes](https://github.com/geolonia/pointsman/releases). To report a
 security issue, see [SECURITY.md](SECURITY.md).
