@@ -136,6 +136,9 @@ draft file) shows what a changed policy would have decided on the decisions
 already logged, and how often it would match what people answered. See
 [docs/profile-format.md](docs/profile-format.md#replay).
 
+[docs/authoring.md](docs/authoring.md) puts these together: how a person and
+an AI assistant write a profile, with the checks deciding whether it is right.
+
 ## Clients
 
 - [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `explain_profile`,

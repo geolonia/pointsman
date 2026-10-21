@@ -8,6 +8,7 @@ pinned in `engine.json` and checked out by the workflows.
 |---|---|
 | `profiles/<id>.yaml` | Decision profiles ([format](https://github.com/geolonia/pointsman/blob/main/docs/profile-format.md)) |
 | `cases/<id>.yaml` | Optional: test cases for a profile, run on every pull request ([test cases](https://github.com/geolonia/pointsman/blob/main/docs/profile-format.md#test-cases)) |
+| `AGENTS.md`, `CLAUDE.md` | How an AI assistant helps write profiles here ([authoring guide](https://github.com/geolonia/pointsman/blob/main/docs/authoring.md)) |
 | `wrangler.jsonc` | Worker name and Cloudflare resource ids |
 | `engine.json` | The engine commit this deployment uses |
 | `ai-gateway.json` | AI Gateway settings |

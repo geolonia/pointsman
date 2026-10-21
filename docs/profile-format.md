@@ -10,6 +10,9 @@ turns the answers into an action.
 
 Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
 
+To write a profile with an AI assistant, and check it, see
+[authoring.md](authoring.md).
+
 ## Fields
 
 | Field | Required | Meaning |
