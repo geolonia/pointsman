@@ -129,7 +129,7 @@ test('create --expires stores the expiry and lets KV delete the key then', () =>
   assert.doesNotMatch(writes(run('create', '--client', 'demo', '--profiles', '*', '--local', '--dry-run').stdout)[0], /expir/);
 });
 
-for (const [name, value] of [['a word', 'soon'], ['a past date', '2020-01-01'], ['less than an hour', '0h'], ['a unit it does not know', '3m']]) {
+for (const [name, value] of [['a word', 'soon'], ['a past date', '2020-01-01'], ['a day that does not exist', '2099-02-30'], ['less than an hour', '0h'], ['a unit it does not know', '3m']]) {
   test(`create --expires refuses ${name}`, () => {
     const r = run('create', '--client', 'demo', '--profiles', '*', '--expires', value, '--local', '--dry-run');
     assert.equal(r.status, 2);
@@ -156,7 +156,9 @@ test('list shows the expiry, and marks an expired token', () => {
   const r = runWith(stored(
     ['a'.repeat(64), { client: 'later', profiles: ['*'], created_at: '', expires_at: '2099-01-01T00:00:00.000Z' }],
     ['b'.repeat(64), { client: 'gone', profiles: ['*'], created_at: '', expires_at: '2020-01-01T00:00:00.000Z' }],
+    ['c'.repeat(64), { client: 'odd', profiles: ['*'], created_at: '', expires_at: 'soon' }],
   ), 'list', '--local', '--dry-run');
+  assert.match(r.stdout, /odd .*expires soon \(unreadable: refused\)$/m);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /later .*expires 2099-01-01T00:00:00.000Z$/m);
   assert.match(r.stdout, /gone .*expires 2020-01-01T00:00:00.000Z \(expired\)$/m);

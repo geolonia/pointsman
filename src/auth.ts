@@ -87,7 +87,8 @@ export class MemoryTokenStore implements TokenStore {
  */
 export function isExpired(record: TokenRecord, now = Date.now()): boolean {
   if (record.expires_at === undefined) return false;
-  const at = Date.parse(record.expires_at);
+  // Only a readable string counts (a value written to KV by hand may be anything).
+  const at = typeof record.expires_at === 'string' ? Date.parse(record.expires_at) : NaN;
   return !Number.isFinite(at) || at <= now;
 }
 

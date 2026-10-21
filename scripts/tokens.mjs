@@ -119,6 +119,8 @@ function expiresArg(now = Date.now()) {
     at = now + hours * 3600_000;
   } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
     at = Date.parse(`${v}T23:59:59Z`);
+    // Date.parse moves 2027-02-30 to March: refuse a day that does not exist.
+    if (!Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== v) fail(`--expires: ${v} is not a date`);
   } else {
     fail('--expires must be a duration (12h, 90d, 2w) or a date (YYYY-MM-DD)');
   }
@@ -189,7 +191,9 @@ switch (command) {
     for (const t of tokens) count.set(t.client, (count.get(t.client) ?? 0) + 1);
     for (const t of tokens) {
       const shared = count.get(t.client) > 1 ? '  (name used by several tokens: rotate or rename)' : '';
-      const expiry = t.expires_at ? `  expires ${t.expires_at}${Date.parse(t.expires_at) <= Date.now() ? ' (expired)' : ''}` : '';
+      // The same rule as the Worker (isExpired): an expiry it cannot read is refused.
+      const at = typeof t.expires_at === 'string' ? Date.parse(t.expires_at) : NaN;
+      const expiry = t.expires_at === undefined ? '' : `  expires ${t.expires_at}${!Number.isFinite(at) ? ' (unreadable: refused)' : at <= Date.now() ? ' (expired)' : ''}`;
       console.log(`${t.hash}  ${t.client ?? '?'}${t.test ? ' (test)' : ''}  ${(t.profiles ?? []).join(',')}  ${t.created_at ?? ''}${expiry}${shared}`);
     }
     break;

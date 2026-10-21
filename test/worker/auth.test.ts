@@ -88,6 +88,7 @@ describe('tokens', () => {
     expect(await authenticate(`Bearer ${ALL}`, tokens, at - 1)).toMatchObject({ client: 'c' });
     expect(await authenticate(`Bearer ${ALL}`, tokens, at)).toBeNull();
     expect(isExpired({ ...record, expires_at: 'soon' })).toBe(true);
+    expect(isExpired({ ...record, expires_at: 1792000000 as unknown as string })).toBe(true);
     expect(isExpired({ client: 'c', profiles: [], created_at: '' })).toBe(false);
   });
 

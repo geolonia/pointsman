@@ -157,7 +157,8 @@ client over first. `list` marks names that older setups gave to several
 tokens: rotate or rename those.
 
 A token can **expire** (`--expires`): a duration from now (`12h`, `90d`,
-`2w`) or a date (`2027-01-31`, end of that day UTC). After that the Worker
+`2w`) or a date (`2027-01-31`, end of that day UTC, which is 08:59:59 JST
+the next morning). After that the Worker
 refuses it like an unknown token (401), and KV deletes the key. Without
 `--expires` a token works until it is revoked. `list` shows the expiry and
 marks expired tokens. When the old token had an expiry, `rotate` needs
@@ -167,7 +168,8 @@ expiry by accident.
 To rotate a token without downtime:
 
 1. `rotate --client <name> --expires <when> --keep-old`: the new token is
-   printed once; the old one keeps working.
+   printed once; the old one keeps working. Until step 3, `list` shows the
+   client's name on two tokens; that is expected here.
 2. Put the new token in the client's secret store and check that the client
    works.
 3. `revoke --hash <old hash>` (the command is printed by step 1). KV can take
