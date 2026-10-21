@@ -415,8 +415,10 @@ function pushes(v: unknown): Push[] {
  * Who pushed the pull request's commits: "yes" when every commit came in a
  * push by the author, "no" when one came in a push by someone else, and
  * "unavailable" otherwise (pushes older than the activity list, or more
- * commits than GitHub lists). A push brings its head commit and the commits
- * before it that no earlier push brought.
+ * commits than GitHub lists). A push brings the commits after its "before"
+ * commit up to its head; when "before" is not one of the pull request's
+ * commits (a new branch, a force push), every commit up to its head that no
+ * earlier push brought.
  */
 export function pushedByAuthor(commits: { sha: string }[] | null, list: Push[] | null, author: string): 'yes' | 'no' | 'unavailable' {
   if (!commits || !list) return 'unavailable';
@@ -425,7 +427,9 @@ export function pushedByAuthor(commits: { sha: string }[] | null, list: Push[] |
   for (const push of [...list].sort((a, b) => a.at.localeCompare(b.at))) {
     const k = index.get(push.after);
     if (k === undefined) continue;
-    for (let j = k; j >= 0 && !by.has(j); j--) by.set(j, push.actor.toLowerCase());
+    // Commits up to "before" came earlier, maybe in a push older than the list.
+    const stop = index.get(push.before) ?? -1;
+    for (let j = k; j > stop && !by.has(j); j--) by.set(j, push.actor.toLowerCase());
   }
   if ([...by.values()].some((actor) => actor !== author.toLowerCase())) return 'no';
   return commits.length > 0 && by.size === commits.length ? 'yes' : 'unavailable';

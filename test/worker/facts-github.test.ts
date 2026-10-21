@@ -197,8 +197,10 @@ describe('who pushed (github_pr.pushed_by_author)', () => {
   });
 
   it('unavailable when not every commit is known', async () => {
-    // A push brings the commits before it that no earlier push brought.
-    expect(await pushed(three(() => [push(HEAD, 'alice', C2)]))).toBe('yes');
+    // A push brings only the commits after its "before": C1 and C2 came in an older push, not in the list.
+    expect(await pushed(three(() => [push(HEAD, 'alice', C2)]))).toBe('unavailable');
+    // A new branch or a force push ("before" not in the pull request) brings every commit up to its head.
+    expect(await pushed(three(() => [push(HEAD, 'alice', OTHER)]))).toBe('yes');
     // The head commit is in no listed push (for example older than the list): not known.
     expect(await pushed(three(() => [push(C2)]))).toBe('unavailable');
     expect(await pushed(routes({ [`${REPO}/activity`]: () => [] }))).toBe('unavailable');
