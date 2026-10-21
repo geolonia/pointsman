@@ -48,6 +48,15 @@ class TooManyVertices extends FactError {}
  */
 class RoutingUnavailable extends FactError {}
 const RETRY_PAUSE_MS = 250;
+/** How long a finished detour waits for a slow `/status` before it says 日付不明. */
+const DATE_GRACE_MS = 1_000;
+
+/** The promise's value, or `fallback` after `ms` (the promise keeps running). */
+function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T>((resolve) => { timer = setTimeout(() => resolve(fallback), ms); });
+  return Promise.race([p, late]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+}
 
 /** A promise's value or error, without throwing (two calls run at once; both are awaited). */
 function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> {
@@ -55,10 +64,21 @@ function settle<T>(p: Promise<T>): Promise<{ value?: T; error?: unknown }> {
 }
 const SOURCE = '© OpenStreetMap contributors (ODbL), routed with Valhalla';
 
+/**
+ * The source with the date of the routing data, like the GSI facts
+ * (`YYYY-MM-DD 時点`, UTC, or `日付不明`). Valhalla's `tileset_last_modified`
+ * is when the routing tiles were built, not the OpenStreetMap extract date.
+ */
+export function routingSource(date: string): string {
+  return `${SOURCE} (routing data ${date})`;
+}
+
 export class ValhallaRouter {
   private readonly url: string;
   private readonly fetchFn: typeof fetch;
   private readonly apiKey: string | undefined;
+  /** The date of the routing data, read once per router (the router lives as long as the isolate); again after a failure. */
+  private dataDate: Promise<string> | null = null;
 
   /** `apiKey` is sent as `x-api-key` (hosted servers such as Geolonia's); never logged. */
   constructor(url: string, fetchFn?: typeof fetch, apiKey?: string) {
@@ -100,6 +120,8 @@ export class ValhallaRouter {
     if (half >= 1) closures.push([corridor([pointAt(run, total / 2)], half)]);
     const usable = closures.filter((polys) => polys.every((poly) => !inside(a, poly) && !inside(b, poly)));
     if (usable.length === 0) throw new FactError('section too short to close without closing its ends');
+    // At the same time as the routes, so the date costs no extra wait.
+    const date = this.tilesDate(signal);
 
     // The way with and without the section at the same time: a server that
     // starts cold then delays the answer once, not twice.
@@ -126,13 +148,43 @@ export class ValhallaRouter {
       const around = attempt.value ?? null;
       if (around !== null) {
         const route = withRoute && around.shape !== null && around.shape.length <= MAX_ROUTE_CHARS ? around.shape : null;
-        return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: SOURCE };
+        return { values: { possible: true, extra_m: Math.max(0, around.m - direct.m), route }, source: routingSource(await within(date, DATE_GRACE_MS, '日付不明')) };
       }
     }
     // Valhalla closes whole road edges: if one edge runs past an end, "no
     // path" may only mean that the route cannot start. That is not proof of
     // no way around, so it is an error, never possible: false.
     throw new FactError('no route with the section closed (no way around, or a closed road edge at an end)');
+  }
+
+  /**
+   * The date of the routing tiles from `GET /status` (`tileset_last_modified`,
+   * Unix seconds), as `YYYY-MM-DD 時点` in UTC. Never throws: without an
+   * answer it is `日付不明`, and the next lookup asks again. A status failure
+   * never turns a good detour into an error.
+   */
+  private tilesDate(signal?: AbortSignal): Promise<string> {
+    if (this.dataDate) return this.dataDate;
+    const read = (async () => {
+      const limit = AbortSignal.timeout(TIMEOUT_MS);
+      const res = await this.fetchFn(`${this.url}/status`, {
+        headers: { 'user-agent': USER_AGENT, ...(this.apiKey && { 'x-api-key': this.apiKey }) },
+        // A redirect would carry the key to another host.
+        redirect: 'manual',
+        signal: signal ? AbortSignal.any([signal, limit]) : limit,
+      });
+      if (!res.ok) return null;
+      const t = ((await res.json().catch(() => null)) as { tileset_last_modified?: unknown } | null)?.tileset_last_modified;
+      if (typeof t !== 'number' || !Number.isFinite(t) || t <= 0) return null;
+      const day = new Date(t * 1000);
+      return Number.isNaN(day.getTime()) ? null : `${day.toISOString().slice(0, 10)} 時点`;
+    })().catch(() => null);
+    const p = read.then((d) => {
+      if (d === null) this.dataDate = null; // asked again next time
+      return d ?? '日付不明';
+    });
+    this.dataDate = p;
+    return p;
   }
 
   /**

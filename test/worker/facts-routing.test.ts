@@ -15,10 +15,14 @@ const section: Geometry = { type: 'LineString', coordinates: [[139.7505, 35.7025
 const ok = (km: number) => Response.json({ trip: { summary: { length: km } } });
 const noPath = () => Response.json({ error_code: 442, error: 'No path could be found for input' }, { status: 400 });
 
-/** A fake Valhalla: answers each call with the next response, and records the bodies. */
+// 2026-10-17T05:21:18Z, the routing tiles' build time in /status.
+const TILES = 1792214478;
+
+/** A fake Valhalla: answers each route call with the next response, and records the bodies; /status gives TILES. */
 function server(...responses: (() => Response)[]) {
   const bodies: any[] = [];
   const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === `${URL_}/status`) return Response.json({ version: '3.9.1', tileset_last_modified: TILES });
     expect(String(input)).toBe(`${URL_}/route`);
     expect(new Headers(init?.headers).get('user-agent')).toMatch(/^pointsman/);
     bodies.push(JSON.parse(String(init?.body)));
@@ -28,6 +32,58 @@ function server(...responses: (() => Response)[]) {
   }) as typeof fetch;
   return { bodies, router: new ValhallaRouter(`${URL_}/`, fetchFn) };
 }
+
+describe('the date of the routing data', () => {
+  it('is in the source, like the GSI facts, read once per router', async () => {
+    let status = 0;
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === `${URL_}/status`) {
+        status++;
+        expect(init?.redirect).toBe('manual');
+        expect(new Headers(init?.headers).get('x-api-key')).toBe('k');
+        return Response.json({ tileset_last_modified: TILES });
+      }
+      return ok(JSON.parse(String(init?.body)).exclude_polygons ? 0.85 : 0.24);
+    }) as typeof fetch;
+    const router = new ValhallaRouter(URL_, fetchFn, 'k');
+    expect((await router.detour(section)).source).toBe('© OpenStreetMap contributors (ODbL), routed with Valhalla (routing data 2026-10-17 時点)');
+    await router.detour(section);
+    expect(status).toBe(1);
+  });
+
+  it('is 日付不明 when /status fails or has no date, and the detour stays; asked again next time', async () => {
+    const answers: (() => Response | Promise<Response>)[] = [
+      () => new Response('', { status: 503 }),
+      () => Response.json({ version: '3.9.1' }),
+      () => Promise.reject(new TypeError('network')),
+      () => Response.json({ tileset_last_modified: TILES }),
+    ];
+    let status = 0;
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === `${URL_}/status`) return answers[status++]!();
+      return ok(JSON.parse(String(init?.body)).exclude_polygons ? 0.85 : 0.24);
+    }) as typeof fetch;
+    const router = new ValhallaRouter(URL_, fetchFn);
+    for (let i = 0; i < 3; i++) {
+      const fact = await router.detour(section);
+      expect(fact.values.extra_m).toBe(610);
+      expect(fact.source).toMatch(/\(routing data 日付不明\)$/);
+    }
+    expect((await router.detour(section)).source).toMatch(/2026-10-17 時点\)$/);
+    expect(status).toBe(4);
+  });
+
+  it('does not hold up a finished detour: a slow /status gives 日付不明 after a second', async () => {
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === `${URL_}/status`) return new Promise<Response>(() => {});
+      return ok(JSON.parse(String(init?.body)).exclude_polygons ? 0.85 : 0.24);
+    }) as typeof fetch;
+    const started = Date.now();
+    const fact = await new ValhallaRouter(URL_, fetchFn).detour(section);
+    expect(fact.source).toMatch(/日付不明\)$/);
+    expect(Date.now() - started).toBeLessThan(2500);
+  });
+});
 
 describe('detours', () => {
   it('compare the drive with and without the whole section, ends left open', async () => {
@@ -89,7 +145,8 @@ describe('detours', () => {
   it('ask with and without the section at the same time', async () => {
     let open = 0;
     let most = 0;
-    const fetchFn = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/status')) return Response.json({ tileset_last_modified: TILES });
       open++;
       most = Math.max(most, open);
       await new Promise((r) => setTimeout(r, 20));
