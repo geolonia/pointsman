@@ -290,12 +290,14 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
   });
 
   it('a file over the size limit makes the fact missing, never a guessed owner', async () => {
-    const big = `${'# padding\n'.repeat(MAX_CODEOWNERS_BYTES / 10)}* @alice\n`;
-    expect(await reasonOf('pr', owners(big))).toEqual({ missing: true, reason: 'error' });
+    // Exactly at the limit is read; one byte more is not.
+    const sized = (bytes: number) => `* @alice\n${'#'.repeat(bytes - 9)}`;
+    expect(sized(MAX_CODEOWNERS_BYTES)).toHaveLength(MAX_CODEOWNERS_BYTES);
+    expect(await sole(owners(sized(MAX_CODEOWNERS_BYTES)))).toBe(true);
+    expect(await reasonOf('pr', owners(sized(MAX_CODEOWNERS_BYTES + 1)))).toEqual({ missing: true, reason: 'error' });
     // GitHub's own size is checked before the content is decoded.
-    const sized = routes({ [`${REPO}/contents/.github/CODEOWNERS`]: () => ({ ...codeowners('* @alice'), size: MAX_CODEOWNERS_BYTES + 1 }) });
-    expect(await reasonOf('pr', sized)).toEqual({ missing: true, reason: 'error' });
-    expect(await sole(owners(`${'# padding\n'.repeat(MAX_CODEOWNERS_BYTES / 10 - 1)}* @alice\n`))).toBe(true);
+    const bySize = routes({ [`${REPO}/contents/.github/CODEOWNERS`]: () => ({ ...codeowners('* @alice'), size: MAX_CODEOWNERS_BYTES + 1 }) });
+    expect(await reasonOf('pr', bySize)).toEqual({ missing: true, reason: 'error' });
     expect(() => parseCodeowners(`${'a'.repeat(MAX_PATTERN_LENGTH + 1)} @x`)).toThrow(FactError);
   });
 

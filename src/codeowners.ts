@@ -42,7 +42,8 @@ function stripComment(line: string): string {
 
 /** The rules of a CODEOWNERS file, in order. Throws FactError for a file it cannot read safely. */
 export function parseCodeowners(text: string): OwnerRule[] {
-  if (text.length > MAX_CODEOWNERS_BYTES) throw new FactError(`CODEOWNERS: larger than ${MAX_CODEOWNERS_BYTES} bytes`);
+  // More characters than the byte limit means more bytes too; the byte check itself is on the decoded file.
+  if (text.length > MAX_CODEOWNERS_BYTES) throw new FactError(`CODEOWNERS: more than ${MAX_CODEOWNERS_BYTES} characters`);
   const rules: OwnerRule[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = stripComment(raw).trim();
