@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:0299b8fdebcfbb1ac666c13b7cd6686996082570b8a3bbd88faabd5e1e27adbe"
+prose_version: "threat-model.md@sha256:18495c3b72c859b7380b170bc87c5e851b9d744df8725ed34f239db57a44a3b4"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 300, maintainer: 70, inferred: 0, assumption: 0}
+confidence: {documented: 300, maintainer: 71, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment: Claude Opus 5.5 (claude-opus-5-5)"
@@ -104,7 +104,7 @@ host_side_effects:
   - effect: redirect-following
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks]
-    conditions: "outbound calls to the model server, the routing server, callback_url and the GitHub API use redirect: 'manual' and treat a 3xx as an error"
+    conditions: "outbound calls to the model server, the routing server, callback_url and the GitHub API use redirect: 'manual' and treat a 3xx as an error, except the organization-membership read, where a 302 means not known; no redirect is followed"
     provenance: {kind: documented, source: "docs/profile-format.md \"Detours\": \"Redirects are not followed\"; \"Missing GitHub facts\""}
   - effect: redirect-following
     stance: absent
@@ -237,7 +237,7 @@ entry_points:
         attacker_controllable: false
         control_kinds: [x-policy-rules, size]
         obligation_id: github-rules-known-positive
-        caller_must_enforce: "1 to 100 globs per list; a glob that misses files is the profile author's error"
+        caller_must_enforce: "1 to 100 globs in paths, at most 100 in except; a glob that misses files is the profile author's error"
         provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\", fact settings table"}
   - id: "GET /v1/decisions/{id}"
     component: engine-api
@@ -578,13 +578,13 @@ contract_dimensions:
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
   # engine-facts
   - {component: engine-facts, dimension: numeric-domain, status: claimed, conditions: "positions within WGS 84; third coordinate dropped; non-finite refused; a pull request number is a whole number from 1 and head 40 hex characters, else no_pr", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\"; maintainer ruling 2026-10"}}
-  - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule; another head commit or a push while reading makes every GitHub fact stale", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\"; \"Missing GitHub facts\""}}
+  - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule; another head commit makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\"; \"Missing GitHub facts\""}}
   - {component: engine-facts, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "geometries are flat lists of positions (Point or LineString)", provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}}
   - {component: engine-facts, dimension: callback-execution, status: not-applicable, conditions: "no caller-supplied code; providers are operator-configured", provenance: {kind: documented, source: "docs/profile-format.md \"Fact providers\""}}
-  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, unsupported patterns make the fact missing; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, patterns or section headers it does not read make the fact missing; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept; GitHub App installation tokens kept in memory until 5 minutes before they expire, never stored", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\"; \"Settings\""}}
   - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout; one GitHub snapshot per decision, each part read once, the pull request read again after its files", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤100 pushes, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤100 pushes, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher, its size not bounded (D-CODEOWNERS-SIZE)", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
@@ -1245,14 +1245,14 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or unsupported patterns make author_sole_code_owner missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make author_sole_code_owner missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
     kind: resource-bound
     components: [engine-facts]
     tier: correctness-only
-    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; exceeding is error or timeout"
+    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; CODEOWNERS size not bounded (D-CODEOWNERS-SIZE); exceeding is error or timeout"
     violation_symptoms: [hang, unbounded-allocation]
     provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}
   - id: P-DECISION-LOGGED-FIRST
@@ -1308,7 +1308,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "one snapshot per decision checked against the requested head; another head or a push while reading makes every GitHub fact stale; a malformed pull request reference is no_pr and nothing is sent"
+    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
     violation_symptoms: [x-toctou, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
   - id: P-GITHUB-REQUIRED-CHECKS
@@ -1488,6 +1488,12 @@ properties_disclaimed:
     components: [engine-facts]
     conditions: "no repository allow-list per profile or token: a GitHub fact reads the pull request the state names in any repository the GitHub credential can read; the credential's reach is the boundary; members of teams named in that repository's CODEOWNERS are read the same way; the API token's profile scope still applies; basis: a maintainer ruling (2026-10)"
     tier: security-critical
+    false_friend: false
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: D-CODEOWNERS-SIZE
+    components: [engine-facts]
+    conditions: "no bound on reading the base branch's CODEOWNERS: size and line length not limited; the comment removal in src/codeowners.ts is quadratic in a line's length for some lines; only base-branch writers can write the file; availability only; basis: a maintainer ruling (2026-10)"
+    tier: correctness-only
     false_friend: false
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-GITHUB-RATE-LIMIT

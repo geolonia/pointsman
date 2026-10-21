@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 370,
+    "documented": 371,
     "inferred": 0
   },
   "components": [
@@ -378,7 +378,7 @@
       "parameter": "github-fact-settings",
       "attacker_controllable": "no",
       "component": "engine-api",
-      "caller_must_enforce": "1 to 100 globs per list; a glob that misses files is the profile author's error",
+      "caller_must_enforce": "1 to 100 globs in paths, at most 100 in except; a glob that misses files is the profile author's error",
       "provenance": "documented",
       "source": "docs/profile-format.md \"GitHub pull requests\", fact settings table"
     },
@@ -1063,7 +1063,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or unsupported patterns make author_sole_code_owner missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make author_sole_code_owner missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
@@ -1071,7 +1071,7 @@
       "property": "P-FACT-LOOKUP-BOUNDED",
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
-      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; exceeding is error or timeout",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; CODEOWNERS size not bounded (D-CODEOWNERS-SIZE); exceeding is error or timeout",
       "provenance": "documented",
       "source": "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"
     },
@@ -1135,7 +1135,7 @@
       "property": "P-GITHUB-FACTS-FOR-HEAD",
       "violation_symptom": "x-toctou, wrong-output",
       "severity_tier": "security",
-      "conditions": "one snapshot per decision checked against the requested head; another head or a push while reading makes every GitHub fact stale; a malformed pull request reference is no_pr and nothing is sent",
+      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
       "provenance": "documented",
       "source": "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""
     },
@@ -1347,6 +1347,13 @@
       "source": "maintainer ruling, 2026-10"
     },
     {
+      "property": "D-CODEOWNERS-SIZE",
+      "reason": "no bound on reading the base branch's CODEOWNERS: size and line length not limited; the comment removal in src/codeowners.ts is quadratic in a line's length for some lines; only base-branch writers can write the file; availability only; basis: a maintainer ruling (2026-10)",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
       "property": "D-GITHUB-RATE-LIMIT",
       "reason": "no GitHub request budget per client or profile: all decisions share the credential's rate limit; when it is used up GitHub facts are error for every client until it resets; fails closed; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
@@ -1535,7 +1542,7 @@
     {
       "reported_as": "the same callback arrived twice",
       "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
-      "cites": "properties_not_provided[20]",
+      "cites": "properties_not_provided[21]",
       "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
     },
     {
