@@ -241,14 +241,18 @@ describe('POST /v1/profiles/{id}/replay', () => {
   it('refuses a draft whose questions, facts or requires differ', async () => {
     const res = await post(check.id, { policy: lower, questions: check.questions.slice(1) });
     expect(res.status).toBe(409);
-    expect((await res.json<{ error: { code: string } }>()).error.code).toBe('not_policy_only');
+    const conflict = await res.json<{ error: { code: string } }>();
+    expect(contract.error(conflict), JSON.stringify(contract.error.errors)).toBe(true);
+    expect(conflict.error.code).toBe('not_policy_only');
     expect(calls).toEqual([]);
   });
 
   it('refuses a condition that does not fit, and bad bodies, before reading the log', async () => {
     const bad = await post(check.id, { policy: { rules: [{ when: 'colour.value == true', action: 'urgent' }], default: 'review' } });
     expect(bad.status).toBe(400);
-    expect((await bad.json<{ error: { code: string; message: string } }>()).error).toMatchObject({ code: 'invalid_policy', message: expect.stringContaining('rule 0') });
+    const invalid = await bad.json<{ error: { code: string; message: string } }>();
+    expect(contract.error(invalid), JSON.stringify(contract.error.errors)).toBe(true);
+    expect(invalid.error).toMatchObject({ code: 'invalid_policy', message: expect.stringContaining('rule 0') });
     expect(calls).toEqual([]);
     const many = { default: 'review', rules: Array.from({ length: 501 }, () => ({ when: 'danger.yes >= 0.5', action: 'urgent' })) };
     expect((await post(check.id, { policy: many })).status).toBe(400);

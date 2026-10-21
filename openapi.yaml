@@ -934,5 +934,5 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_pending, not_found, resolved_by_person, idempotency_conflict, model_error, internal_error]
+              enum: [invalid_request, invalid_policy, unauthorized, forbidden, profile_not_found, decision_not_found, profile_version_gone, not_pending, not_found, resolved_by_person, idempotency_conflict, not_policy_only, model_error, internal_error]
             message: { type: string }
