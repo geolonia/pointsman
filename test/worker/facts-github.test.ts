@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { noCallbacks } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
-import { FactRouter, lookupFacts, MockFactProvider, resultError, toPullRequest, type FactProvider } from '../../src/facts';
+import { FactError, FactRouter, lookupFacts, MockFactProvider, resultError, toPullRequest, type FactProvider } from '../../src/facts';
 import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, privateKeyDer, TokenAuth } from '../../src/facts-github';
-import { codeownersMatch, parseCodeowners } from '../../src/codeowners';
+import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '../../src/codeowners';
 import { matchGlob } from '../../src/glob';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log';
@@ -286,6 +286,42 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     ];
     for (const [pattern, path, match] of cases) expect(codeownersMatch(pattern, path), `${pattern} ${path}`).toBe(match);
     expect(parseCodeowners('a\\#b.md @x # comment\n\n# only a comment')).toEqual([{ pattern: 'a#b.md', owners: ['@x'] }]);
+    expect(parseCodeowners('#x @a\n\\#x @b#c\n docs/ @c\t# tab')).toEqual([{ pattern: '#x', owners: ['@b'] }, { pattern: 'docs/', owners: ['@c'] }]);
+  });
+
+  it('a file over the size limit makes the fact missing, never a guessed owner', async () => {
+    const big = `${'# padding\n'.repeat(MAX_CODEOWNERS_BYTES / 10)}* @alice\n`;
+    expect(await reasonOf('pr', owners(big))).toEqual({ missing: true, reason: 'error' });
+    // GitHub's own size is checked before the content is decoded.
+    const sized = routes({ [`${REPO}/contents/.github/CODEOWNERS`]: () => ({ ...codeowners('* @alice'), size: MAX_CODEOWNERS_BYTES + 1 }) });
+    expect(await reasonOf('pr', sized)).toEqual({ missing: true, reason: 'error' });
+    expect(await sole(owners(`${'# padding\n'.repeat(MAX_CODEOWNERS_BYTES / 10 - 1)}* @alice\n`))).toBe(true);
+    expect(() => parseCodeowners(`${'a'.repeat(MAX_PATTERN_LENGTH + 1)} @x`)).toThrow(FactError);
+  });
+
+  it('long crafted lines parse fast', () => {
+    const start = Date.now();
+    // No "#": the comment scan runs once over the line; the pattern is then too long.
+    expect(() => parseCodeowners('a'.repeat(100_000))).toThrow(FactError);
+    expect(() => parseCodeowners(`x${'\\'.repeat(100_000)}#`)).toThrow(FactError);
+    expect(parseCodeowners(`* @a ${'\\'.repeat(100_000)}# done`)[0]!.pattern).toBe('*');
+    expect(parseCodeowners(`${'#'.repeat(100_000)}\n* @a`)).toEqual([{ pattern: '*', owners: ['@a'] }]);
+    // Many "#" and a lone "\r" at the end: a regular expression "#.*$" retries from every "#" (quadratic).
+    expect(parseCodeowners(`${'a#'.repeat(60_000)}\r`)).toEqual([{ pattern: 'a', owners: [] }]);
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it('matching many paths against many patterns is bounded: past the limit the fact is missing', async () => {
+    const rules = parseCodeowners('a @x\n*a*a*a*a*b @x\n'.repeat(5_000));
+    const paths = Array.from({ length: 2_000 }, (_, i) => `src/${'d/'.repeat(10)}${'a'.repeat(50)}${i}`);
+    const start = Date.now();
+    expect(() => paths.forEach(ownerLookup(rules))).toThrow(FactError);
+    expect(Date.now() - start).toBeLessThan(3000);
+    // A usual file: last match wins, and nothing runs out.
+    const owner = ownerLookup(parseCodeowners('* @a\n/docs/ @b\n*.md @c'));
+    expect([owner('docs/x.ts'), owner('docs/x.md'), owner('src/x.ts')]).toEqual([['@b'], ['@c'], ['@a']]);
+    // A budget too small for the paths fails.
+    expect(() => ['docs/a.md', 'README.md'].forEach(ownerLookup(parseCodeowners('/x/ @a\n/y/ @b'), 2))).toThrow(FactError);
   });
 });
 
