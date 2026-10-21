@@ -427,7 +427,8 @@ export function pushedByAuthor(commits: { sha: string }[] | null, list: Push[] |
   if (!commits || !list) return 'unavailable';
   const index = new Map(commits.map((c, i) => [c.sha, i]));
   const by = new Map<number, string>();
-  for (const push of [...list].sort((a, b) => a.at.localeCompare(b.at))) {
+  // The list is newest first: reversed, pushes in the same second keep their real order (the sort is stable).
+  for (const push of [...list].reverse().sort((a, b) => a.at.localeCompare(b.at))) {
     const k = index.get(push.after);
     if (k === undefined) continue;
     // Commits up to "before" came earlier, maybe in a push older than the list.

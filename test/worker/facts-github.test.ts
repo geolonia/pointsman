@@ -251,6 +251,23 @@ describe('who pushed (github_pr.pushed_by_author)', () => {
     expect(server.count(`${REPO}/activity`)).toBe(1);
   });
 
+  it('stops at a creation push on a later page, and ignores pushes older than it there', async () => {
+    const created = { ...push(C2, 'alice', '0'.repeat(40), '2026-10-21T01:00:00Z'), activity_type: 'branch_creation' };
+    const pages = [[push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z')], [created, push(C1, 'bob', '0'.repeat(40), '2026-10-20T00:00:00Z')], [push(C1, 'bob')]];
+    const server = fakeGitHub(three(paged(pages)));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values.pushed_by_author).toBe('yes');
+    expect(server.count(`${REPO}/activity`)).toBe(2);
+  });
+
+  it('pushes in the same second keep their order', async () => {
+    // Newest first, same second: bob pushed C1 and C2, then alice force-pushed HEAD
+    // (its before is not in the pull request). Read newest first, alice would claim every commit.
+    const same = '2026-10-21T01:00:00Z';
+    expect(await pushed(three(() => [push(HEAD, 'alice', OTHER, same), push(C2, 'bob', '0'.repeat(40), same)]))).toBe('no');
+    expect(await pushed(three(() => [push(HEAD, 'alice', OTHER, same), push(C2, 'alice', '0'.repeat(40), same)]))).toBe('yes');
+  });
+
   it(`reads at most ${MAX_PUSH_PAGES} pages; older pushes stay unknown`, async () => {
     const unrelated = Array.from({ length: MAX_PUSH_PAGES + 2 }, (_, i) => [push(OTHER, 'alice', OTHER, `2026-10-2${i}T00:00:00Z`)]);
     const pages = [[push(HEAD, 'alice', C2, '2026-10-30T00:00:00Z')], ...unrelated, [push(C2, 'alice', '0'.repeat(40), '2026-10-01T00:00:00Z')]];

@@ -628,7 +628,8 @@ without regular expressions, so a long pattern cannot slow a decision down.
 - Commits: up to 250 (GitHub lists no more).
 - Pushes to the head branch (for `pushed_by_author`): 100 per page, newest
   first, page by page back to the push that created the branch, at most 5
-  pages (500 pushes). Pushes before that stay unknown.
+  pages (500 pushes). Pushes before that, or on a later page GitHub does
+  not show, stay unknown.
 - Check runs: up to 300 on the head commit. Commit statuses and workflow
   runs: up to 100.
 - A workflow that a ruleset requires counts only through a run that GitHub
