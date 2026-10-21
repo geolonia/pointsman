@@ -259,25 +259,34 @@ A replay shows what a changed policy would have decided on the decisions a
 deployment has already made, before the change is published:
 
 ```text
-road-restriction-check: the draft's rules on the last 200 decisions of version 4 (2026-10-14 01:00 to 2026-10-21 03:00 UTC).
-  12 would change; 0 inexact (a value of an earlier decision was not kept); 0 could not be replayed.
-  review → publish: 9
-  urgent → review: 3
-  Checked by a person: 30. The person's answer matched the logged action 0 times, and the new rules 18 times.
+road-restriction-check: the draft's rules on 200 decisions of version 4 (2026-10-14 01:00 to 2026-10-21 03:00 UTC).
+  12 would get another action.
+    review → publish: 9
+    urgent → review: 3
+  To a person: 64 now, 55 with the new rules.
+  Of the 30 a person answered, the new rules give the person's answer for 18.
 ```
 
-The last line compares the new rules with what people answered: if the new
-rules would have given the person's answer more often, the change takes
-work off people without deciding differently from them.
+The last two lines are about people: how many decisions go to a person now
+(an action in the published `people_check`) and would with the new policy
+(the draft's `people_check`), and, for the decisions a person answered, how
+often the new rules would have given that answer by themselves.
 
 Only the **policy** changes: the logged answers and facts are used as they
 were, so no model is called, and the questions, facts and requires must be
 the same as in the published version (for new questions, publish them first
 and use [test cases](#test-cases) meanwhile). Earlier decisions are read from
 the snapshot each decision keeps: their action, outcome and whether a person
-checked them, and the values the old rules read. A new rule that reads a
-value the old rules did not is unknown for those decisions, which are counted
-as **inexact**.
+checked them, and the values the old rules read. When a new rule reads a
+value the old rules did not keep, the decision is not replayed: it is counted
+as **inexact** and left out of every other number (every rule's reads count,
+so this errs on the side of inexact). A decision whose log lacks an answer
+the new rules read is **skipped** the same way. The profiles a profile
+requires are read at their latest version, as for a new decision.
+
+The newest decisions of the version are replayed, including ones a later
+decision about the same thing replaced (they were made), so one ref can
+count more than once.
 
 - **A draft (a file):** `POINTSMAN_TOKEN=pm_… node scripts/replay-profile.mjs <file> --url <pointsman url>`
   (`--limit N`, default 200, at most 500; `--version N`; `--lang ja`;
@@ -290,7 +299,8 @@ as **inexact**.
 A replay reads logged decisions, so the token must be allowed to use the
 profile and every profile it requires, and test tokens cannot replay. It lists
 at most 50 changed decisions (id, time, ref, before and after, and the
-person's answer); the counts cover all of them.
+person's answer), from every client of the profile; the counts cover all of
+them.
 
 ## Decision chains
 

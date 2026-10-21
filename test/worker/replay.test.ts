@@ -8,7 +8,11 @@ import type { DecisionRecord, RequiredSnapshot } from '../../src/log';
 import { MockAdapter } from '../../src/models/mock';
 import { PolicyError } from '../../src/policy';
 import { MemoryProfileStore } from '../../src/profiles/store';
-import { inputFromSnapshot, policyShapeError, replay, unchangedPartError } from '../../src/replay';
+import { compileDraft, inputFromSnapshot, policyShapeError, replay as replayCompiled, unchangedPartError } from '../../src/replay';
+
+/** Compile, then replay, as the route does. */
+const replay = (base: Profile, policy: Profile['policy'], records: DecisionRecord[], req: Record<string, Profile | undefined>) =>
+  replayCompiled(base, policy, compileDraft(base, policy, req), records, req);
 import type { Answer, Profile } from '../../src/types';
 import bundled from '../../generated/profiles.json';
 import { fakeLog, noCallbacks } from './helpers';
@@ -80,7 +84,8 @@ describe('replay', () => {
       { from: 'review', to: 'urgent', count: 2 },
       { from: 'review', to: 'publish', count: 1 },
     ]);
-    expect(r.people).toEqual({ checked: 2, matched_before: 0, matched_after: 2 });
+    // To a person (review or urgent): 3 reviews before; after, the 2 that become urgent.
+    expect(r.people).toEqual({ before: 3, after: 2, checked: 2, matched: 2 });
     expect(r.changes.map((c) => [c.ref, c.before.action, c.after.action, c.person])).toEqual([
       ['report-' + (n - 3), 'review', 'urgent', undefined],
       ['report-' + (n - 2), 'review', 'urgent', 'urgent'],
@@ -98,8 +103,16 @@ describe('replay', () => {
     expect(r.replayed).toBe(1);
   });
 
-  it('throws PolicyError for a condition that does not fit the profile', () => {
-    expect(() => replay(check, { rules: [{ when: 'colour.value == true', action: 'urgent' }], default: 'review' }, [], required)).toThrow(PolicyError);
+  it('throws PolicyError for a condition that does not fit the profile, or a people_check outside the policy', () => {
+    expect(() => compileDraft(check, { rules: [{ when: 'colour.value == true', action: 'urgent' }], default: 'review' }, required)).toThrow(PolicyError);
+    expect(() => compileDraft(check, { default: 'review', people_check: ['urgent'] }, required)).toThrow(/people_check: "urgent" is not an action of this policy \(review\)/);
+  });
+
+  it('counts decisions going to a person with the draft\'s people_check', () => {
+    const records = [logged(0.9, 0), logged(0.1, 5)].map(asLogged); // urgent, review
+    const r = replay(check, { ...check.policy, people_check: ['review'] }, records, required);
+    // Before (published people_check [review, urgent]): both. After: only review.
+    expect(r.people).toMatchObject({ before: 2, after: 1 });
   });
 });
 
@@ -126,8 +139,9 @@ describe('replay with earlier decisions', () => {
     const record = finalRecord({ check: snap('publish', { outcome: 'publish' }) }, 'publish', 3);
     const policy = { ...final.policy, rules: [{ when: 'decisions.check.answers.danger.yes >= 0.3', action: 'urgent' }, ...final.policy.rules!] };
     const r = replay(final, policy, [record], required);
-    // Unknown: the new rule does not match, and the decision is marked.
-    expect(r).toMatchObject({ replayed: 1, changed: 0, inexact: 1 });
+    // Not replayed: a made-up value would decide it. Counted only as inexact.
+    expect(r).toMatchObject({ replayed: 0, changed: 0, inexact: 1, transitions: [], from: null, to: null });
+    expect(r.actions).toEqual({ before: {}, after: {} });
     const kept = finalRecord({ check: snap('publish', { outcome: 'publish', 'answers.danger.yes': 0.4 }) }, 'publish', 3);
     expect(replay(final, policy, [kept], required)).toMatchObject({ changed: 1, inexact: 0, transitions: [{ from: 'publish', to: 'urgent', count: 1 }] });
   });
@@ -215,6 +229,15 @@ describe('POST /v1/profiles/{id}/replay', () => {
     expect(calls).toEqual([[check.id, check.version, 200]]);
   });
 
+  it('answers the same 403 for a guessed hidden required profile, right or wrong, before comparing', async () => {
+    const guess = (profile: string) => post(final.id, { policy: final.policy, requires: [{ name: 'check', profile: 'road-restriction-check' }, { name: 'evacuation', profile, optional: true }] }, CHECK_ONLY);
+    const right = await guess('evacuation-access-check');
+    const wrong = await guess('some-other-profile');
+    expect([right.status, wrong.status]).toEqual([403, 403]);
+    expect(await right.json()).toEqual(await wrong.json());
+    expect(calls).toEqual([]);
+  });
+
   it('refuses a draft whose questions, facts or requires differ', async () => {
     const res = await post(check.id, { policy: lower, questions: check.questions.slice(1) });
     expect(res.status).toBe(409);
@@ -226,6 +249,14 @@ describe('POST /v1/profiles/{id}/replay', () => {
     const bad = await post(check.id, { policy: { rules: [{ when: 'colour.value == true', action: 'urgent' }], default: 'review' } });
     expect(bad.status).toBe(400);
     expect((await bad.json<{ error: { code: string; message: string } }>()).error).toMatchObject({ code: 'invalid_policy', message: expect.stringContaining('rule 0') });
+    expect(calls).toEqual([]);
+    const many = { default: 'review', rules: Array.from({ length: 501 }, () => ({ when: 'danger.yes >= 0.5', action: 'urgent' })) };
+    expect((await post(check.id, { policy: many })).status).toBe(400);
+    let deep: unknown = [];
+    for (let i = 0; i < 30; i++) deep = [deep];
+    const nested = await post(check.id, { policy: lower, questions: deep });
+    expect(nested.status).toBe(409);
+    expect((await nested.json<{ error: { message: string } }>()).error.message).toBe("the draft's questions are nested too deeply");
     for (const body of ['nope', '[]', { policy: lower, limit: 0 }, { policy: lower, limit: 501 }, { policy: lower, version: 1.5 }, { policy: lower, extra: 1 }, { policy: lower, facts: {} }, {}]) {
       expect((await post(check.id, body)).status, JSON.stringify(body)).toBe(400);
     }
@@ -239,7 +270,7 @@ describe('POST /v1/profiles/{id}/replay', () => {
     // road-closure-final requires evacuation-access-check, which this token may not use.
     const res = await post(final.id, finalPolicy, CHECK_ONLY);
     expect(res.status).toBe(403);
-    expect((await res.json<{ error: { message: string } }>()).error.message).toBe('this token may not use a profile that this profile requires');
+    expect((await res.json<{ error: { message: string } }>()).error.message).toBe('not allowed to use a profile that this profile requires');
     expect((await post('issue-triage', { policy: { default: 'review' } }, CHECK_ONLY)).status).toBe(403);
     expect((await post(check.id, { policy: lower }, TEST)).status).toBe(403);
   });

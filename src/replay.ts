@@ -5,16 +5,18 @@
 //
 // Earlier decisions (requires) are read from the snapshot kept with each
 // decision, as they were at the time: their action, outcome and reviewed,
-// and the values the old rules read. A new rule that reads a value the old
-// ones did not is unknown for that decision, and the decision is counted as
-// inexact.
+// and the values the old rules read. When a new rule reads a value the old
+// ones did not keep, that decision cannot be replayed exactly: it is counted
+// as inexact and left out of every other number.
 
-import { compilePolicy, PolicyError, type PolicyProfile, type RequiredProfiles } from './policy';
+import { compilePolicy, peopleCheck, PolicyError, type CompiledPolicy, type PolicyProfile, type RequiredProfiles } from './policy';
 import type { DecisionRecord, RequiredSnapshot } from './log';
 import type { Answer, Fact, FactMissingReason, Profile, RequiredDecisionInput } from './types';
 
 const ACTION = /^[a-z][a-z0-9_-]{0,62}$/;
 export const REPLAY_LIMIT = { default: 200, max: 500 };
+/** At most this many rules in a policy sent for a replay: each one runs on every decision. */
+const MAX_RULES = 500;
 /** The changed decisions listed in a replay; the counts cover all of them. */
 const LISTED = 50;
 
@@ -24,25 +26,26 @@ export interface ReplayResult {
   profile: string;
   /** The published version whose decisions were replayed. */
   version: number;
-  /** How many decisions were replayed, and the time they span (ISO 8601). */
+  /** How many decisions were replayed exactly, and the time they span (ISO 8601). */
   replayed: number;
-  /** Logged decisions the new rules could not run on (an answer they read is not in the log). */
-  skipped: number;
   from: string | null;
   to: string | null;
-  /** Decisions whose action would change. */
-  changed: number;
-  /** Decisions where a new rule read a value of an earlier decision that was not kept. */
+  /** Decisions where a new rule reads a value of an earlier decision that was not kept: not replayed, not counted elsewhere. */
   inexact: number;
+  /** Logged decisions the new rules could not run on (an answer they read is not in the log): not counted elsewhere. */
+  skipped: number;
+  /** Replayed decisions whose action would change. */
+  changed: number;
   /** Actions before (as logged) and after (with the new policy). */
   actions: { before: Record<string, number>; after: Record<string, number> };
   /** Each change of action, with how often it happened, most frequent first. */
   transitions: { from: string; to: string; count: number }[];
   /**
-   * Decisions a person checked: how often the person's answer matched the
-   * logged action and the new one.
+   * People: how many decisions went to a person (an action in people_check)
+   * and would with the new policy; and of those a person answered, how often
+   * the new rules give that answer.
    */
-  people: { checked: number; matched_before: number; matched_after: number };
+  people: { before: number; after: number; checked: number; matched: number };
   /** Up to 50 changed decisions, newest first. */
   changes: {
     decision_id: string;
@@ -51,7 +54,6 @@ export interface ReplayResult {
     before: { action: string; rule: number | null };
     after: { action: string; rule: number | null };
     person?: string;
-    inexact?: true;
   }[];
 }
 
@@ -65,6 +67,7 @@ export function policyShapeError(policy: unknown): string | null {
   if (typeof p.default !== 'string' || !ACTION.test(p.default)) return '"policy.default" must be an action name';
   if (p.rules !== undefined) {
     if (!Array.isArray(p.rules)) return '"policy.rules" must be a list';
+    if (p.rules.length > MAX_RULES) return `"policy.rules" may have at most ${MAX_RULES} rules`;
     for (const [i, r] of p.rules.entries()) {
       if (typeof r !== 'object' || r === null || Array.isArray(r)) return `"policy.rules[${i}]" must be an object`;
       const keys = Object.keys(r as object);
@@ -87,11 +90,12 @@ export function policyShapeError(policy: unknown): string | null {
   return null;
 }
 
-/** JSON with sorted keys, to compare parts of two profiles. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+/** JSON with sorted keys, to compare parts of two profiles. Deeper than any profile part is "too deep". */
+function canonical(value: unknown, depth = 0): string {
+  if (depth > 20) throw new PolicyError('too deeply nested');
+  if (Array.isArray(value)) return `[${value.map((v) => canonical(v, depth + 1)).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(',')}}`;
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k], depth + 1)}`).join(',')}}`;
   }
   return JSON.stringify(value ?? null);
 }
@@ -103,7 +107,14 @@ function canonical(value: unknown): string {
 export function unchangedPartError(base: Profile, draft: Partial<Pick<Profile, 'questions' | 'facts' | 'requires'>>): string | null {
   for (const k of ['questions', 'facts', 'requires'] as const) {
     if (draft[k] === undefined) continue;
-    if (canonical(draft[k]) !== canonical(base[k] ?? [])) {
+    let same: boolean;
+    try {
+      same = canonical(draft[k]) === canonical(base[k] ?? []);
+    } catch (err) {
+      if (err instanceof PolicyError) return `the draft's ${k} are nested too deeply`;
+      throw err;
+    }
+    if (!same) {
       return `the draft's ${k} differ from version ${base.version}: a replay changes only the policy (publish the new ${k} first)`;
     }
   }
@@ -162,25 +173,38 @@ export function inputFromSnapshot(snapshot: RequiredSnapshot, required: PolicyPr
 const ALWAYS = new Set(['missing', 'action', 'outcome', 'reviewed']);
 
 /**
- * Replay `records` (decisions of `base`, newest first) with `policy` instead
- * of the base policy. Throws PolicyError when a condition does not fit the
- * profile.
+ * Compile a draft policy against the base profile. Throws PolicyError when a
+ * condition does not fit, or people_check names an action the policy does
+ * not have. Done before the log is read.
  */
-export function replay(base: Profile, policy: Policy, records: DecisionRecord[], required: RequiredProfiles): ReplayResult {
+export function compileDraft(base: Profile, policy: Policy, required: RequiredProfiles): CompiledPolicy {
   const draft: PolicyProfile = { ...base, policy };
-  const compiled = compilePolicy(draft, required);
+  const actions = new Set([...(policy.rules ?? []).map((r) => r.action), policy.default]);
+  for (const a of policy.people_check ?? []) {
+    if (!actions.has(a)) throw new PolicyError(`people_check: "${a}" is not an action of this policy (${[...actions].join(', ')})`);
+  }
+  return compilePolicy(draft, required);
+}
+
+/**
+ * Replay `records` (decisions of `base`, newest first) with `policy`, already
+ * compiled with compileDraft.
+ */
+export function replay(base: Profile, policy: Policy, compiled: CompiledPolicy, records: DecisionRecord[], required: RequiredProfiles): ReplayResult {
+  const toPersonBefore = peopleCheck(base);
+  const toPersonAfter = peopleCheck({ policy });
   const result: ReplayResult = {
     profile: base.id,
     version: base.version,
     replayed: 0,
-    skipped: 0,
-    from: records.at(-1)?.created_at ?? null,
-    to: records[0]?.created_at ?? null,
-    changed: 0,
+    from: null,
+    to: null,
     inexact: 0,
+    skipped: 0,
+    changed: 0,
     actions: { before: {}, after: {} },
     transitions: [],
-    people: { checked: 0, matched_before: 0, matched_after: 0 },
+    people: { before: 0, after: 0, checked: 0, matched: 0 },
     changes: [],
   };
   const transitions = new Map<string, number>();
@@ -190,32 +214,42 @@ export function replay(base: Profile, policy: Policy, records: DecisionRecord[],
       const r = base.requires?.find((x) => x.name === name);
       decisions[name] = inputFromSnapshot(snapshot, r ? required[r.profile] : undefined);
     }
-    let after: { action: string; rule: number | null };
-    try {
-      after = compiled.decide(record.answers, record.facts ?? {}, decisions);
-    } catch (err) {
-      // A logged decision without an answer the new rules read; the rules
-      // cannot run on it. Not counted as replayed.
-      if (!(err instanceof PolicyError)) throw err;
-      result.skipped++;
-      continue;
-    }
-    result.replayed++;
-    // Inexact when a new rule reads a value of an earlier decision that its snapshot did not keep.
+    // Inexact when a rule reads a value of an earlier decision that its
+    // snapshot did not keep: a rebuilt value would be made up (an absent fact
+    // reads as missing, absent probabilities as 0), so the decision is not
+    // replayed. Every rule's reads count, also rules after the one that would
+    // match, so this errs on the side of inexact.
     const needed = compiled.read(decisions);
     const inexact = Object.entries(needed).some(([name, paths]) => {
       const kept = record.requires?.[name];
       return kept !== undefined && Object.keys(paths).some((p) => !ALWAYS.has(p) && !Object.hasOwn(kept.read, p));
     });
-    if (inexact) result.inexact++;
+    if (inexact) {
+      result.inexact++;
+      continue;
+    }
+    let after: { action: string; rule: number | null };
+    try {
+      after = compiled.decide(record.answers, record.facts ?? {}, decisions);
+    } catch (err) {
+      // A logged decision without an answer the new rules read; the rules
+      // cannot run on it.
+      if (!(err instanceof PolicyError)) throw err;
+      result.skipped++;
+      continue;
+    }
+    result.replayed++;
+    result.to ??= record.created_at;
+    result.from = record.created_at;
     const before = { action: record.action, rule: record.rule };
     result.actions.before[before.action] = (result.actions.before[before.action] ?? 0) + 1;
     result.actions.after[after.action] = (result.actions.after[after.action] ?? 0) + 1;
+    if (toPersonBefore.includes(before.action)) result.people.before++;
+    if (toPersonAfter.includes(after.action)) result.people.after++;
     const person = record.review?.status === 'resolved' ? record.review.final_action : undefined;
     if (person !== undefined) {
       result.people.checked++;
-      if (person === before.action) result.people.matched_before++;
-      if (person === after.action) result.people.matched_after++;
+      if (person === after.action) result.people.matched++;
     }
     if (after.action !== before.action) {
       result.changed++;
@@ -229,7 +263,6 @@ export function replay(base: Profile, policy: Policy, records: DecisionRecord[],
           before,
           after,
           ...(person !== undefined && { person }),
-          ...(inexact && { inexact: true as const }),
         });
       }
     }

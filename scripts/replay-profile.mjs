@@ -40,7 +40,7 @@ try {
 }
 const { positionals, values } = args;
 const whole = (s) => /^[1-9][0-9]{0,8}$/.test(s ?? '');
-if (positionals.length !== 1 || !values.url || !['en', 'ja'].includes(values.lang) || !whole(values.limit)
+if (positionals.length !== 1 || !values.url || !['en', 'ja'].includes(values.lang) || !whole(values.limit) || Number(values.limit) > 500
   || (values.version !== undefined && !whole(values.version))) {
   console.error(USAGE);
   process.exit(2);
@@ -114,6 +114,10 @@ if (!res.ok || result === null || typeof result !== 'object') {
   console.error(`The deployment answered ${res.status}${result?.error ? `: ${result.error.code}: ${result.error.message}` : ' (not JSON)'}`);
   process.exit(1);
 }
+if (!Array.isArray(result.transitions) || !Array.isArray(result.changes) || typeof result.people !== 'object' || result.people === null) {
+  console.error('The deployment answered with something that is not a replay (an older Pointsman?)');
+  process.exit(1);
+}
 if (values.json) {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   process.exit(0);
@@ -125,21 +129,27 @@ const day = (iso) => iso?.slice(0, 16).replace('T', ' ');
 const ja = values.lang === 'ja';
 const out = [];
 out.push(ja
-  ? `${profile.id}：下書きのルールを、バージョン ${result.version} の直近 ${result.replayed} 件の判定（${day(result.from) ?? '-'} 〜 ${day(result.to) ?? '-'} UTC）で試しました。`
-  : `${profile.id}: the draft's rules on the last ${result.replayed} decisions of version ${result.version} (${day(result.from) ?? '-'} to ${day(result.to) ?? '-'} UTC).`);
+  ? `${profile.id}：下書きのルールを、バージョン ${result.version} の判定 ${result.replayed} 件（${day(result.from) ?? '-'} 〜 ${day(result.to) ?? '-'} UTC）で試しました。`
+  : `${profile.id}: the draft's rules on ${result.replayed} decisions of version ${result.version} (${day(result.from) ?? '-'} to ${day(result.to) ?? '-'} UTC).`);
+if (result.inexact || result.skipped) {
+  out.push(ja
+    ? `  試せなかった判定：前の判定の値が残っていないもの ${result.inexact} 件、記録に答えがないもの ${result.skipped} 件。`
+    : `  Not replayed: ${result.inexact} (a value of an earlier decision was not kept), ${result.skipped} (an answer is not in the log).`);
+}
+out.push(ja ? `  アクションが変わる判定：${result.changed} 件。` : `  ${result.changed} would get another action.`);
+for (const t of result.transitions) out.push(`    ${t.from} → ${t.to}: ${t.count}`);
 out.push(ja
-  ? `  変わる判定：${result.changed} 件。前の判定の値が残っていない：${result.inexact} 件。試せなかった判定：${result.skipped} 件。`
-  : `  ${result.changed} would change; ${result.inexact} inexact (a value of an earlier decision was not kept); ${result.skipped} could not be replayed.`);
-for (const t of result.transitions) out.push(`  ${t.from} → ${t.to}: ${t.count}`);
+  ? `  人に回る判定：今は ${result.people.before} 件、新しいルールでは ${result.people.after} 件。`
+  : `  To a person: ${result.people.before} now, ${result.people.after} with the new rules.`);
 if (result.people.checked) {
   out.push(ja
-    ? `  人が確認した判定：${result.people.checked} 件。人の答えと一致したのは、記録されたアクションで ${result.people.matched_before} 件、新しいルールで ${result.people.matched_after} 件です。`
-    : `  Checked by a person: ${result.people.checked}. The person's answer matched the logged action ${result.people.matched_before} times, and the new rules ${result.people.matched_after} times.`);
+    ? `  人が答えた判定 ${result.people.checked} 件のうち、新しいルールが人と同じ答えになるのは ${result.people.matched} 件です。`
+    : `  Of the ${result.people.checked} a person answered, the new rules give the person's answer for ${result.people.matched}.`);
 }
 if (result.changes.length) {
   out.push(ja ? '  変わる判定（新しい順）：' : '  Changed decisions (newest first):');
   for (const c of result.changes) {
-    const extra = [c.ref, c.person !== undefined && (ja ? `人の答え：${c.person}` : `person: ${c.person}`), c.inexact && (ja ? '値が不完全' : 'inexact')].filter(Boolean).join(', ');
+    const extra = [c.ref, c.person !== undefined && (ja ? `人の答え：${c.person}` : `person: ${c.person}`)].filter(Boolean).join(', ');
     out.push(`    ${day(c.created_at)} ${c.before.action} → ${c.after.action}${extra ? ` (${extra})` : ''}`);
     out.push(`      ${ruleText(c.after.rule)}`);
   }

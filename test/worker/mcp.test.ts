@@ -73,6 +73,26 @@ describe('/mcp', () => {
     expect((await call('explain_profile', { profile: 'issue-triage', version: 99 })).isError).toBe(true);
   });
 
+  it('replays a changed policy of an MCP-visible profile, and hides the others', async () => {
+    // Two logged decisions of issue-triage through the real log.
+    for (const ref of ['mcp-replay:1', 'mcp-replay:2']) {
+      const d = await call('decide', { profile: 'issue-triage', state: { title: 'Blank page', body: 'Since today.' }, ref });
+      expect(d.isError).toBe(false);
+    }
+    const r = await call('replay_profile', { profile: 'issue-triage', policy: { default: 'review' }, limit: 2 });
+    expect(r.isError).toBe(false);
+    const body = JSON.parse(r.text);
+    expect(body).toMatchObject({ profile: 'issue-triage', replayed: 2 });
+    expect(body.actions.after).toEqual({ review: 2 });
+    // Not MCP-visible, out of scope, unknown: all look the same.
+    for (const [args, token] of [[{ profile: 'deploy-progress' }, ALL], [{ profile: 'issue-triage' }, DEPLOY_ONLY], [{ profile: 'nope' }, ALL]] as const) {
+      expect(await call('replay_profile', { ...args, policy: { default: 'review' } }, token)).toEqual({ isError: true, text: `unknown profile "${args.profile}"` });
+    }
+    const bad = await call('replay_profile', { profile: 'issue-triage', policy: { default: 'review', rules: [{ when: 'colour.p > 0', action: 'auto' }] } });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toMatch(/^invalid_policy: rule 0: /);
+  });
+
   it('lists only profiles that are MCP-visible and in scope', async () => {
     const all = JSON.parse((await call('list_profiles', {})).text);
     // deploy-progress does not set mcp.visible.

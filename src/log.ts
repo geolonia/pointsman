@@ -376,7 +376,13 @@ export class D1DecisionLog implements DecisionLog {
 
   async recent(profile: string, version: number, limit: number): Promise<DecisionRecord[]> {
     const { results } = await this.db
-      .prepare('SELECT * FROM decisions WHERE profile_id = ? AND profile_version = ? AND discarded_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT ?')
+      // Not the stored state or the callback columns: a replay does not read them, and state can be large.
+      .prepare(`SELECT id, created_at, client, ref, profile_id, profile_version, model, action, rule, answers, facts, state_hash,
+                       NULL AS state, NULL AS callback_url, review_status, resolved_at, resolved_by, final_action, NULL AS final_answers,
+                       NULL AS callback_status, 0 AS callback_attempts, NULL AS callback_last_error, NULL AS callback_next_at,
+                       requires, NULL AS idempotency_key, NULL AS request_digest, replaces, discarded_at
+                  FROM decisions WHERE profile_id = ? AND profile_version = ? AND discarded_at IS NULL
+                 ORDER BY created_at DESC, rowid DESC LIMIT ?`)
       .bind(profile, version, limit)
       .all<DecisionRow>();
     return results.map(fromRow);
