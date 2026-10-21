@@ -4,7 +4,8 @@ Pointsman follows [semantic versioning](https://semver.org/). Before 1.0, a
 minor release (0.x) may change the API, the profile format or the decision
 log; the notes say how. Each release is a tag on `main`. A deployment pins
 the engine by commit in its config repository: to use a release, set
-`ref` in `engine.json` to the commit of its tag (`git rev-parse v0.1.0`).
+`ref` in `engine.json` to the commit of its tag
+(`git rev-parse 'v0.1.0^{commit}'`, which also works for annotated tags).
 
 ## 0.1.0 (2026-10-21)
 
