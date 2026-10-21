@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "e1d3591e1b2f6c782f2941e4477923fd88e2addc",
-  "date": "2026-10-16",
+  "commit": "65ec5dae4da01027133f4861df60de3b5847f199",
+  "date": "2026-10-22",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 334,
+    "documented": 371,
     "inferred": 0
   },
   "components": [
@@ -15,6 +15,7 @@
       "entry_points": [
         "v1-auth-middleware",
         "GET /v1/profiles",
+        "GET /v1/profiles/{id}/graph",
         "POST /v1/decide/{profile}",
         "GET /v1/decisions/{id}",
         "POST /v1/decisions/{id}/feedback",
@@ -34,7 +35,8 @@
       "name": "engine-facts",
       "entry_points": [
         "GSI tile fetch",
-        "Valhalla route request"
+        "Valhalla route request",
+        "GitHub API reads"
       ],
       "touches": [
         "network",
@@ -42,7 +44,7 @@
       ],
       "in_scope": true,
       "provenance": "documented",
-      "source": "docs/profile-format.md \"Facts\""
+      "source": "docs/profile-format.md \"Facts\", \"GitHub pull requests\""
     },
     {
       "name": "engine-callbacks",
@@ -160,9 +162,9 @@
     },
     {
       "component": "engine-facts",
-      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response.",
+      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing or GitHub API response.",
       "provenance": "documented",
-      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response",
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing or GitHub API response",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
@@ -363,6 +365,24 @@
       "source": "docs/profile-format.md \"Facts\" table, at"
     },
     {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "github-pull-request",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "scope the GitHub credential to the repositories the deployment decides about (D-GITHUB-CREDENTIAL-REACH); the facts are for the named head only (P-GITHUB-FACTS-FOR-HEAD)",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Missing GitHub facts\", no_pr"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "github-fact-settings",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "1 to 100 globs in paths, at most 100 in except; a glob that misses files is the profile author's error",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub pull requests\", fact settings table"
+    },
+    {
       "entry_point": "GET /v1/decisions/{id}",
       "parameter": "id",
       "attacker_controllable": "yes",
@@ -469,6 +489,42 @@
       "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Detours\""
+    },
+    {
+      "entry_point": "GitHub API reads",
+      "parameter": "github-answers",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"One snapshot\", \"Missing GitHub facts\""
+    },
+    {
+      "entry_point": "GitHub API reads",
+      "parameter": "head-repository-activity",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub pull requests\" table, pushed_by_author"
+    },
+    {
+      "entry_point": "GitHub API reads",
+      "parameter": "base-codeowners-and-teams",
+      "attacker_controllable": "no",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub pull requests\" table, author_sole_code_owner"
+    },
+    {
+      "entry_point": "GitHub API reads",
+      "parameter": "installation-token-response",
+      "attacker_controllable": "no",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-SECRETS-NOT-LOGGED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Settings\": \"The token is kept until 5 minutes before it expires\""
     },
     {
       "entry_point": "/mcp",
@@ -753,7 +809,7 @@
       "spawn child processes (engine and bridge; the deploy-watch Action does: bash and the aws CLI)",
       "read environment variables beyond Worker bindings and vars (the Actions read INPUT_* and GITHUB_*)",
       "touch a filesystem (the Actions append to GITHUB_OUTPUT and the step summary)",
-      "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com and OAuth client-ID metadata URLs (engine), or the broker and Pointsman (bridge)",
+      "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub facts: GET only plus one installation-token POST) and OAuth client-ID metadata URLs (engine), or the broker and Pointsman (bridge)",
       "follow redirects on outbound calls that carry a key, a token or the state (engine and bridge)",
       "write to the TOKENS or PROFILES namespaces (only the operator's scripts do)",
       "log the state, a token, an API key or a model response"
@@ -785,6 +841,30 @@
       "discouraged": false,
       "provenance": "documented",
       "source": "docs/profile-format.md \"Fact providers\" table"
+    },
+    {
+      "name": "FACTS_GITHUB",
+      "default": "off",
+      "effect": "preserves P-GITHUB-READ-ONLY; preserves P-FACTS-NEVER-GUESSED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Settings\" table for FACTS_GITHUB"
+    },
+    {
+      "name": "FACTS_GITHUB=mock",
+      "default": "off",
+      "effect": "narrows P-ACTION-FROM-POLICY",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Settings\": \"fixed answers for development and tests\""
+    },
+    {
+      "name": "FACTS_GITHUB_IGNORE_CHECK",
+      "default": "unset",
+      "effect": "narrows P-GITHUB-REQUIRED-CHECKS",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Settings\": \"It is a deployment setting, not a profile field\""
     },
     {
       "name": "MODEL_SERVER_URL-plain-http",
@@ -893,6 +973,8 @@
   ],
   "adversaries": {
     "in_scope": [
+      "pull-request-author",
+      "github-facts-collaborator",
       "state-author",
       "token-holder-beyond-scope",
       "unauthenticated-network-client",
@@ -981,7 +1063,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; the model never sees facts",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
@@ -989,9 +1071,9 @@
       "property": "P-FACT-LOOKUP-BOUNDED",
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
-      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; exceeding is error or timeout",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; CODEOWNERS size not bounded (D-CODEOWNERS-SIZE); exceeding is error or timeout",
       "provenance": "documented",
-      "source": "maintainer ruling, 2026-10"
+      "source": "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"
     },
     {
       "property": "P-DECISION-LOGGED-FIRST",
@@ -1021,9 +1103,9 @@
       "property": "P-SECRETS-NOT-LOGGED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "the engine's own logs, errors and responses; outbound calls with keys refuse redirects",
+      "conditions": "the engine's own logs, errors and responses, including the GitHub fact token, GitHub App key and installation tokens; outbound calls with keys or tokens refuse redirects",
       "provenance": "documented",
-      "source": "docs/models.md \"Errors and logs never include ... the key\""
+      "source": "docs/models.md \"Errors and logs never include ... the key\"; docs/profile-format.md \"Settings\": \"The token and the key are never logged\""
     },
     {
       "property": "P-REVIEW-RESOLVED-ONCE",
@@ -1040,6 +1122,30 @@
       "conditions": "CALLBACK_SECRET set; every attempt signed and timestamped; claimed before sending; at most 6 attempts",
       "provenance": "documented",
       "source": "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""
+    },
+    {
+      "property": "P-GITHUB-READ-ONLY",
+      "violation_symptom": "x-unauthorized-write, info-leak",
+      "severity_tier": "security",
+      "conditions": "GET requests to the fixed host api.github.com and, with a GitHub App, one POST that creates an installation token; no write to a repository, pull request or check; redirects not followed; source names only the pull request",
+      "provenance": "documented",
+      "source": "src/facts-github.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""
+    },
+    {
+      "property": "P-GITHUB-FACTS-FOR-HEAD",
+      "violation_symptom": "x-toctou, wrong-output",
+      "severity_tier": "security",
+      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""
+    },
+    {
+      "property": "P-GITHUB-REQUIRED-CHECKS",
+      "violation_symptom": "x-check-bypass, wrong-output",
+      "severity_tier": "security",
+      "conditions": "only the base branch's required checks and ruleset-required workflows on the head; app-tied checks only from that app; required workflows only through GitHub's run for the ruleset; disagreeing results give the stricter one; no required checks is not green; only FACTS_GITHUB_IGNORE_CHECK is left out",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"One snapshot\": \"A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset\""
     },
     {
       "property": "P-OUTBOUND-PUBLIC-ONLY",
@@ -1221,10 +1327,38 @@
     },
     {
       "property": "D-FACT-DATA-AS-PUBLISHED",
-      "reason": "facts are what GSI publishes and what Valhalla routes over OpenStreetMap; shape and legend are checked, not truth; basis: stated",
+      "reason": "facts are what GSI publishes, what Valhalla routes over OpenStreetMap, what GitHub reports about a pull request (including who pushed) and what the base branch's CODEOWNERS says; shape and legend are checked, not truth; basis: stated",
       "false_friend": false,
       "provenance": "documented",
-      "source": "docs/profile-format.md \"Layers of gsi\", \"Detours\""
+      "source": "docs/profile-format.md \"Layers of gsi\", \"Detours\"; \"GitHub pull requests\" table"
+    },
+    {
+      "property": "D-GITHUB-CHECK-NAMES",
+      "reason": "GitHub matches a required check by name, and by app only when the rule names one; whoever can push a workflow, such as a same-repository pull-request author, can report that name; github_checks is as strong as the branch's rules; ruleset-required workflows are not affected; basis: a maintainer ruling (2026-10)",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-GITHUB-CREDENTIAL-REACH",
+      "reason": "no repository allow-list per profile or token: a GitHub fact reads the pull request the state names in any repository the GitHub credential can read; the credential's reach is the boundary; members of teams named in that repository's CODEOWNERS are read the same way; the API token's profile scope still applies; basis: a maintainer ruling (2026-10)",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-CODEOWNERS-SIZE",
+      "reason": "no bound on reading the base branch's CODEOWNERS: size and line length not limited; the comment removal in src/codeowners.ts is quadratic in a line's length for some lines; only base-branch writers can write the file; availability only; basis: a maintainer ruling (2026-10)",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-GITHUB-RATE-LIMIT",
+      "reason": "no GitHub request budget per client or profile: with FACTS_GITHUB token all decisions share the token's rate limit and a used-up limit makes GitHub facts error for every client until it resets; with FACTS_GITHUB app each installation (one per repository owner) has its own token and limit, so a used-up installation affects that owner's repositories, for every client; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-EXACTLY-ONCE",
@@ -1256,6 +1390,10 @@
     }
   ],
   "attack_classes": [
+    "allowing-rule-matches-wrongly",
+    "faked-green-check",
+    "decision-for-another-commit",
+    "wrong-or-missing-facts",
     "wrong-action",
     "resource-exhaustion",
     "smuggle-text-downstream",
@@ -1293,6 +1431,11 @@
     "if who resolved a review matters, authenticate the person in the client and put an account identifier, not a free name, in by",
     "a strong NOTIFY_SECRET in receiverInfo; a token limited to the bridge's profiles; broker access control for writers; the result attribute included in notifications; max_concurrency 1 with a queue; one bridge per tenant",
     "pin by full commit SHA; set run, stacks and labels in the workflow, never from event data; minimal job permissions; the token as a secret",
+    "a fine-grained token or GitHub App with only the documented read permissions, stored as a Worker secret, replaced on a leak; FACTS_GITHUB_IGNORE_CHECK set to the deployment's own Pointsman check",
+    "give the GitHub credential only the repositories whose pull requests the deployment decides about",
+    "where a pull-request author must not pass a required check by naming a job, require checks as ruleset workflows or tie each to its app and limit who may change workflows",
+    "act on a decision with GitHub facts only for the head commit the request named; decide again after a new push; treat stale like any missing fact",
+    "in rules that allow something, check for missing facts first and write every condition as a known, positive value",
     "run tokens.mjs with --remote only on purpose and keep the printed token out of history and logs; deploy only through the template's workflows"
   ],
   "known_misuse": [
@@ -1350,6 +1493,31 @@
       "pattern": "making a consequential action the policy's default so a missing fact or a steered answer falls through to it",
       "why_unsafe": "Making a consequential action (`publish`, `cancel`) the policy's default action, so a missing fact or a steered answer falls through to it (`R-REVIEW-PATH`).",
       "instead": "default to review"
+    },
+    {
+      "pattern": "giving the GitHub fact credential write permissions, or a classic token that reaches every repository of its owner",
+      "why_unsafe": "Giving the GitHub fact credential write permissions, or a classic token that reaches every repository of its owner, so a leaked Worker secret can change repositories (`R-GITHUB-CREDENTIAL`, `R-GITHUB-REPOSITORIES`).",
+      "instead": "a fine-grained token or GitHub App with read permissions on the repositories the deployment decides about"
+    },
+    {
+      "pattern": "an allowing rule that counts on an earlier blocking rule while GitHub facts can be missing, or a glob such as *.md meant to cover every folder",
+      "why_unsafe": "An allowing rule that counts on an earlier blocking rule while GitHub facts can be missing, or a glob such as `*.md` that was meant to cover every folder (`R-GITHUB-POSITIVE-RULES`).",
+      "instead": "check missing facts first; write allowing conditions as known positive values; use **/*.md for every folder"
+    },
+    {
+      "pattern": "reading github_checks.green as proof that the intended jobs ran when required checks are matched by name only",
+      "why_unsafe": "Reading `github_checks.green` as proof that the intended jobs ran when the required checks are matched by name only (`D-GITHUB-CHECK-NAMES`, `R-GITHUB-RULES`).",
+      "instead": "require checks as ruleset workflows or tie them to their app"
+    },
+    {
+      "pattern": "using author_sole_code_owner to skip a review while CODEOWNERS itself is not protected on the base branch",
+      "why_unsafe": "Using `author_sole_code_owner` to skip a review while `CODEOWNERS` itself is not protected on the base branch, so whoever merges a change to it decides who is the only owner (`D-FACT-DATA-AS-PUBLISHED`).",
+      "instead": "protect CODEOWNERS on the base branch, for example with a code-owner review for changes to it"
+    },
+    {
+      "pattern": "acting on a decision for a later push of the same pull request",
+      "why_unsafe": "Acting on a decision for a later push of the same pull request (`R-GITHUB-ACT-ON-HEAD`).",
+      "instead": "act only for the head commit the request named; decide again after a push"
     }
   ],
   "known_non_findings": [
@@ -1374,7 +1542,7 @@
     {
       "reported_as": "the same callback arrived twice",
       "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
-      "cites": "properties_not_provided[17]",
+      "cites": "properties_not_provided[21]",
       "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
     },
     {
@@ -1386,7 +1554,7 @@
     {
       "reported_as": "untrusted issue text flows from the event payload to GITHUB_STEP_SUMMARY or GITHUB_OUTPUT",
       "why_safe": "Covers action-triage; symptom 'taint-flow-to-sink'. Exact-match conditions (§1.15): the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them.",
-      "cites": "properties_provided[21]",
+      "cites": "properties_provided[25]",
       "suppression": "the flagged values are answers, probabilities, labels or the decision id; the issue title and body are not among them"
     },
     {

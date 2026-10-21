@@ -647,7 +647,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | Reason | When |
 |---|---|
 | `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id. Nothing is sent to GitHub. |
-| `stale` | GitHub's head commit is not `head`, or a push came in while the snapshot was read. Every GitHub fact of the decision is `stale`. |
+| `stale` | GitHub's head commit is not `head`: every GitHub fact of the decision is `stale`. A push that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); `github_checks` is read by the commit id, so a later push does not change it. |
 | `unavailable` | No GitHub provider (`FACTS_GITHUB` is off), or the token cannot see the repository (GitHub answers 404 or 403, or the app is not installed there). |
 | `timeout` | GitHub took longer than 5 seconds. |
 | `error` | Anything else: a GitHub error (5xx), a rate limit, a redirect (not followed: it would carry the token elsewhere), an answer of the wrong shape, too many files or checks. |

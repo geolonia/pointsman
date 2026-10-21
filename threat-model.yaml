@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:36635ed1958a2d091ff552df51f6ed24258d8638f1ec59c143fcf113dd0acaa8"
+prose_version: "threat-model.md@sha256:5a28ab0d367756f2f892b7c7b36ddbfe05052283bdd0f86720781865af13bd69"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 265, maintainer: 69, inferred: 0, assumption: 0}
+confidence: {documented: 300, maintainer: 71, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment: Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -25,8 +25,8 @@ components:
     provenance: {kind: documented, source: "README \"API\""}
   - name: engine-facts
     scope: in
-    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, or from a tile or routing response"
-    provenance: {kind: documented, source: "docs/profile-format.md \"Facts\""}
+    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing or GitHub API response"
+    provenance: {kind: documented, source: "docs/profile-format.md \"Facts\", \"GitHub pull requests\""}
   - name: engine-callbacks
     scope: in
     reachability_precondition: "reachable from callback_url or from the receiver's response"
@@ -64,7 +64,7 @@ host_side_effects:
   - effect: network-sockets
     stance: conditional
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, action-triage, action-deploy-watch, config-repo]
-    conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com and OAuth client-ID metadata URLs (engine); the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); the Cloudflare API through wrangler (config-repo); all public addresses only"
+    conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub facts: GET only plus one installation-token POST) and OAuth client-ID metadata URLs (engine); the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); the Cloudflare API through wrangler (config-repo); all public addresses only"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: child-processes
     stance: absent
@@ -104,8 +104,8 @@ host_side_effects:
   - effect: redirect-following
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks]
-    conditions: "outbound calls to the model server, the routing server and callback_url use redirect: 'manual' and treat a 3xx as an error"
-    provenance: {kind: documented, source: "docs/profile-format.md \"Detours\": \"Redirects are not followed\""}
+    conditions: "outbound calls to the model server, the routing server, callback_url and the GitHub API use redirect: 'manual' and treat a 3xx as an error, except the organization-membership read, where a 302 means not known; no redirect is followed"
+    provenance: {kind: documented, source: "docs/profile-format.md \"Detours\": \"Redirects are not followed\"; \"Missing GitHub facts\""}
   - effect: redirect-following
     stance: absent
     components: [bridge]
@@ -114,7 +114,7 @@ host_side_effects:
   - effect: global-state
     stance: conditional
     components: [engine-api, engine-facts, engine-mcp]
-    conditions: "module-level caches (profile store, adapters, GSI provider and tile memory cache, OAuth server map) shared within one isolate only"
+    conditions: "module-level caches (profile store, adapters, GSI provider and tile memory cache, OAuth server map, GitHub fact providers with a GitHub App's installation tokens) shared within one isolate only"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: logging
     stance: present
@@ -192,6 +192,7 @@ entry_points:
       - name: Idempotency-Key
         attacker_controllable: true
         control_kinds: [data]
+        obligation_id: idempotency-key-per-client
         caller_must_enforce: "1–200 printable ASCII characters; keys are per client"
         provenance: {kind: documented, source: "docs/decision-log.md \"Repeated requests\""}
       - name: callback_url
@@ -226,6 +227,18 @@ entry_points:
         control_kinds: [data, size]
         caller_must_enforce: "none — P-FACT-LOOKUP-BOUNDED"
         provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}
+      - name: github-pull-request
+        attacker_controllable: true
+        control_kinds: [resource-name, data]
+        obligation_id: github-credential-reach
+        caller_must_enforce: "scope the GitHub credential to the repositories the deployment decides about (D-GITHUB-CREDENTIAL-REACH); the facts are for the named head only (P-GITHUB-FACTS-FOR-HEAD)"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\", no_pr"}
+      - name: github-fact-settings
+        attacker_controllable: false
+        control_kinds: [x-policy-rules, size]
+        obligation_id: github-rules-known-positive
+        caller_must_enforce: "1 to 100 globs in paths, at most 100 in except; a glob that misses files is the profile author's error"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\", fact settings table"}
   - id: "GET /v1/decisions/{id}"
     component: engine-api
     parameters:
@@ -316,6 +329,29 @@ entry_points:
         control_kinds: [data]
         caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
         provenance: {kind: documented, source: "docs/profile-format.md \"Detours\""}
+  - id: "GitHub API reads"
+    component: engine-facts
+    parameters:
+      - name: github-answers
+        attacker_controllable: true
+        control_kinds: [data, size]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\", \"Missing GitHub facts\""}
+      - name: head-repository-activity
+        attacker_controllable: true
+        control_kinds: [data]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, pushed_by_author"}
+      - name: base-codeowners-and-teams
+        attacker_controllable: false
+        control_kinds: [data, size]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, author_sole_code_owner"}
+      - name: installation-token-response
+        attacker_controllable: false
+        control_kinds: [data]
+        caller_must_enforce: "none — P-SECRETS-NOT-LOGGED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Settings\": \"The token is kept until 5 minutes before it expires\""}
   - id: "/mcp"
     component: engine-mcp
     parameters:
@@ -541,14 +577,14 @@ contract_dimensions:
   - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
   # engine-facts
-  - {component: engine-facts, dimension: numeric-domain, status: claimed, conditions: "positions within WGS 84; third coordinate dropped; non-finite refused", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
-  - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}}
+  - {component: engine-facts, dimension: numeric-domain, status: claimed, conditions: "positions within WGS 84; third coordinate dropped; non-finite refused; a pull request number is a whole number from 1 and head 40 hex characters, else no_pr", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule; another head commit makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\"; \"Missing GitHub facts\""}}
   - {component: engine-facts, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "geometries are flat lists of positions (Point or LineString)", provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}}
   - {component: engine-facts, dimension: callback-execution, status: not-applicable, conditions: "no caller-supplied code; providers are operator-configured", provenance: {kind: documented, source: "docs/profile-format.md \"Fact providers\""}}
-  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: maintainer, date: "2026-10"}}
-  - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\""}}
-  - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, patterns or section headers it does not read make the fact missing; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept; GitHub App installation tokens kept in memory until 5 minutes before they expire, never stored", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\"; \"Settings\""}}
+  - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout; one GitHub snapshot per decision, each part read once, the pull request read again after its files", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤100 pushes, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher, its size not bounded (D-CODEOWNERS-SIZE)", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
@@ -688,6 +724,38 @@ outputs:
       - id: location-not-shared
         statement: "that the location is not shared with the GSI hosts or the Valhalla server"
         provenance: {kind: documented, source: "docs/profile-format.md \"Detours\""}
+  - component: engine-facts
+    channel: github-reads
+    taint: same-as-input
+    taint_provenance: {kind: documented, source: "docs/profile-format.md \"Settings\": \"Making the token is the only request that is not a read\""}
+    invariants:
+      - id: github-read-only
+        statement: "GET requests to api.github.com only, plus one POST that creates a GitHub App installation token; redirects not followed"
+        property_id: P-GITHUB-READ-ONLY
+        provenance: {kind: documented, source: "src/facts-github.ts header"}
+    downstream_must_not_assume:
+      - id: github-does-not-learn-prs
+        statement: "that GitHub does not learn which pull requests the deployment decides about"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Settings\""}
+  - component: engine-facts
+    channel: github-fact-values
+    taint: constrained
+    taint_provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table"}
+    invariants:
+      - id: github-facts-for-head
+        statement: "every GitHub fact of a decision describes the head commit the request named, or is stale"
+        property_id: P-GITHUB-FACTS-FOR-HEAD
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\""}
+    downstream_must_not_assume:
+      - id: property-value-safe
+        statement: "that a custom property value is safe for any grammar"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, github_property"}
+      - id: push-and-owner-fields-as-review
+        statement: "that pushed_by_author yes shows who wrote the commits, or that author_sole_code_owner means nobody else should look"
+        provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table, author_sole_code_owner"}
+      - id: green-means-intended-jobs
+        statement: "that github_checks.green means the intended jobs ran"
+        provenance: {kind: maintainer, date: "2026-10"}
   - component: engine-callbacks
     channel: signed-callback
     taint: constrained
@@ -767,6 +835,18 @@ outputs:
     downstream_must_not_assume: []
 
 adversaries:
+  - name: pull-request-author
+    scope: in
+    capabilities: [choose-changed-files-and-names, choose-title-and-commits, push-at-any-time, change-workflows-in-same-repo-pull-request]
+    excluded_capabilities: [change-base-branch-rules, change-ruleset-required-workflows, change-base-branch-codeowners, change-push-record, change-custom-properties, choose-profile-or-rules, choose-head-the-client-names]
+    goals: [allowing-rule-matches-wrongly, faked-green-check, decision-for-another-commit]
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
+  - name: github-facts-collaborator
+    scope: in
+    capabilities: [answer-reads, rate-limit, redirect]
+    excluded_capabilities: [make-the-engine-write, make-the-engine-follow-a-redirect]
+    goals: [wrong-or-missing-facts]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\""}
   - name: state-author
     scope: in
     capabilities: [write-state-text-and-data, choose-state-size-and-shape, choose-fact-geometry, aim-instructions-at-the-model]
@@ -947,6 +1027,15 @@ dependencies:
     covered_here: false
     violation_disposition: "OUT-OF-MODEL: dependency-contract"
     provenance: {kind: documented, source: "docs/mcp.md \"GitHub is only the login step\""}
+  - name: github-rest-api-facts
+    relied_on_for: "the pull request, its commits and files, the base branch's rules and protection, check runs, statuses, workflow runs, membership, custom properties, the head repository's activity list, the base branch's CODEOWNERS and team members as GitHub shows them to the credential; creating a GitHub App installation token"
+    relied_on_properties: [pull-request-state, branch-rules, check-results, push-record, codeowners-and-teams, installation-tokens]
+    caller_obligations_acknowledged: []
+    adversary_capabilities_forwarded: [choose-changed-files-and-names, change-workflows-in-same-repo-pull-request]
+    outputs_consumed: []
+    covered_here: false
+    violation_disposition: "OUT-OF-MODEL: dependency-contract"
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\", \"Settings\""}
   - name: ngsi-ld-context-broker
     relied_on_for: "storing entities, delivering notifications with receiverInfo, enforcing who may write"
     relied_on_properties: [notification-delivery, receiver-info-secret, write-access-control]
@@ -998,6 +1087,24 @@ build_flags:
     maintainer_stance: supported
     affects_properties: [{property_id: P-FACTS-NEVER-GUESSED, effect: preserves}]
     provenance: {kind: documented, source: "docs/profile-format.md \"Fact providers\" table"}
+  - name: FACTS_GITHUB
+    default: "off"
+    security_relevant: true
+    maintainer_stance: supported
+    affects_properties: [{property_id: P-GITHUB-READ-ONLY, effect: preserves}, {property_id: P-FACTS-NEVER-GUESSED, effect: preserves}]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Settings\" table for FACTS_GITHUB"}
+  - name: FACTS_GITHUB=mock
+    default: "off"
+    security_relevant: true
+    maintainer_stance: dev-only
+    affects_properties: [{property_id: P-ACTION-FROM-POLICY, effect: narrows}]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Settings\": \"fixed answers for development and tests\""}
+  - name: FACTS_GITHUB_IGNORE_CHECK
+    default: "unset"
+    security_relevant: true
+    maintainer_stance: supported
+    affects_properties: [{property_id: P-GITHUB-REQUIRED-CHECKS, effect: narrows}]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Settings\": \"It is a deployment setting, not a profile field\""}
   - name: MODEL_SERVER_URL-plain-http
     default: "unset"
     security_relevant: true
@@ -1138,16 +1245,16 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; the model never sees facts"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
     kind: resource-bound
     components: [engine-facts]
     tier: correctness-only
-    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; exceeding is error or timeout"
+    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; CODEOWNERS size not bounded (D-CODEOWNERS-SIZE); exceeding is error or timeout"
     violation_symptoms: [hang, unbounded-allocation]
-    provenance: {kind: maintainer, date: "2026-10"}
+    provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}
   - id: P-DECISION-LOGGED-FIRST
     kind: integrity
     components: [engine-api, engine-mcp]
@@ -1173,9 +1280,9 @@ properties_claimed:
     kind: confidentiality
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp]
     tier: security-critical
-    conditions: "the engine's own logs, errors and responses; outbound calls with keys refuse redirects"
+    conditions: "the engine's own logs, errors and responses, including the GitHub fact token, GitHub App key and installation tokens; outbound calls with keys or tokens refuse redirects"
     violation_symptoms: [info-leak]
-    provenance: {kind: documented, source: "docs/models.md \"Errors and logs never include ... the key\""}
+    provenance: {kind: documented, source: "docs/models.md \"Errors and logs never include ... the key\"; docs/profile-format.md \"Settings\": \"The token and the key are never logged\""}
   - id: P-REVIEW-RESOLVED-ONCE
     kind: correctness
     components: [engine-api]
@@ -1190,6 +1297,27 @@ properties_claimed:
     conditions: "CALLBACK_SECRET set; every attempt signed and timestamped; claimed before sending; at most 6 attempts"
     violation_symptoms: [integrity-bypass]
     provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
+  - id: P-GITHUB-READ-ONLY
+    kind: integrity
+    components: [engine-facts]
+    tier: security-critical
+    conditions: "GET requests to the fixed host api.github.com and, with a GitHub App, one POST that creates an installation token; no write to a repository, pull request or check; redirects not followed; source names only the pull request"
+    violation_symptoms: [x-unauthorized-write, info-leak]
+    provenance: {kind: documented, source: "src/facts-github.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""}
+  - id: P-GITHUB-FACTS-FOR-HEAD
+    kind: integrity
+    components: [engine-facts]
+    tier: security-critical
+    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
+    violation_symptoms: [x-toctou, wrong-output]
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
+  - id: P-GITHUB-REQUIRED-CHECKS
+    kind: integrity
+    components: [engine-facts]
+    tier: security-critical
+    conditions: "only the base branch's required checks and ruleset-required workflows on the head; app-tied checks only from that app; required workflows only through GitHub's run for the ruleset; disagreeing results give the stricter one; no required checks is not green; only FACTS_GITHUB_IGNORE_CHECK is left out"
+    violation_symptoms: [x-check-bypass, wrong-output]
+    provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\": \"A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset\""}
   - id: P-OUTBOUND-PUBLIC-ONLY
     kind: x-ssrf-resistance
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
@@ -1346,10 +1474,34 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""}
   - id: D-FACT-DATA-AS-PUBLISHED
     components: [engine-facts]
-    conditions: "facts are what GSI publishes and what Valhalla routes over OpenStreetMap; shape and legend are checked, not truth; basis: stated"
+    conditions: "facts are what GSI publishes, what Valhalla routes over OpenStreetMap, what GitHub reports about a pull request (including who pushed) and what the base branch's CODEOWNERS says; shape and legend are checked, not truth; basis: stated"
     tier: correctness-only
     false_friend: false
-    provenance: {kind: documented, source: "docs/profile-format.md \"Layers of gsi\", \"Detours\""}
+    provenance: {kind: documented, source: "docs/profile-format.md \"Layers of gsi\", \"Detours\"; \"GitHub pull requests\" table"}
+  - id: D-GITHUB-CHECK-NAMES
+    components: [engine-facts]
+    conditions: "GitHub matches a required check by name, and by app only when the rule names one; whoever can push a workflow, such as a same-repository pull-request author, can report that name; github_checks is as strong as the branch's rules; ruleset-required workflows are not affected; basis: a maintainer ruling (2026-10)"
+    tier: security-critical
+    false_friend: true
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: D-GITHUB-CREDENTIAL-REACH
+    components: [engine-facts]
+    conditions: "no repository allow-list per profile or token: a GitHub fact reads the pull request the state names in any repository the GitHub credential can read; the credential's reach is the boundary; members of teams named in that repository's CODEOWNERS are read the same way; the API token's profile scope still applies; basis: a maintainer ruling (2026-10)"
+    tier: security-critical
+    false_friend: false
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: D-CODEOWNERS-SIZE
+    components: [engine-facts]
+    conditions: "no bound on reading the base branch's CODEOWNERS: size and line length not limited; the comment removal in src/codeowners.ts is quadratic in a line's length for some lines; only base-branch writers can write the file; availability only; basis: a maintainer ruling (2026-10)"
+    tier: correctness-only
+    false_friend: false
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: D-GITHUB-RATE-LIMIT
+    components: [engine-facts]
+    conditions: "no GitHub request budget per client or profile: with FACTS_GITHUB token all decisions share the token's rate limit and a used-up limit makes GitHub facts error for every client until it resets; with FACTS_GITHUB app each installation (one per repository owner) has its own token and limit, so a used-up installation affects that owner's repositories, for every client; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)"
+    tier: correctness-only
+    false_friend: false
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-EXACTLY-ONCE
     components: [engine-callbacks]
     conditions: "a callback can arrive more than once when a 2xx is lost; basis: stated"
@@ -1446,6 +1598,31 @@ downstream_responsibilities:
     statement: "pin by full commit SHA; set run, stacks and labels in the workflow, never from event data; minimal job permissions; the token as a secret"
     enforces: [action-inputs-from-workflow]
     provenance: {kind: documented, source: "actions/triage/README.md \"Example workflow\"; actions/deploy-watch/action.yml run"}
+  - id: R-GITHUB-CREDENTIAL
+    component: engine-facts
+    statement: "a fine-grained token or GitHub App with only the documented read permissions, stored as a Worker secret, replaced on a leak; FACTS_GITHUB_IGNORE_CHECK set to the deployment's own Pointsman check"
+    enforces: [P-GITHUB-READ-ONLY, P-SECRETS-NOT-LOGGED]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Settings\": \"Give the app read permissions only\""}
+  - id: R-GITHUB-REPOSITORIES
+    component: engine-facts
+    statement: "give the GitHub credential only the repositories whose pull requests the deployment decides about"
+    enforces: [github-credential-reach]
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: R-GITHUB-RULES
+    component: engine-facts
+    statement: "where a pull-request author must not pass a required check by naming a job, require checks as ruleset workflows or tie each to its app and limit who may change workflows"
+    enforces: [P-GITHUB-REQUIRED-CHECKS]
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: R-GITHUB-ACT-ON-HEAD
+    component: engine-facts
+    statement: "act on a decision with GitHub facts only for the head commit the request named; decide again after a new push; treat stale like any missing fact"
+    enforces: [P-GITHUB-FACTS-FOR-HEAD]
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\": \"head is the commit the client saw\""}
+  - id: R-GITHUB-POSITIVE-RULES
+    component: engine-facts
+    statement: "in rules that allow something, check for missing facts first and write every condition as a known, positive value"
+    enforces: [github-rules-known-positive]
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\", \"Safety\""}
   - id: R-DEPLOY-TOOLING
     component: config-repo
     statement: "run tokens.mjs with --remote only on purpose and keep the printed token out of history and logs; deploy only through the template's workflows"
@@ -1508,6 +1685,31 @@ known_misuses:
     pattern: "making a consequential action the policy's default so a missing fact or a steered answer falls through to it"
     safer_alternative: "default to review"
     provenance: {kind: documented, source: "docs/profile-format.md \"Policy conditions\""}
+  - id: github-credential-with-write
+    components: [engine-facts]
+    pattern: "giving the GitHub fact credential write permissions, or a classic token that reaches every repository of its owner"
+    safer_alternative: "a fine-grained token or GitHub App with read permissions on the repositories the deployment decides about"
+    provenance: {kind: documented, source: "docs/profile-format.md \"Settings\": \"Give the app read permissions only\""}
+  - id: allowing-rule-on-missing-github-facts
+    components: [engine-facts, config-repo]
+    pattern: "an allowing rule that counts on an earlier blocking rule while GitHub facts can be missing, or a glob such as *.md meant to cover every folder"
+    safer_alternative: "check missing facts first; write allowing conditions as known positive values; use **/*.md for every folder"
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\", \"Safety\""}
+  - id: green-as-intended-jobs
+    components: [engine-facts]
+    pattern: "reading github_checks.green as proof that the intended jobs ran when required checks are matched by name only"
+    safer_alternative: "require checks as ruleset workflows or tie them to their app"
+    provenance: {kind: maintainer, date: "2026-10"}
+  - id: sole-code-owner-without-protected-codeowners
+    components: [engine-facts]
+    pattern: "using author_sole_code_owner to skip a review while CODEOWNERS itself is not protected on the base branch"
+    safer_alternative: "protect CODEOWNERS on the base branch, for example with a code-owner review for changes to it"
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\" table: \"by the CODEOWNERS file of the base branch\""}
+  - id: acting-on-later-push
+    components: [engine-facts]
+    pattern: "acting on a decision for a later push of the same pull request"
+    safer_alternative: "act only for the head commit the request named; decide again after a push"
+    provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\": \"head is the commit the client saw\""}
 
 known_non_findings:
   - id: KNF-TOKEN-FAST-HASH
