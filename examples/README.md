@@ -14,5 +14,9 @@ The profiles themselves stay in [profiles/](profiles/), one flat folder.
 The build, the validator, the tests and config repositories read that folder,
 and links to the files stay the same. A topic folder only explains and links.
 
+Each profile has test cases in [cases/](cases/): examples with the action a
+person expects, run by CI (see
+[docs/profile-format.md](../docs/profile-format.md#test-cases)).
+
 These are examples. Real profiles live in your own private config
 repository; see [docs/deployment.md](../docs/deployment.md).

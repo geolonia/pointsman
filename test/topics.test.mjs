@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const examples = fileURLToPath(new URL('../examples/', import.meta.url));
 const topicDirs = readdirSync(examples, { withFileTypes: true })
-  .filter((e) => e.isDirectory() && e.name !== 'profiles')
+  // profiles/ and cases/ hold the files the topics link to; they are not topics.
+  .filter((e) => e.isDirectory() && e.name !== 'profiles' && e.name !== 'cases')
   .map((e) => e.name);
 const topics = topicDirs.map((name) => join(examples, name, 'README.md')).filter((file) => existsSync(file));
 const overview = join(examples, 'README.md');

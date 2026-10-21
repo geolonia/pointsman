@@ -126,6 +126,11 @@ or Japanese, for the people who approve it; `node scripts/explain-profile.mjs`
 does the same for a draft file. See
 [docs/profile-format.md](docs/profile-format.md#explain).
 
+Test cases are examples with the action a person expects:
+`node scripts/test-profile.mjs` runs them against the rules of a profile, also
+a draft, and with `--url` on real requests through a deployed model. See
+[docs/profile-format.md](docs/profile-format.md#test-cases).
+
 ## Clients
 
 - [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `explain_profile`,

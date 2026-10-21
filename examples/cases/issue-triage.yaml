@@ -1,0 +1,14 @@
+# Test cases for issue-triage. The last case needs a model: run with --url.
+profile: issue-triage
+cases:
+  - name: a sure team is routed automatically
+    expect: auto
+    answers: { team: { backend: 0.9, frontend: 0.1 }, urgent: false, effort: 1 }
+
+  - name: an unsure team goes to a person
+    expect: review
+    answers: { team: { backend: 0.6, frontend: 0.4 }, urgent: false, effort: 1 }
+
+  - name: a real issue about the login page
+    expect: auto
+    state: { issue: { title: Login page is blank, body: Since this morning the login page shows nothing in Firefox. } }

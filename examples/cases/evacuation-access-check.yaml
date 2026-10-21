@@ -1,0 +1,22 @@
+# Test cases for evacuation-access-check.
+profile: evacuation-access-check
+cases:
+  - name: a long way around on foot near a shelter is an alert
+    expect: alert
+    answers: { foot_passable: 0.2 }
+    facts: { shelter: { found: true, distance_m: 600, name: Central school }, walk: { possible: true, extra_m: 350 } }
+
+  - name: a short way around is fine
+    expect: none
+    answers: { foot_passable: 0.2 }
+    facts: { shelter: { found: true, distance_m: 600, name: Central school }, walk: { possible: true, extra_m: 80 } }
+
+  - name: no detour data near a shelter goes to a person
+    expect: review
+    answers: { foot_passable: 0.5 }
+    facts: { shelter: { found: true, distance_m: 600, name: Central school }, walk: { missing: timeout } }
+
+  - name: a report with a point, not a section, has no detour and needs no person
+    expect: none
+    answers: { foot_passable: 0.5 }
+    facts: { shelter: { found: true, distance_m: 600, name: Central school }, walk: { missing: no_location } }
