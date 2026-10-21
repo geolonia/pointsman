@@ -1,0 +1,38 @@
+# Test cases for road-restriction-check (docs/profile-format.md#test-cases).
+# Run: node scripts/test-profile.mjs examples/cases --profiles examples/profiles
+profile: road-restriction-check
+cases:
+  - name: someone trapped is urgent, wherever it is
+    expect: urgent
+    answers: { category: closedWeather, status_matches: true, danger: 0.9, clarity: 3 }
+    facts: { flood: { inside: false, rank: 0, class: "" } }
+
+  - name: a possible danger in a deep flood zone is urgent
+    expect: urgent
+    answers: { category: closedWeather, status_matches: true, danger: 0.45, clarity: 2 }
+    facts: { flood: { inside: true, rank: 5, class: "3.0m-5.0m" } }
+
+  - name: a possible danger without the flood fact goes to a person
+    expect: review
+    answers: { category: closedWeather, status_matches: true, danger: 0.45, clarity: 2 }
+    facts: { flood: { missing: timeout } }
+
+  - name: a clear report in a deep flood zone still goes to a person
+    expect: review
+    answers: { category: closedConstruction, status_matches: true, danger: 0.05, clarity: 3 }
+    facts: { flood: { inside: true, rank: 5, class: "3.0m-5.0m" } }
+
+  - name: a clear roadworks report outside flood zones is published
+    expect: publish
+    answers: { category: { closedConstruction: 0.92, other: 0.08 }, status_matches: 0.95, danger: 0.05, clarity: { "2": 0.3, "3": 0.7 } }
+    facts: { flood: { inside: false, rank: 0, class: "" } }
+
+  - name: an unsure category is not published
+    expect: review
+    answers: { category: { closedConstruction: 0.6, laneRestriction: 0.4 }, status_matches: 0.95, danger: 0.05, clarity: 3 }
+    facts: { flood: { inside: false, rank: 0, class: "" } }
+
+  - name: a status that does not match the description is not published
+    expect: review
+    answers: { category: closedConstruction, status_matches: 0.2, danger: 0.05, clarity: 3 }
+    facts: { flood: { inside: false, rank: 0, class: "" } }

@@ -69,6 +69,11 @@ jobs:
       - name: Validate profiles
         run: node engine/scripts/validate-profiles.mjs profiles
 
+      # Test cases (docs/profile-format.md#test-cases): the cases with answers
+      # check the rules only, without a model. Runs when cases/ exists.
+      - name: Run test cases
+        run: if [ -d cases ]; then node engine/scripts/test-profile.mjs cases --profiles profiles; fi
+
       # A changed profile needs a higher version: a published version never
       # changes, and the deploy would stop after the merge. Make this job a
       # required status check on main (see README).

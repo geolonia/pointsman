@@ -1,0 +1,14 @@
+# Test cases for deploy-progress: the boundaries of the two rules.
+profile: deploy-progress
+cases:
+  - name: surely stuck is cancelled
+    expect: cancel
+    answers: { stuck: 0.9, phase: creating }
+
+  - name: maybe stuck goes to a person
+    expect: review
+    answers: { stuck: 0.6, phase: creating }
+
+  - name: probably fine continues
+    expect: continue
+    answers: { stuck: 0.59, phase: waiting }

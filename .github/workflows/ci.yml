@@ -53,6 +53,10 @@ jobs:
       - name: Validate example profiles
         run: pnpm validate:profiles
 
+      # The example profiles' test cases, with their rules only (no model).
+      - name: Run example test cases
+        run: pnpm test:cases
+
       # This repository is public: no account ids, resource ids or real profiles.
       - name: Check for organization-specific data
         run: pnpm check:public

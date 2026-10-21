@@ -182,6 +182,66 @@ Question texts are shown as written.
 This is the first part of AI-assisted profile authoring (#128): an assistant
 drafts a profile, and the person approves what the sentences say.
 
+## Test cases
+
+Test cases are examples with the action a person expects. They are kept in
+their own files, one per profile (for example `cases/<id>.yaml`, not next to
+the profiles: every file in the profiles directory must be a profile), and
+show whether the rules do what the person wants, now and after each change:
+
+```yaml
+profile: road-restriction-check
+cases:
+  - name: a possible danger in a deep flood zone is urgent
+    expect: urgent
+    answers: { category: closedWeather, status_matches: true, danger: 0.45, clarity: 2 }
+    facts: { flood: { inside: true, rank: 5, class: "3.0m-5.0m" } }
+  - name: a real report from last week
+    expect: publish
+    state: { roadName: { type: Property, value: 県道 12 号 }, description: { type: Property, value: … } }
+```
+
+A case gives either **answers** or a **state**:
+
+- **answers**: what the AI answered, written short, plus `facts` and earlier
+  `decisions` when the rules read them. Only the rules are checked, without
+  a model, so these cases are free and always give the same result.
+  - yes/no: `true`, `false`, or the probability of yes (`0.45`)
+  - choice: an option (`closedWeather`), or probabilities by option
+    (`{ closedWeather: 0.7, other: 0.3 }`)
+  - score: a level (`2`), or probabilities by level (`{ "1": 0.2, "2": 0.8 }`);
+    the weighted level is computed from them
+  - facts: the fact's fields (a field left out has no value), or `missing`,
+    or `{ missing: <reason> }`. A fact left out is missing.
+  - decisions: `{ outcome, action, reviewed, answers, facts }` (outcome and
+    action stand in for each other when only one is given), or `missing`
+- **state**: a real request. A deployed Pointsman's published profile of the
+  same id answers it (its model and its facts), and the rules of the profile
+  file are applied to those answers. So a changed threshold can be tried on
+  real reports before it is published. The answers must fit the file's
+  questions; for new questions, publish them first or use answers. Not for
+  profiles with `requires`.
+
+Run them with:
+
+```sh
+node scripts/test-profile.mjs cases --profiles profiles
+# cases with a state too, through a deployment, with a test token:
+POINTSMAN_TOKEN=pm_… node scripts/test-profile.mjs cases --profiles profiles --url https://pointsman.example.workers.dev
+```
+
+The profiles are validated first. Each case prints PASS or FAIL with the rule
+that matched, as a sentence (see [Explain](#explain)); `--lang ja` for
+Japanese, `--json` for the results as JSON. A failed case, or one that cannot
+run, makes the exit code 1. Cases with a state are skipped without `--url`.
+With `--url`, use a test token: its decisions are not logged. Any other token
+is refused after its first answer, and each case is a model call.
+
+The examples in this repository have cases in
+[examples/cases/](../examples/cases/), run by CI. A config repository made
+from the template runs `cases/` in its validation workflow when the folder
+exists.
+
 ## Decision chains
 
 A profile can build on earlier decisions about the same report: a final step

@@ -1,0 +1,22 @@
+# Test cases for road-closure-final: rules only, from earlier decisions.
+profile: road-closure-final
+cases:
+  - name: a rejected report is rejected, whatever the evacuation check says
+    expect: reject
+    answers: {}
+    decisions: { check: { action: review, outcome: reject, reviewed: true }, evacuation: { outcome: alert } }
+
+  - name: a blocked way to the shelter makes it urgent
+    expect: urgent
+    answers: {}
+    decisions: { check: { outcome: publish }, evacuation: { outcome: alert } }
+
+  - name: a published report without an evacuation check is published
+    expect: publish
+    answers: {}
+    decisions: { check: { outcome: publish }, evacuation: missing }
+
+  - name: a report still waiting for a person waits
+    expect: review
+    answers: {}
+    decisions: { check: { outcome: review } }
