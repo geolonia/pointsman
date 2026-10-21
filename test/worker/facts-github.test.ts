@@ -8,7 +8,7 @@ import { noCallbacks } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { FactRouter, lookupFacts, MockFactProvider, resultError, toPullRequest, type FactProvider } from '../../src/facts';
-import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, privateKeyDer, TokenAuth } from '../../src/facts-github';
+import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '../../src/facts-github';
 import { codeownersMatch, parseCodeowners } from '../../src/codeowners';
 import { matchGlob } from '../../src/glob';
 import { depsFor } from '../../src/index';
@@ -220,6 +220,77 @@ describe('who pushed (github_pr.pushed_by_author)', () => {
 
   it('a failing activity list fails the fact', async () => {
     expect(await reasonOf('pr', routes({ [`${REPO}/activity`]: () => new Response('{}', { status: 500 }) }))).toEqual({ missing: true, reason: 'error' });
+  });
+
+  /** Pages of the activity list, chained by an "after" cursor in the Link header. */
+  const paged = (pages: unknown[][], over: Record<number, () => Response> = {}): Handler => (url) => {
+    const after = url.searchParams.get('after');
+    const i = after === null ? 0 : Number(after.slice(1));
+    expect(url.searchParams.get('ref')).toBe('refs/heads/fix-typo');
+    if (over[i]) return over[i]!();
+    // The Link header points elsewhere on purpose: only its cursor is used.
+    const link = i + 1 < pages.length ? { link: `<https://example.com/repositories/1/activity?ref=x&after=c${i + 1}>; rel="next"` } : undefined;
+    return Response.json(pages[i] ?? [], link ? { headers: link } : {});
+  };
+
+  it('reads older pages until it finds the pushes', async () => {
+    const server = fakeGitHub(three(paged([[push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z')], [push(C2, 'alice', C1, '2026-10-21T01:00:00Z'), push(C1)]])));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values.pushed_by_author).toBe('yes');
+    expect(server.calls.filter((c) => c.url.pathname === `${REPO}/activity`).map((c) => c.url.searchParams.get('after'))).toEqual([null, 'c1']);
+    // Someone else's push found only on the second page.
+    expect(await pushed(three(paged([[push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z')], [push(C2, 'bob', '0'.repeat(40), '2026-10-21T01:00:00Z')]])))).toBe('no');
+  });
+
+  it('stops at the push that created the branch, and ignores older pushes of an earlier branch', async () => {
+    const created = { ...push(HEAD, 'alice', '0'.repeat(40), '2026-10-21T01:00:00Z'), activity_type: 'branch_creation' };
+    const older = push(C2, 'bob', C1, '2026-10-20T01:00:00Z');
+    const server = fakeGitHub(three(paged([[created, older], [push(C1, 'bob')]])));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values.pushed_by_author).toBe('yes');
+    expect(server.count(`${REPO}/activity`)).toBe(1);
+  });
+
+  it('stops at a creation push on a later page, and ignores pushes older than it there', async () => {
+    const created = { ...push(C2, 'alice', '0'.repeat(40), '2026-10-21T01:00:00Z'), activity_type: 'branch_creation' };
+    const pages = [[push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z')], [created, push(C1, 'bob', '0'.repeat(40), '2026-10-20T00:00:00Z')], [push(C1, 'bob')]];
+    const server = fakeGitHub(three(paged(pages)));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values.pushed_by_author).toBe('yes');
+    expect(server.count(`${REPO}/activity`)).toBe(2);
+  });
+
+  it('pushes in the same second keep their order', async () => {
+    // Newest first, same second: bob pushed C1 and C2, then alice force-pushed HEAD
+    // (its before is not in the pull request). Read newest first, alice would claim every commit.
+    const same = '2026-10-21T01:00:00Z';
+    expect(await pushed(three(() => [push(HEAD, 'alice', OTHER, same), push(C2, 'bob', '0'.repeat(40), same)]))).toBe('no');
+    expect(await pushed(three(() => [push(HEAD, 'alice', OTHER, same), push(C2, 'alice', '0'.repeat(40), same)]))).toBe('yes');
+  });
+
+  it(`reads at most ${MAX_PUSH_PAGES} pages; older pushes stay unknown`, async () => {
+    const unrelated = Array.from({ length: MAX_PUSH_PAGES + 2 }, (_, i) => [push(OTHER, 'alice', OTHER, `2026-10-2${i}T00:00:00Z`)]);
+    const pages = [[push(HEAD, 'alice', C2, '2026-10-30T00:00:00Z')], ...unrelated, [push(C2, 'alice', '0'.repeat(40), '2026-10-01T00:00:00Z')]];
+    const server = fakeGitHub(three(paged(pages)));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values.pushed_by_author).toBe('unavailable');
+    expect(server.count(`${REPO}/activity`)).toBe(MAX_PUSH_PAGES);
+  });
+
+  it('a later page that fails fails the fact; one that is not shown leaves older pushes unknown', async () => {
+    const pages = [[push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z')], [push(C2, 'alice', '0'.repeat(40), '2026-10-21T01:00:00Z')]];
+    expect(await reasonOf('pr', three(paged(pages, { 1: () => new Response('{}', { status: 502 }) })))).toEqual({ missing: true, reason: 'error' });
+    expect(await pushed(three(paged(pages, { 1: () => new Response('{}', { status: 403 }) })))).toBe('unavailable');
+    // Someone else's push on the first page is still known.
+    const bob = [[push(HEAD, 'bob', C2, '2026-10-21T02:00:00Z')], pages[1]!];
+    expect(await pushed(three(paged(bob, { 1: () => new Response('{}', { status: 403 }) })))).toBe('no');
+  });
+
+  it('takes only the cursor from the Link header', () => {
+    expect(nextCursor('<https://api.github.com/repositories/1/activity?per_page=100&after=Y3Vy>; rel="next"')).toBe('Y3Vy');
+    expect(nextCursor('<https://api.github.com/x?before=a>; rel="prev"')).toBeNull();
+    expect(nextCursor(null)).toBeNull();
+    expect(nextCursor('<not a url>; rel="next"')).toBeNull();
   });
 });
 
