@@ -9,6 +9,7 @@ instead of deciding on their own.
 | Tool | What it does |
 |---|---|
 | `list_profiles` | The profiles you can use: questions, answer options, possible actions, the state fields to send, and the earlier decisions a profile `requires` |
+| `explain_profile` | A profile in plain sentences, in English or Japanese: what the AI is asked, the facts and earlier decisions it uses, and each rule as "If …, the action is …" (see [profile-format.md](profile-format.md#explain)) |
 | `decide` | Ask a profile; returns typed answers with probabilities and the action (for example `auto`, or `review` when a person should decide). Optional: `decisions` (earlier decision ids by name, for a profile with `requires`) and `idempotency_key` (the same key again returns the same decision) |
 | `get_decision` | A decision by id: answers, action, profile version, model, review status, feedback, and what it read from earlier decisions |
 | `submit_feedback` | Correct a decision: the right answer for one or more questions. Only for people logged in with GitHub, recorded under their login |

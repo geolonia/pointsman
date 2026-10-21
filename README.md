@@ -121,10 +121,16 @@ graph: JSON, DMN 1.3 XML with `?format=dmn` (DMN tools such as bpmn.io
 dmn-js and Camunda Modeler open it), or a small SVG diagram with
 `?format=svg`.
 
+`GET /v1/profiles/{id}/explain` shows a profile as plain sentences in English
+or Japanese, for the people who approve it; `node scripts/explain-profile.mjs`
+does the same for a draft file. See
+[docs/profile-format.md](docs/profile-format.md#explain).
+
 ## Clients
 
-- [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `decide` and
-  `get_decision`, so agents can ask a profile instead of deciding themselves.
+- [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `explain_profile`,
+  `decide` and `get_decision`, so agents can ask a profile instead of
+  deciding themselves.
 - [GitHub issue triage](actions/triage/): a GitHub Action that labels new
   issues from a Pointsman decision, or asks for a human review.
 - [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a

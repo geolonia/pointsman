@@ -300,6 +300,54 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
+  /v1/profiles/{id}/explain:
+    get:
+      operationId: explainProfile
+      summary: A profile in plain sentences
+      description: |
+        The profile as plain sentences in English or Japanese, for the people
+        who approve it (docs/profile-format.md#explain): which model answers,
+        what it sees, the questions, facts and earlier decisions, and each rule
+        as "If ..., the action is ...". The rules are read with the engine's own
+        parser. A required profile out of this token's scope is not named, and a
+        rule that reads it is shown as written. Test tokens may use it too: it
+        reads no decisions.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        - name: version
+          in: query
+          required: false
+          description: A published version; the latest when not given.
+          schema: { type: integer, minimum: 1 }
+        - name: lang
+          in: query
+          required: false
+          schema: { type: string, enum: [en, ja], default: en }
+        - name: format
+          in: query
+          required: false
+          description: json (the parts), or text (Markdown, to show as it is).
+          schema: { type: string, enum: [json, text], default: json }
+      responses:
+        '200':
+          description: The explanation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileExplanation' }
+            text/markdown:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The token may not use this profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
 components:
   parameters:
     DecisionId:
@@ -369,6 +417,38 @@ components:
           minProperties: 1
           maxProperties: 8
           additionalProperties: { type: string, format: uuid }
+    ProfileExplanation:
+      description: A profile in plain sentences (docs/profile-format.md#explain).
+      type: object
+      additionalProperties: false
+      required: [profile, version, lang, title, description, model, input, questions, facts, requires, rules, order, default, people, notes]
+      properties:
+        profile: { type: string }
+        version: { type: integer, minimum: 1 }
+        lang: { type: string, enum: [en, ja] }
+        title: { type: string }
+        description: { type: string }
+        model: { type: string, description: Which model answers, or that no model is asked. }
+        input: { type: string, description: What the model sees of the request. }
+        questions: { type: array, items: { type: string } }
+        facts: { type: array, items: { type: string } }
+        requires: { type: array, items: { type: string } }
+        rules:
+          type: array
+          description: In order; the first rule that matches gives the action.
+          items:
+            type: object
+            additionalProperties: false
+            required: [rule, when, action, text]
+            properties:
+              rule: { type: integer, minimum: 0, description: The index the decision log uses. }
+              when: { type: string, description: The condition as written in the profile. }
+              action: { type: string }
+              text: { type: string, description: The rule as a sentence. }
+        order: { type: string, description: How the rules are checked. }
+        default: { type: string, description: The action when no rule matches, as a sentence. }
+        people: { type: array, items: { type: string }, description: Which actions a person checks, and the answers they can give. }
+        notes: { type: array, items: { type: string } }
     DecisionGraph:
       description: A DMN decision requirements graph; node and edge types are DMN's names.
       type: object

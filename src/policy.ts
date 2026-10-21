@@ -42,23 +42,23 @@
 
 import type { Answer, Fact, FactMissingReason, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
 
-type Kind = 'number' | 'string' | 'boolean';
+export type Kind = 'number' | 'string' | 'boolean';
 
 /** Why a fact can be missing, for facts.<fact>.reason: every FactMissingReason (tsc checks both ways). */
 const REASONS = ['no_location', 'unavailable', 'timeout', 'error'] as const satisfies readonly FactMissingReason[];
 const ALL_REASONS: Exclude<FactMissingReason, (typeof REASONS)[number]> extends never ? true : never = true;
 void ALL_REASONS;
 const MISSING_REASONS: string[] = [...REASONS];
-type Value = number | string | boolean;
-type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
+export type Value = number | string | boolean;
+export type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
 
-type QuestionOperand = { kind: Kind; question: string; field: string; key?: string };
-type FactOperand = { kind: Kind; fact: string; field: string };
-type DecisionOperand =
+export type QuestionOperand = { kind: Kind; question: string; field: string; key?: string };
+export type FactOperand = { kind: Kind; fact: string; field: string };
+export type DecisionOperand =
   | { kind: Kind; decision: string; field: 'missing' | 'action' | 'outcome' | 'reviewed'; path: string; allowed?: string[] }
   | { kind: Kind; decision: string; inner: QuestionOperand | FactOperand; path: string };
 
-type Operand =
+export type Operand =
   | { kind: Kind; literal: Value }
   | QuestionOperand
   | FactOperand
@@ -69,7 +69,7 @@ export type PolicyProfile = Pick<Profile, 'questions' | 'policy' | 'facts' | 're
 /** A required profile, by id: what decisions.<name>.* is checked against. */
 export type RequiredProfiles = Record<string, PolicyProfile | undefined>;
 
-type Node =
+export type Node =
   | { type: 'and' | 'or'; left: Node; right: Node }
   | { type: 'not'; operand: Node }
   | { type: 'cmp'; op: Op; left: Operand; right: Operand };
