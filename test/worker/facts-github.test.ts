@@ -295,6 +295,9 @@ describe('required checks (github_checks)', () => {
       [`${REPO}/actions/runs`]: (url) => (expect(url.searchParams.get('head_sha')).toBe(HEAD), { total_count: runs.length, workflow_runs: runs }),
     });
     expect(await values('ci', withRuns(wfRun('completed', 'success')))).toEqual({ required: 2, green: true, pending: false, failed: false });
+    // The path of a workflow from another repository can come with that repository and a ref.
+    const prefixed = { ...wfRun('completed', 'failure'), path: 'octo-org/policies/.github/workflows/security.yml@refs/tags/v1' };
+    expect(await values('ci', withRuns(prefixed))).toMatchObject({ required: 2, failed: true });
     expect(await values('ci', withRuns(wfRun('completed', 'failure')))).toMatchObject({ required: 2, green: false, failed: true });
     expect(await values('ci', withRuns(wfRun('in_progress', null)))).toMatchObject({ green: false, pending: true });
     expect(await values('ci', withRuns())).toMatchObject({ green: false, pending: true });

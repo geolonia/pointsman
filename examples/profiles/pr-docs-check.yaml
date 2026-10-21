@@ -30,7 +30,7 @@ facts:
     at: $.pull_request
     paths: ["docs/**", "**/*.md"]
     # Files that instruct tools or agents are never "only documentation".
-    except: ["**/AGENTS.md", "**/CLAUDE.md", ".github/**"]
+    except: ["**/AGENTS.md", "**/CLAUDE.md", "**/GEMINI.md", "**/.claude/**", ".github/**"]
   - { name: ci, type: github_checks, at: $.pull_request }
 policy:
   rules:

@@ -59,12 +59,18 @@ profiles. `scripts/check-public.mjs` checks that in CI.
    Give the same value to the clients that receive callbacks.
 
    Secrets for facts are set the same way, for example the token for
-   [GitHub facts](profile-format.md#github-pull-requests) (with
-   `FACTS_GITHUB: "token"` in `wrangler.jsonc`):
+   [GitHub facts](profile-format.md#github-pull-requests). Set the secret
+   first, then turn the facts on: with `FACTS_GITHUB: "token"` and no
+   `FACTS_GITHUB_TOKEN`, the engine refuses every request (a config error).
 
-   ```sh
-   npx wrangler secret put FACTS_GITHUB_TOKEN --config wrangler.jsonc
-   ```
+   1. Deploy once with `FACTS_GITHUB` unset or `"off"`.
+   2. Set the secret:
+
+      ```sh
+      npx wrangler secret put FACTS_GITHUB_TOKEN --config wrangler.jsonc
+      ```
+
+   3. Set `FACTS_GITHUB: "token"` in `wrangler.jsonc` and push to `main`.
 
 8. **Create API tokens** for your clients:
 

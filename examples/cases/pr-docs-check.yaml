@@ -25,6 +25,22 @@ cases:
       docs: { any: true, all: false, count: 2 }
       ci: { required: 1, green: true, pending: false, failed: false }
 
+  - name: a change from a fork means a full review
+    expect: review
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: false, author_dependabot: false, fork: true, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: more than 200 changed lines means a full review
+    expect: review
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: false, files: 2, changed_lines: 201, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
   - name: an unsigned commit means a full review
     expect: review
     answers: { changes_behaviour: 0.05 }
@@ -62,6 +78,14 @@ cases:
     answers: { changes_behaviour: 0.05 }
     facts:
       pr: { open: true, merged: false, draft: true, wip_title: false, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
+      docs: { any: true, all: true, count: 2 }
+      ci: { required: 1, green: true, pending: false, failed: false }
+
+  - name: WIP in the title waits
+    expect: wait
+    answers: { changes_behaviour: 0.05 }
+    facts:
+      pr: { open: true, merged: false, draft: false, wip_title: true, files: 2, changed_lines: 30, base_is_default: true, author_member: true, author_dependabot: false, fork: false, all_commits_verified: true }
       docs: { any: true, all: true, count: 2 }
       ci: { required: 1, green: true, pending: false, failed: false }
 

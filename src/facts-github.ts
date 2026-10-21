@@ -365,8 +365,9 @@ function workflowRuns(v: unknown): { total: number; runs: WorkflowRun[] } {
       if (!isObject(r) || typeof r.path !== 'string') throw new FactError('GitHub workflow runs: unexpected answer');
       const result: Result = r.status !== 'completed' ? 'pending' : PASSED.has(String(r.conclusion)) ? 'passed' : 'failed';
       return {
-        // A run of a required workflow has the path in its repository; the file itself may live in another one.
-        path: r.path.replace(/@.*$/, ''),
+        // The workflow file's path as a ruleset names it: without "@<ref>", and without the
+        // "<owner>/<repo>/" that GitHub puts before a workflow from another repository.
+        path: r.path.replace(/@.*$/, '').replace(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\/(?=\.github\/workflows\/)/, ''),
         required: typeof r.workflow_url === 'string' && r.workflow_url.includes('/actions/required_workflows/'),
         result,
         at: String(r.created_at ?? ''),

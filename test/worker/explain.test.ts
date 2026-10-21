@@ -170,7 +170,7 @@ describe('explainProfile: the profile', () => {
 
   it('explains the GitHub example: the facts and their paths', () => {
     const e = explainProfile(byId('pr-docs-check'), 'en', required);
-    expect(e.facts[1]).toBe('"docs": which changed files of the pull request ($.pull_request) match docs/**, **/*.md, except **/AGENTS.md, **/CLAUDE.md, .github/**.');
+    expect(e.facts[1]).toBe('"docs": which changed files of the pull request ($.pull_request) match docs/**, **/*.md, except **/AGENTS.md, **/CLAUDE.md, **/GEMINI.md, **/.claude/**, .github/**.');
     expect(explainProfile(byId('pr-docs-check'), 'ja', required).facts[2]).toBe('「ci」：プルリクエスト（$.pull_request）の head コミットでの必須チェックの結果。');
   });
 
