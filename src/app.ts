@@ -14,6 +14,7 @@ import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter'
 import { normalizeAnswers } from './models/normalize';
 import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './chains';
 import { decisionGraph, toDmn, toSvg } from './graph';
+import { explainProfile, explanationText } from './explain';
 import { compilePolicy, peopleAnswers, peopleCheck } from './policy';
 import type { ProfileStore } from './profiles/store';
 import type { Decision, Profile } from './types';
@@ -88,10 +89,10 @@ export function createApp(deps: (env: Env) => Deps) {
       return res;
     }
     c.set('client', record);
-    // A test token only decides (and lists its profiles); its decisions are
-    // not logged, and it must not read or resolve the logged ones.
+    // A test token only decides (and lists and explains its profiles); its
+    // decisions are not logged, and it must not read or resolve the logged ones.
     if (record.test && !(c.req.method === 'POST' && /^\/v1\/decide\/[^/]+$/.test(c.req.path))
-      && !(c.req.method === 'GET' && c.req.path === '/v1/profiles')) {
+      && !(c.req.method === 'GET' && (c.req.path === '/v1/profiles' || /^\/v1\/profiles\/[^/]+\/explain$/.test(c.req.path)))) {
       return error(403, 'forbidden', 'a test token may only decide');
     }
     await next();
@@ -139,6 +140,34 @@ export function createApp(deps: (env: Env) => Deps) {
       });
     }
     return c.json(graph);
+  });
+
+  // A profile in plain sentences, for the people who approve it
+  // (docs/profile-format.md#explain): JSON, or Markdown with ?format=text.
+  // Only profiles in scope; a rule on a required profile out of scope is
+  // shown as written.
+  app.get('/v1/profiles/:id/explain', async (c) => {
+    const { store } = deps(c.env);
+    const client = c.get('client');
+    const id = c.req.param('id');
+    const format = c.req.query('format') ?? 'json';
+    if (format !== 'json' && format !== 'text') return error(400, 'invalid_request', '"format" must be json or text');
+    const lang = c.req.query('lang') ?? 'en';
+    if (lang !== 'en' && lang !== 'ja') return error(400, 'invalid_request', '"lang" must be en or ja');
+    const v = c.req.query('version');
+    if (v !== undefined && !/^[1-9][0-9]{0,8}$/.test(v)) return error(400, 'invalid_request', '"version" must be a positive integer');
+    if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
+    const profile = await store.get(id, v === undefined ? undefined : Number(v));
+    if (!profile) return error(404, 'profile_not_found', v === undefined ? 'unknown profile' : 'unknown profile or version');
+    const required: Record<string, Profile> = {};
+    for (const r of profile.requires ?? []) {
+      if (Object.hasOwn(required, r.profile) || !canUse(client, r.profile)) continue;
+      const p = await store.get(r.profile);
+      if (p) required[r.profile] = p;
+    }
+    const explanation = explainProfile(profile, lang, required);
+    if (format === 'text') return new Response(explanationText(explanation), { headers: { 'content-type': 'text/markdown; charset=utf-8' } });
+    return c.json(explanation);
   });
 
   app.post('/v1/decide/:profile', async (c) => {

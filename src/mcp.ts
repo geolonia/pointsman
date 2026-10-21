@@ -1,6 +1,6 @@
 // MCP server (Streamable HTTP, stateless) at /mcp. See docs/mcp.md.
 //
-// Tools: list_profiles, decide, get_decision, and submit_feedback for people
+// Tools: list_profiles, explain_profile, decide, get_decision, and submit_feedback for people
 // logged in through OAuth (not for API tokens). Only profiles that set
 // `mcp.visible: true` and are in the caller's scope are listed or callable;
 // any other profile looks unknown. People may use every MCP-visible profile.
@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { makeDecision, type Deps } from './app';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
+import { explainProfile, explanationText } from './explain';
 import type { RequiredSnapshot } from './log';
 import { parseFeedback } from './feedback';
 import type { Caller } from './oauth';
@@ -90,6 +91,33 @@ function server(deps: McpDeps, caller: Caller): McpServer {
         if (visible(p, client)) profiles.push(describe(p!, await seenProfiles(p!.requires?.map((r) => r.profile) ?? [])));
       }
       return json({ profiles });
+    },
+  );
+
+  mcp.registerTool(
+    'explain_profile',
+    {
+      description:
+        'Explain a decision profile in plain sentences: what the AI is asked, which facts and earlier decisions it uses, '
+        + 'and each rule as "If ..., the action is ...". Show the text to the person who approves the profile.',
+      inputSchema: {
+        profile: z.string().describe('Profile id from list_profiles'),
+        lang: z.enum(['en', 'ja']).optional().describe('Language of the sentences (default en)'),
+        version: z.number().int().positive().optional().describe('A published version (default: the latest)'),
+      },
+    },
+    async ({ profile, lang, version }) => {
+      // Visibility is checked on the latest version, as for decide.
+      if (!visible(await deps.store.get(profile), client)) return failure(`unknown profile "${profile}"`);
+      const p = await deps.store.get(profile, version);
+      if (!p) return failure(`unknown version ${String(version)} of profile "${profile}"`);
+      const required: Record<string, Profile> = {};
+      for (const r of p.requires ?? []) {
+        const q = Object.hasOwn(required, r.profile) ? null : await deps.store.get(r.profile);
+        if (q && visible(q, client)) required[r.profile] = q;
+      }
+      const explanation = explainProfile(p, lang ?? 'en', required);
+      return json({ ...explanation, text: explanationText(explanation) });
     },
   );
 

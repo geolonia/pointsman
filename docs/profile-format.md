@@ -155,6 +155,33 @@ does not exist, a field the question type does not have, an option that the
 question does not list, or a comparison of different types fails validation.
 The engine evaluates conditions with its own parser; nothing is run as code.
 
+## Explain
+
+A profile can be read as plain sentences, in English or Japanese, for the
+people who approve it. They read the sentences, not the YAML:
+
+```text
+1. If the probability that "danger" is yes is at least 70 %, the action is urgent.
+2. If the rank of "flood" is at least 5 and the probability that "danger" is yes is at least 40 %, the action is urgent.
+```
+
+The rules are read with the engine's own parser, so the sentences say what
+the engine does. YAML comments are not part of a profile and are not shown.
+Question texts are shown as written.
+
+- **A draft (a file):** `node scripts/explain-profile.mjs <file> [--lang ja] [--json]`.
+  The file is validated first; an invalid profile is not explained, and the
+  errors are listed. The profiles it requires are read from the same
+  directory and from each `--with <file-or-directory>`.
+- **A published profile:** `GET /v1/profiles/{id}/explain` (`?lang=ja`,
+  `?version=N`, `?format=text` for Markdown), and the MCP tool
+  `explain_profile` for profiles that MCP shows. A required profile that the
+  caller may not use is not named, and a rule that reads it is shown as
+  written.
+
+This is the first part of AI-assisted profile authoring (#128): an assistant
+drafts a profile, and the person approves what the sentences say.
+
 ## Decision chains
 
 A profile can build on earlier decisions about the same report: a final step

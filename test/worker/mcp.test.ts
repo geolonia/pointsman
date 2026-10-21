@@ -50,11 +50,27 @@ describe('/mcp', () => {
     expect((await rpc('tools/list', {}, newToken())).status).toBe(401);
   });
 
-  it('initializes and offers list_profiles, decide and get_decision (no feedback for tokens)', async () => {
+  it('initializes and offers list_profiles, explain_profile, decide and get_decision (no feedback for tokens)', async () => {
     const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
     expect(init.message.result.serverInfo.name).toBe('pointsman');
     const tools = (await rpc('tools/list')).message.result.tools.map((t: any) => t.name).sort();
-    expect(tools).toEqual(['decide', 'get_decision', 'list_profiles']);
+    expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles']);
+  });
+
+  it('explains an MCP-visible profile in scope, and hides the others', async () => {
+    const en = await call('explain_profile', { profile: 'issue-triage' });
+    expect(en.isError).toBe(false);
+    const e = JSON.parse(en.text);
+    expect(e.rules[0].text).toBe('If the AI\'s certainty about "team" is at least 85 %, the action is auto.');
+    expect(e.text).toContain('# Issue triage (issue-triage, v');
+    const ja = JSON.parse((await call('explain_profile', { profile: 'issue-triage', lang: 'ja' })).text);
+    expect(ja.rules[0].text).toBe('「team」についての AI の確信度が 85 % 以上なら、アクションは auto です。');
+    // Not MCP-visible, out of scope, unknown, or an unknown version: all look the same.
+    for (const [args, token] of [[{ profile: 'deploy-progress' }, ALL], [{ profile: 'issue-triage' }, DEPLOY_ONLY], [{ profile: 'nope' }, ALL]] as const) {
+      const r = await call('explain_profile', args, token);
+      expect(r).toEqual({ isError: true, text: `unknown profile "${args.profile}"` });
+    }
+    expect((await call('explain_profile', { profile: 'issue-triage', version: 99 })).isError).toBe(true);
   });
 
   it('lists only profiles that are MCP-visible and in scope', async () => {
