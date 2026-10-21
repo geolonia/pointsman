@@ -10,6 +10,67 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.3.0 (2026-10-21)
+
+Tools for writing and changing profiles, with an AI assistant or by hand
+(#128): put a profile into plain sentences, run example cases against it,
+and try a changed policy on the decisions already made. The guide
+[docs/authoring.md](docs/authoring.md) puts them together.
+
+### Added
+
+- Explain a profile as plain sentences, in English or Japanese, for the
+  people who approve it: `GET /v1/profiles/{id}/explain` (JSON, or Markdown
+  with `?format=text`), the MCP tool `explain_profile`, and
+  `scripts/explain-profile.mjs` for a draft file. The rules are read with the
+  engine's own parser (#129).
+- Test cases: examples with the action a person expects, in their own
+  files (`cases/<id>.yaml`). Cases with answers check the rules without a
+  model; cases with a real request are answered by a deployed profile's
+  model and facts (`--url`, test token), and the rules of the file are
+  applied. `scripts/test-profile.mjs`; the examples have cases in
+  `examples/cases/`, run by CI (#131).
+- Replay a changed policy on the newest logged decisions of a version:
+  how many actions would change, how many decisions would go to a person,
+  and how often the new rules give the answer a person gave. No model is
+  called; only the policy may change. `POST /v1/profiles/{id}/replay`, the
+  MCP tool `replay_profile`, and `scripts/replay-profile.mjs` for a draft
+  file (#132).
+- Authoring guide [docs/authoring.md](docs/authoring.md), and
+  `AGENTS.md` / `CLAUDE.md` in the config repository template, so an AI
+  assistant in a config repository follows the same steps (#133).
+- Website: a FAQ (#124), and a shorter menu (#127). Examples by use case:
+  `examples/README.md` and one README per topic, with a section on the
+  website (#126).
+
+### Changed
+
+- Test tokens may also read `GET /v1/profiles/{id}/explain` (it reads no
+  decisions). A replay needs a token that is not a test token, and that may
+  use the profile and every profile it requires.
+- Error codes: `invalid_policy` (400) and `not_policy_only` (409), from
+  the replay.
+- MCP lists two more tools, `explain_profile` and `replay_profile`.
+- `DecisionLog` has a new method, `recent` (only matters for code that
+  implements its own decision log).
+
+### For existing deployments
+
+The config repository template has new files. A config repository made from
+an older template does not get them by moving `engine.json`; copy them from
+`template/config-repo/` when wanted, after `engine.json` points to 0.3.0
+(the new workflow step runs a script that 0.2.0 does not have):
+
+- `.github/workflows/validate.yml`: the step that runs `cases/` when the
+  folder exists.
+- `AGENTS.md` and `CLAUDE.md`: the steps for an AI assistant.
+
+Every token that is not a test token can now replay the profiles in its
+scope. A replay lists up to 50 changed decisions of a profile from every
+client, with their ids and refs, as the review queue does. A token already
+sees the decisions of the profiles in its scope, but check that each token's
+scope is what you want.
+
 ## 0.2.0 (2026-10-21)
 
 ### Added
