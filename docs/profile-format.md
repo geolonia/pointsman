@@ -747,18 +747,18 @@ Every field is a number, except `detail`.
 | `bytes` | the size of the changed files at head |
 | `privileged` | changed workflows with a trigger that runs in the base repository's context, with its secrets and a write token (`privileged_triggers`) |
 | `privileged_new` | privileged triggers that the version at the base does not have (a new file: all of them) |
-| `head_checkout` | privileged jobs that may check out code other than the base. An allow-list: a checkout is the base only when `repository` is empty, the repository itself or `${{ github.repository }}`, and `ref` is empty, a literal branch or tag (not `refs/pull/…`, not a commit id), or exactly one expression on `base_refs`. A ref from `steps.*.outputs`, `env` or `needs` counts. So does a `run:` with `gh pr checkout`, `gh repo clone`, or `git` `checkout`, `switch`, `fetch`, `reset`, `pull`, `clone` or `worktree`. |
+| `head_checkout` | privileged jobs that may check out code other than the base. An allow-list: a checkout is the base only when `repository` is empty, the repository itself or `${{ github.repository }}`, and `ref` is empty, a literal branch or tag (not `refs/pull/…`, not a commit id), or exactly one expression on `base_refs`. A ref from `steps.*.outputs`, `env` or `needs` counts. So does a script that may fetch code: a `run:` with the word `git` and `checkout`, `switch`, `fetch`, `pull`, `clone` or similar (also across line continuations), `gh` with `checkout`, `clone` or `download`, `curl` or `wget` of an archive; a `github-script` that runs a program. This part is best effort: a script can fetch code in ways no word list sees, so send every `privileged` change to a person. |
 | `pwn_request` | of those, jobs with any step that may run repository content: a `run:`, a local action, or an action not on `inert_actions`. Anywhere in the job, also before the checkout: an action that ran before it still runs its `post:` step later, in the checked-out code. |
-| `artifact_in_privileged` | privileged jobs that download an artifact of another run: `actions/download-artifact` with `run-id` or `github-token`, `dawidd6/action-download-artifact`, `gh run download`, the artifacts API in a `github-script` `script:` |
+| `artifact_in_privileged` | privileged jobs that download an artifact: `actions/download-artifact` (also of the same run: another job may have made it from checked-out code), `dawidd6/action-download-artifact`, `gh run download` or the word `artifacts` in a `run:`, the artifacts API in a `github-script` `script:` |
 | `remote_reusable` | privileged jobs that call a reusable workflow of another repository, and every job with `secrets: inherit` |
-| `secrets_new` | secrets a privileged job reads at head but not at the base (also in `if:` and the workflow's `env:`; `toJSON(secrets)` counts as a new one) |
-| `injection` | untrusted expressions in a `run:` or a `github-script` `script:`: every reference to `github` or below it that is not on `safe_contexts`. Also bare `github`, `*`, an index (`github['event']` is `github.event`), references inside functions (`toJSON(github.event)`), and expressions that cannot be read. Values that reach a script another way (through `env`, step outputs, files) are not counted. |
+| `secrets_new` | secrets a job reads at head but not at the base, in any workflow (also in `if:` and the workflow's `env:`; `toJSON(secrets)` counts as a new one) |
+| `injection` | untrusted expressions in a `run:` or a `github-script` `script:`: every reference to `github` or below it that is not on `safe_contexts`, and every reference to `env`, `steps`, `needs` or `inputs` (values passed on, which may come from `github.event`). Also bare `github`, `*`, an index (`github['event']` is `github.event`), references inside functions (`toJSON(github.event)`), and expressions that cannot be read. Pass a value through `env:` and quote the variable instead. Values that reach a script through files are not counted. |
 | `permissions_missing` | jobs with no `permissions:` at job or workflow level (the repository's default applies, which the file does not show) |
 | `write_all` | `write-all` in a job, and workflows with any write scope at workflow level |
 | `write_new` | write scopes a job has at head but not at the base (a job block replaces the workflow block) |
 | `persisted` | `actions/checkout` without `persist-credentials: false`, in jobs with no git step (a `run:` with `git push`, `commit`, `tag`, `fetch` or `pull`, or `gh`; or an action on `git_actions`). An expression counts as on. |
 | `unpinned` | `uses:` not pinned to a 40-character commit id (actions on `pin_exempt` need not be), and images without a `@sha256:` digest (`docker://…`, `container:`, `services:`, a Docker action's `image`). Local `./` actions are not counted. |
-| `suppressions_new` | added `zizmor: ignore` comments, and changed or removed scanner settings |
+| `suppressions_new` | `zizmor: ignore` lines at head that are not at the base (a moved one counts), and changed or removed scanner settings |
 | `local_unresolved` | changed local actions (once per folder: only `action.yml` is parsed, not the code), changed reusable workflows (`workflow_call`: their callers are not read), and privileged jobs that call a local reusable workflow (it is not read) |
 | `detail` | text: the first 20 findings with file and line, for people and the log. Rules cannot read it, like `route` of `detour`. |
 
@@ -805,7 +805,11 @@ repositories).
 **Not covered yet.** Whether a pinned commit belongs to the action's
 repository and not only to a fork of it (an impostor commit) is not checked.
 Local reusable workflows and the code of local actions are not read: they
-go to a person (`local_unresolved`).
+go to a person (`local_unresolved`). Scripts a workflow calls outside an
+action folder (`run: ./scripts/deploy.sh`) are not in the scope: a change to
+only such a script gives no finding. Two file trees are read per pull
+request, so a repository near GitHub's tree limit (100,000 entries) needs
+more memory; a tree GitHub cuts short makes the fact missing.
 
 **Safety rules for profiles.** As for every GitHub fact: a missing fact
 gives "not decided yet" (`retry`), never a pass; the pass rule names every

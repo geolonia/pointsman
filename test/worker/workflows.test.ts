@@ -120,6 +120,23 @@ describe('checkouts in privileged jobs (head_checkout, pwn_request)', () => {
     expect(findings(base(target('      - run: git fetch origin pull/7/head && git switch FETCH_HEAD\n')))).toMatchObject({ head_checkout: 1, pwn_request: 1 });
   });
 
+  it('scripts that fetch code: line continuations, quotes, github-script, curl', () => {
+    for (const steps of [
+      '      - run: |\n          git \\\n            fetch origin pull/${{ github.event.number }}/head\n          make\n',
+      '      - run: g""it checkout FETCH_HEAD\n',
+      '      - run: curl -L https://api.github.com/repos/o/r/tarball/x | tar x\n',
+      `      - uses: actions/github-script@${SHA}\n        with:\n          script: |\n            await exec.exec('make')\n`,
+    ]) {
+      expect(findings(base(target(steps))), steps).toMatchObject({ head_checkout: 1, pwn_request: 1 });
+    }
+  });
+
+  it('a long script stays fast', () => {
+    const t = Date.now();
+    wf(target(`      - run: ${'git '.repeat(60_000)}\n`));
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+
   it('a step before the checkout counts: its post: step runs later, in the checked-out code', () => {
     const c = base(target(`      - uses: actions/cache@${SHA}\n        with: { path: node_modules, key: deps }\n${checkout('${{ github.event.pull_request.head.sha }}')}`));
     expect(findings(c)).toEqual({ privileged: 1, head_checkout: 1, pwn_request: 1 });
@@ -146,9 +163,9 @@ describe('artifacts (artifact_in_privileged)', () => {
   it('an artifact of another run in a privileged job', () => {
     for (const s of steps) expect(findings(wf(target(s), { base: target(s) })), s).toMatchObject({ artifact_in_privileged: 1 });
   });
-  it('the run\'s own artifacts do not count', () => {
+  it('also the run\'s own artifacts: another job may have made them from checked-out code', () => {
     const s = `      - uses: actions/download-artifact@${SHA}\n        with: { name: report }\n`;
-    expect(findings(wf(target(s), { base: target(s) }))).toEqual({ privileged: 1 });
+    expect(findings(wf(target(s), { base: target(s) }))).toMatchObject({ artifact_in_privileged: 1 });
   });
 });
 
@@ -181,6 +198,10 @@ describe('secrets (secrets_new)', () => {
     expect(findings(wf(before, { base: before })).secrets_new).toBeUndefined();
     expect(findings(wf(job("          A: '${{ toJSON(secrets) }}'\n"), { base: before }))).toMatchObject({ secrets_new: 1 });
   });
+  it('in any workflow, not only privileged ones', () => {
+    const push = CLEAN.replace('on: pull_request', 'on: push').replace('- run: npm test', "- run: ./deploy\n        env: { KEY: '${{ secrets.DEPLOY_KEY }}' }");
+    expect(findings(wf(push))).toEqual({ secrets_new: 1 });
+  });
   it('an if: without ${{ }} is read too', () => {
     const head = target('      - run: ./publish\n        if: secrets.DEPLOY_KEY != \'\'\n');
     expect(findings(wf(head, { base: target('      - run: ./publish\n') }))).toMatchObject({ secrets_new: 1 });
@@ -206,6 +227,12 @@ describe('untrusted expressions (injection)', () => {
     expect(findings(wf(run('echo "${{ github.event.pull_request.number }} ${{ github.sha }} ${{ matrix.os }}"')))).toEqual({});
     expect(findings(wf(run('echo "${{ github.actor }}"'), { settings: { safe_contexts: ['github.actor'] } }))).toEqual({});
   });
+  it('values passed on through env, steps, needs and inputs count', () => {
+    for (const e of ['env.TITLE', 'steps.meta.outputs.result', 'needs.find.outputs.ref', 'inputs.title']) {
+      expect(findings(wf(run(`echo "\${{ ${e} }}"`))), e).toEqual({ injection: 1 });
+    }
+    expect(findings(wf(run('echo "${{ matrix.node }} ${{ runner.os }} ${{ vars.REGION }}"')))).toEqual({});
+  });
   it('through env is the safe way', () => {
     expect(findings(wf(CLEAN.replace('- run: npm test', "- run: echo \"$TITLE\"\n        env:\n          TITLE: '${{ github.event.pull_request.title }}'")))).toEqual({});
   });
@@ -214,7 +241,8 @@ describe('untrusted expressions (injection)', () => {
     expect(findings(wf(s))).toEqual({ injection: 1 });
   });
   it('an expression that cannot be read counts', () => {
-    expect(findings(wf(run('echo "${{ github.sha ~ 1 }}"')))).toEqual({ injection: 1 });
+    // It may read a secret too.
+    expect(findings(wf(run('echo "${{ github.sha ~ 1 }}"')))).toEqual({ injection: 1, secrets_new: 1 });
   });
   it('}} inside a quoted string does not end the expression', () => {
     expect(findings(wf(run("echo \"${{ format('}}{0}', github.event.issue.title) }}\"")))).toEqual({ injection: 1 });
@@ -281,6 +309,8 @@ describe('scanner settings and exceptions (suppressions_new)', () => {
     const head = CLEAN.replace('- run: npm test', '- run: npm test # zizmor: ignore[template-injection]');
     expect(findings(wf(head, { base: CLEAN }))).toEqual({ suppressions_new: 1 });
     expect(findings(wf(head, { base: head }))).toEqual({});
+    const moved = CLEAN.replace('npm test', 'npm test\n      - run: make # zizmor: ignore[artipacked]');
+    expect(findings(wf(moved, { base: head }))).toEqual({ suppressions_new: 1 });
   });
   it('a changed or removed scanner settings file', () => {
     const c = countWorkflows([
@@ -306,6 +336,13 @@ describe('local actions (local_unresolved)', () => {
     expect(findings(c)).toEqual({ local_unresolved: 1, injection: 1, unpinned: 1 });
     const docker = `runs:\n  using: docker\n  image: docker://alpine:3\n`;
     expect(findings(countWorkflows([action('.github/actions/setup/action.yml', docker)], REPO, workflowSettings()))).toEqual({ local_unresolved: 1, unpinned: 1 });
+  });
+});
+
+describe('detail', () => {
+  it('shows only safe characters of a path', () => {
+    const c = countWorkflows([{ path: '.github/workflows/[x](https://e.example)\u202e.yml', kind: 'workflow', removed: true, bytes: 0, head: null, base: null }], REPO, workflowSettings());
+    expect(c.detail).toBe('.github/workflows/?x??https?//e.example??.yml removed: removed');
   });
 });
 

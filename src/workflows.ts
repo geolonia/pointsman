@@ -461,11 +461,25 @@ function listed(uses: string, list: string[]): boolean {
 const isLocal = (uses: string) => uses.startsWith('./');
 const isAction = (s: Step, name: string) => s.uses !== null && actionOf(s.uses) === name;
 
-/** run: lines that bring other code into the workspace. */
-const RUN_CHECKOUT = /\bgh\s+(?:pr\s+checkout|repo\s+clone)\b|\bgit\b[^\n;|&]*\b(?:checkout|switch|fetch|reset|pull|clone|worktree)\b/;
-/** run: lines that use the checkout's git credentials. */
-const RUN_GIT = /\bgit\b[^\n;|&]*\b(?:push|commit|tag|fetch|pull)\b|\bgh\s/;
-const RUN_ARTIFACT = /\bgh\s+run\s+download\b/;
+/**
+ * The words of a script, for a search that cannot backtrack: line
+ * continuations joined, quotes and backslashes dropped (`g""it` is `git`).
+ * Best effort: a script can always fetch code in a way no word list sees,
+ * so profiles send every privileged change to a person.
+ */
+function words(text: string): Set<string> {
+  return new Set(text.replace(/\\\r?\n/g, ' ').replace(/["'`\\]/g, '').toLowerCase().split(/[^a-z0-9_-]+/));
+}
+const anyOf = (w: Set<string>, list: string[]) => list.some((x) => w.has(x));
+/** Scripts that may bring other code into the workspace. */
+const fetchesCode = (w: Set<string>) =>
+  (w.has('git') && anyOf(w, ['checkout', 'switch', 'fetch', 'reset', 'pull', 'clone', 'worktree', 'restore', 'merge', 'rebase', 'am', 'apply']))
+  || (w.has('gh') && anyOf(w, ['checkout', 'clone', 'download', 'tarball', 'zipball', 'diff']))
+  || (anyOf(w, ['curl', 'wget']) && anyOf(w, ['tarball', 'zipball', 'archive', 'pulls', 'pull', 'raw', 'githubusercontent']));
+/** Scripts that use the checkout's git credentials. */
+const needsGit = (w: Set<string>) => (w.has('git') && anyOf(w, ['push', 'commit', 'tag', 'fetch', 'pull'])) || w.has('gh');
+/** Scripts that download an artifact of another run. */
+const fetchesArtifact = (w: Set<string>) => (w.has('gh') && w.has('run') && w.has('download')) || w.has('artifacts');
 const SCRIPT_ARTIFACT = /\b(?:downloadArtifact|listWorkflowRunArtifacts|listArtifactsForRepo|getArtifact)\b/;
 const SHA = /^[0-9a-fA-F]{40}$/;
 const DIGEST = /@sha256:[0-9a-f]{64}$/;
@@ -500,7 +514,13 @@ function isSelf(v: unknown, repo: string): boolean {
 
 /** A step that may check out other code than the base. */
 function checksOutOther(s: Step, repo: string, settings: WorkflowSettings): boolean {
-  if (s.run !== null) return RUN_CHECKOUT.test(s.run);
+  if (s.run !== null) return fetchesCode(words(s.run));
+  const sc = script(s);
+  // A github-script that runs a program, or names git: it may fetch code too.
+  if (sc !== null) {
+    const w = words(sc);
+    return fetchesCode(w) || anyOf(w, ['exec', 'getexecoutput', 'child_process', 'spawn', 'execsync']);
+  }
   if (!isAction(s, 'actions/checkout')) return false;
   return !isBaseRef(s.with.get('ref'), settings) || !isSelf(s.with.get('repository'), repo);
 }
@@ -509,8 +529,9 @@ function checksOutOther(s: Step, repo: string, settings: WorkflowSettings): bool
 const mayRun = (s: Step, settings: WorkflowSettings): boolean => s.run !== null || isLocal(s.uses!) || !listed(s.uses!, settings.inert_actions);
 
 function downloadsArtifact(s: Step): boolean {
-  if (s.run !== null) return RUN_ARTIFACT.test(s.run);
-  if (isAction(s, 'actions/download-artifact')) return s.with.has('run-id') || s.with.has('github-token');
+  if (s.run !== null) return fetchesArtifact(words(s.run));
+  // Also an artifact of this run: another job of it may have made it from checked-out code.
+  if (isAction(s, 'actions/download-artifact')) return true;
   if (isAction(s, 'dawidd6/action-download-artifact')) return true;
   const sc = script(s);
   return sc !== null && SCRIPT_ARTIFACT.test(sc);
@@ -521,7 +542,7 @@ const persistsCredentials = (s: Step): boolean => {
   return !(v === false || (typeof v === 'string' && v.trim().toLowerCase() === 'false'));
 };
 
-const usesGit = (s: Step, settings: WorkflowSettings): boolean => (s.run !== null ? RUN_GIT.test(s.run) : listed(s.uses!, settings.git_actions));
+const usesGit = (s: Step, settings: WorkflowSettings): boolean => (s.run !== null ? needsGit(words(s.run)) : listed(s.uses!, settings.git_actions));
 
 /** Every text value below `v`, keys left out. */
 function texts(v: unknown, out: string[] = []): string[] {
@@ -590,9 +611,26 @@ export type WorkflowCounts = Record<(typeof WORKFLOW_FIELDS)[number], number>;
 
 const SAFE_TEXT = /^[A-Za-z0-9_.*-]{1,80}$/;
 /** A path or name for `detail`: no control characters, not too long. */
-const shown = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, '?').slice(0, 200);
+const shown = (s: string) => s.replace(/[^A-Za-z0-9._/@+-]/g, '?').slice(0, 200);
 
-const zizmorIgnores = (text: string | null) => (text ? (text.match(/#\s*zizmor\s*:\s*ignore\b/gi) ?? []).length : 0);
+/** The `zizmor: ignore` lines of a text, without spaces at either end. */
+const zizmorIgnores = (text: string | null): string[] => (text ?? '').split('\n').filter((l) => /#\s*zizmor\s*:\s*ignore\b/i.test(l)).map((l) => l.trim());
+
+/** How many of the lines at head are not at the base (each line at the base covers one). */
+function added(head: string[], base: string[]): number {
+  const left = new Map<string, number>();
+  for (const l of base) left.set(l, (left.get(l) ?? 0) + 1);
+  let n = 0;
+  for (const l of head) {
+    const k = left.get(l) ?? 0;
+    if (k > 0) left.set(l, k - 1);
+    else n++;
+  }
+  return n;
+}
+
+/** Contexts a script may get text from that a workflow does not fix: github.* (but safe_contexts), and values passed on. */
+const PASSED_ON = ['env', 'steps', 'needs', 'inputs'];
 
 function tryParse<T>(text: string | null, read: (p: Parsed) => T): T | null {
   if (text === null) return null;
@@ -629,7 +667,10 @@ export function countWorkflows(files: WorkflowFile[], repo: string, settings: Wo
         out.push('an expression that cannot be read');
         continue;
       }
-      const bad = r.refs.filter((x) => (x === 'github' || x.startsWith('github.')) && !settings.safe_contexts.includes(x));
+      const bad = r.refs.filter((x) => {
+        const root = x.split('.')[0]!;
+        return (root === 'github' && !settings.safe_contexts.includes(x)) || PASSED_ON.includes(root);
+      });
       if (bad.length > 0) out.push(SAFE_TEXT.test(bad[0]!) ? bad[0]! : 'github.*');
     }
     return out;
@@ -694,8 +735,8 @@ export function countWorkflows(files: WorkflowFile[], repo: string, settings: Wo
       } else {
         countWorkflow(f, repo, settings, note, checkSteps, pin, pinImage);
       }
-      const added = zizmorIgnores(f.head) - zizmorIgnores(f.base);
-      for (let i = 0; i < added; i++) note('suppressions_new', f.path, 0, 'zizmor: ignore added');
+      const n = added(zizmorIgnores(f.head), zizmorIgnores(f.base));
+      for (let i = 0; i < n; i++) note('suppressions_new', f.path, 0, 'zizmor: ignore added');
     } catch (err) {
       if (!(err instanceof ShapeError || err instanceof RangeError)) throw err;
       Object.assign(c, before);
@@ -739,6 +780,8 @@ function countWorkflow(
     if (job.uses !== null) pin(f.path, job.uses, job.line);
     for (const img of job.images) pinImage(f.path, img);
     checkSteps(f.path, job.steps, ` (${name})`);
+    const had = baseJob ? secretsOf(baseJob.raw, base!.env) : new Set<string>();
+    for (const s of secretsOf(job.raw, head.env)) if (!had.has(s)) note('secrets_new', f.path, job.line, `${name} reads ${s === '*' ? 'every secret' : 'a new secret'}`);
     if (privileged.length === 0) continue;
 
     if (job.uses !== null && isLocal(job.uses)) note('local_unresolved', f.path, job.line, `${name} calls a local reusable workflow, which is not read`);
@@ -751,7 +794,5 @@ function countWorkflow(
     }
     const artifact = job.steps.find(downloadsArtifact);
     if (artifact) note('artifact_in_privileged', f.path, artifact.line, `${name} downloads an artifact of another run`);
-    const had = baseJob ? secretsOf(baseJob.raw, base!.env) : new Set<string>();
-    for (const s of secretsOf(job.raw, head.env)) if (!had.has(s)) note('secrets_new', f.path, job.line, `${name} reads ${s === '*' ? 'every secret' : 'a new secret'}`);
   }
 }

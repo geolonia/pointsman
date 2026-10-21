@@ -115,8 +115,8 @@ cases:
     facts:
       wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 1 }
 
-  - name: a changed privileged workflow with no findings passes
-    expect: pass
+  - name: a changed privileged workflow with no findings goes to a person
+    expect: review
     answers: { touches_secrets: 0.05 }
     facts:
       wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }

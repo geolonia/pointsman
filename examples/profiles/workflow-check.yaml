@@ -58,9 +58,10 @@ policy:
       action: fix-unpinned-action
     - when: "facts.wf.persisted > 0"
       action: fix-persist-credentials
-    # Not wrong by itself, but a person should look.
+    # Not wrong by itself, but a person should look. Every changed privileged
+    # workflow too: a script can fetch other code in ways no parser sees.
     - when: >-
-        facts.wf.removed > 0 or facts.wf.privileged_new > 0 or facts.wf.head_checkout > 0
+        facts.wf.removed > 0 or facts.wf.privileged > 0 or facts.wf.privileged_new > 0 or facts.wf.head_checkout > 0
         or facts.wf.artifact_in_privileged > 0 or facts.wf.remote_reusable > 0 or facts.wf.secrets_new > 0
         or facts.wf.write_new > 0 or facts.wf.suppressions_new > 0 or facts.wf.local_unresolved > 0
       action: review
@@ -69,7 +70,7 @@ policy:
     # Every condition is a known value.
     - when: >-
         facts.wf.unparsed == 0 and facts.wf.bytes <= 200000 and facts.wf.removed == 0
-        and facts.wf.privileged_new == 0 and facts.wf.head_checkout == 0 and facts.wf.pwn_request == 0
+        and facts.wf.privileged == 0 and facts.wf.privileged_new == 0 and facts.wf.head_checkout == 0 and facts.wf.pwn_request == 0
         and facts.wf.artifact_in_privileged == 0 and facts.wf.remote_reusable == 0 and facts.wf.secrets_new == 0
         and facts.wf.injection == 0 and facts.wf.permissions_missing == 0 and facts.wf.write_all == 0
         and facts.wf.write_new == 0 and facts.wf.persisted == 0 and facts.wf.unpinned == 0
