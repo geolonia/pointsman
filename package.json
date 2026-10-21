@@ -25,12 +25,12 @@
     "check:public": "node scripts/check-public.mjs"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.4.0",
+    "@cloudflare/vitest-plugin": "^1.4.1",
     "ajv": "^8.20.0",
     "jsonc-parser": "^3.3.1",
     "typescript": "^7.0.2",
     "vitest": "~4.1.11",
-    "wrangler": "^4.149.0",
+    "wrangler": "^4.150.0",
     "yaml": "^2.9.1"
   },
   "packageManager": "pnpm@12.9.1",
@@ -38,6 +38,6 @@
     "@cloudflare/workers-oauth-provider": "^1.2.3",
     "@modelcontextprotocol/server": "^2.3.1",
     "hono": "^4.13.13",
-    "zod": "^4.6.6"
+    "zod": "^4.6.7"
   }
 }
