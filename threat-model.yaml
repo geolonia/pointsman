@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:0f6adb4ba2cc631b2b26b1972a3349c46250da3fe29b5e0a9b505a14ad9e6dc8"
+prose_version: "threat-model.md@sha256:5a28ab0d367756f2f892b7c7b36ddbfe05052283bdd0f86720781865af13bd69"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 300, maintainer: 71, inferred: 0, assumption: 0}
@@ -1498,7 +1498,7 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-GITHUB-RATE-LIMIT
     components: [engine-facts]
-    conditions: "no GitHub request budget per client or profile: all decisions share the credential's rate limit; when it is used up GitHub facts are error for every client until it resets; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)"
+    conditions: "no GitHub request budget per client or profile: with FACTS_GITHUB token all decisions share the token's rate limit and a used-up limit makes GitHub facts error for every client until it resets; with FACTS_GITHUB app each installation (one per repository owner) has its own token and limit, so a used-up installation affects that owner's repositories, for every client; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)"
     tier: correctness-only
     false_friend: false
     provenance: {kind: maintainer, date: "2026-10"}

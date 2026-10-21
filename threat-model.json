@@ -1355,7 +1355,7 @@
     },
     {
       "property": "D-GITHUB-RATE-LIMIT",
-      "reason": "no GitHub request budget per client or profile: all decisions share the credential's rate limit; when it is used up GitHub facts are error for every client until it resets; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)",
+      "reason": "no GitHub request budget per client or profile: with FACTS_GITHUB token all decisions share the token's rate limit and a used-up limit makes GitHub facts error for every client until it resets; with FACTS_GITHUB app each installation (one per repository owner) has its own token and limit, so a used-up installation affects that owner's repositories, for every client; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
