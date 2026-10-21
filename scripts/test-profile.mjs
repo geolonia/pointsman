@@ -9,8 +9,8 @@
 // state need --url: that Pointsman's published profile of the same id
 // answers the state (its model, its facts), and the rules of the profile
 // file are applied to those answers. Use a test token (POINTSMAN_TOKEN), so
-// these decisions are not logged; any other token is refused after its first
-// answer.
+// these decisions are not logged. Any other token is refused after its first
+// answer, and that one decision is logged (and may wait for a person).
 //
 // Exits 1 when a case fails or cannot run, or a file is not valid; 2 on bad
 // arguments.
@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { parse as parseYaml } from 'yaml';
 import { collectProfileFiles, parseProfile, validateProfile } from './lib/profile.mjs';
-import { answersFit, caseFileErrors, judge, runCases } from '../src/cases.ts';
+import { answersFit, caseFileErrors, factsFit, judge, runCases } from '../src/cases.ts';
 import { explainProfile } from '../src/explain.ts';
 import { compilePolicy } from '../src/policy.ts';
 
@@ -46,9 +46,24 @@ if (positionals.length === 0 || values.profiles.length === 0 || !['en', 'ja'].in
   process.exit(2);
 }
 const token = process.env.POINTSMAN_TOKEN;
-if (values.url !== undefined && !token) {
-  console.error('--url needs a test token in POINTSMAN_TOKEN');
-  process.exit(2);
+let base;
+if (values.url !== undefined) {
+  if (!token) {
+    console.error('--url needs a test token in POINTSMAN_TOKEN');
+    process.exit(2);
+  }
+  try {
+    base = new URL(values.url);
+  } catch {
+    console.error(`--url: not a URL: ${values.url}`);
+    process.exit(2);
+  }
+  // The token is sent with each request: https, or http only on this machine.
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname);
+  if (base.protocol !== 'https:' && !(base.protocol === 'http:' && local)) {
+    console.error('--url must use https (http only for localhost)');
+    process.exit(2);
+  }
 }
 
 const read = (f) => readFileSync(f, 'utf8');
@@ -58,7 +73,9 @@ try {
   profiles = new Map();
   for (const f of values.profiles.flatMap(collectProfileFiles)) {
     const p = parseProfile(read(f), f);
-    if (p && typeof p.id === 'string') profiles.set(p.id, { profile: p, file: f });
+    if (!p || typeof p.id !== 'string') throw new Error(`${f}: not a profile (no id)`);
+    if (profiles.has(p.id)) throw new Error(`${f}: the id "${p.id}" is also used by ${profiles.get(p.id).file}`);
+    profiles.set(p.id, { profile: p, file: f });
   }
   caseFiles = positionals.flatMap(collectProfileFiles);
 } catch (err) {
@@ -71,9 +88,14 @@ if (caseFiles.length === 0) {
 }
 const byId = new Map([...profiles].map(([id, x]) => [id, x.profile]));
 
+/** Thrown when the token turns out not to be a test token: no more requests. */
+class NotATestToken extends Error {}
+
 /** Ask the deployed profile; its answers and facts, with the rules of the file applied. */
 async function deployed(profile, state) {
-  const res = await fetch(`${values.url.replace(/\/+$/, '')}/v1/decide/${encodeURIComponent(profile.id)}`, {
+  // Relative to the URL given, so a path prefix (a proxy) is kept.
+  const url = new URL(`v1/decide/${encodeURIComponent(profile.id)}`, base.href.endsWith('/') ? base : `${base.href}/`);
+  const res = await fetch(url, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ state }),
@@ -81,17 +103,17 @@ async function deployed(profile, state) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(`the deployment answered ${res.status}${body?.error?.message ? `: ${body.error.message}` : ''}`);
-  if (body?.test !== true) {
-    // That decision is logged already; stop before more are.
-    console.error('POINTSMAN_TOKEN is not a test token: its decisions are logged. Stopped. Create one with scripts/tokens.mjs create --test.');
-    process.exit(1);
-  }
+  if (body === null || typeof body !== 'object') throw new Error('the deployment did not answer with JSON');
+  // That decision is logged already; stop before more are.
+  if (body.test !== true) throw new NotATestToken();
   return body;
 }
 
 let failed = false;
+let stopped = false;
 const report = [];
 for (const file of caseFiles) {
+  if (stopped) break;
   let cases;
   try {
     cases = parseYaml(read(file), { uniqueKeys: true });
@@ -120,7 +142,7 @@ for (const file of caseFiles) {
   if (values.url !== undefined) {
     const policy = compilePolicy(profile, required);
     for (const [i, c] of cases.cases.entries()) {
-      if (c.state === undefined) continue;
+      if (c.state === undefined || stopped) continue;
       const done = (r) => { results[i] = r; };
       if (profile.requires?.length) {
         done({ name: c.name, expect: c.expect, status: 'error', message: 'a profile with requires needs earlier decisions: give answers and decisions instead of state' });
@@ -128,12 +150,20 @@ for (const file of caseFiles) {
       }
       try {
         const d = await deployed(profile, c.state);
-        const misfit = answersFit(profile, d.answers);
+        const misfit = answersFit(profile, d.answers ?? {});
         if (misfit) throw new Error(`${misfit}; publish the questions first, or give answers`);
+        const factMisfit = factsFit(profile, d.facts ?? {});
+        if (factMisfit) throw new Error(`${factMisfit}; publish the facts first, or give answers and facts`);
         const r = judge(c, policy.decide(d.answers, d.facts ?? {}));
         done({ ...r, ...(d.profile_version !== profile.version && { message: `answers from the deployed version ${d.profile_version}, rules from the file (version ${profile.version})` }) });
       } catch (err) {
-        done({ name: c.name, expect: c.expect, status: 'error', message: err.message });
+        if (err instanceof NotATestToken) {
+          stopped = true;
+          console.error('POINTSMAN_TOKEN is not a test token: that decision was logged (and may wait for a person). Stopped. Create a test token with scripts/tokens.mjs create --test.');
+          done({ name: c.name, expect: c.expect, status: 'error', message: 'not a test token: stopped' });
+        } else {
+          done({ name: c.name, expect: c.expect, status: 'error', message: err.message });
+        }
       }
     }
   }

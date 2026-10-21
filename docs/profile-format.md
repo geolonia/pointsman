@@ -195,7 +195,7 @@ cases:
   - name: a possible danger in a deep flood zone is urgent
     expect: urgent
     answers: { category: closedWeather, status_matches: true, danger: 0.45, clarity: 2 }
-    facts: { flood: { inside: true, rank: 5, class: "3.0m-5.0m" } }
+    facts: { flood: { inside: true, rank: 5, class: 3 to 5 m } }
   - name: a real report from last week
     expect: publish
     state: { roadName: { type: Property, value: 県道 12 号 }, description: { type: Property, value: … } }
@@ -211,10 +211,16 @@ A case gives either **answers** or a **state**:
     (`{ closedWeather: 0.7, other: 0.3 }`)
   - score: a level (`2`), or probabilities by level (`{ "1": 0.2, "2": 0.8 }`);
     the weighted level is computed from them
-  - facts: the fact's fields (a field left out has no value), or `missing`,
-    or `{ missing: <reason> }`. A fact left out is missing.
-  - decisions: `{ outcome, action, reviewed, answers, facts }` (outcome and
-    action stand in for each other when only one is given), or `missing`
+  - facts: the fact's fields, or `missing`, or `{ missing: <reason> }`. A
+    fact left out is missing. The fields follow what the engine gives: the
+    first one says whether something was found (`inside`, `found`,
+    `possible`). When it is false, leave the others out (not inside: rank 0,
+    class ""). When it is true, give the others (a name and a route may be
+    left out).
+  - decisions: `{ action, outcome, reviewed, answers, facts }`, or `missing`.
+    Without a person (`reviewed` left out), the outcome is the action, so one
+    of them is enough. With `reviewed: true`, give both: the action, and the
+    person's answer as the outcome.
 - **state**: a real request. A deployed Pointsman's published profile of the
   same id answers it (its model and its facts), and the rules of the profile
   file are applied to those answers. So a changed threshold can be tried on
@@ -231,11 +237,16 @@ POINTSMAN_TOKEN=pm_… node scripts/test-profile.mjs cases --profiles profiles -
 ```
 
 The profiles are validated first. Each case prints PASS or FAIL with the rule
-that matched, as a sentence (see [Explain](#explain)); `--lang ja` for
-Japanese, `--json` for the results as JSON. A failed case, or one that cannot
-run, makes the exit code 1. Cases with a state are skipped without `--url`.
-With `--url`, use a test token: its decisions are not logged. Any other token
-is refused after its first answer, and each case is a model call.
+that matched, as a sentence (see [Explain](#explain)), or ERROR when it cannot
+run (for example an answer for a question the profile does not have), or SKIP;
+`--lang ja` for Japanese, `--json` for the results as JSON. A failed case, or
+one that cannot run, makes the exit code 1. Cases with a state are skipped
+without `--url`.
+
+With `--url` (https, or http on localhost), use a test token: its decisions
+are not logged. Any other token is refused after its first answer, but that
+one decision is logged, and may wait for a person in the review queue. Each
+case with a state is a model call.
 
 The examples in this repository have cases in
 [examples/cases/](../examples/cases/), run by CI. A config repository made

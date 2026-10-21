@@ -70,22 +70,68 @@ test('a case that does not fit its profile cannot run, and says where', () => {
   ]);
 });
 
-test('a fact that is not given counts as missing, and a field not given has no value', () => {
+test('a fact that is not given counts as missing; facts take the shape the engine gives', () => {
   const p = profile('road-restriction-check');
   const answers = { category: 'other', status_matches: true, danger: 0.45, clarity: 3 };
-  const [notGiven, noRank] = runCases({
+  const results = runCases({
     profile: p.id,
     cases: [
       { name: 'flood not given', expect: 'review', answers },
-      // inside without rank: "rank >= 5" is unknown, so no deep-zone rule
-      // matches, and this clear report reaches the publish rule.
-      { name: 'flood without rank', expect: 'publish', answers, facts: { flood: { inside: true } } },
+      // Not inside: the engine gives rank 0 and class "", so rank rules are known (and false).
+      { name: 'not inside', expect: 'publish', answers, facts: { flood: { inside: false } } },
+      { name: 'inside without rank', expect: 'review', answers, facts: { flood: { inside: true } } },
+      { name: 'not inside, with a rank', expect: 'review', answers, facts: { flood: { inside: false, rank: 3 } } },
+      { name: 'no inside', expect: 'review', answers, facts: { flood: { rank: 5, class: '3 to 5 m' } } },
     ],
   }, p);
-  assert.equal(notGiven.status, 'pass');
-  assert.equal(notGiven.rule, 2); // facts.flood.missing == true and danger.yes >= 0.4
-  assert.equal(noRank.status, 'pass');
-  assert.equal(noRank.rule, 5);
+  assert.deepEqual(results.map((r) => [r.status, r.rule ?? r.message]), [
+    ['pass', 2], // facts.flood.missing == true and danger.yes >= 0.4
+    ['pass', 5],
+    ['error', 'facts.flood.rank: needed when inside is true'],
+    ['error', 'facts.flood.rank: when inside is false, the engine gives 0; leave it out'],
+    ['error', 'facts.flood.inside: give true or false'],
+  ]);
+  const evacuation = profile('evacuation-access-check');
+  const [noName, notFound] = runCases({
+    profile: evacuation.id,
+    cases: [
+      { name: 'a shelter without a name', expect: 'alert', answers: { foot_passable: 0.1 }, facts: { shelter: { found: true, distance_m: 300 }, walk: { possible: true, extra_m: 400 } } },
+      { name: 'no shelter found', expect: 'none', answers: { foot_passable: 0.1 }, facts: { shelter: { found: false }, walk: { possible: true, extra_m: 400 } } },
+    ],
+  }, evacuation);
+  assert.equal(noName.status, 'pass');
+  assert.equal(notFound.status, 'pass');
+});
+
+test('earlier decisions are checked against the profile they come from', () => {
+  const p = profile('road-closure-final');
+  const required = { 'road-restriction-check': profile('road-restriction-check'), 'evacuation-access-check': profile('evacuation-access-check') };
+  const one = (decisions) => runCases({ profile: p.id, cases: [{ name: 'x', expect: 'review', answers: {}, decisions }] }, p, required)[0];
+  assert.equal(one({ check: { action: 'review', outcome: 'reject', reviewed: true } }).got, 'reject');
+  assert.equal(one({ check: { outcome: 'urgent' } }).got, 'urgent');
+  assert.equal(one({ check: { outcome: 'publish' }, evacuation: 'missing' }).got, 'publish');
+  for (const [decisions, message] of [
+    [{ check: { outcome: 'publsh' } }, 'decisions.check.action: "publsh" is not an action of road-restriction-check (urgent, review, publish)'],
+    [{ check: { outcome: 'reject' } }, 'decisions.check.action: "reject" is not an action of road-restriction-check (urgent, review, publish)'],
+    [{ check: { outcome: 'reject', reviewed: true } }, 'decisions.check: give its action (with reviewed: true, the action and the person\'s outcome are separate)'],
+    [{ check: { action: 'review', outcome: 'publish' } }, 'decisions.check: without reviewed: true, the outcome is the action'],
+    [{ check: { action: 'review', outcome: 'maybe', reviewed: true } }, 'decisions.check.outcome: "maybe" is not an outcome of road-restriction-check (urgent, review, publish, reject)'],
+    [{ check: { outcome: 'publish', reviewed: 'yes' } }, 'decisions.check.reviewed: must be true or false'],
+    [{ check: { outcome: 'publish', note: 'x' } }, 'decisions.check: unknown field "note"'],
+    [{ check: {} }, 'decisions.check: give its action or outcome'],
+    [{ other: { outcome: 'publish' } }, 'decisions: "other" is not in this profile\'s requires'],
+    [{ check: { outcome: 'publish', answers: { colour: true } } }, 'decisions.check.answers: "colour" is not a question of that profile'],
+  ]) {
+    const r = one(decisions);
+    assert.deepEqual([r.status, r.message], ['error', message], JSON.stringify(decisions));
+  }
+});
+
+test('the noul boundary and score probabilities follow the normalizer', () => {
+  const q = { name: 'q', type: 'noul', instructions: 'x' };
+  assert.deepEqual(answerOf(q, 0.5, 'a'), { type: 'noul', value: true, p: 0.5, yes: 0.5 });
+  const score = { name: 's', type: 'score', instructions: 'x', criteria: ['a', 'b'] };
+  assert.throws(() => answerOf(score, { 1: 0 }, 'answers.s'), /the probabilities cannot all be 0/);
 });
 
 test('the file shape is checked before any case runs', () => {
@@ -140,7 +186,14 @@ test('an invalid profile or case file is not run', (t) => {
   const r = run([dir, '--profiles', join(examples, 'profiles')]);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /bad\.yaml: not run, because:\n {2}cases: give at least one case/);
-  assert.equal(run([join(dir, 'issue-triage.yaml'), '--profiles', dir]).status, 1); // no such profile there
+  // A case file in --profiles is not a profile: refused, not skipped.
+  const notProfiles = run([join(dir, 'issue-triage.yaml'), '--profiles', dir]);
+  assert.equal(notProfiles.status, 2);
+  assert.match(notProfiles.stderr, /bad\.yaml: not a profile \(no id\)|issue-triage\.yaml: not a profile \(no id\)/);
+  // Two files with the same id.
+  const twice = tempDir(t);
+  for (const name of ['a.yaml', 'b.yaml']) copyFileSync(join(examples, 'profiles', 'issue-triage.yaml'), join(twice, name));
+  assert.match(run([join(dir, 'issue-triage.yaml'), '--profiles', twice]).stderr, /the id "issue-triage" is also used by/);
   assert.equal(run([dir]).status, 2);
   assert.equal(run([dir, '--profiles', examples, '--url', 'http://localhost:1']).status, 2); // no token
 });
@@ -199,12 +252,46 @@ test('with --url, answers from another deployed version are judged by the file, 
   assert.match(r.stdout, /FAIL {2}a real issue about the login page: expected auto, got review\n.*\n {9}\(answers from the deployed version 7, rules from the file \(version 1\)\)/);
 });
 
-test('with --url, a token that logs decisions is refused after its first answer', async (t) => {
+test('with --url, a token that logs decisions is refused after its first answer, and the results so far are shown', async (t) => {
   const { url, seen } = await fakeDeployment(t, () => [200, { profile_version: 1, action: 'auto', rule: 0, answers: triageAnswers(0.9) }]);
-  const r = await runAsync([join(examples, 'cases', 'issue-triage.yaml'), '--profiles', join(examples, 'profiles'), '--url', url], { POINTSMAN_TOKEN: 'pm_real' });
+  const r = await runAsync([join(examples, 'cases'), '--profiles', join(examples, 'profiles'), '--url', url], { POINTSMAN_TOKEN: 'pm_real' });
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /is not a test token/);
+  assert.match(r.stderr, /is not a test token: that decision was logged \(and may wait for a person\)\. Stopped\./);
+  assert.match(r.stdout, /ERROR a real issue about the login page: not a test token: stopped/);
+  assert.match(r.stdout, /PASS {2}a sure team is routed automatically/);
   assert.equal(seen.length, 1);
+});
+
+test('with --url, a deployed fact that does not fit is not judged', async (t) => {
+  const dir = tempDir(t);
+  mkdirSync(join(dir, 'cases'));
+  writeFileSync(join(dir, 'cases', 'deploy-progress.yaml'), 'profile: deploy-progress\ncases:\n  - name: a real deploy\n    expect: continue\n    state: { log: still creating }\n');
+  // A draft of deploy-progress with a fact the deployment does not have.
+  mkdirSync(join(dir, 'profiles'));
+  const draft = readFileSync(join(examples, 'profiles', 'deploy-progress.yaml'), 'utf8')
+    .replace(/\nquestions:/, '\nfacts:\n  - { name: zone, type: inside, layer: gsi-flood-max, at: $.place }\nquestions:');
+  assert.ok(draft.includes('name: zone'));
+  writeFileSync(join(dir, 'profiles', 'deploy-progress.yaml'), draft);
+  const { url } = await fakeDeployment(t, () => [200, { test: true, profile_version: 1, answers: {
+    stuck: { type: 'noul', value: false, p: 0.9, yes: 0.1 },
+    phase: { type: 'choice', value: 'creating', p: 1, probabilities: { creating: 1 } },
+  } }]);
+  const r = await runAsync([join(dir, 'cases'), '--profiles', join(dir, 'profiles'), '--url', url], { POINTSMAN_TOKEN: 'pm_test' });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /ERROR a real deploy: the deployed profile has no fact "zone"; publish the facts first, or give answers and facts/);
+});
+
+test('with --url, the token goes only over https or to localhost, and a non-JSON answer is an error', async (t) => {
+  const args = [join(examples, 'cases', 'issue-triage.yaml'), '--profiles', join(examples, 'profiles')];
+  assert.equal(run([...args, '--url', 'http://pointsman.example.com'], { POINTSMAN_TOKEN: 'pm_test' }).status, 2);
+  assert.equal(run([...args, '--url', 'not a url'], { POINTSMAN_TOKEN: 'pm_test' }).status, 2);
+  const seen = [];
+  const server = createServer((req, res) => { seen.push(req.url); res.writeHead(200, { 'content-type': 'text/plain' }).end('hello'); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const r = await runAsync([...args, '--url', `http://127.0.0.1:${server.address().port}/prefix`], { POINTSMAN_TOKEN: 'pm_test' });
+  assert.match(r.stdout, /ERROR a real issue about the login page: the deployment did not answer with JSON/);
+  assert.deepEqual(seen, ['/prefix/v1/decide/issue-triage']);
 });
 
 test('with --url, answers that do not fit the questions, or an error, cannot be judged', async (t) => {

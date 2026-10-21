@@ -10,9 +10,9 @@
 // Like src/policy.ts, this file is imported by a script under Node.js, so it
 // uses only TypeScript syntax that Node can strip.
 
-import { compilePolicy, FACT_FIELDS, profileActions } from './policy.ts';
+import { compilePolicy, FACT_FIELDS, peopleAnswers, profileActions } from './policy.ts';
 import type { RequiredProfiles } from './policy.ts';
-import type { Answer, Fact, FactMissingReason, Profile, Question, RequiredDecisionInput } from './types.ts';
+import type { Answer, Fact, FactMissingReason, FactType, Profile, Question, RequiredDecisionInput } from './types.ts';
 
 export interface TestCase {
   name: string;
@@ -105,6 +105,7 @@ export function answerOf(q: Question, value: unknown, where: string): Answer {
       if (!probs) throw new CaseError(`${where}: give a level (0 to ${levels.length - 1}), or probabilities by level`);
       const [v, p] = top(probs);
       const total = Object.values(probs).reduce((a, b) => a + b, 0);
+      if (total === 0) throw new CaseError(`${where}: the probabilities cannot all be 0`);
       const score = Object.entries(probs).reduce((a, [k, x]) => a + Number(k) * x, 0) / total;
       return { type: 'score', value: Number(v), p, score, probabilities: probs };
     }
@@ -154,9 +155,39 @@ function factsOf(profile: Pick<Profile, 'facts'>, given: unknown, where: string)
       if (v !== null && typeof v !== kind) throw new CaseError(`${at}.${field}: must be a ${kind} (or null for no value)`);
       values[field] = v as string | number | boolean | null;
     }
-    // A field not given has no value, as when a lookup finds nothing.
-    for (const field of Object.keys(fields)) if (!Object.hasOwn(values, field)) values[field] = null;
-    out[name] = { missing: false, values, source: 'test case' };
+    out[name] = { missing: false, values: shaped(spec.type, values, at), source: 'test case' };
+  }
+  return out;
+}
+
+/**
+ * A fact's values as the engine's providers give them (src/facts-gsi.ts,
+ * src/facts-routing.ts), so a case cannot pass on values the engine never
+ * produces: the first field says whether something was found, and decides
+ * the others. Not inside: rank 0, class "". Not found, or no way around: no
+ * values. Otherwise every field is needed, except a name and a route.
+ */
+const SHAPES: Record<FactType, { key: string; absent: Record<string, string | number | null>; optional: string[] }> = {
+  inside: { key: 'inside', absent: { rank: 0, class: '' }, optional: [] },
+  nearest: { key: 'found', absent: { distance_m: null, name: null }, optional: ['name'] },
+  detour: { key: 'possible', absent: { extra_m: null, route: null }, optional: ['route'] },
+};
+
+function shaped(type: FactType, values: Record<string, string | number | boolean | null>, where: string): Record<string, string | number | boolean | null> {
+  const { key, absent, optional } = SHAPES[type];
+  if (typeof values[key] !== 'boolean') throw new CaseError(`${where}.${key}: give true or false`);
+  if (values[key] === false) {
+    for (const [field, v] of Object.entries(values)) {
+      if (field !== key && v !== absent[field]) throw new CaseError(`${where}.${field}: when ${key} is false, the engine gives ${JSON.stringify(absent[field])}; leave it out`);
+    }
+    return { [key]: false, ...absent };
+  }
+  const out = { ...values };
+  for (const field of Object.keys(absent)) {
+    if (out[field] === undefined || out[field] === null) {
+      if (!optional.includes(field)) throw new CaseError(`${where}.${field}: needed when ${key} is true`);
+      out[field] = null;
+    }
   }
   return out;
 }
@@ -176,14 +207,22 @@ function decisionsOf(profile: Profile, required: Record<string, Profile | undefi
     for (const k of Object.keys(value)) {
       if (!['outcome', 'action', 'reviewed', 'answers', 'facts'].includes(k)) throw new CaseError(`${at}: unknown field "${k}"`);
     }
-    const action = value.action ?? value.outcome;
-    const outcome = value.outcome ?? value.action;
-    if (typeof action !== 'string' || typeof outcome !== 'string') throw new CaseError(`${at}: give its outcome (or action)`);
     if (value.reviewed !== undefined && typeof value.reviewed !== 'boolean') throw new CaseError(`${at}.reviewed: must be true or false`);
+    const reviewed = value.reviewed === true;
+    // Without a person, the outcome is the action; with one, it is their answer.
+    const action = value.action ?? (reviewed ? undefined : value.outcome);
+    const outcome = value.outcome ?? value.action;
+    if (typeof action !== 'string') throw new CaseError(`${at}: give its action${reviewed ? ' (with reviewed: true, the action and the person\'s outcome are separate)' : ' or outcome'}`);
+    if (typeof outcome !== 'string') throw new CaseError(`${at}: give its outcome`);
+    const actions = profileActions(p);
+    if (!actions.includes(action)) throw new CaseError(`${at}.action: "${action}" is not an action of ${r.profile} (${actions.join(', ')})`);
+    if (!reviewed && outcome !== action) throw new CaseError(`${at}: without reviewed: true, the outcome is the action`);
+    const answers = [...new Set([...actions, ...peopleAnswers(p)])];
+    if (!answers.includes(outcome)) throw new CaseError(`${at}.outcome: "${outcome}" is not an outcome of ${r.profile} (${answers.join(', ')})`);
     out[name] = {
       action,
       outcome,
-      reviewed: value.reviewed === true,
+      reviewed,
       // Not all answers are needed here: rules read only some, and a missing one is unknown.
       answers: value.answers === undefined ? {} : partialAnswers(p.questions, value.answers, `${at}.answers`),
       facts: factsOf(p, value.facts, `${at}.facts`),
@@ -264,6 +303,21 @@ export function judge(c: Pick<TestCase, 'name' | 'expect'>, result: { action: st
 }
 
 /**
+ * Check that facts from a deployed profile fit this profile's facts: each
+ * fact there, with the fields of its type. Returns the problem, or null.
+ */
+export function factsFit(profile: Profile, facts: Record<string, Fact>): string | null {
+  for (const f of profile.facts ?? []) {
+    const got = Object.hasOwn(facts, f.name) ? facts[f.name] : undefined;
+    if (!got) return `the deployed profile has no fact "${f.name}"`;
+    if (!got.missing && Object.keys(FACT_FIELDS[f.type]).some((field) => !Object.hasOwn(got.values, field))) {
+      return `the deployed fact "${f.name}" is not a ${f.type} fact`;
+    }
+  }
+  return null;
+}
+
+/**
  * Check that answers from a deployed profile fit this profile's questions,
  * so its rules can be applied to them: same names, types, and options or
  * levels. Returns the problem, or null.
@@ -273,6 +327,8 @@ export function answersFit(profile: Profile, answers: Record<string, Answer>): s
     const a = Object.hasOwn(answers, q.name) ? answers[q.name] : undefined;
     if (!a || a.type !== q.type) return `the deployed profile has no ${q.type} answer for "${q.name}"`;
     const allowed = q.type === 'choice' ? q.criteria.map((c) => c.value) : q.type === 'score' ? q.criteria.map((_, i) => String(i)) : [];
+    // Only checks that the deployed options are among the file's: an option
+    // or level the file adds cannot be told apart from one that was renamed.
     if ('probabilities' in a && Object.keys(a.probabilities).some((k) => !allowed.includes(k))) {
       return `the deployed profile's options for "${q.name}" differ`;
     }
