@@ -5,13 +5,17 @@
 - **Project**: Pointsman (geolonia/pointsman), a decision service on Cloudflare
   Workers: typed questions in, typed answers with probabilities and an action
   out.
-- **Version binding**: commit `65ec5dae4da01027133f4861df60de3b5847f199` on
-  `main` (2026-10-22 JST), the merge of pointsman#135 (GitHub pull-request facts).
-  The model was first bound to commit
-  `e1d3591e1b2f6c782f2941e4477923fd88e2addc` (2026-10-16) and was re-bound
-  when the GitHub facts were added. The repository has no release tags, so
-  the model is bound to the commit. A report against a later commit is triaged against the
-  model as it stood at that commit, not against this model.
+- **Version binding**: the merge commit of pointsman#143 (bounds on reading
+  `CODEOWNERS`) on `main`. Until that merge exists, read the code at its
+  parent, commit `041a5e6f0b27cd4d49063eca05930e47a801e40e` (2026-10-22 JST,
+  the merge of pointsman#142), plus pointsman#143; `threat-model.json` names
+  that parent until it is re-exported at the merge commit. History: first
+  bound to `e1d3591e1b2f6c782f2941e4477923fd88e2addc` (2026-10-16), re-bound
+  to `65ec5dae4da01027133f4861df60de3b5847f199` (pointsman#135) for the GitHub
+  facts, and re-bound for pointsman#143. The repository has no release tags,
+  so the model is bound to a commit. A report against a later commit is
+  triaged against the model as it stood at that commit, not against this
+  model.
 - **Date / author**: 2026-10-16, drafted for the maintainer, Daniel Kastl, who
   ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
   opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
@@ -36,7 +40,12 @@
   `D-GITHUB-CREDENTIAL-REACH`, `D-GITHUB-RATE-LIMIT` and
   `D-CODEOWNERS-SIZE`, five `R-GITHUB-*` obligations and five misuse
   patterns; the maintainer answered its three
-  questions (Q25 to Q27) on 2026-10-21. The
+  questions (Q25 to Q27) on 2026-10-21. Amended 2026-10-22 for the bounds on
+  reading `CODEOWNERS` (pointsman#143): `D-CODEOWNERS-SIZE` is lifted, and
+  its size, pattern and matching limits are now part of
+  `P-FACT-LOOKUP-BOUNDED` (the §1.7 rows follow). The re-binding also takes
+  in pointsman#142 (the activity list read page by page, up to 500 entries)
+  and updates the code citations that it moved. The
   re-binding also updated code citations that had moved; the rest still
   stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -73,7 +82,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 300 documented / 71 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 300 documented / 70 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -377,11 +386,11 @@ modeled tree.
   routing server, the callback receiver and the GitHub API use
   `redirect: 'manual'` and treat a 3xx as an error (`src/models/http.ts:97`,
   `src/facts-routing.ts:183` with the check at `src/facts-routing.ts:244`,
-  `src/callbacks.ts:78`, `src/facts-github.ts:202` and the installation-token
-  request at `src/facts-github.ts:156`, with the check at
-  `src/facts-github.ts:190`), except the organization-membership read, where
+  `src/callbacks.ts:78`, `src/facts-github.ts:204` and the installation-token
+  request at `src/facts-github.ts:158`, with the check at
+  `src/facts-github.ts:192`), except the organization-membership read, where
   a 302 means that GitHub does not tell, so `author_member` has no value
-  (`src/facts-github.ts:531`); no redirect is followed there either
+  (`src/facts-github.ts:553`); no redirect is followed there either
   *(documented, docs/profile-format.md "Detours":
   "Redirects are not followed (they would carry the key to another host)";
   "Missing GitHub facts": "a redirect (not followed: it would carry the token
@@ -501,8 +510,8 @@ they are security-relevant.
 | `engine-facts` tile fetch | PNG and GeoJSON tile bytes from GSI | no — public data from a fixed host, decoded by the engine's own PNG and GeoJSON readers | data, serialized-state | none — an unknown legend colour or unreadable tile is `error`, never a guess | *(documented, docs/profile-format.md "A colour that is not in the legend fails the lookup")* |
 | `engine-facts` routing | the Valhalla response (`trip.summary.length`, `error_code`) | no — operator-chosen server over OpenStreetMap data | data | none — a 3xx is an error; a missing length is an error | *(documented, docs/profile-format.md "Detours")* |
 | `engine-facts` GitHub reads | the pull request, its commits and files, the base branch's rules and protection, check runs, commit statuses, workflow runs, membership and custom properties | partly — GitHub is a trusted collaborator, but titles, file names, commits and check-run names are written by the pull-request author | data, size | none — answers are shape-checked and counted (`P-FACT-LOOKUP-BOUNDED`); a wrong shape, a redirect, a rate limit or too many files or checks is `error`, never a guess (`P-FACTS-NEVER-GUESSED`); globs are matched without regular expressions | *(documented, docs/profile-format.md "One snapshot", "Missing GitHub facts")* |
-| `engine-facts` GitHub reads | the head repository's activity list (the newest 100 pushes to the head branch; the head repository can be a fork) | partly — GitHub records who pushed; the fork and its branch belong to the pull-request author | data | none — the head repository's name from GitHub's answer must be `owner/name`, with a name other than `.` or `..`; pushes GitHub does not show, or a 403 or 404, make `pushed_by_author` `unavailable`; other failures fail the fact | *(documented, docs/profile-format.md "GitHub pull requests" table, `pushed_by_author`)* |
-| `engine-facts` GitHub reads | the base branch's `CODEOWNERS` file and the members of the teams it names | no — written by whoever can change the base branch, not by the pull request, which is read from the head; teams belong to their organization | data, size | none — a pattern or section header the engine does not read (`!`, `[ ]`, escaped spaces), or a file or team that cannot be read, makes the whole `github_pr` fact missing (`error` or `unavailable`); a `github_pr` lookup reads the activity list every time, and `CODEOWNERS` and the file list when the pull request changes 1 to 1,000 files (with no changed file or more than 1,000, `author_sole_code_owner` is false and neither is read), whether or not the rules use those fields, so such a failure makes every condition on `github_pr` unknown; a missing fact never matches a rule, which blocks only where the rules are written as `R-GITHUB-POSITIVE-RULES` asks; team members are read 100 at a time, and a team of more than 100 counts as not the only owner; `@org/.` and `@org/..` are not teams; patterns are matched with the engine's own glob matcher, without regular expressions built from them; the file's size is not bounded (`D-CODEOWNERS-SIZE`) | *(documented, docs/profile-format.md "GitHub pull requests" table, `author_sole_code_owner`)* |
+| `engine-facts` GitHub reads | the head repository's activity list (up to the newest 500 entries for the head branch, back to the push that created it; the head repository can be a fork) | partly — GitHub records who pushed; the fork and its branch belong to the pull-request author | data | none — the head repository's name from GitHub's answer must be `owner/name`, with a name other than `.` or `..`; pushes GitHub does not show, or a 403 or 404, make `pushed_by_author` `unavailable`; other failures fail the fact | *(documented, docs/profile-format.md "GitHub pull requests" table, `pushed_by_author`)* |
+| `engine-facts` GitHub reads | the base branch's `CODEOWNERS` file and the members of the teams it names | no — written by whoever can change the base branch, not by the pull request, which is read from the head; teams belong to their organization | data, size | none — a pattern or section header the engine does not read (`!`, `[ ]`, escaped spaces), or a file or team that cannot be read, makes the whole `github_pr` fact missing (`error` or `unavailable`); a `github_pr` lookup reads the activity list every time, and `CODEOWNERS` and the file list when the pull request changes 1 to 1,000 files (with no changed file or more than 1,000, `author_sole_code_owner` is false and neither is read), whether or not the rules use those fields, so such a failure makes every condition on `github_pr` unknown; a missing fact never matches a rule, which blocks only where the rules are written as `R-GITHUB-POSITIVE-RULES` asks; team members are read 100 at a time, and a team of more than 100 counts as not the only owner; `@org/.` and `@org/..` are not teams; patterns are matched with the engine's own glob matcher, without regular expressions built from them; a file over 128 KiB, a pattern over 1,024 characters, or matching that takes more than 50 million steps makes `github_pr` missing (`error`), and comments are removed in one pass (`P-FACT-LOOKUP-BOUNDED`) | *(documented, docs/profile-format.md "GitHub pull requests" table, `author_sole_code_owner`)* |
 | `engine-facts` GitHub App | the installation lookup and the installation-token response | no — GitHub at the fixed host, asked with the app's signed JWT | data | none — the token is kept in memory until 5 minutes before it expires and is never logged (`P-SECRETS-NOT-LOGGED`) | *(documented, docs/profile-format.md "Settings": "The token is kept until 5 minutes before it expires")* |
 | `/mcp` | `Authorization` header: `pm_` API token or OAuth access token | yes | data | none — API tokens go to the token store, other tokens to the OAuth server (`P-AUTH-REQUIRED`) | *(documented, docs/mcp.md "Authentication")* |
 | `/mcp` `list_profiles` | none | — | — | — | *(documented, docs/mcp.md "Tools")* |
@@ -552,8 +561,9 @@ they are security-relevant.
 - GitHub facts: one snapshot per decision and 5 s for all of them; at most
   1,000 changed files, 250 commits, 300 check runs, 100 commit statuses and
   100 workflow runs; 1 to 100 globs per path list *(documented,
-  docs/profile-format.md "One snapshot")*. `pushed_by_author` reads the
-  newest 100 pushes; older ones make it `unavailable` *(documented,
+  docs/profile-format.md "One snapshot")*. `pushed_by_author` reads up to 5
+  pages of 100 activity entries, back to the push that created the branch;
+  older pushes make it `unavailable` *(documented,
   docs/profile-format.md "GitHub pull requests" table)*.
 - Model calls: 10 s timeout (gateway and HTTP adapter default); fallback
   models are tried in order *(documented, docs/models.md)*.
@@ -590,7 +600,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-facts | serialization/reconstruction | claimed | tile PNGs are decoded by the engine's own decoder (8-bit, non-interlaced only); GeoJSON tiles are parsed and reduced to point lists; GitHub answers are JSON checked field by field; `CODEOWNERS` is read by the engine's own parser, and a pattern or section header it does not read makes the fact missing; anything else is `error` | §1.11 `P-FACTS-NEVER-GUESSED` | *(documented, docs/profile-format.md "Missing GitHub facts": "an answer of the wrong shape"; maintainer, 2026-10)* |
 | engine-facts | reference lifecycle | claimed | tiles are cached for a day in memory (64 entries) and in the Workers cache; a failed load is not kept; a GitHub App's installation tokens are kept in memory until 5 minutes before they expire, never stored | §1.11 `P-FACT-LOOKUP-BOUNDED`, `P-SECRETS-NOT-LOGGED` | *(documented, docs/profile-format.md "Tiles are cached for a day"; "Settings")* |
 | engine-facts | concurrency/reentrancy | claimed | a tile load is shared between lookups in one isolate and is not cancelled by one lookup's timeout; the GitHub facts of one decision read each part once, at the same time, and read the pull request again after its files, so a push in between is `stale` | §1.11 `P-FACT-LOOKUP-BOUNDED`, `P-GITHUB-FACTS-FOR-HEAD` | *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)* |
-| engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles, ≤ 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s for all GitHub facts of a decision, ≤ 1,000 files, ≤ 250 commits, ≤ 300 check runs, ≤ 100 statuses and workflow runs, ≤ 100 pushes, ≤ 100 globs per list matched in time linear in pattern and path length; `CODEOWNERS` patterns go through the same matcher, once per changed file and pattern, but the file's size is not bounded (`D-CODEOWNERS-SIZE`) | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)* |
+| engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles, ≤ 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s for all GitHub facts of a decision, ≤ 1,000 files, ≤ 250 commits, ≤ 300 check runs, ≤ 100 statuses and workflow runs, ≤ 5 pages of 100 activity entries, ≤ 100 globs per list matched in time linear in pattern and path length; `CODEOWNERS` patterns go through the same matcher, once per changed file and pattern, from a file of at most 128 KiB with patterns of at most 1,024 characters, and at most 50 million matching steps per decision | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)* |
 | engine-facts | x-prompt-injection | N/A — the model does not see the facts, and facts do not reach the model | — | — | *(documented, docs/profile-format.md "The model does not see the facts")* |
 | engine-facts | x-probabilistic-result | N/A — facts are measured, not estimated | — | — | *(documented, docs/profile-format.md "Facts are computed by spatial operations instead")* |
 | engine-callbacks | numeric domain | claimed | at most 6 attempts with fixed delays (1 min, 5 min, 30 min, 2 h, 12 h); timestamps are Unix seconds | §1.11 `P-CALLBACK-SIGNED` | *(documented, docs/reviews.md "Callbacks")* |
@@ -858,17 +868,20 @@ what voids it.
   geometry: at most 1000 positions, 200 samples, 16 flood tiles, 9 shelter
   tiles, a 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour) and 10 s per tile load;
   for GitHub facts 5 s per decision, at most 1,000 files, 250 commits, 300
-  check runs, 100 statuses, 100 workflow runs and the newest 100 pushes,
-  and globs matched without regular expressions; reading the base branch's
-  `CODEOWNERS` is the exception, its size is not bounded (`D-CODEOWNERS-SIZE`);
+  check runs, 100 statuses, 100 workflow runs and up to 5 pages of 100 activity entries,
+  and globs matched without regular expressions; the base branch's
+  `CODEOWNERS` is read only up to 128 KiB, with patterns of at most 1,024
+  characters, its comments removed in one pass, and at most 50 million
+  steps of matching the changed files against its patterns per decision;
   exceeding a bound is `error` or `timeout`, never a hang. Symptom: `hang`,
   `unbounded-allocation`. Tier: correctness-only.
   *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)*.
   Voided by: nothing found. Search:
-  `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" src/facts.ts src/facts-gsi.ts src/facts-routing.ts src/facts-github.ts`
+  `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" src/facts.ts src/facts-gsi.ts src/facts-routing.ts src/facts-github.ts src/codeowners.ts`
   — the limits at `src/facts.ts:111`, `src/facts.ts:110` (GitHub),
   `src/facts-gsi.ts:103`, `src/facts-gsi.ts:140`, `src/facts-routing.ts:29`,
-  `src/facts-github.ts:26` and `src/facts-github.ts:30`.
+  `src/facts-github.ts:26`, `src/facts-github.ts:28`, `src/facts-github.ts:32` and, for
+  `CODEOWNERS`, `src/codeowners.ts:24` to `src/codeowners.ts:28`.
 - **`P-DECISION-LOGGED-FIRST`** — every decision made with a normal token is
   stored in D1, with its profile version, model, answers, facts, rule, client
   name and state hash, before it is returned; if the log cannot be written
@@ -936,9 +949,9 @@ what voids it.
   engine. Search: `grep -n "sign(\|x-pointsman-signature" src/callbacks.ts` —
   the one send site at `src/callbacks.ts:69` always signs. A receiver that
   does not verify is a §1.14 misuse.
-- **`P-GITHUB-READ-ONLY`** — GitHub facts only read: the engine sends GET requests to the fixed host `api.github.com` and, with a GitHub App, one POST that creates an installation token; it never changes a repository, a pull request or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request. Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `src/facts-github.ts` header: "this file only sends GET requests to the GitHub API"; docs/profile-format.md "Settings": "Making the token is the only request that is not a read")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" src/facts-github.ts` — the GET at `src/facts-github.ts:202` and the token POST at `src/facts-github.ts:156`, both with `redirect: 'manual'`, and the 3xx check at `src/facts-github.ts:190`.
-- **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub facts of a decision describe the head commit the request names, read as one snapshot: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub fact of the decision is `stale` (missing); the pull request is read again after its file list, and a push in between makes the facts that use the file list (`github_paths`, and `github_pr` through `author_sole_code_owner`) `stale`; `github_checks` is read by the head commit id; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" src/facts-github.ts` — the head checks at `src/facts-github.ts:480`, `src/facts-github.ts:489` and `src/facts-github.ts:514`.
-- **`P-GITHUB-REQUIRED-CHECKS`** — `github_checks` counts only the required checks of the base branch (its rulesets and its protection) and the workflows that a ruleset requires, on the head commit: a check that a rule ties to an app counts only from that app; a commit status counts only where any app may report; a required workflow counts only through the run GitHub started for the ruleset, never through a workflow at the same path that the pull request can change; a check run and a status that disagree give the stricter result; with no required checks `green` is false; only the check named by the deployment's `FACTS_GITHUB_IGNORE_CHECK` is left out. Symptom: `x-check-bypass`, `wrong-output`. Tier: security-critical. *(documented, docs/profile-format.md "One snapshot": "A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset")*. Voided by: nothing in the engine; it is never stronger than the base branch's rules (`D-GITHUB-CHECK-NAMES`). Search: `grep -n "required_workflows\|r.app === null" src/facts-github.ts` — the ruleset-run flag at `src/facts-github.ts:383` and its filter at `src/facts-github.ts:579` and the app match at `src/facts-github.ts:583`.
+- **`P-GITHUB-READ-ONLY`** — GitHub facts only read: the engine sends GET requests to the fixed host `api.github.com` and, with a GitHub App, one POST that creates an installation token; it never changes a repository, a pull request or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request. Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `src/facts-github.ts` header: "this file only sends GET requests to the GitHub API"; docs/profile-format.md "Settings": "Making the token is the only request that is not a read")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" src/facts-github.ts` — the GET at `src/facts-github.ts:204` and the token POST at `src/facts-github.ts:158`, both with `redirect: 'manual'`, and the 3xx check at `src/facts-github.ts:192`.
+- **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub facts of a decision describe the head commit the request names, read as one snapshot: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub fact of the decision is `stale` (missing); the pull request is read again after its file list, and a push in between makes the facts that use the file list (`github_paths`, and `github_pr` through `author_sole_code_owner`) `stale`; `github_checks` is read by the head commit id; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" src/facts-github.ts` — the head checks at `src/facts-github.ts:502`, `src/facts-github.ts:511` and `src/facts-github.ts:536`.
+- **`P-GITHUB-REQUIRED-CHECKS`** — `github_checks` counts only the required checks of the base branch (its rulesets and its protection) and the workflows that a ruleset requires, on the head commit: a check that a rule ties to an app counts only from that app; a commit status counts only where any app may report; a required workflow counts only through the run GitHub started for the ruleset, never through a workflow at the same path that the pull request can change; a check run and a status that disagree give the stricter result; with no required checks `green` is false; only the check named by the deployment's `FACTS_GITHUB_IGNORE_CHECK` is left out. Symptom: `x-check-bypass`, `wrong-output`. Tier: security-critical. *(documented, docs/profile-format.md "One snapshot": "A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset")*. Voided by: nothing in the engine; it is never stronger than the base branch's rules (`D-GITHUB-CHECK-NAMES`). Search: `grep -n "required_workflows\|r.app === null" src/facts-github.ts` — the ruleset-run flag at `src/facts-github.ts:385` and its filter at `src/facts-github.ts:601` and the app match at `src/facts-github.ts:605`.
 - **`P-OUTBOUND-PUBLIC-ONLY`** — outbound fetches from the engine and the
   bridge reach only public addresses: a `callback_url`, a client-ID metadata
   URL or a redirect target on a private or loopback address fails. Symptom:
@@ -1055,7 +1068,6 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-FACT-DATA-AS-PUBLISHED` | correctness or freshness of the data behind facts: a fact is what GSI publishes and what Valhalla routes over OpenStreetMap, dated by the tiles' `last-modified`, or what GitHub reports about a pull request (membership, signatures GitHub verified, check results, who pushed) and what the base branch's `CODEOWNERS` says; the engine checks shape and legend, not truth | `engine-facts`. Basis: stated | correctness-only | no | *(documented, docs/profile-format.md "Layers of `gsi`", "Detours"; "GitHub pull requests" table, `pushed_by_author`, `author_sole_code_owner`)* |
 | `D-GITHUB-CHECK-NAMES` | that a passing required check came from the job the integrator meant: GitHub matches a required check by its name, and by its app only when the rule names one, so whoever can push a workflow to the repository, such as the author of a pull request from the same repository, can add a job that reports that name | `engine-facts`; `github_checks` is as strong as the base branch's rules, not stronger; workflows that a ruleset requires are not affected (`P-GITHUB-REQUIRED-CHECKS`); the rules are the repository owner's (`R-GITHUB-RULES`). Basis: a maintainer ruling (2026-10) | security-critical | yes: "the required checks passed" ≠ "the intended jobs ran" | *(maintainer, 2026-10)* |
 | `D-GITHUB-CREDENTIAL-REACH` | a list of allowed repositories per profile or per token: a GitHub fact reads the pull request the state names, in any repository the deployment's GitHub credential can read, and the decision returns facts about it (booleans, numbers, a custom property value); the members of a team named in that repository's `CODEOWNERS` are read the same way | `engine-facts`; the credential's reach (a fine-grained token's repositories, a GitHub App's installations) is the boundary (`R-GITHUB-REPOSITORIES`); the API token's profile scope still applies (`P-TOKEN-SCOPE`). Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
-| `D-CODEOWNERS-SIZE` | a bound on the work of reading the base branch's `CODEOWNERS`: its size and line length are not limited, and the comment removal at `src/codeowners.ts:28` takes time that grows with the square of a line's length for some lines, so a large crafted file can use the Worker's CPU for one decision | `engine-facts`; only someone who can change the base branch can write the file; availability only; a size cap is planned. Basis: a maintainer ruling (2026-10) | correctness-only | no | *(maintainer, 2026-10)* |
 | `D-GITHUB-RATE-LIMIT` | a GitHub request budget per client or per profile: with `FACTS_GITHUB: token`, every decision of a deployment uses the same token and its rate limit, and when it is used up, GitHub facts are `error` for every client until it resets; with `FACTS_GITHUB: app`, each installation (one per repository owner) has its own installation token and limit, so a used-up installation affects the repositories of that owner, for every client | `engine-facts`; a missing fact never matches a rule (`P-FACTS-NEVER-GUESSED`), so this blocks only where the rules are written as `R-GITHUB-POSITIVE-RULES` asks, and a missing fact that stops an earlier blocking rule can let a later allowing rule match; limiting clients is `R-RATE-LIMIT`. Basis: a maintainer ruling (2026-10) | correctness-only | no | *(maintainer, 2026-10)* |
 | `D-EXACTLY-ONCE` | exactly-once callback delivery: a callback can arrive more than once when a 2xx answer is lost | `engine-callbacks`. Basis: stated | correctness-only | no | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
 | `D-BRIDGE-BROKER-ACCESS-CONTROL` | its own access control for the broker side: whoever may write entities, Decision entities or completed Task entities in the tenant can trigger decisions, resolve reviews and name `reviewedBy`; the broker's access control owns this | `bridge`. Basis: stated | security-critical | no | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control")* |

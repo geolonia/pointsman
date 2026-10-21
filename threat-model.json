@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "65ec5dae4da01027133f4861df60de3b5847f199",
+  "commit": "041a5e6f0b27cd4d49063eca05930e47a801e40e",
   "date": "2026-10-22",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 371,
+    "documented": 370,
     "inferred": 0
   },
   "components": [
@@ -1071,7 +1071,7 @@
       "property": "P-FACT-LOOKUP-BOUNDED",
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
-      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, newest 100 pushes, globs without regular expressions; CODEOWNERS size not bounded (D-CODEOWNERS-SIZE); exceeding is error or timeout",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; exceeding is error or timeout",
       "provenance": "documented",
       "source": "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"
     },
@@ -1347,13 +1347,6 @@
       "source": "maintainer ruling, 2026-10"
     },
     {
-      "property": "D-CODEOWNERS-SIZE",
-      "reason": "no bound on reading the base branch's CODEOWNERS: size and line length not limited; the comment removal in src/codeowners.ts is quadratic in a line's length for some lines; only base-branch writers can write the file; availability only; basis: a maintainer ruling (2026-10)",
-      "false_friend": false,
-      "provenance": "documented",
-      "source": "maintainer ruling, 2026-10"
-    },
-    {
       "property": "D-GITHUB-RATE-LIMIT",
       "reason": "no GitHub request budget per client or profile: with FACTS_GITHUB token all decisions share the token's rate limit and a used-up limit makes GitHub facts error for every client until it resets; with FACTS_GITHUB app each installation (one per repository owner) has its own token and limit, so a used-up installation affects that owner's repositories, for every client; a missing fact never matches a rule, so this blocks only for rules written as R-GITHUB-POSITIVE-RULES asks; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
@@ -1542,7 +1535,7 @@
     {
       "reported_as": "the same callback arrived twice",
       "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
-      "cites": "properties_not_provided[21]",
+      "cites": "properties_not_provided[20]",
       "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
     },
     {

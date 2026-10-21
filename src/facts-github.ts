@@ -16,7 +16,7 @@ import {
   FactError, FactStaleError, FactUnavailableError, GITHUB_TIMEOUT_MS,
   type FactProvider, type FactResult, type FactScope, type GitHubFactQuery, type PullRequestRef,
 } from './facts';
-import { ownersOf, parseCodeowners } from './codeowners';
+import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 
 const API = 'https://api.github.com';
@@ -451,7 +451,7 @@ export function nextCursor(link: string | null): string | null {
   }
 }
 
-const base64Text = (b64: string): string => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0)));
+const base64Bytes = (b64: string): Uint8Array => Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0));
 
 // ---- the snapshot ----
 
@@ -674,7 +674,12 @@ class Snapshot {
       const file = found.find((f) => f !== null);
       if (file === undefined) return null;
       if (!isObject(file) || file.encoding !== 'base64' || typeof file.content !== 'string') throw new FactError('GitHub CODEOWNERS: unexpected answer');
-      return base64Text(file.content);
+      // Too large: refused before decoding (by GitHub's size, and by the base64 text), and after.
+      const tooLarge = new FactError(`GitHub CODEOWNERS: larger than ${MAX_CODEOWNERS_BYTES} bytes`);
+      if ((typeof file.size === 'number' && file.size > MAX_CODEOWNERS_BYTES) || file.content.length > MAX_CODEOWNERS_BYTES * 2) throw tooLarge;
+      const bytes = base64Bytes(file.content);
+      if (bytes.length > MAX_CODEOWNERS_BYTES) throw tooLarge;
+      return new TextDecoder().decode(bytes);
     });
   }
 
@@ -692,7 +697,8 @@ class Snapshot {
    * names of a renamed file), by CODEOWNERS on the base branch. A team owns
    * as its members. False without CODEOWNERS, for a file without an owner,
    * for an email owner, for no changed files, and for more files than are
-   * read. CODEOWNERS or a team that cannot be read fails the fact.
+   * read. CODEOWNERS or a team that cannot be read fails the fact, and so
+   * does CODEOWNERS over its limits (src/codeowners.ts).
    */
   soleCodeOwner(): Promise<boolean> {
     return this.part('owner', async () => {
@@ -700,12 +706,12 @@ class Snapshot {
       if (pr.files === 0 || pr.files > MAX_FILES) return false;
       const [files, text] = await Promise.all([this.files(), this.codeowners()]);
       if (text === null) return false;
-      const rules = parseCodeowners(text);
+      const ownersOf = ownerLookup(parseCodeowners(text));
       const author = pr.author.toLowerCase();
       const owners = new Set<string>();
       for (const names of files) {
         for (const name of names) {
-          const o = ownersOf(rules, name);
+          const o = ownersOf(name);
           if (!o || o.length === 0) return false;
           for (const x of o) owners.add(x);
         }
