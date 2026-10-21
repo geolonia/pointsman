@@ -6,6 +6,7 @@
 import { resolvePath } from './input';
 import { FACT_FIELDS } from './policy';
 import type { DetourMode, Fact, FactSpec, FactType, GitHubFactType, SpatialFactType } from './types';
+import { WORKFLOW_DEFAULTS, WORKFLOW_FIELDS, type WorkflowSettings } from './workflows';
 
 export type Position = [number, number];
 export type Geometry = { type: 'Point'; coordinates: Position } | { type: 'LineString'; coordinates: Position[] };
@@ -37,6 +38,8 @@ export interface GitHubFactQuery {
   except?: string[];
   /** For `github_property`. */
   property?: string;
+  /** For `github_workflows`: entries added to the default settings. */
+  workflows?: Partial<WorkflowSettings>;
 }
 
 export type FactQuery = SpatialFactQuery | GitHubFactQuery;
@@ -142,6 +145,16 @@ export function toPullRequest(value: unknown): PullRequestRef | null {
   return { owner: m[1]!, repo: m[2]!, number, head: head.toLowerCase() };
 }
 
+/** The `github_workflows` settings a fact gives. */
+function workflowSettingsOf(spec: FactSpec): Partial<WorkflowSettings> {
+  const out: Partial<WorkflowSettings> = {};
+  for (const key of Object.keys(WORKFLOW_DEFAULTS) as (keyof WorkflowSettings)[]) {
+    const v = spec[key];
+    if (v !== undefined) out[key] = v;
+  }
+  return out;
+}
+
 /** The query for a fact, or the reason it cannot be asked. */
 function queryFor(spec: FactSpec, state: unknown): FactQuery | 'no_location' | 'no_pr' {
   const value = resolvePath(state, spec.at);
@@ -154,6 +167,7 @@ function queryFor(spec: FactSpec, state: unknown): FactQuery | 'no_location' | '
       ...(spec.paths !== undefined && { paths: spec.paths }),
       ...(spec.except !== undefined && { except: spec.except }),
       ...(spec.property !== undefined && { property: spec.property }),
+      ...(spec.type === 'github_workflows' && { workflows: workflowSettingsOf(spec) }),
     };
   }
   const geometry = toGeometry(value);
@@ -254,7 +268,7 @@ export async function lookupFacts(
  * open, by a member who pushed every commit and is not the only code
  * owner, with one changed file (10 lines) that matches every path list,
  * signed commits and one required check that passed; every custom property
- * is unset.
+ * is unset. One workflow file changed, with no findings.
  */
 export class MockFactProvider implements FactProvider {
   async lookup(query: FactQuery): Promise<FactResult> {
@@ -280,6 +294,8 @@ export class MockFactProvider implements FactProvider {
         return { values: { required: 1, green: true, pending: false, failed: false }, source: 'mock' };
       case 'github_property':
         return { values: { value: 'unset' }, source: 'mock' };
+      case 'github_workflows':
+        return { values: { ...Object.fromEntries(WORKFLOW_FIELDS.map((f) => [f, 0])), changed: 1, bytes: 120, detail: '' }, source: 'mock' };
     }
   }
 }

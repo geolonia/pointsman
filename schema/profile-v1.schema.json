@@ -182,8 +182,8 @@
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "type": {
-          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property.",
-          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property"]
+          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes.",
+          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows"]
         },
         "at": {
           "description": "JSONPath into the request state: a GeoJSON Point or LineString (WGS 84) for spatial facts, for example $.location.value; a pull request { repo, number, head } for GitHub facts.",
@@ -222,6 +222,36 @@
           "description": "For github_property: the name of a repository custom property.",
           "type": "string",
           "pattern": "^[A-Za-z0-9_$#-]{1,75}$"
+        },
+        "privileged_triggers": {
+          "description": "For github_workflows: more triggers that run in the base repository's context, added to the defaults.",
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z_]{1,50}$" }
+        },
+        "inert_actions": {
+          "description": "For github_workflows: more actions (owner/repo or owner/*) known not to run workspace content, added to the defaults (actions/checkout, actions/upload-artifact).",
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/actionName" }
+        },
+        "safe_contexts": {
+          "description": "For github_workflows: more github.* paths that are safe in a script (numbers, ids, commit ids), added to the defaults. Exact paths in lower case.",
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/githubContext" }
+        },
+        "base_refs": {
+          "description": "For github_workflows: more expressions that name the base in a checkout's ref, added to the defaults (github.sha, github.ref).",
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/githubContext" }
+        },
+        "git_actions": {
+          "description": "For github_workflows: actions (owner/repo or owner/*) that need the git credentials of a checkout.",
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/actionName" }
+        },
+        "pin_exempt": {
+          "description": "For github_workflows: actions (owner/repo or owner/*) that need not be pinned to a commit.",
+          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/actionName" }
         }
       },
       "allOf": [
@@ -242,7 +272,7 @@
           "then": { "not": { "properties": { "route": true }, "required": ["route"] } }
         },
         {
-          "if": { "properties": { "type": { "enum": ["github_pr", "github_paths", "github_checks", "github_property"] } }, "required": ["type"] },
+          "if": { "properties": { "type": { "enum": ["github_pr", "github_paths", "github_checks", "github_property", "github_workflows"] } }, "required": ["type"] },
           "then": {
             "not": {
               "anyOf": [
@@ -262,8 +292,33 @@
           "if": { "properties": { "type": { "const": "github_property" } }, "required": ["type"] },
           "then": { "properties": { "property": true }, "required": ["property"] },
           "else": { "not": { "properties": { "property": true }, "required": ["property"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "github_workflows" } }, "required": ["type"] },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "properties": { "privileged_triggers": true }, "required": ["privileged_triggers"] },
+                { "properties": { "inert_actions": true }, "required": ["inert_actions"] },
+                { "properties": { "safe_contexts": true }, "required": ["safe_contexts"] },
+                { "properties": { "base_refs": true }, "required": ["base_refs"] },
+                { "properties": { "git_actions": true }, "required": ["git_actions"] },
+                { "properties": { "pin_exempt": true }, "required": ["pin_exempt"] }
+              ]
+            }
+          }
         }
       ]
+    },
+    "actionName": {
+      "description": "An action as owner/repo, or owner/* for every repository of the owner.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?:\\*|(?!\\.\\.?$)[A-Za-z0-9._-]{1,100})$"
+    },
+    "githubContext": {
+      "description": "A github.* path in lower case, for example github.event.pull_request.number.",
+      "type": "string",
+      "pattern": "^github(?:\\.[a-z0-9_-]{1,100}){1,10}$"
     },
     "glob": {
       "description": "A path glob: * (any characters but /), ** (any folders), ? (one character). Not starting with /, without .. parts, without [ ] { } ! or backslashes.",

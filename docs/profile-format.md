@@ -587,6 +587,7 @@ decide on a state the client did not see.
 | `github_paths` | `any`, `all` (booleans), `count` (number) | The changed files that match `paths` and none of `except`: `any` is true when there is one, `all` when every changed file matches, `count` says how many. `all` is false when no file changed. A renamed file has two names: it counts for `any` when one of them matches, and for `all` only when both do. |
 | `github_checks` | `required` (number), `green`, `pending`, `failed` (booleans) | The required checks of the base branch (rulesets and branch protection) and the workflows that a ruleset requires, on the head commit. `green`: every one passed (success, neutral or skipped). `failed`: one failed. `pending`: none failed, and one has not finished or not reported yet. `green` is false when there are no required checks. |
 | `github_property` | `value` (text) | The repository's custom property `property`. A property that is not set is `unset`: a known value, not a missing fact. A list (multi-select) is sorted and joined with commas. |
+| `github_workflows` | counts (numbers), `detail` (text, not for rules) | The GitHub Actions files the pull request changes: see [GitHub workflows](#github-workflows). |
 
 Fact settings:
 
@@ -668,7 +669,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | `FACTS_GITHUB` | GitHub facts |
 |---|---|
 | `off` (default) | none: every GitHub fact is missing (`unavailable`) |
-| `mock` | fixed answers for development and tests: an open pull request by a member who pushed every commit and is not the only code owner, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset` |
+| `mock` | fixed answers for development and tests: an open pull request by a member who pushed every commit and is not the only code owner, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset`; one changed workflow file with no findings |
 | `token` | read with the Worker secret `FACTS_GITHUB_TOKEN` |
 | `app` | read as a GitHub App: `FACTS_GITHUB_APP_ID` and the Worker secret `FACTS_GITHUB_APP_PRIVATE_KEY` (the PEM file GitHub gives you) |
 
@@ -689,8 +690,8 @@ Permissions (all read) for a fine-grained token or an app:
 
 | Permission | For |
 |---|---|
-| Pull requests | `github_pr`, `github_paths` |
-| Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS` |
+| Pull requests | `github_pr`, `github_paths`, `github_workflows` |
+| Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS`, the files `github_workflows` reads |
 | Metadata | always (every app has it) |
 | Checks, Commit statuses | `github_checks` |
 | Actions | `github_checks`, when a ruleset requires workflows |
@@ -700,4 +701,115 @@ Permissions (all read) for a fine-grained token or an app:
 The required checks come from the branch's rules and its protection, as
 GitHub shows them to anyone who can read the repository: no administration
 permission is needed.
+
+### GitHub workflows
+
+A `github_workflows` fact reads the GitHub Actions files a pull request
+changes, so a profile can decide whether the change is safe to merge: pass,
+fix, or a person checks. It is a GitHub fact like the others: same snapshot,
+same `head` check, same [missing reasons](#missing-github-facts). The client
+sends only the pull request; Pointsman reads the files itself.
+
+```yaml
+facts:
+  - name: wf
+    type: github_workflows
+    at: $.pull_request
+    pin_exempt: ["example-org/*"]
+```
+
+The example profile [`workflow-check`](../examples/profiles/workflow-check.yaml)
+uses it.
+
+**What it reads.** The changed files in this scope, at the head commit and
+at the base tip (`base.sha` of the pull request):
+
+- workflows: `.github/workflows/*.yml` and `*.yaml` (not in subfolders:
+  GitHub does not run those);
+- local actions: every file in a folder with an `action.yml` or
+  `action.yaml`, at head or at the base (also `index.js`, a `Dockerfile` or
+  scripts next to it). The folders come from the commit's file tree;
+- scanner settings of zizmor and pinact: `zizmor.yml`, `.github/zizmor.yml`,
+  `.pinact.yml`, `.github/pinact.yml`, `.github/.pinact.yml`, each also as
+  `.yaml`.
+
+Workflows and `action.yml` files are parsed; the other files only count.
+Nothing is run, and `${{ }}` expressions are read with a small tokenizer,
+not evaluated. A file renamed out of the scope counts as removed.
+
+**Fields.** Rule fields are single values, so the fact counts over all files.
+Every field is a number, except `detail`.
+
+| Field | Counts |
+|---|---|
+| `changed`, `removed` | changed (added, changed, renamed) and removed files in the scope |
+| `unparsed` | files that could not be parsed, are over a limit, or have an unexpected shape ([below](#parser-limits)) |
+| `bytes` | the size of the changed files at head |
+| `privileged` | changed workflows with a trigger that runs in the base repository's context, with its secrets and a write token (`privileged_triggers`) |
+| `privileged_new` | privileged triggers that the version at the base does not have (a new file: all of them) |
+| `head_checkout` | privileged jobs that may check out code other than the base. An allow-list: a checkout is the base only when `repository` is empty, the repository itself or `${{ github.repository }}`, and `ref` is empty, a literal branch or tag (not `refs/pull/…`, not a commit id), or exactly one expression on `base_refs`. A ref from `steps.*.outputs`, `env` or `needs` counts. So does a `run:` with `gh pr checkout`, `gh repo clone`, or `git` `checkout`, `switch`, `fetch`, `reset`, `pull`, `clone` or `worktree`. |
+| `pwn_request` | of those, jobs with any step that may run repository content: a `run:`, a local action, or an action not on `inert_actions`. Anywhere in the job, also before the checkout: an action that ran before it still runs its `post:` step later, in the checked-out code. |
+| `artifact_in_privileged` | privileged jobs that download an artifact of another run: `actions/download-artifact` with `run-id` or `github-token`, `dawidd6/action-download-artifact`, `gh run download`, the artifacts API in a `github-script` `script:` |
+| `remote_reusable` | privileged jobs that call a reusable workflow of another repository, and every job with `secrets: inherit` |
+| `secrets_new` | secrets a privileged job reads at head but not at the base (also in `if:` and the workflow's `env:`; `toJSON(secrets)` counts as a new one) |
+| `injection` | untrusted expressions in a `run:` or a `github-script` `script:`: every reference to `github` or below it that is not on `safe_contexts`. Also bare `github`, `*`, an index (`github['event']` is `github.event`), references inside functions (`toJSON(github.event)`), and expressions that cannot be read. Values that reach a script another way (through `env`, step outputs, files) are not counted. |
+| `permissions_missing` | jobs with no `permissions:` at job or workflow level (the repository's default applies, which the file does not show) |
+| `write_all` | `write-all` in a job, and workflows with any write scope at workflow level |
+| `write_new` | write scopes a job has at head but not at the base (a job block replaces the workflow block) |
+| `persisted` | `actions/checkout` without `persist-credentials: false`, in jobs with no git step (a `run:` with `git push`, `commit`, `tag`, `fetch` or `pull`, or `gh`; or an action on `git_actions`). An expression counts as on. |
+| `unpinned` | `uses:` not pinned to a 40-character commit id (actions on `pin_exempt` need not be), and images without a `@sha256:` digest (`docker://…`, `container:`, `services:`, a Docker action's `image`). Local `./` actions are not counted. |
+| `suppressions_new` | added `zizmor: ignore` comments, and changed or removed scanner settings |
+| `local_unresolved` | changed local actions (once per folder: only `action.yml` is parsed, not the code), changed reusable workflows (`workflow_call`: their callers are not read), and privileged jobs that call a local reusable workflow (it is not read) |
+| `detail` | text: the first 20 findings with file and line, for people and the log. Rules cannot read it, like `route` of `detour`. |
+
+Workflow files, action files and job ids are compared by name: a file at
+the base is the same name, or the earlier name of a renamed file. A version
+at the base that cannot be parsed counts as none, so everything in it is new.
+
+**Settings.** Each is a list that is added to the defaults; a profile
+cannot remove a default.
+
+| Field | Default | Entries |
+|---|---|---|
+| `privileged_triggers` | `pull_request_target`, `workflow_run`, `issue_comment`, `issues`, `discussion`, `discussion_comment`, `fork`, `watch`, `gollum` | trigger names |
+| `inert_actions` | `actions/checkout`, `actions/upload-artifact` | actions known not to run workspace content: `owner/repo`, or `owner/*` for every repository of that owner (exactly that owner: `example-org/*` does not cover `example-org-x/…`) |
+| `safe_contexts` | `github.sha`, `github.run_id`, `github.run_number`, `github.run_attempt`, `github.job`, `github.event_name`, `github.repository`, `github.repository_id`, `github.repository_owner`, `github.repository_owner_id`, `github.server_url`, `github.api_url`, `github.workspace`, `github.event.number`, `github.event.pull_request.number`, `github.event.issue.number`, `github.event.pull_request.head.sha`, `github.event.pull_request.base.sha`, `github.event.workflow_run.id`, `github.event.workflow_run.head_sha` | exact `github.*` paths in lower case that are safe in a script: numbers, ids, commit ids |
+| `base_refs` | `github.sha`, `github.ref` | expressions that name the base in a checkout's `ref` (for the default triggers, both are the base branch or the default branch) |
+| `git_actions` | none | actions that need the checkout's git credentials |
+| `pin_exempt` | none | actions that need not be pinned to a commit, for example your organization's own actions at a major tag |
+
+#### Parser limits
+
+The files are written by the pull request's author. Each of these makes a
+file `unparsed`, so a profile can send it to a person; it is never skipped,
+and an unparsed file counts nothing else:
+
+- YAML 1.2 core schema: no directives (`%YAML`), no custom tags, no merge
+  keys (`<<`, which GitHub does not accept), no duplicate keys, keys must be
+  text, one document per file.
+- At most 100 aliases and 50,000 values per file once aliases are expanded.
+- At most 50 parsed files per pull request (the rest are `unparsed`, and not
+  read), and 256 KB per file; a file that is not UTF-8 text.
+- An unexpected shape at a key that matters: `on`, `jobs`, `steps`,
+  `permissions`, `uses`, `with`, `run`, `secrets`, `container`, `services`,
+  `runs`. For example `steps` that is not a list, a step with both `uses`
+  and `run`, an expression in `uses`, a `${{` that is not closed, or a key
+  GitHub reads in lower case written another way (`Run:`).
+- Inputs under `with:` are read without case, as actions read them
+  (`Persist-Credentials` is `persist-credentials`).
+
+More than 1,000 changed files makes the fact missing (`error`), as for
+`github_paths`. So does a repository tree that GitHub cuts short (very large
+repositories).
+
+**Not covered yet.** Whether a pinned commit belongs to the action's
+repository and not only to a fork of it (an impostor commit) is not checked.
+Local reusable workflows and the code of local actions are not read: they
+go to a person (`local_unresolved`).
+
+**Safety rules for profiles.** As for every GitHub fact: a missing fact
+gives "not decided yet" (`retry`), never a pass; the pass rule names every
+condition as a known value; AI answers only make the result stricter (they
+can send a change to a person, never pass it), because the files and the
+pull request text are written by its author.
 

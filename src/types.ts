@@ -32,7 +32,7 @@ export type Question = NoulQuestion | ChoiceQuestion | ScoreQuestion;
 /** Kinds of spatial fact. */
 export type SpatialFactType = 'inside' | 'nearest' | 'detour';
 /** Kinds of GitHub pull-request fact (docs/profile-format.md#github-pull-requests). */
-export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property';
+export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows';
 /** Kinds of fact; their fields are in FACT_FIELDS (src/policy.ts). */
 export type FactType = SpatialFactType | GitHubFactType;
 
@@ -60,6 +60,16 @@ export interface FactSpec {
   except?: string[];
   /** For `github_property`: the name of a repository custom property. */
   property?: string;
+  /**
+   * For `github_workflows`: entries added to the defaults
+   * (src/workflows.ts, docs/profile-format.md#github-workflows).
+   */
+  privileged_triggers?: string[];
+  inert_actions?: string[];
+  safe_contexts?: string[];
+  base_refs?: string[];
+  git_actions?: string[];
+  pin_exempt?: string[];
 }
 
 export type DetourMode = 'drive' | 'walk';

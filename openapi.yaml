@@ -848,7 +848,7 @@ components:
           properties:
             missing: { const: false }
             values:
-              description: Field values of the fact type (inside, nearest, detour, github_pr, github_paths, github_checks, github_property); null when a field has no value.
+              description: Field values of the fact type (inside, nearest, detour, github_pr, github_paths, github_checks, github_property, github_workflows); null when a field has no value.
               type: object
               additionalProperties: { type: [string, number, boolean, 'null'] }
             source: { type: string, description: Where the value came from. }
