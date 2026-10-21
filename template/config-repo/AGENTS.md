@@ -39,10 +39,10 @@ and every profile it requires. Such a token can also make real decisions and
 answer reviews, and a replay shows decision ids, refs and people's answers,
 so the person runs the replay and pastes the summary: the counts, and only
 those listed decisions whose refs and answers hold no personal data. Use a
-token with the
-smallest scope (only those profiles, and short-lived:
-`node engine/scripts/tokens.mjs create --client replay --profiles <ids> --expires 1d --remote --config wrangler.jsonc`),
-and never leave it in `POINTSMAN_TOKEN` for test cases.
+token with the smallest scope, short-lived, for only those profiles
+(comma-separated: `node engine/scripts/tokens.mjs create --client replay --profiles <id>,<required id> --expires 1d --remote --config wrangler.jsonc`;
+revoke it afterwards with `tokens.mjs revoke --hash <hash>`, the hash that
+`create` printed), and never leave it in `POINTSMAN_TOKEN` for test cases.
 
 ## Commands
 
@@ -53,17 +53,17 @@ it out again when `engine.json` changes; Node.js 24 or newer):
 # the first time:
 git clone https://github.com/geolonia/pointsman engine
 # the first time, and after every change of engine.json:
-git -C engine fetch origin && git -C engine checkout "$(jq -r .ref engine.json)" && pnpm --dir engine install
+git -C engine fetch origin && git -C engine checkout "$(jq -r .ref engine.json)" && pnpm --dir engine install --frozen-lockfile
 ```
 
 ```sh
 node engine/scripts/validate-profiles.mjs profiles
 node engine/scripts/explain-profile.mjs profiles/<id>.yaml          # --lang ja
 node engine/scripts/test-profile.mjs cases --profiles profiles
-# with real requests, test token only:
-POINTSMAN_TOKEN=<test token> node engine/scripts/test-profile.mjs cases --profiles profiles --url <pointsman url>
-# run by the person, with a token that is not a test token (see Tokens):
-POINTSMAN_TOKEN=<replay token> node engine/scripts/replay-profile.mjs profiles/<id>.yaml --url <pointsman url>
+# with real requests: needs POINTSMAN_TOKEN, a test token the person set
+node engine/scripts/test-profile.mjs cases --profiles profiles --url <pointsman url>
+# run by the person, with POINTSMAN_TOKEN a replay token (see Tokens):
+node engine/scripts/replay-profile.mjs profiles/<id>.yaml --url <pointsman url>
 ```
 
 A changed profile needs a `version` higher than on `main`: raise it once per
