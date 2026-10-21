@@ -7,7 +7,8 @@ log; the notes say how. Each release is a tag on `main`; its version is in
 server's version). A deployment pins
 the engine by commit in its config repository: to use a release, set
 `ref` in `engine.json` to the commit of its tag
-(`git rev-parse 'v0.1.0^{commit}'`, which also works for annotated tags).
+(`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
+works for annotated tags).
 
 ## 0.2.0 (2026-10-21)
 
@@ -18,14 +19,14 @@ the engine by commit in its config repository: to use a release, set
   like an unknown one (401), and KV deletes the key then. `rotate` asks for
   `--expires` or `--no-expiry` when the old token had an expiry; `list`
   shows the expiry. The README has a rotation procedure without downtime
-  (#99).
+  (#121).
 - Detour facts name the date of the routing data in `source`, like the GSI
   facts: `… routed with Valhalla (routing data 2026-10-17 時点)`, from the
   routing server's `GET /status` (`tileset_last_modified`), kept for a day.
   `日付不明` when the server cannot say or answers more than a second after
   the routes; a failed `/status` is asked again after five minutes. It is one
   more call to the routing server (with its API key), about once a day per
-  Worker instance (#114).
+  Worker instance (#120).
 - Example profile `road-restriction-check` v4 looks up the way around by
   car (`drive`) for a closed section, as context: no rule reads it (#122).
 
