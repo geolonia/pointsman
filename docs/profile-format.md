@@ -627,9 +627,12 @@ without regular expressions, so a long pattern cannot slow a decision down.
   `github_pr` still knows the number of files.
 - Commits: up to 250 (GitHub lists no more).
 - Pushes to the head branch (for `pushed_by_author`): 100 per page, newest
-  first, page by page back to the push that created the branch, at most 5
-  pages (500 pushes). Pushes before that, or on a later page GitHub does
-  not show, stay unknown.
+  first, page by page until the push that created the branch, at most 5
+  pages (500 pushes).
+  - When the creation push is found, older pushes belong to an earlier
+    branch with the same name and are left out.
+  - When it is not found within 5 pages, older pushes stay unknown.
+  - Pushes on a later page that GitHub does not show stay unknown too.
 - Check runs: up to 300 on the head commit. Commit statuses and workflow
   runs: up to 100.
 - A workflow that a ruleset requires counts only through a run that GitHub
