@@ -239,9 +239,9 @@ footer a:hover { color: var(--fg); }
 }
 .phrase { display: inline-block; }
 
-/* The menu needs about 1120px on one line (Japanese is the widest). */
+/* The header needs about 880px on one line (English is the widest). */
 header.nav nav a, .lang { white-space: nowrap; }
-@media (max-width: 1180px) {
+@media (max-width: 960px) {
   header.nav nav { display: none; }
 }
 @media (max-width: 900px) {
