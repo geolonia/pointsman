@@ -28,6 +28,10 @@ account IDs, real profiles or internal URLs. `pnpm check:public` looks for
 common cases. Real deployments keep their configuration in a private
 repository (see [docs/deployment.md](docs/deployment.md)).
 
+A new example profile goes in `examples/profiles/` and is linked from one
+use-case topic, `examples/<topic>/README.md` (see
+[examples/README.md](examples/README.md)). A test checks this.
+
 ## Sign-off (DCO)
 
 `Signed-off-by: Name <email>` in a commit states that you agree to the

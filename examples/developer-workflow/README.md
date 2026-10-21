@@ -21,5 +21,17 @@ The profile is visible through MCP, so agents can ask it too
 
 ## Try it
 
-The [README](../../README.md#development) runs this profile locally with a
-mock model, in a few minutes.
+Run Pointsman locally with a mock model (see the
+[README](../../README.md#development)), then:
+
+```sh
+node scripts/tokens.mjs create --client demo --profiles issue-triage --local
+export POINTSMAN_TOKEN=pm_…   # the token printed above
+curl -s localhost:8787/v1/decide/issue-triage \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"state": {"issue": {"title": "Login page is blank"}}}'
+```
+
+The mock model gives fixed answers. For real answers, see
+[docs/models.md](../../docs/models.md).

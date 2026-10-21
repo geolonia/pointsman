@@ -1,15 +1,16 @@
 # Pointsman for DevOps
 
-A deploy that hangs can block a pipeline for an hour or more before a
-timeout stops it. A simple rule catches most cases: while the stack gets new
-events, the deploy is moving. Pointsman is asked only when the stack has been
-quiet for a while, and the deploy is stopped only when it is clearly stuck.
+An AWS CloudFormation deploy that hangs can block a pipeline for a long time
+before a timeout stops it. A simple rule catches most cases: while the stack
+gets new events, the deploy is moving. Pointsman is asked only when the
+stack has been quiet for a while, and the deploy is stopped only when it is
+clearly stuck.
 
 ## Profile
 
 | Profile | Decides | Actions |
 |---|---|---|
-| [`deploy-progress`](../profiles/deploy-progress.yaml) | From the recent stack events and the quiet time: is the deploy stuck, and which phase is it in? | `cancel`, `review`, `continue` |
+| [`deploy-progress`](../profiles/deploy-progress.yaml) | From the recent stack events and the quiet time: is the deploy stuck? It also asks which phase the deploy is in, for the people who look at it; no rule uses that. | `cancel`, `review`, `continue` |
 
 ## Client
 

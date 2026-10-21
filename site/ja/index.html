@@ -212,13 +212,13 @@
     <div class="grid3">
       <div class="card">
         <h3>防災・災害対応</h3>
-        <p>報告された通行止めを、公開の地図に載せる前に確認します。浸水想定区域、近くの避難場所、迂回路は公開の地図データから調べます。急ぎの報告とはっきりしない報告は人に回します。歩く人が避難場所へ行けなくなるときは知らせます。ブリッジを通して FIWARE と連携できます。</p>
+        <p>報告された通行止めを、公開の地図に載せる前に確認します。浸水想定区域と近くの避難場所は日本の公開データから、迂回路はルート検索サーバーから調べます。急ぎの報告とはっきりしない報告は人に回します。歩く人が避難場所へ行けなくなるときは、結果が <code>alert</code> になります。ブリッジを通して FIWARE と連携できます。</p>
         <div class="outcomes"><code>road-restriction-check</code><code>evacuation-access-check</code><code>road-closure-final</code></div>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/disaster-response">examples/disaster-response（英語）→</a>
       </div>
       <div class="card">
         <h3>DevOps</h3>
-        <p>動きの止まったデプロイは、止まっているのか、遅いだけなのか。GitHub Action は、スタックがしばらく静かになってから Pointsman に聞き、はっきりした答えが 2 回続いたときだけデプロイを止めます。Pointsman につながらないときは何も止めません。</p>
+        <p>AWS CloudFormation のデプロイが静かになったとき、止まっているのか、遅いだけなのか。GitHub Action は、スタックがしばらく静かになってから Pointsman に聞き、はっきりした答えが 2 回続いたときだけデプロイを止めます。Pointsman につながらないときは何も止めません。</p>
         <div class="outcomes"><code>deploy-progress</code></div>
         <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/devops">examples/devops（英語）→</a>
       </div>

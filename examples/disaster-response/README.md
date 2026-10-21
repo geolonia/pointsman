@@ -16,7 +16,7 @@ Three profiles form a chain ([decision chains](../../docs/decision-chains.md)):
 | Profile | Decides | Actions |
 |---|---|---|
 | [`road-restriction-check`](../profiles/road-restriction-check.yaml) | What kind of closure is it, does the status match the text, is anyone in danger, is the report clear enough to publish? | `publish`, `urgent`, `review` |
-| [`evacuation-access-check`](../profiles/evacuation-access-check.yaml) | For a closure near an evacuation site: are people on foot cut off from it? Runs only after the first check said `urgent` or `review`. | `alert`, `review`, `none` |
+| [`evacuation-access-check`](../profiles/evacuation-access-check.yaml) | For a closure near an evacuation site: are people on foot cut off from it? In the demo, the bridge runs it only after the first check said `urgent` or `review`. | `alert`, `review`, `none` |
 | [`road-closure-final`](../profiles/road-closure-final.yaml) | One final result from the two checks. Rules only, no AI. A person's answer on an earlier step counts. | `publish`, `urgent`, `reject`, `review` |
 
 `GET /v1/profiles/road-closure-final/graph` draws the chain as SVG or
@@ -33,8 +33,13 @@ Rules use facts about the place; the AI never sees them
 | Nearest evacuation site | `nearest`, layer `gsi-shelters-flood` | Designated evacuation sites for floods (GSI, Japan) |
 | Way around | `detour`, by car or on foot | Valhalla routing on OpenStreetMap |
 
-The GSI layers cover Japan. With `FACTS_MODE` `mock` (`pnpm dev`) every place
-gets fixed answers, so the profiles run anywhere.
+The GSI layers cover Japan only. The way around needs a Valhalla routing
+server (`FACTS_ROUTING_URL`); without one, it is missing, and the evacuation
+check sends a closure near an evacuation site to a person.
+
+With `FACTS_MODE` `mock` (`pnpm dev`), every place is in a flood zone with an
+evacuation site 250 m away, and there is no way around. So the profiles run
+anywhere, without real data.
 
 ## Clients
 
