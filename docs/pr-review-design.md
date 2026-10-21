@@ -55,6 +55,20 @@ Other ways to run it, and why not first:
 | A workflow in each repo, like `actions/triage` | A file in every repo; many runs per PR (statuses, comments, reviews); no secrets on fork PRs; approving with `GITHUB_TOKEN` needs an org setting |
 | Only the agent (the skill calls Pointsman over MCP) | Works only while someone's session runs, which is today's problem. Still used during the rollout, and for commands the app cannot post (open question 4) |
 
+### One job of several
+
+Seen more widely, the app is an assistant of the operations team: PR review
+routing is its first job, and more can follow (security checks by repo
+level, alert triage, repo settings). The team owns the rules; the app applies
+them the same way every time and logs each decision. To keep that safe as it
+grows:
+
+- Each job is its own profile, with its own list of actions the executor may
+  carry out. A new job adds a profile and, only if needed, a permission.
+- The app gets the GitHub permissions of the jobs it has, no more.
+- Every decision is in the log, so the team can check its work like a new
+  colleague's, and correct it through the review queue.
+
 ## The decision chain
 
 Two profiles, linked with `requires` ([decision-chains.md](decision-chains.md)):
