@@ -114,3 +114,52 @@ for (const [name, args, message] of [
     assert.doesNotMatch(r.stdout, /\[dry-run\]/, 'nothing is written');
   });
 }
+
+test('create --expires stores the expiry and lets KV delete the key then', () => {
+  const r = run('create', '--client', 'demo', '--profiles', '*', '--expires', '90d', '--local', '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+  const [command] = writes(r.stdout);
+  const at = Date.parse(command.match(/"expires_at":"([^"]+)"/)[1]);
+  assert.ok(Math.abs(at - (Date.now() + 90 * 86400_000)) < 60_000, command);
+  assert.match(command, new RegExp(`--expiration ${Math.floor(at / 1000)}(\\s|$)`));
+  assert.match(r.stdout, /^expires: /m);
+  const day = run('create', '--client', 'demo', '--profiles', '*', '--expires', '2099-01-31', '--local', '--dry-run');
+  assert.match(writes(day.stdout)[0], /"expires_at":"2099-01-31T23:59:59.000Z"/);
+  // Without --expires, no expiry at all.
+  assert.doesNotMatch(writes(run('create', '--client', 'demo', '--profiles', '*', '--local', '--dry-run').stdout)[0], /expir/);
+});
+
+for (const [name, value] of [['a word', 'soon'], ['a past date', '2020-01-01'], ['a day that does not exist', '2099-02-30'], ['less than an hour', '0h'], ['a unit it does not know', '3m']]) {
+  test(`create --expires refuses ${name}`, () => {
+    const r = run('create', '--client', 'demo', '--profiles', '*', '--expires', value, '--local', '--dry-run');
+    assert.equal(r.status, 2);
+    assert.equal(writes(r.stdout).length, 0);
+  });
+}
+
+test('rotate asks for --expires or --no-expiry when the old token had an expiry', () => {
+  const old = stored(['a'.repeat(64), { client: 'demo', profiles: ['*'], created_at: '2026-10-01T00:00:00Z', expires_at: '2026-12-01T00:00:00.000Z' }]);
+  const refused = runWith(old, 'rotate', '--client', 'demo', '--local', '--dry-run');
+  assert.equal(refused.status, 2);
+  assert.match(refused.stderr, /--expires <when> for the new one, or --no-expiry/);
+  assert.equal(writes(refused.stdout).length, 0);
+  const renewed = runWith(old, 'rotate', '--client', 'demo', '--expires', '30d', '--local', '--dry-run');
+  assert.equal(renewed.status, 0, renewed.stderr);
+  assert.match(writes(renewed.stdout)[0], /"expires_at"/);
+  const open = runWith(old, 'rotate', '--client', 'demo', '--no-expiry', '--local', '--dry-run');
+  assert.equal(open.status, 0, open.stderr);
+  assert.doesNotMatch(writes(open.stdout)[0], /expir/);
+  assert.equal(runWith(old, 'rotate', '--client', 'demo', '--expires', '30d', '--no-expiry', '--local', '--dry-run').status, 2);
+});
+
+test('list shows the expiry, and marks an expired token', () => {
+  const r = runWith(stored(
+    ['a'.repeat(64), { client: 'later', profiles: ['*'], created_at: '', expires_at: '2099-01-01T00:00:00.000Z' }],
+    ['b'.repeat(64), { client: 'gone', profiles: ['*'], created_at: '', expires_at: '2020-01-01T00:00:00.000Z' }],
+    ['c'.repeat(64), { client: 'odd', profiles: ['*'], created_at: '', expires_at: 'soon' }],
+  ), 'list', '--local', '--dry-run');
+  assert.match(r.stdout, /odd .*expires soon \(unreadable: refused\)$/m);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /later .*expires 2099-01-01T00:00:00.000Z$/m);
+  assert.match(r.stdout, /gone .*expires 2020-01-01T00:00:00.000Z \(expired\)$/m);
+});

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Create, revoke and list API tokens in the TOKENS KV namespace (via wrangler).
 //
-//   node scripts/tokens.mjs create --client <name> --profiles <id,id|*> [--test] (--local|--remote) [--config <file>]
-//   node scripts/tokens.mjs rotate --client <name> [--profiles <id,id|*>] [--keep-old] (--local|--remote) [--config <file>]
+//   node scripts/tokens.mjs create --client <name> --profiles <id,id|*> [--test] [--expires <when>] (--local|--remote) [--config <file>]
+//   node scripts/tokens.mjs rotate --client <name> [--profiles <id,id|*>] [--keep-old] [--expires <when> | --no-expiry] (--local|--remote) [--config <file>]
 //   node scripts/tokens.mjs revoke --hash <sha256> (--local|--remote) [--config <file>]
 //   node scripts/tokens.mjs list (--local|--remote) [--config <file>]
 //
@@ -11,6 +11,12 @@
 // the token does not show up in the process list or shell history.
 // --test makes a test token: its decisions are not logged, and it may only
 // decide (for checks of profiles and examples).
+// --expires sets when the token stops working: a duration from now (90d,
+// 12h, 2w) or a date (2027-01-31, end of that day UTC). The Worker refuses it
+// afterwards like an unknown token, and KV deletes the key then too. Without
+// it a token works until it is revoked. `rotate` asks for --expires or
+// --no-expiry when the old token had an expiry, so a new token never loses
+// one by accident.
 // --dry-run prints what would be written instead of calling wrangler.
 //
 // Client names are unique: decisions are logged per client, and chained
@@ -45,6 +51,8 @@ const { values, positionals } = (() => {
         local: { type: 'boolean', default: false },
         test: { type: 'boolean', default: false },
         'keep-old': { type: 'boolean', default: false },
+        expires: { type: 'string' },
+        'no-expiry': { type: 'boolean', default: false },
         remote: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
       },
@@ -99,14 +107,38 @@ function profilesArg() {
   return profiles;
 }
 
-async function putToken(client, profiles, test) {
+/** When the token expires (ISO string), from --expires, or undefined without it. */
+function expiresArg(now = Date.now()) {
+  if (values.expires === undefined) return undefined;
+  if (values['no-expiry']) fail('give --expires or --no-expiry, not both');
+  const v = values.expires.trim();
+  const d = /^(\d{1,4})([hdw])$/.exec(v);
+  let at;
+  if (d) {
+    const hours = { h: 1, d: 24, w: 24 * 7 }[d[2]] * Number(d[1]);
+    at = now + hours * 3600_000;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    at = Date.parse(`${v}T23:59:59Z`);
+    // Date.parse moves 2027-02-30 to March: refuse a day that does not exist.
+    if (!Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== v) fail(`--expires: ${v} is not a date`);
+  } else {
+    fail('--expires must be a duration (12h, 90d, 2w) or a date (YYYY-MM-DD)');
+  }
+  // KV refuses an expiration less than 60 seconds ahead; an hour is the shortest useful token anyway.
+  if (!Number.isFinite(at) || at < now + 3600_000) fail('--expires must be at least an hour from now');
+  return new Date(at).toISOString();
+}
+
+async function putToken(client, profiles, test, expiresAt) {
   const token = newToken();
   const hash = await hashToken(token);
-  const record = { client, profiles, created_at: new Date().toISOString(), ...(test && { test: true }) };
+  const record = { client, profiles, created_at: new Date().toISOString(), ...(test && { test: true }), ...(expiresAt && { expires_at: expiresAt }) };
   const json = JSON.stringify(record);
-  // Metadata makes `list` show the client without reading every value.
-  wrangler(['put', tokenKey(hash), json, '--metadata', json]);
-  console.log(`client:  ${record.client}${record.test ? ' (test token: not logged, decide only)' : ''}\nprofiles: ${profiles.join(',')}\nhash:    ${hash}`);
+  // Metadata makes `list` show the client without reading every value. With
+  // an expiry, KV also deletes the key then (the Worker checks it anyway).
+  const expiration = expiresAt ? ['--expiration', String(Math.floor(Date.parse(expiresAt) / 1000))] : [];
+  wrangler(['put', tokenKey(hash), json, '--metadata', json, ...expiration]);
+  console.log(`client:  ${record.client}${record.test ? ' (test token: not logged, decide only)' : ''}\nprofiles: ${profiles.join(',')}\nhash:    ${hash}${expiresAt ? `\nexpires: ${expiresAt}` : ''}`);
   console.log(`\ntoken (shown once, store it as a secret):\n${token}`);
 }
 
@@ -117,7 +149,8 @@ switch (command) {
     if (listTokens().some((t) => t.client === client)) {
       fail(`client "${client}" already has a token: use \`rotate --client ${client}\` for a new one, or another name`);
     }
-    await putToken(client, profiles, values.test);
+    if (values['no-expiry']) fail('--no-expiry is for rotate; a new token has no expiry without --expires');
+    await putToken(client, profiles, values.test, expiresArg());
     break;
   }
   case 'rotate': {
@@ -131,7 +164,11 @@ switch (command) {
     }
     const profiles = values.profiles !== undefined ? profilesArg() : old[0]?.profiles ?? [];
     if (profiles.length === 0) fail('--profiles is needed (the old token\'s profiles are unknown)');
-    await putToken(client, profiles, !!old[0]?.test);
+    const expiresAt = expiresArg();
+    if (expiresAt === undefined && !values['no-expiry'] && old.some((t) => t.expires_at)) {
+      fail(`the old token of "${client}" has an expiry: give --expires <when> for the new one, or --no-expiry`);
+    }
+    await putToken(client, profiles, !!old[0]?.test, expiresAt);
     for (const t of old) {
       if (values['keep-old']) {
         console.log(`\nold token kept; revoke it once the new one is in place:\n  node scripts/tokens.mjs revoke --hash ${t.hash} ${values.local ? '--local' : '--remote'}`);
@@ -154,7 +191,10 @@ switch (command) {
     for (const t of tokens) count.set(t.client, (count.get(t.client) ?? 0) + 1);
     for (const t of tokens) {
       const shared = count.get(t.client) > 1 ? '  (name used by several tokens: rotate or rename)' : '';
-      console.log(`${t.hash}  ${t.client ?? '?'}${t.test ? ' (test)' : ''}  ${(t.profiles ?? []).join(',')}  ${t.created_at ?? ''}${shared}`);
+      // The same rule as the Worker (isExpired): an expiry it cannot read is refused.
+      const at = typeof t.expires_at === 'string' ? Date.parse(t.expires_at) : NaN;
+      const expiry = t.expires_at === undefined ? '' : `  expires ${t.expires_at}${!Number.isFinite(at) ? ' (unreadable: refused)' : at <= Date.now() ? ' (expired)' : ''}`;
+      console.log(`${t.hash}  ${t.client ?? '?'}${t.test ? ' (test)' : ''}  ${(t.profiles ?? []).join(',')}  ${t.created_at ?? ''}${expiry}${shared}`);
     }
     break;
   }

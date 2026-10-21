@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { authenticate, canUse, hashToken, MemoryTokenStore, newToken, tokenKey } from '../../src/auth';
+import { authenticate, canUse, hashToken, isExpired, MemoryTokenStore, newToken, tokenKey } from '../../src/auth';
 import * as contract from '../../generated/openapi-validators.mjs';
 
 const BASE = 'http://pointsman.test';
@@ -81,6 +81,17 @@ describe('tokens', () => {
     expect(await authenticate(`Bearer ${REVOKED}`, tokens)).toBeNull();
   });
 
+  it('stop working at their expiry, also when the expiry cannot be read', async () => {
+    const at = Date.parse('2027-01-31T23:59:59Z');
+    const record = { client: 'c', profiles: ['*'], created_at: '', expires_at: '2027-01-31T23:59:59.000Z' };
+    const tokens = new MemoryTokenStore(new Map([[await hashToken(ALL), record]]));
+    expect(await authenticate(`Bearer ${ALL}`, tokens, at - 1)).toMatchObject({ client: 'c' });
+    expect(await authenticate(`Bearer ${ALL}`, tokens, at)).toBeNull();
+    expect(isExpired({ ...record, expires_at: 'soon' })).toBe(true);
+    expect(isExpired({ ...record, expires_at: 1792000000 as unknown as string })).toBe(true);
+    expect(isExpired({ client: 'c', profiles: [], created_at: '' })).toBe(false);
+  });
+
   it('scope profiles', () => {
     const record = { client: 'c', profiles: ['a'], created_at: '' };
     expect(canUse(record, 'a')).toBe(true);
@@ -104,6 +115,13 @@ describe('API', () => {
   it('rejects an unknown token and does not echo it', async () => {
     const text = await expectError(await call('/v1/decide/issue-triage', `Bearer ${REVOKED}`), 401, 'unauthorized');
     expect(text).not.toContain(REVOKED);
+  });
+
+  it('rejects an expired token like an unknown one', async () => {
+    const EXPIRED = newToken();
+    await env.TOKENS.put(tokenKey(await hashToken(EXPIRED)), JSON.stringify({ client: 'old', profiles: ['*'], created_at: '2026-01-01T00:00:00Z', expires_at: '2026-02-01T00:00:00Z' }));
+    const text = await expectError(await call('/v1/decide/issue-triage', `Bearer ${EXPIRED}`), 401, 'unauthorized');
+    expect(text).not.toMatch(/expire/i);
   });
 
   it('rejects a revoked token', async () => {

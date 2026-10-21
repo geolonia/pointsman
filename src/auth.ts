@@ -22,6 +22,11 @@ export interface TokenRecord {
    * review queue or the accuracy numbers. It may only decide.
    */
   test?: boolean;
+  /**
+   * When the token stops working (ISO 8601; scripts/tokens.mjs --expires).
+   * Without it a token works until it is revoked.
+   */
+  expires_at?: string;
 }
 
 export interface TokenStore {
@@ -77,16 +82,29 @@ export class MemoryTokenStore implements TokenStore {
 }
 
 /**
- * The token record for an Authorization header value, or null when the header
- * is missing, malformed, or names an unknown token.
+ * Whether a token record has expired at `now` (ms). A record with an
+ * expiry that cannot be read counts as expired: fail closed.
  */
-export async function authenticate(header: string | undefined, store: TokenStore): Promise<TokenRecord | null> {
+export function isExpired(record: TokenRecord, now = Date.now()): boolean {
+  if (record.expires_at === undefined) return false;
+  // Only a readable string counts (a value written to KV by hand may be anything).
+  const at = typeof record.expires_at === 'string' ? Date.parse(record.expires_at) : NaN;
+  return !Number.isFinite(at) || at <= now;
+}
+
+/**
+ * The token record for an Authorization header value, or null when the header
+ * is missing, malformed, or names an unknown or expired token (the same
+ * answer for all, so a caller cannot tell an expired token from a wrong one).
+ */
+export async function authenticate(header: string | undefined, store: TokenStore, now = Date.now()): Promise<TokenRecord | null> {
   // RFC 7235: the scheme name is case-insensitive and is followed by one or
   // more spaces. The token itself is case-sensitive.
   const match = /^Bearer +(\S+)$/i.exec(header ?? '');
   // Checking the format first avoids a store lookup for obvious garbage.
   if (!match || !TOKEN_FORMAT.test(match[1]!)) return null;
-  return store.get(await hashToken(match[1]!));
+  const record = await store.get(await hashToken(match[1]!));
+  return record && !isExpired(record, now) ? record : null;
 }
 
 export function canUse(record: TokenRecord, profileId: string): boolean {
