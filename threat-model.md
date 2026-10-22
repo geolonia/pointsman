@@ -5,15 +5,18 @@
 - **Project**: Pointsman (geolonia/pointsman), a decision service on Cloudflare
   Workers: typed questions in, typed answers with probabilities and an action
   out.
-- **Version binding**: commit `20bdc8198c9383ec9de68cbd36139832bf8c6373` on `main`
-  (2026-10-22 JST), the merge of pointsman#143 (bounds on reading
-  `CODEOWNERS`). History: first bound to
+- **Version binding**: release tag `v0.5.0`, commit
+  `b373daecaf7df06027961a1754c7a6260bb0f6e6` on `main` (2026-10-22 JST),
+  pointsman#156. History: first bound to
   `e1d3591e1b2f6c782f2941e4477923fd88e2addc` (2026-10-16), re-bound to
   `65ec5dae4da01027133f4861df60de3b5847f199` (pointsman#135) for the GitHub
-  facts, and re-bound to the merge of pointsman#143. The repository has no
-  release tags, so the model is bound to a commit. A report against a later
-  commit is triaged against the model as it stood at that commit, not
-  against this model.
+  facts, re-bound to `20bdc8198c9383ec9de68cbd36139832bf8c6373`, the merge
+  of pointsman#143, and re-bound to `v0.5.0` (2026-10-22). The re-binding
+  to `v0.5.0` follows code that moved into `src/decide.ts`, the Cloudflare
+  store files and the fact-module packages under `packages/` (pointsman#153,
+  #154, #155); behaviour is unchanged except for the amendments listed
+  under "Date / author". A report against a later commit is triaged against
+  the model as it stood at that commit, not against this model.
 - **Date / author**: 2026-10-16, drafted for the maintainer, Daniel Kastl, who
   ratifies the claims in §1.18. Amended 2026-10-20 for the detour fact's
   opt-in `route` (pointsman#100): the §1.6 row, `P-STATE-NOT-STORED` and
@@ -44,6 +47,19 @@
   `P-FACT-LOOKUP-BOUNDED` (the §1.7 rows follow). The re-binding also takes
   in pointsman#142 (the activity list read page by page, up to 500 entries,
   back to the push that created the branch; the §1.7 rows).
+  Amended 2026-10-22 for fact modules (pointsman#154, #155, docs/modules.md)
+  and re-bound to `v0.5.0`: the `engine-api`, `engine-facts`,
+  `engine-callbacks` and `config-repo` families in §1.2 (new file paths),
+  the module-level state in §1.5, the new §1.6 row for `engine.json`
+  `modules` (which modules, and so which fact sources, a deployment has; a
+  `FACTS_*` setting no chosen module reads is a config error, a value that
+  is empty or `off` is ignored; a profile
+  version whose facts no chosen module answers fails before the model
+  call), the new §1.7 row for `engine.json` `modules`, `versions` in the
+  §1.8 decision rows, the fact modules and the `yaml` package in §1.9 (a
+  module runs inside the Worker and is handed only its own settings), and
+  §1.16. The `github_workflows` fact (pointsman#141), merged after the
+  previous binding, is not covered by this model yet (§1.16).
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -57,7 +73,9 @@
   Code with the same plugin version and commit: the prose by hand from the
   code and docs of pointsman#135, then the plugin's `validate_model.py` and
   `export_json.py`; recon, interview and backtest were not run again over
-  the whole model.
+  the whole model. The re-binding to `v0.5.0` was done the same way, with
+  Claude Opus 5.5 and the same plugin version and commit: every moved
+  citation and every "Search:" command re-run at the bound commit.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported through GitHub's private vulnerability reporting for
   this repository, as `SECURITY.md` says. A finding that lands in §1.3 or §1.12 is closed
@@ -68,7 +86,9 @@
   accepting every proposed answer; the matching claims carry
   *(maintainer, 2026-10)* and no **inferred** or **assumption** tag remains. Closure constraint: an **inferred** claim may escalate a report but never
   close it, and an **assumption** closes only what the triage policy below
-  permits.
+  permits. The status stays accepted with the `github_workflows` gap
+  (§1.16): a report about it routes to `MODEL-GAP`, which never closes a
+  report.
 - **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). Should an
   **assumption** be added in a later revision, it escalates and never closes.
   See §1.17.
@@ -80,7 +100,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 300 documented / 70 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 306 documented / 70 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -104,7 +124,8 @@
   routing table is producer-side (`.threat-model/backtest.md`, ignored by
   git) and not in the repository, as the skill asks; the figures here are
   the only published part, so a reviewer cannot recheck them from the tree.
-  The backtest was not run again for the GitHub-facts amendment.
+  The backtest was not run again for the GitHub-facts amendment or the
+  re-binding to `v0.5.0`.
 - **Sibling models**: none. The FIWARE bridge, the two GitHub Actions and the
   config-repository template are component families of this model (§1.2).
   The demo repository `geolonia/pointsman-demo` is out of scope (§1.3).
@@ -199,16 +220,19 @@ Roles, as this model uses them *(maintainer, 2026-10)*:
 
 | Family | Representative entry point | Touches outside the process? | In model? | Provenance |
 | --- | --- | --- | --- | --- |
-| `engine-api` — REST API, auth, input mapping, model adapters, policy, decision log (`src/app.ts`, `auth.ts`, `input.ts`, `policy.ts`, `feedback.ts`, `log.ts`, `models/*`, `profiles/store.ts`, `index.ts`) | `POST /v1/decide/{profile}` | network (model backend), D1, KV read | in | *(documented, README "API")* |
-| `engine-facts` — spatial and GitHub pull-request facts (`src/facts.ts`, `facts-gsi.ts`, `facts-routing.ts`, `facts-github.ts`, `glob.ts`, `geo.ts`) | `lookupFacts` for a profile with `facts` | network (GSI tile hosts, Valhalla, `api.github.com`), Workers cache | in | *(documented, docs/profile-format.md "Facts", "GitHub pull requests")* |
-| `engine-callbacks` — review callbacks and the cron retry (`src/callbacks.ts`, `deliver`/`retryDueCallbacks` in `app.ts`) | `POST /v1/reviews/{id}/resolve`, cron `*/5 * * * *` | network (client-supplied `callback_url`), D1 | in | *(documented, docs/reviews.md "Callbacks")* |
+| `engine-api` — REST API, auth, input mapping, model adapters, policy, decision log (`src/app.ts`, `decide.ts`, `auth.ts`, `auth-kv.ts`, `input.ts`, `policy.ts`, `feedback.ts`, `log.ts`, `log-d1.ts`, `models/*`, `profiles/store.ts`, `profiles/store-kv.ts`, `index.ts`) | `POST /v1/decide/{profile}` | network (model backend), D1, KV read | in | *(documented, README "API")* |
+| `engine-facts` — spatial and GitHub pull-request facts (`github_pr`, `github_paths`, `github_checks` and `github_property`; `github_workflows` is not covered, §1.16), answered by the fact modules a deployment chooses (`src/facts.ts`, `src/modules/registry.ts`; the packages `packages/module-api`, `packages/facts-gsi`, `packages/facts-valhalla`, `packages/facts-github`) | `lookupFacts` for a profile with `facts` | network (GSI tile hosts, Valhalla, `api.github.com`), Workers cache | in | *(documented, docs/profile-format.md "Facts", "GitHub pull requests")* |
+| `engine-callbacks` — review callbacks and the cron retry (`src/callbacks.ts`, `deliver`/`retryDueCallbacks` in `decide.ts`) | `POST /v1/reviews/{id}/resolve`, cron `*/5 * * * *` | network (client-supplied `callback_url`), D1 | in | *(documented, docs/reviews.md "Callbacks")* |
 | `engine-mcp` — MCP endpoint and GitHub OAuth (`src/mcp.ts` and `src/oauth.ts`) | `/mcp`, `/authorize`, `/callback`, `/oauth/*` | network (github.com, api.github.com, client metadata URLs), KV `OAUTH_KV` | in | *(documented, docs/mcp.md)* |
 | `bridge` — FIWARE bridge Worker (`bridge/src/*`) | `POST /notify`, `POST /reviews`, queue consumer | network (broker, Pointsman), Cloudflare Queue | in | *(documented, bridge/README.md "Why a bridge")* |
 | `action-triage` — GitHub Action (`actions/triage/`) | `triage.mjs` on `issues` events | network (Pointsman, GitHub API), filesystem (`GITHUB_OUTPUT`, step summary), env | in | *(documented, actions/triage/README.md)* |
 | `action-deploy-watch` — GitHub Action (`actions/deploy-watch/`) | `watch.mjs` around a deploy command | child processes (`bash`, `aws`), network (Pointsman), env, filesystem | in | *(documented, actions/deploy-watch/README.md)* |
-| `config-repo` — the config-repository template and the engine scripts its workflows and the operator run (`template/config-repo/`, `scripts/tokens.mjs`, `scripts/publish-profiles.mjs`, `scripts/validate-profiles.mjs`, `scripts/check-config.mjs`, `scripts/check-profile-versions.mjs`) | the Validate and Deploy workflows; `node scripts/tokens.mjs create` | network (Cloudflare API through wrangler), KV and D1 writes | in | *(documented, docs/deployment.md "Set up")* |
-| `examples/profiles/`, `site/`, `brand/`, `docs/spikes/`, `test/`, `scripts/build-*.mjs`, `scripts/check-public.mjs`, `scripts/ai-gateway.mjs` | n/a | varies | out (§1.3) | *(documented, README "Decision profiles": "This repository holds only example profiles")* |
+| `config-repo` — the config-repository template and the engine scripts its workflows and the operator run (`template/config-repo/`, `scripts/tokens.mjs`, `scripts/publish-profiles.mjs`, `scripts/validate-profiles.mjs`, `scripts/check-config.mjs`, `scripts/check-profile-versions.mjs`, `scripts/lib/modules.mjs`, and the build `pnpm --dir engine build` that both workflows run: `scripts/build-modules.mjs`, which reads `engine.json` `modules`, `scripts/build-profiles.mjs` and `scripts/build-openapi-validators.mjs`) | the Validate and Deploy workflows; `node scripts/tokens.mjs create` | network (Cloudflare API through wrangler), KV and D1 writes | in | *(documented, docs/deployment.md "Set up"; package.json "build"; template/config-repo/.github/workflows/validate.yml and deploy.yml "pnpm --dir engine build")* |
+| `examples/profiles/`, `site/`, `brand/`, `docs/spikes/`, `test/`, `scripts/check-public.mjs`, `scripts/check-core.mjs`, `scripts/ai-gateway.mjs` | n/a | varies | out (§1.3) | *(documented, README "Decision profiles": "This repository holds only example profiles")* |
 | `geolonia/pointsman-demo` (separate repository) | n/a | n/a | out (§1.3) | *(documented, docs/fiware-demo.md "How it runs")* |
+
+In this model, "GitHub facts" means the fact types `github_pr`, `github_paths`, `github_checks` and `github_property`. The
+`github_workflows` type of the same module is not covered yet (§1.16).
 
 The bridge shares the engine's release cadence and maintainer but has its own
 adversary model (the broker's writers). This draft keeps it in one model as a
@@ -223,7 +247,9 @@ family, with a question whether it should become a sibling model
   README "Development")*. A finding that needs a bundled example profile in
   production routes to `OUT-OF-MODEL: non-default-build` (§1.6).
 - **The mock model and the mock fact provider** (`src/models/mock.ts`,
-  `MockFactProvider` in `src/facts.ts`, also behind `FACTS_GITHUB: mock`)
+  `MockFactProvider` in `src/facts.ts`, and each module's mock from
+  `mockProvider` in `packages/module-api`, behind `FACTS_MODE: mock` and
+  `FACTS_GITHUB: mock`)
   answer every state the same way and exist for development and tests
   *(documented, docs/models.md "MODEL_MODE" table; docs/profile-format.md
   "Fact providers" table and the `FACTS_GITHUB` settings table)*. A deployment that
@@ -234,10 +260,14 @@ family, with a question whether it should become a sibling model
   `OUT-OF-MODEL: unsupported-component`.
 - **The website** (`site/`, `brand/`, the Pages workflow) publishes static
   pages and holds no secrets or decisions *(maintainer, 2026-10)*.
-- **Tests and fixtures** (`test/`) and the developer scripts that build or
-  check the repository (`scripts/build-profiles.mjs`,
-  `build-openapi-validators.mjs`, `check-public.mjs`, `ai-gateway.mjs`) do not
-  run in a deployment *(maintainer, 2026-10)*.
+- **Tests and fixtures** (`test/`) and the developer scripts that check the
+  repository (`scripts/check-public.mjs`, `ai-gateway.mjs`) do not run in a
+  deployment *(maintainer, 2026-10)*. `scripts/check-core.mjs` runs only in
+  `pnpm typecheck`, which the template workflows do not run *(documented,
+  package.json "typecheck"; template/config-repo/.github/workflows)*. The
+  build scripts (`build-modules.mjs`, `build-profiles.mjs`,
+  `build-openapi-validators.mjs`) do run in the config repository's
+  workflows and belong to the `config-repo` family (§1.2).
 - **The demo** (`geolonia/pointsman-demo`): its page, its Worker, its
   Turnstile and rate limits are a separate repository with its own limits
   *(documented, docs/fiware-demo.md "Limits for a public demo")*. It is not
@@ -331,16 +361,18 @@ Reachability preconditions per family:
 ## 1.5 Assumptions about the environment
 
 - **Runtime**: Cloudflare Workers (`compatibility_date` 2026-10-01), one
-  isolate per request batch; module-level state (`gsiFacts`, the bundled
-  store, the OAuth server map, the GSI tile memory cache, the GitHub fact
-  providers with a GitHub App's installation tokens) is shared between
+  isolate per request batch; module-level state (the bundled
+  store, the OAuth server map, and the providers each fact module keeps in
+  its `packages/facts-*/src/index.ts`: the GSI provider with its tile memory
+  cache, the Valhalla routers, the GitHub fact providers with a GitHub App's
+  installation tokens) is shared between
   requests of one isolate and is not shared across isolates *(maintainer, 2026-10)*.
 - **Storage consistency**: D1 is strongly consistent and holds the decision
   log and the profile-version registry; KV is eventually consistent, so a
   revoked token can work for up to about 60 seconds elsewhere, and a new
   profile version can be visible in the index before its key *(documented,
   README "API tokens": "KV can take up to about 60 seconds"; docs/deployment.md
-  "Profile versions"; `src/profiles/store.ts` `KvProfileStore` comment)*.
+  "Profile versions"; `src/profiles/store-kv.ts` `KvProfileStore` comment)*.
 - **Clock**: the engine uses the Worker's clock for `created_at`,
   callback timestamps and retry scheduling *(maintainer, 2026-10)*.
 - **Scheduling**: a cron trigger every five minutes retries due callbacks and
@@ -359,20 +391,22 @@ Negative claims are tagged by how good the scan was. Commands run in the
 modeled tree.
 
 - **Outbound network, engine**: the engine fetches only these hosts: the
-  model backend (`src/models/http.ts:88`, operator URL; or the `AI` binding,
+  model backend (`src/models/http.ts:67`, operator URL; or the `AI` binding,
   `src/models/workers-ai.ts:39`), the GSI tile hosts
   `disaportaldata.gsi.go.jp` and `cyberjapandata.gsi.go.jp`
-  (`src/facts-gsi.ts`, fixed URLs), the Valhalla server (`src/facts-routing.ts`,
+  (`packages/facts-gsi/src/provider.ts`, fixed URLs), the Valhalla server
+  (`packages/facts-valhalla/src/router.ts`,
   operator URL), the client-supplied `callback_url` (`src/callbacks.ts:69`),
   `github.com` and `api.github.com` (`src/oauth.ts`), `api.github.com` for
-  GitHub facts (`src/facts-github.ts`, the fixed `API` constant; GET
+  GitHub facts (`packages/facts-github/src/provider.ts`, the fixed `API` constant; GET
   requests only, plus one POST that creates a GitHub App installation
   token), and, through the OAuth library, the client-ID metadata document
   URL an MCP client names (`clientIdMetadataDocumentEnabled: true`,
   `src/oauth.ts`). Search:
-  `grep -rn 'fetch(' src bridge/src | grep -v ':\s*//'` — 12 hits, listed
+  `grep -rn 'fetch(' src bridge/src packages/*/src | grep -v ':\s*//'` — 12 hits, listed
   above plus the Hono/MCP/OAuth library entry points that serve inbound
-  requests. All outbound fetches are limited to public addresses by the
+  requests. A fact source is reached only when the deployment chooses its
+  module in `engine.json` (§1.6). All outbound fetches are limited to public addresses by the
   `global_fetch_strictly_public` compatibility flag *(documented, wrangler.jsonc
   comment: "Outgoing fetches (review callbacks, OAuth client metadata) reach
   only public addresses"; the same flag in `template/config-repo/wrangler.jsonc`
@@ -382,13 +416,14 @@ modeled tree.
   only the metadata-document fetch is known *(maintainer, 2026-10)*.
 - **Redirects**: the engine's outbound calls to the model server, the
   routing server, the callback receiver and the GitHub API use
-  `redirect: 'manual'` and treat a 3xx as an error (`src/models/http.ts:97`,
-  `src/facts-routing.ts:183` with the check at `src/facts-routing.ts:244`,
-  `src/callbacks.ts:78`, `src/facts-github.ts:204` and the installation-token
-  request at `src/facts-github.ts:158`, with the check at
-  `src/facts-github.ts:192`), except the organization-membership read, where
+  `redirect: 'manual'` and treat a 3xx as an error (`src/models/http.ts:76`,
+  `packages/facts-valhalla/src/router.ts:181` with the check at
+  `packages/facts-valhalla/src/router.ts:242`,
+  `src/callbacks.ts:78`, `packages/facts-github/src/provider.ts:210` and the installation-token
+  request at `packages/facts-github/src/provider.ts:164`, with the check at
+  `packages/facts-github/src/provider.ts:198`), except the organization-membership read, where
   a 302 means that GitHub does not tell, so `author_member` has no value
-  (`src/facts-github.ts:553`); no redirect is followed there either
+  (`packages/facts-github/src/provider.ts:588`); no redirect is followed there either
   *(documented, docs/profile-format.md "Detours":
   "Redirects are not followed (they would carry the key to another host)";
   "Missing GitHub facts": "a redirect (not followed: it would carry the token
@@ -400,8 +435,9 @@ modeled tree.
   bridge does not follow redirects")*.
 - **Child processes, environment, filesystem**: none in the engine and the
   bridge. Search:
-  `grep -rn "child_process\|spawn(\|execFile\|process\.env\|\beval(\|new Function" src bridge/src`
-  — 0 hits. The engine reads its configuration from Worker bindings and
+  `grep -rn "child_process\|spawn(\|execFile\|process\.env\|\beval(\|new Function" src bridge/src packages/*/src`
+  — 1 hit, `packages/facts-github/src/workflows.ts:482`, a list of words
+  the `github_workflows` fact looks for in workflow files, not a call. The engine reads its configuration from Worker bindings and
   vars only *(maintainer, 2026-10)*. `action-deploy-watch` spawns `bash -c <run>`
   in its own process group and runs the `aws` CLI
   (`actions/deploy-watch/watch.mjs:17,118`); both Actions read `INPUT_*` and
@@ -409,20 +445,22 @@ modeled tree.
   `GITHUB_STEP_SUMMARY` *(documented, the Actions' header comments and
   `action.yml` inputs)*.
 - **Storage writes, engine**: D1 `decisions` and `feedback` rows
-  (`src/log.ts`), the Workers cache for GSI tiles (`src/facts-gsi.ts:198`),
-  `OAUTH_KV` (the purge cursor at `src/oauth.ts:294` and the OAuth library's
+  (`src/log-d1.ts`), the Workers cache for GSI tiles (`packages/facts-gsi/src/provider.ts:196`),
+  `OAUTH_KV` (the purge cursor at `src/oauth.ts:278` and the OAuth library's
   grants and tokens). The engine never writes to `TOKENS` or `PROFILES`;
   tokens are written by `scripts/tokens.mjs` and profiles by
   `scripts/publish-profiles.mjs`, both run by the operator. Search:
-  `grep -rn '\.put(\|\.delete(' src` — hits only in `src/oauth.ts` (OAUTH_KV)
-  and `src/facts-gsi.ts` (cache, memory map) *(maintainer, 2026-10)*. GitHub
+  `grep -rn '\.put(\|\.delete(' src packages/*/src` — hits only in `src/oauth.ts` (OAUTH_KV),
+  `packages/facts-gsi/src/provider.ts` (cache, memory map) and in-memory
+  maps in `packages/facts-github/src` (installation tokens, a set in
+  `workflows.ts`) *(maintainer, 2026-10)*. GitHub
   facts write nothing: a GitHub App's installation tokens are held in
   memory only, until 5 minutes before they expire *(documented,
   docs/profile-format.md "Settings": "The token is kept until 5 minutes
   before it expires")*.
 - **Logging**: the engine writes to the Workers log (`observability`
-  enabled) through `console.error` and `console.log` in 5 places in `src/`
-  (and the bridge in 7 places in `bridge/src/`); by design these messages carry
+  enabled) through `console.error` and `console.log` in 5 places in `src/`,
+  none in `packages/` (and the bridge in 9 places in `bridge/src/`); by design these messages carry
   the reason, never the state, a token, an API key or a model response
   *(documented, README "API tokens": "They never appear in logs, responses or
   the decision log"; docs/models.md "Model server": "Errors and logs never
@@ -441,6 +479,7 @@ configuration is in-model even when the configuration is not the default.
 | --- | --- | --- | --- | --- | --- |
 | `PROFILE_SOURCE=bundled` | wrangler vars | `bundled` in the dev config; `kv` in the template | serves the example profiles built into the Worker | dev-only; `kv` is the production posture | *(documented, README "Development": "`wrangler.jsonc` in this repository is for development only")* |
 | `MODEL_MODE=mock` | wrangler vars | `mock` in the dev config; `workers-ai` in the template | every model id answered by a fixed mock, independent of the state | dev-only | *(documented, docs/models.md "MODEL_MODE" table: "development and tests")* |
+| `engine.json` `modules.facts` | config repository | unset: every module in this repository | chooses the fact modules the Worker bundles and the validator uses, and so which fact sources (GSI, Valhalla, GitHub) the deployment can reach; only this repository's modules can be named, and a pinned `@version` must match; a `FACTS_*` setting that no chosen module reads stops the Worker (a config error; a value that is empty or `off` is ignored); a published profile version whose facts no chosen module answers fails before the model call (a config error) | supported | *(documented, docs/modules.md "Choosing modules"; `src/index.ts` `factsFor`)* |
 | `FACTS_MODE` (`off`, `mock`, `gsi`) | wrangler vars | `off` | `off`: every fact is missing; `mock`: fixed answers; `gsi`: public GSI data | `off` and `gsi` supported; `mock` dev-only | *(documented, docs/profile-format.md "Fact providers" table)* |
 | `FACTS_GITHUB` (`off`, `mock`, `token`, `app`) with the Worker secret `FACTS_GITHUB_TOKEN`, or `FACTS_GITHUB_APP_ID` and the Worker secret `FACTS_GITHUB_APP_PRIVATE_KEY` | wrangler vars, Worker secrets | `off` | `off`: every GitHub fact is missing (`unavailable`); `mock`: fixed answers; `token` and `app`: pull requests are read from `api.github.com` with that credential | `off`, `token` and `app` supported; `mock` dev-only | *(documented, docs/profile-format.md "Settings" table for `FACTS_GITHUB`)* |
 | `FACTS_GITHUB_IGNORE_CHECK` | wrangler vars | unset | the named check run never counts as a required check, so the deployment's own Pointsman check is not waited for | supported; narrows `P-GITHUB-REQUIRED-CHECKS` by one check name the operator chooses; a profile cannot set it | *(documented, docs/profile-format.md "Settings": "It is a deployment setting, not a profile field, so a profile cannot drop a real check")* |
@@ -462,7 +501,7 @@ configuration is in-model even when the configuration is not the default.
 
 ### Per-input-operand trust table
 
-Coverage: 72 rows cover all 10 REST routes, the `/mcp` endpoint with its 6
+Coverage: 73 rows cover all 10 REST routes, the `/mcp` endpoint with its 6
 tools, the 7 OAuth routes (grouped), the bridge's 2 routes and queue
 consumer, both Actions, and the config repository's inputs. Every route in
 `src/app.ts` has at least one row. Headers and indirect inputs (model
@@ -508,7 +547,7 @@ they are security-relevant.
 | `engine-facts` tile fetch | PNG and GeoJSON tile bytes from GSI | no — public data from a fixed host, decoded by the engine's own PNG and GeoJSON readers | data, serialized-state | none — an unknown legend colour or unreadable tile is `error`, never a guess | *(documented, docs/profile-format.md "A colour that is not in the legend fails the lookup")* |
 | `engine-facts` routing | the Valhalla response (`trip.summary.length`, `error_code`) | no — operator-chosen server over OpenStreetMap data | data | none — a 3xx is an error; a missing length is an error | *(documented, docs/profile-format.md "Detours")* |
 | `engine-facts` GitHub reads | the pull request, its commits and files, the base branch's rules and protection, check runs, commit statuses, workflow runs, membership and custom properties | partly — GitHub is a trusted collaborator, but titles, file names, commits and check-run names are written by the pull-request author | data, size | none — answers are shape-checked and counted (`P-FACT-LOOKUP-BOUNDED`); a wrong shape, a redirect, a rate limit or too many files or checks is `error`, never a guess (`P-FACTS-NEVER-GUESSED`); globs are matched without regular expressions | *(documented, docs/profile-format.md "One snapshot", "Missing GitHub facts")* |
-| `engine-facts` GitHub reads | the head repository's activity list (up to the newest 500 entries for the head branch, back to the push that created it; the head repository can be a fork) | partly — GitHub records who pushed; the fork and its branch belong to the pull-request author | data | none — the head repository's name from GitHub's answer must be `owner/name`, with a name other than `.` or `..`; a 403 or 404 on the first page makes `pushed_by_author` `unavailable`; a later page that is not shown leaves the pushes older than it unknown; a commit whose push stays unknown makes it `unavailable`, unless a known push by someone else already makes it `no`; pushes older than the push that created the branch belong to an earlier branch with the same name and are left out; the next page is asked for with only the `after` cursor from GitHub's `Link` header (at most 500 characters), never the URL it names, so every request stays on the GitHub API; other failures fail the fact | *(documented, docs/profile-format.md "GitHub pull requests" table, `pushed_by_author`, and "One snapshot"; the cursor: src/facts-github.ts:443)* |
+| `engine-facts` GitHub reads | the head repository's activity list (up to the newest 500 entries for the head branch, back to the push that created it; the head repository can be a fork) | partly — GitHub records who pushed; the fork and its branch belong to the pull-request author | data | none — the head repository's name from GitHub's answer must be `owner/name`, with a name other than `.` or `..`; a 403 or 404 on the first page makes `pushed_by_author` `unavailable`; a later page that is not shown leaves the pushes older than it unknown; a commit whose push stays unknown makes it `unavailable`, unless a known push by someone else already makes it `no`; pushes older than the push that created the branch belong to an earlier branch with the same name and are left out; the next page is asked for with only the `after` cursor from GitHub's `Link` header (at most 500 characters), never the URL it names, so every request stays on the GitHub API; other failures fail the fact | *(documented, docs/profile-format.md "GitHub pull requests" table, `pushed_by_author`, and "One snapshot"; the cursor: packages/facts-github/src/provider.ts:473)* |
 | `engine-facts` GitHub reads | the base branch's `CODEOWNERS` file and the members of the teams it names | no — written by whoever can change the base branch, not by the pull request, which is read from the head; teams belong to their organization | data, size | none — a pattern or section header the engine does not read (`!`, `[ ]`, escaped spaces), or a file or team that cannot be read, makes the whole `github_pr` fact missing (`error` or `unavailable`); a `github_pr` lookup reads the activity list every time, and `CODEOWNERS` and the file list when the pull request changes 1 to 1,000 files (with no changed file or more than 1,000, `author_sole_code_owner` is false and neither is read), whether or not the rules use those fields, so such a failure makes every condition on `github_pr` unknown; a missing fact never matches a rule, which blocks only where the rules are written as `R-GITHUB-POSITIVE-RULES` asks; team members are read 100 at a time, and a team of more than 100 counts as not the only owner; `@org/.` and `@org/..` are not teams; patterns are matched with the engine's own glob matcher, without regular expressions built from them; a file over 128 KiB, a pattern over 1,024 characters, or matching that takes more than 50 million steps makes `github_pr` missing (`error`), and comments are removed in one pass (`P-FACT-LOOKUP-BOUNDED`) | *(documented, docs/profile-format.md "GitHub pull requests" table, `author_sole_code_owner`)* |
 | `engine-facts` GitHub App | the installation lookup and the installation-token response | no — GitHub at the fixed host, asked with the app's signed JWT | data | none — the token is kept in memory until 5 minutes before it expires and is never logged (`P-SECRETS-NOT-LOGGED`) | *(documented, docs/profile-format.md "Settings": "The token is kept until 5 minutes before it expires")* |
 | `/mcp` | `Authorization` header: `pm_` API token or OAuth access token | yes | data | none — API tokens go to the token store, other tokens to the OAuth server (`P-AUTH-REQUIRED`) | *(documented, docs/mcp.md "Authentication")* |
@@ -540,6 +579,7 @@ they are security-relevant.
 | `action-deploy-watch` | CloudFormation stack events (`describe-stack-events`) | conditional — the account's own stacks; `ResourceStatusReason` can carry text from templates or AWS | data | none — passed to Pointsman as JSON, truncated to 300 characters per reason | *(maintainer, 2026-10)* |
 | `action-deploy-watch` | Pointsman's `action` | no — trusted collaborator; only `cancel`, twice in a row by default, stops the deploy | data | none — a failing Pointsman never cancels | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
 | `config-repo` Validate / Deploy workflows | `profiles/*.yaml` | no — pull-request authors are the integrator's own contributors; `main` is protected | serialized-state, x-policy-rules | protect `main`; require the Validate check | *(documented, template/config-repo/README.md "Protect `main`")* |
+| `config-repo` workflows | `engine.json` `modules` | no — the config repository's own contributors; `main` is protected | resource-name | none — names outside this repository's module catalog, a module listed twice or a pinned version that differs fail the config check and the build | *(documented, docs/modules.md "Choosing modules"; docs/deployment.md "Set up")* |
 | `config-repo` workflows | `engine.json` `ref` | no — the repository is fixed to `geolonia/pointsman` in the workflow; `ref` must be a 40-character SHA | resource-name | change `ENGINE_REPOSITORY` only on purpose | *(documented, docs/deployment.md "Updating the engine")* |
 | `config-repo` workflows | `wrangler.jsonc`, `ai-gateway.json`, the `production` environment secrets | no — operator | serialized-state | placeholders refused (`check-config.mjs`); secrets only in the three Cloudflare steps | *(documented, docs/deployment.md "What the workflows do")* |
 | `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client | *(documented, README "API tokens")* |
@@ -674,8 +714,8 @@ docs/profile-format.md "A missing fact is never guessed")*.
 
 | Output channel | Component | Taint | Downstream must not assume | Provenance |
 | --- | --- | --- | --- | --- |
-| the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`, `requires`, `replaces`, `review`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens)* |
-| the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]`, `requires`, `idempotency_key` | engine-api | constrained as above; `callback_url` and `request_digest` are never returned; a required decision of a profile outside the reader's scope is shown as `{decision: null}`; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API")* |
+| the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`, `requires`, `replaces`, `review`, `versions`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider; `versions` is the engine version and the chosen modules that answer the profile's fact types, with their versions (recorded also when a fact is missing or its module is switched off) | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens; docs/decision-log.md "What is stored", `versions`; docs/modules.md "Versions in the decision log")* |
+| the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]`, `requires`, `idempotency_key`, `versions` (absent for decisions made before modules) | engine-api | constrained as above; `callback_url` and `request_digest` are never returned; a required decision of a profile outside the reader's scope is shown as `{decision: null}`; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API"; docs/modules.md "Versions in the decision log": "Decisions made before modules have no `versions`")* |
 | the review list (`GET /v1/reviews`) | engine-api | constrained; `callback_url` and `callback` are stripped | — | *(documented, docs/reviews.md "Review queue")* |
 | the decision graph (`GET /v1/profiles/{id}/graph`) | engine-api | constrained: profile ids, versions, titles and descriptions, actions and answers, question, input and fact names, model names, data-source names; never a decision or a state; XML and SVG text and attributes escaped; the SVG has no script, links or external references | that the XML is safe for any parser setting (it has no DTD and no entities); that profile titles are safe to show unescaped by a consumer that inlines the SVG's text elsewhere | *(documented, openapi.yaml `/v1/profiles/{id}/graph`)* |
 | stats (`GET /v1/stats/{profile}`) | engine-api | counts only; no single decision, no state | — | *(documented, docs/decision-log.md "Counts only, no single decisions")* |
@@ -684,7 +724,7 @@ docs/profile-format.md "A missing fact is never guessed")*.
 | the model request (state and questions) sent to the backend | engine-api | **the state is forwarded as received**, with the input mapping applied when the profile has one; no sanitisation | that the backend keeps nothing: the AI Gateway logs it when `collect_logs` is on; a model server's retention is its own (`D-STATE-TO-BACKEND`) | *(documented, docs/models.md "Logs hold the state")* |
 | fact queries to GSI and Valhalla | engine-facts | the geometry from the client's state, as coordinates; the Valhalla request carries exclusion polygons derived from it and the operator's API key | that the location is not shared with those hosts | *(documented, docs/profile-format.md "Fact providers", "Detours")* |
 | reads from `api.github.com` | engine-facts | the repository, pull-request number and head commit from the state, with the GitHub credential; GET requests only, plus one POST that creates a GitHub App installation token | that GitHub does not learn which pull requests the deployment decides about | *(documented, docs/profile-format.md "Settings": "Making the token is the only request that is not a read")* |
-| GitHub fact values in the decision (`facts.<name>` of a GitHub fact) | engine-facts | constrained: booleans and numbers, `pushed_by_author` (`yes`, `no` or `unavailable`), and `github_property.value`, the text of a repository custom property (a list sorted and joined with commas); `source` names only the pull request (`GitHub owner/name#7 at 1a2b3c4`) | that a property value is safe for any grammar; that `author_member` or `all_commits_verified` makes the change trustworthy; that `github_checks.green` means the intended jobs ran (`D-GITHUB-CHECK-NAMES`); that `pushed_by_author: yes` shows who wrote the commits, or that `author_sole_code_owner` means nobody else should look (it is only as good as the base branch's `CODEOWNERS`) | *(documented, docs/profile-format.md "GitHub pull requests" table; "Settings": "A fact's `source` names only the pull request")* |
+| GitHub fact values in the decision (`facts.<name>` of a GitHub fact) | engine-facts | constrained: booleans and numbers, `pushed_by_author` (`yes`, `no` or `unavailable`), and `github_property.value`, the text of a repository custom property (a list sorted and joined with commas); `source` names only the pull request (`GitHub owner/name#7 at 1a2b3c4`); the `github_workflows` fact, not yet covered by this model (§1.16), also returns `detail`: up to 20 findings joined by new lines, each a file path from the pull request, an optional line number, the finding's field name and a short description that can quote job, action or trigger names from those files; rules cannot read it | that a property value is safe for any grammar; that `author_member` or `all_commits_verified` makes the change trustworthy; that `github_checks.green` means the intended jobs ran (`D-GITHUB-CHECK-NAMES`); that `pushed_by_author: yes` shows who wrote the commits, or that `author_sole_code_owner` means nobody else should look (it is only as good as the base branch's `CODEOWNERS`) | *(documented, docs/profile-format.md "GitHub pull requests" table; "Settings": "A fact's `source` names only the pull request")* |
 | the signed callback (`POST callback_url`) | engine-callbacks | constrained: the final action and answers, `resolved_by` as given by the resolving client, `ref` as given; signed with HMAC-SHA256 over `timestamp.body` | that it arrives exactly once (`D-EXACTLY-ONCE`); that it is authentic without checking the signature and timestamp (§1.13 `R-VERIFY-CALLBACK`) | *(documented, docs/reviews.md "Callbacks")* |
 | MCP tool results | engine-mcp | the same decision and record as REST, as JSON text; `get_decision` strips `callback_url` and `state` | as for the REST outputs; also that the tool description text is an instruction to act on | *(documented, docs/mcp.md "Tools"; `src/mcp.ts` `get_decision`)* |
 | the consent and failure pages | engine-mcp | HTML assembled from the client's registered name, domain and redirect host, HTML-escaped | that a self-registered client name is verified (`D-OPEN-CLIENT-REGISTRATION`) | *(documented, `src/oauth.ts` `consentPage`: "This app registered itself; its name is not verified")* |
@@ -699,7 +739,22 @@ docs/profile-format.md "A missing fact is never guessed")*.
 
 Runtime dependencies of the engine (`package.json` `dependencies`): `hono`
 4.13, `zod` 4.6, `@modelcontextprotocol/server` 2.3,
-`@cloudflare/workers-oauth-provider` 1.2 *(documented, package.json)*. The
+`@cloudflare/workers-oauth-provider` 1.2, `yaml` 2.9 (in the Worker used
+only by the `github_workflows` fact, §1.16; the config-repository scripts
+also use it to read profiles), and the fact-module packages of this
+repository (`@pointsman/module-api`, `@pointsman/facts-gsi`,
+`@pointsman/facts-valhalla`, `@pointsman/facts-github`, pnpm workspace
+packages bundled into the Worker, not from npm) *(documented, package.json;
+docs/modules.md "Modules in this repository")*. The fact modules are
+first-party code with the engine's version, not third-party dependencies:
+a defect in them is in-model (`engine-facts`). The engine hands each
+module only its own `FACTS_*` settings (`factsFor` in `src/index.ts`); the
+module runs in the same isolate as the engine. Only this repository's
+modules can be chosen (`CATALOG` in `scripts/lib/modules.mjs`)
+*(documented, `src/index.ts` `factsFor`; docs/modules.md "Not yet")*.
+docs/modules.md "Trust" says that a module runs inside the Worker, next to
+its secrets, and that "a module from someone else needs a review before a
+deployment chooses it" *(documented, docs/modules.md "Trust")*. The
 bridge and the two Actions have no npm dependencies *(documented, the
 Actions' header comments: "no dependencies"; bridge/src imports only the
 platform)*. `scripts/tokens.mjs` imports the engine's `src/auth.ts` so that
@@ -768,7 +823,7 @@ what voids it.
   Voided by: nothing. Search:
   `grep -n "app\.\(get\|post\|all\|use\)(" src/app.ts` — every `/v1/*` route
   is registered after the `app.use('/v1/*', …)` middleware at
-  `src/app.ts:85`; `/mcp` authenticates on lines 370 (OAuth resource server) and 372 (API tokens) of `src/app.ts`; the remaining
+  `src/app.ts:32`; `/mcp` authenticates on lines 318 (OAuth resource server) and 320 (API tokens) of `src/app.ts`; the remaining
   routes are the OAuth flow (which issues grants only after GitHub membership)
   and the 404 handler.
 - **`P-TOKEN-SCOPE`** — a token acts only on the profiles in its record;
@@ -779,9 +834,9 @@ what voids it.
   *(documented, docs/decision-log.md "A token sees and corrects only decisions
   of profiles in its scope. Other decisions answer 404, as if they did not
   exist")*. Voided by: a token created with `--profiles '*'`
-  (`src/auth.ts:111`, `record.profiles.includes('*')`), and a person logged in
+  (`src/auth.ts:96`, `record.profiles.includes('*')`), and a person logged in
   through OAuth, whose scope is `['*']` over MCP-visible profiles
-  (`src/mcp.ts:25`). Both are documented behaviour, and the maintainer confirmed them as the
+  (`src/mcp.ts:26`). Both are documented behaviour, and the maintainer confirmed them as the
   only two off-switches *(maintainer, 2026-10)*. The scope also covers the
   decisions a chained profile reads: a required decision of a profile outside
   the scope is refused like an unknown id, and `GET /v1/decisions/{id}` and
@@ -802,8 +857,8 @@ what voids it.
   Tier: security-critical. *(documented, README "API tokens": "A test token
   may only decide (and list its profiles) over the REST API, not over MCP,
   and gets no callbacks")*. Voided by: nothing. Search:
-  `grep -n "\.test" src/app.ts src/mcp.ts` — the checks on lines 95 and 366 of `src/app.ts`, the unlogged return at
-  `src/app.ts:602`, and the callback refusal in `makeDecision`. A test token
+  `grep -n "\.test" src/app.ts src/mcp.ts src/decide.ts` — the checks on lines 42 and 312 of `src/app.ts`, the unlogged return at
+  `src/decide.ts:275`, and the callback refusal in `makeDecision` (`src/decide.ts`). A test token
   also cannot send `decisions` or decide a profile with `requires`, so it
   never reads logged decisions (`makeDecision`, docs/decision-chains.md).
 - **`P-ANSWER-SHAPE`** — a model answer is accepted only when every question
@@ -817,7 +872,7 @@ what voids it.
   format": "Answers that do not fit the profile ... are rejected with a
   `model_error`")*. Voided by: nothing. Search:
   `grep -rn "normalizeAnswers" src` — called on the only decision path,
-  `src/app.ts:567`, for every adapter.
+  `src/decide.ts:242`, for every adapter.
 - **`P-ACTION-FROM-POLICY`** — the action is the first rule whose condition
   is true over the typed answers, facts and required decisions, else the
   profile's default; a
@@ -848,7 +903,7 @@ what voids it.
   fails validation, not a request. Symptom: `x-code-execution`. Tier:
   security-critical. *(documented, docs/profile-format.md "The engine
   evaluates conditions with its own parser; nothing is run as code")*. Voided
-  by: nothing. Search: `grep -rn "\beval(\|new Function" src` — 0 hits.
+  by: nothing. Search: `grep -rn "\beval(\|new Function" src packages/*/src` — 0 hits.
 - **`P-FACTS-NEVER-GUESSED`** — a fact that cannot be looked up is recorded as
   `missing` with a reason; a comparison with a missing fact is unknown and
   never makes a rule match; a tile colour outside the legend or a malformed
@@ -864,7 +919,10 @@ what voids it.
   docs/profile-format.md "A missing fact is never guessed"; "The model does
   not see the facts"; "Missing GitHub facts")*. Voided by: nothing. Search:
   `grep -n "missing" src/policy.ts src/facts.ts` — the three-valued
-  evaluation at `src/policy.ts:442`.
+  evaluation at `src/policy.ts:406`. A profile version whose facts no
+  chosen module answers is refused before the model call (a config error,
+  `src/decide.ts:219`), not looked up as missing facts *(documented,
+  docs/modules.md "Choosing modules")*.
 - **`P-FACT-LOOKUP-BOUNDED`** — a fact lookup does bounded work for any
   geometry: at most 1000 positions, 200 samples, 16 flood tiles, 9 shelter
   tiles, a 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour) and 10 s per tile load;
@@ -878,11 +936,11 @@ what voids it.
   `unbounded-allocation`. Tier: correctness-only.
   *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)*.
   Voided by: nothing found. Search:
-  `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" src/facts.ts src/facts-gsi.ts src/facts-routing.ts src/facts-github.ts src/codeowners.ts`
-  — the limits at `src/facts.ts:111`, `src/facts.ts:110` (GitHub),
-  `src/facts-gsi.ts:103`, `src/facts-gsi.ts:140`, `src/facts-routing.ts:29`,
-  `src/facts-github.ts:26`, `src/facts-github.ts:28`, `src/facts-github.ts:32` and, for
-  `CODEOWNERS`, `src/codeowners.ts:24` to `src/codeowners.ts:28`.
+  `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" packages/module-api/src/capabilities.ts packages/facts-gsi/src/provider.ts packages/facts-valhalla/src/router.ts packages/facts-github/src/definition.ts packages/facts-github/src/provider.ts packages/facts-github/src/codeowners.ts`
+  — the limits at `packages/module-api/src/capabilities.ts:23`, `packages/facts-github/src/definition.ts:72` (GitHub),
+  `packages/facts-gsi/src/provider.ts:100`, `packages/facts-gsi/src/provider.ts:137`, `packages/facts-valhalla/src/router.ts:27`,
+  `packages/facts-github/src/provider.ts:32`, `packages/facts-github/src/provider.ts:34`, `packages/facts-github/src/provider.ts:38` and, for
+  `CODEOWNERS`, `packages/facts-github/src/codeowners.ts:24` to `packages/facts-github/src/codeowners.ts:28`.
 - **`P-DECISION-LOGGED-FIRST`** — every decision made with a normal token is
   stored in D1, with its profile version, model, answers, facts, rule, client
   name and state hash, before it is returned; if the log cannot be written
@@ -890,7 +948,7 @@ what voids it.
   log. Symptom: `x-unlogged-decision`, `integrity-bypass`. Tier:
   security-critical. *(documented, docs/decision-log.md "Every decision is
   stored in D1 ... before it is returned"; docs/mcp.md "Decisions through
-  MCP")*. Voided by: a test token (`src/app.ts:602`, `if (client.test)
+  MCP")*. Voided by: a test token (`src/decide.ts:275`, `if (client.test)
   return`), by design and marked in the response.
 - **`P-PROFILE-VERSION-IMMUTABLE`** — a published profile id and version never
   change content: the deploy registers each version's content hash in D1 and
@@ -903,19 +961,19 @@ what voids it.
   Deploy workflow, or writes `profile:<id>:<version>` keys directly into
   `PROFILES` (the registration that refuses a changed hash lives in
   `scripts/publish-profiles.mjs`, run only by that workflow, and the engine
-  reads whatever the key holds at `src/profiles/store.ts:83`); the account
+  reads whatever the key holds at `src/profiles/store-kv.ts:23`); the account
   holder who can do that is out of scope (§1.3).
 - **`P-STATE-NOT-STORED`** — by default the decision log keeps only a
   SHA-256 of the canonical state, not the state; `callback_url` is never
   returned; tokens never appear in logs, responses or the decision log.
   Symptom: `info-leak`. Tier: security-critical. *(documented,
   docs/decision-log.md "By default only the hash of the state is kept")*.
-  Voided by: `log.store_state: true` on a profile (`src/app.ts:610`), the AI
+  Voided by: `log.store_state: true` on a profile (`src/decide.ts:283`), the AI
   Gateway's `collect_logs: true` (`ai-gateway.json`; documented in
   docs/models.md "Logs hold the state"), and a model server's own retention
   (`D-STATE-TO-BACKEND`). The first two are §1.6 rows. Narrowed by: `route:
   true` on a `detour` fact, which keeps the section's place in the stored
-  facts (`src/facts-routing.ts`; §1.6 row).
+  facts (`packages/facts-valhalla/src/router.ts`; §1.6 row).
 - **`P-SECRETS-NOT-LOGGED`** — API keys for the model server and the routing
   server, the callback secret, the GitHub client secret, and the GitHub fact
   token, GitHub App key and installation tokens never appear in logs, error
@@ -925,9 +983,9 @@ what voids it.
   include ... the key"; docs/profile-format.md "The key is never logged and
   never sent to browsers"; "Settings": "The token and the key are never
   logged")*. Voided by: nothing found. Search:
-  `grep -rn "console\.\(log\|error\)" src` — 5 hits (4 `console.error`, 1
+  `grep -rn "console\.\(log\|error\)" src packages/*/src` — 5 hits, all in `src` (4 `console.error`, 1
   `console.log`), each logging a message built from an error's `message`, a
-  name or a count; `bridge/src` adds 7 of the same kind.
+  name or a count; `bridge/src` adds 9 of the same kind (7 in `bridge.ts`, 2 in `index.ts`).
 - **`P-REVIEW-RESOLVED-ONCE`** — a pending review resolves exactly once; a
   concurrent or repeated resolve answers 409; the correction is stored as
   feedback in the same transaction only when the resolve succeeded. Symptom:
@@ -950,9 +1008,9 @@ what voids it.
   engine. Search: `grep -n "sign(\|x-pointsman-signature" src/callbacks.ts` —
   the one send site at `src/callbacks.ts:69` always signs. A receiver that
   does not verify is a §1.14 misuse.
-- **`P-GITHUB-READ-ONLY`** — GitHub facts only read: the engine sends GET requests to the fixed host `api.github.com` and, with a GitHub App, one POST that creates an installation token; it never changes a repository, a pull request or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request. Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `src/facts-github.ts` header: "this file only sends GET requests to the GitHub API"; docs/profile-format.md "Settings": "Making the token is the only request that is not a read")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" src/facts-github.ts` — the GET at `src/facts-github.ts:204` and the token POST at `src/facts-github.ts:158`, both with `redirect: 'manual'`, and the 3xx check at `src/facts-github.ts:192`.
-- **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub facts of a decision describe the head commit the request names, read as one snapshot: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub fact of the decision is `stale` (missing); the pull request is read again after its file list, and a push in between makes the facts that use the file list (`github_paths`, and `github_pr` through `author_sole_code_owner`) `stale`; `github_checks` is read by the head commit id; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" src/facts-github.ts` — the head checks at `src/facts-github.ts:502`, `src/facts-github.ts:511` and `src/facts-github.ts:536`.
-- **`P-GITHUB-REQUIRED-CHECKS`** — `github_checks` counts only the required checks of the base branch (its rulesets and its protection) and the workflows that a ruleset requires, on the head commit: a check that a rule ties to an app counts only from that app; a commit status counts only where any app may report; a required workflow counts only through the run GitHub started for the ruleset, never through a workflow at the same path that the pull request can change; a check run and a status that disagree give the stricter result; with no required checks `green` is false; only the check named by the deployment's `FACTS_GITHUB_IGNORE_CHECK` is left out. Symptom: `x-check-bypass`, `wrong-output`. Tier: security-critical. *(documented, docs/profile-format.md "One snapshot": "A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset")*. Voided by: nothing in the engine; it is never stronger than the base branch's rules (`D-GITHUB-CHECK-NAMES`). Search: `grep -n "required_workflows\|r.app === null" src/facts-github.ts` — the ruleset-run flag at `src/facts-github.ts:385` and its filter at `src/facts-github.ts:601` and the app match at `src/facts-github.ts:605`.
+- **`P-GITHUB-READ-ONLY`** — GitHub facts (`github_pr`, `github_paths`, `github_checks` and `github_property`) only read: the engine sends GET requests to the fixed host `api.github.com` and, with a GitHub App, one POST that creates an installation token; it never changes a repository, a pull request or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request. Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `packages/facts-github/src/provider.ts` header: "this file only sends GET requests to the GitHub API"; docs/profile-format.md "Settings": "Making the token is the only request that is not a read")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" packages/facts-github/src/provider.ts` — the GET at `packages/facts-github/src/provider.ts:210` and the token POST at `packages/facts-github/src/provider.ts:164`, both with `redirect: 'manual'`, and the 3xx check at `packages/facts-github/src/provider.ts:198`.
+- **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub facts of a decision (`github_pr`, `github_paths`, `github_checks` and `github_property`) describe the head commit the request names, read as one snapshot: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub fact of the decision is `stale` (missing); the pull request is read again after its file list, and a push in between makes the facts that use the file list (`github_paths`, and `github_pr` through `author_sole_code_owner`) `stale`; `github_checks` is read by the head commit id; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" packages/facts-github/src/provider.ts` — the head checks at `packages/facts-github/src/provider.ts:532`, `packages/facts-github/src/provider.ts:541` and `packages/facts-github/src/provider.ts:571`.
+- **`P-GITHUB-REQUIRED-CHECKS`** — `github_checks` counts only the required checks of the base branch (its rulesets and its protection) and the workflows that a ruleset requires, on the head commit: a check that a rule ties to an app counts only from that app; a commit status counts only where any app may report; a required workflow counts only through the run GitHub started for the ruleset, never through a workflow at the same path that the pull request can change; a check run and a status that disagree give the stricter result; with no required checks `green` is false; only the check named by the deployment's `FACTS_GITHUB_IGNORE_CHECK` is left out. Symptom: `x-check-bypass`, `wrong-output`. Tier: security-critical. *(documented, docs/profile-format.md "One snapshot": "A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset")*. Voided by: nothing in the engine; it is never stronger than the base branch's rules (`D-GITHUB-CHECK-NAMES`). Search: `grep -n "required_workflows\|r.app === null" packages/facts-github/src/provider.ts` — the ruleset-run flag at `packages/facts-github/src/provider.ts:415` and its filter at `packages/facts-github/src/provider.ts:636` and the app match at `packages/facts-github/src/provider.ts:640`.
 - **`P-OUTBOUND-PUBLIC-ONLY`** — outbound fetches from the engine and the
   bridge reach only public addresses: a `callback_url`, a client-ID metadata
   URL or a redirect target on a private or loopback address fails. Symptom:
@@ -1269,7 +1327,14 @@ Revise the model when any of these happens:
   kind, a new Action or client.
 - A new model backend or a change in how the state reaches it (for example
   images, or facts in the prompt).
-- A new fact type, layer or provider, or a fact that the model can see.
+- A new fact type, layer or provider, a new fact module, a module from
+  outside this repository (docs/modules.md "Trust"), or a fact that the
+  model can see.
+- Not yet covered: the `github_workflows` fact (pointsman#141, with the
+  `yaml` parser it uses), merged after the previous binding and part of
+  `v0.5.0`. It reads the GitHub Actions files a pull request changes, as
+  written by its author. A report about it is a `MODEL-GAP` until this
+  model is amended for it.
 - For GitHub facts: a request that writes to GitHub, a host other than
   `api.github.com`, a fact that reads a repository the state does not name,
   or a profile field that changes which checks count.
@@ -1284,7 +1349,7 @@ Revise the model when any of these happens:
   routing behaviour.
 - A new deployment context: a shared hosted Pointsman, multi-tenancy, or
   Pointsman announced for third-party integrators.
-- The first release tag (bind the model to it).
+- A new release tag (bind the model to it).
 - A report that cannot be routed to exactly one §1.17 disposition.
 
 ## 1.17 Triage dispositions

@@ -189,6 +189,12 @@ belong in issues, not in the threat model:
    trips on `'/v1/*'` route strings; a hosted-service dimension set and a
    per-family appendix option for long matrices.
 7. For `geolonia/skills`: the question-bank extension in the table above.
+8. Amend the model for the `github_workflows` fact (pointsman#141) and the
+   `yaml` parser it brings in. It was merged after the commit the model was
+   bound to before `v0.5.0`, and the re-binding to `v0.5.0` only records it
+   as not covered (§1.16). Lesson for re-bindings: list every commit between
+   the old and the new binding (`git log <old>..<new>`), not only the pull
+   requests that prompted the re-binding.
 
 ## Files
 
