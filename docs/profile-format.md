@@ -648,13 +648,15 @@ without regular expressions, so a long pattern cannot slow a decision down.
   read once more after it: a push in between makes the facts `stale`.
 - A check run and a commit status with the same name that disagree: the
   stricter result counts.
-- Reviews and conversation comments: 100 per page, page by page, at most
-  5 pages each; more make the facts that need them missing (`error`).
-  Review requests and review threads come from GitHub's GraphQL API, in one
-  query (checked against `head`): at most 100 requests (more: `error`) and
-  100 threads (more: the thread count has no value).
+- Reviews and conversation comments: 100 per page, page by page, fewer
+  than 500 each; 500 or more make the facts that need them missing
+  (`error`). After them the pull request is read once more, as after the
+  file list: a push in between makes those facts `stale`. Review requests
+  and review threads come from GitHub's GraphQL API, in one query (checked
+  against `head`): at most 100 requests (more: `error`) and 100 threads
+  (more: the thread count has no value).
 - The head commit's status history (every status, not only the latest):
-  at most 300.
+  fewer than 300.
 - `CODEOWNERS`: at most 128 KiB, and each pattern at most 1,024
   characters. Matching all changed files against its patterns is limited
   to 50 million steps; a file of 1,000 folder patterns such as `build/`
@@ -667,7 +669,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | Reason | When |
 |---|---|
 | `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id. Nothing is sent to GitHub. |
-| `stale` | GitHub's head commit is not `head`: every GitHub fact of the decision is `stale`. A push that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); `github_checks` is read by the commit id, so a later push does not change it. |
+| `stale` | GitHub's head commit is not `head`: every GitHub fact of the decision is `stale`. A push that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); so does a push while the reviews or review threads are read (`github_copilot`); `github_checks` is read by the commit id, so a later push does not change it. |
 | `unavailable` | No GitHub provider (`FACTS_GITHUB` is off), or the token cannot see the repository (GitHub answers 404 or 403, or the app is not installed there). |
 | `timeout` | GitHub took longer than 5 seconds. |
 | `error` | Anything else: a GitHub error (5xx), a rate limit, a redirect (not followed: it would carry the token elsewhere), an answer of the wrong shape, too many files or checks. |
