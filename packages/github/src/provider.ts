@@ -25,8 +25,8 @@ import {
   type WorkflowFile, type WorkflowSettings,
 } from './workflows';
 import {
-  comments, copilotFacts, REVIEW_STATE_QUERY, reviews, reviewState, statusHistory,
-  type Comment, type Review, type ReviewState, type Status,
+  comments, copilotFacts, EDITORS_QUERY, editors, REVIEW_STATE_QUERY, reviews, reviewState, statusHistory,
+  type Comment, type Editors, type Review, type ReviewState, type Status,
 } from './reviews';
 
 const API = 'https://api.github.com';
@@ -539,27 +539,22 @@ export function nextCursor(link: string | null): string | null {
 }
 
 /**
- * A change as text that two changes can be compared by: per file its path,
- * status, earlier name, and its removed and added lines exactly (context
- * lines and line numbers left out, so a rebase onto a newer base gives the
- * same text). Null when a file has no patch.
+ * A change as text that two changes can be compared by, like `git
+ * patch-id`: per file its path, status, earlier name, and every line of its
+ * patch (context, removed and added lines, in order, with a mark where each
+ * hunk starts), only without the hunks' line numbers. So the same edit at
+ * another place differs, and a rebase that does not touch the lines around
+ * the edit gives the same text. Null when a file has no patch (binary, too
+ * large, or a rename without changes).
  */
 export function changeSignature(files: unknown[]): string | null {
-  const out: { path: string; status: string | null; from: string | null; minus: string[]; plus: string[] }[] = [];
+  const out: { path: string; status: string | null; from: string | null; lines: string[] }[] = [];
   for (const f of files) {
     if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub compare: unexpected answer');
     if (typeof f.patch !== 'string') return null;
-    const minus: string[] = [];
-    const plus: string[] = [];
-    let last: string[] | null = null;
-    for (const line of f.patch.split('\n')) {
-      if (line.startsWith('+')) (last = plus).push(line.slice(1));
-      else if (line.startsWith('-')) (last = minus).push(line.slice(1));
-      // "\ No newline at end of file" belongs to the line before it.
-      else if (line.startsWith('\\') && last) last.push('\\ no newline at end of file');
-      else last = null;
-    }
-    out.push({ path: f.filename, status: typeof f.status === 'string' ? f.status : null, from: typeof f.previous_filename === 'string' ? f.previous_filename : null, minus, plus });
+    // "@@ -12,3 +14,4 @@ function name": the numbers go, the mark (and the text after it) stays.
+    const lines = f.patch.split('\n').map((line) => (line.startsWith('@@') ? line.replace(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/, '@@') : line));
+    out.push({ path: f.filename, status: typeof f.status === 'string' ? f.status : null, from: typeof f.previous_filename === 'string' ? f.previous_filename : null, lines });
   }
   return JSON.stringify(out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)));
 }
@@ -917,6 +912,17 @@ export class Snapshot {
     });
   }
 
+  /** Who last edited each comment and review (GraphQL), checked against the head. */
+  editors(): Promise<Editors> {
+    return this.part('editors', async () => {
+      await this.base;
+      const data = await graphql(this.fetchFn, EDITORS_QUERY, { owner: this.ref.owner, name: this.ref.repo, number: this.ref.number }, await this.token, this.signal, 'editors');
+      const { head, ...found } = editors(data);
+      if (head !== this.ref.head) throw new FactStaleError('the pull request changed while its comments were read');
+      return found;
+    });
+  }
+
   /**
    * When the head commit was pushed: the newest push to the head branch that
    * ended at it; null when not known (no push in the activity list, a fork
@@ -955,10 +961,12 @@ export class Snapshot {
   changeOf(sha: string): Promise<string | null> {
     return this.part(`change:${sha}`, async () => {
       const { pr } = await this.base;
-      const v = await this.json(`${this.repoPath}/compare/${encodeURIComponent(pr.base)}...${sha}?per_page=${PER_PAGE}`, 'compare');
+      // The base commit read with the pull request, not the branch: both commits are compared with the same base.
+      if (!pr.baseSha) return null;
+      const v = await this.json(`${this.repoPath}/compare/${pr.baseSha}...${sha}`, 'compare');
       if (!isObject(v) || !Array.isArray(v.files)) throw new FactError('GitHub compare: unexpected answer');
-      // The API lists at most 300 files; a list that may be cut short cannot be compared.
-      if (v.files.length >= COMPARE_MAX_FILES) return null;
+      // The API lists at most 300 files, and none for a very large comparison: a list that may be cut short cannot be compared.
+      if (v.files.length === 0 || v.files.length >= COMPARE_MAX_FILES) return null;
       return changeSignature(v.files);
     });
   }

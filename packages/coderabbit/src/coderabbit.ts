@@ -2,7 +2,7 @@
 // over what the GitHub snapshot read (provider.ts reads, this file decides).
 // Only CodeRabbit's own account counts.
 
-import { isService, latestVerdict, type Account, type Comment, type Review, type ServiceAccount, type Status } from '@pointsman/github';
+import { isService, latestVerdict, type Account, type Comment, type Editors, type Review, type ServiceAccount, type Status } from '@pointsman/github';
 
 /** CodeRabbit's bot account and its GitHub App (the same on every repository). */
 export const CODERABBIT: ServiceAccount = { login: 'coderabbitai[bot]', id: 136622811 };
@@ -60,12 +60,26 @@ export function headSince(pushedAt: string | null, head: Status[]): number | nul
   return first ?? null;
 }
 
-/** CodeRabbit's newest stated billable count for the head: from its comments edited after `since`. */
-export function statedBillable(list: Comment[], since: number | null): number | null {
-  if (since === null) return null;
+/**
+ * The commit a CodeRabbit comment is about: its summary names the range it
+ * reviews ("… between <commit> and <commit>"); the second one. Null when
+ * the comment names none.
+ */
+export function commentHead(body: string): string | null {
+  const m = /\bbetween ([0-9a-f]{40}) and ([0-9a-f]{40})\b/i.exec(plain(body));
+  return m ? m[2]!.toLowerCase() : null;
+}
+
+/**
+ * CodeRabbit's newest stated billable count for the head: from its comments
+ * that name the head as the commit they are about. CodeRabbit edits its
+ * summary in place, so the time of an edit does not tell which head a count
+ * is for; the commit it names does.
+ */
+export function statedBillable(list: Comment[], head: string): number | null {
   const newest = list
     .filter(commentByCodeRabbit)
-    .filter((c) => Date.parse(c.updated) >= since)
+    .filter((c) => commentHead(c.body) === head)
     .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated));
   for (const c of newest) {
     const n = billableIn(c.body);
@@ -74,9 +88,26 @@ export function statedBillable(list: Comment[], since: number | null): number | 
   return null;
 }
 
-/** The latest status CodeRabbit set on the head, or undefined. */
+/** The latest status CodeRabbit set on the head, or undefined (GitHub lists them newest first; a status without a time does not count). */
 export function latestStatus(head: Status[]): Status | undefined {
-  return head.filter(statusByCodeRabbit).sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+  return head.filter(statusByCodeRabbit).filter((s) => Number.isFinite(Date.parse(s.at))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+}
+
+/**
+ * Whether someone other than CodeRabbit edited one of its comments or
+ * reviews (people with write access can). Then its text is not only
+ * CodeRabbit's, and nothing read from it can be trusted. A comment or
+ * review of CodeRabbit's that the editors list does not have counts as
+ * edited (not known).
+ */
+export function editedByOthers(comments: Comment[], reviews: Review[], editors: Editors): boolean {
+  const touched = (id: number | null, map: Map<number, Account | null>) => {
+    if (id === null || !map.has(id)) return true;
+    const by = map.get(id)!;
+    return by !== null && !isService(by, CODERABBIT);
+  };
+  return comments.filter(commentByCodeRabbit).some((c) => touched(c.id, editors.comments))
+    || reviews.filter(byCodeRabbit).some((r) => touched(r.id, editors.reviews));
 }
 
 export interface ReviewValues {
@@ -103,7 +134,8 @@ export function reviewValues(reviews: Review[], head: Status[], headSha: string)
     in_progress: latestStatus(head)?.description === IN_PROGRESS,
     approved_head: verdict?.state === 'APPROVED' && verdict.commit === headSha,
     changes_requested: verdict?.state === 'CHANGES_REQUESTED',
-    outside_diff_findings: /Outside diff range comments/i.test(own.at(-1)?.body ?? ''),
+    // From its latest review with text: an approval without text does not take findings back.
+    outside_diff_findings: /Outside diff range comments/i.test(own.filter((x) => x.body.trim() !== '').at(-1)?.body ?? ''),
     approved: verdict?.state === 'APPROVED' ? verdict.commit : null,
   };
 }

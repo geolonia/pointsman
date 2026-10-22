@@ -13,6 +13,7 @@ import type { FactSpec } from '../../src/types';
 
 const HEAD = 'a'.repeat(40);
 const OLD = 'c'.repeat(40);
+const BASE = 'e'.repeat(40);
 const REPO = '/repos/octo-org/demo';
 const PR = `${REPO}/pulls/7`;
 const COMMENTS = `${REPO}/issues/7/comments`;
@@ -21,7 +22,7 @@ const state = { pull_request: { repo: 'octo-org/demo', number: 7, head: HEAD } }
 const TOKEN = `test-${crypto.randomUUID()}`;
 const crSpec: FactSpec[] = [{ name: 'cr', type: 'coderabbit', at: '$.pull_request', not_reviewed: ['**/pnpm-lock.yaml'] }];
 
-type Handler = (url: URL, init: RequestInit) => unknown;
+type Handler = (url: URL, init: RequestInit, table?: Record<string, Handler>) => unknown;
 
 const PUSHED = '2026-10-22T01:00:00Z';
 const BEFORE = '2026-10-22T00:00:00Z';
@@ -32,18 +33,43 @@ const crApp = { id: 347564 };
 const pullRequest = (body = 'Fixes the guide.') => ({
   state: 'open', merged: false, draft: false, title: 'Docs', body,
   head: { sha: HEAD, ref: 'docs', repo: { id: 1, full_name: 'octo-org/demo' } },
-  base: { ref: 'main', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } },
+  base: { ref: 'main', sha: BASE, repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } },
   user: { login: 'alice', type: 'User' },
   additions: 3, deletions: 1, changed_files: 3, commits: 1,
 });
-const review = (state: string, commit = HEAD, body = '', user: unknown = crBot) => ({ user, state, commit_id: commit, body, submitted_at: AFTER });
+/** The same id for the same item, however often a handler makes it (REST and GraphQL must agree). */
+const idOf = (x: unknown) => [...JSON.stringify(x)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 1_000_000_007, 7) + 1;
+const withId = <T extends object>(x: T) => ({ id: idOf(x), ...x });
+const review = (state: string, commit = HEAD, body = '', user: unknown = crBot) => withId({ user, state, commit_id: commit, body, submitted_at: AFTER });
 const status = (description: string, at = AFTER, creator: unknown = crBot, state = 'success') => ({ context: 'CodeRabbit', state, description, creator, created_at: at });
-const comment = (body: string, updated = AFTER, user: unknown = crBot, app: unknown = crApp) => ({ user, performed_via_github_app: app, author_association: 'NONE', body, created_at: updated, updated_at: updated });
-const NOTICE = '> ## Review limit reached\n> <sub>This review includes 2 billable files and costs up to $0.50.</sub>';
+const comment = (body: string, updated = AFTER, user: unknown = crBot, app: unknown = crApp) => withId({ user, performed_via_github_app: app, author_association: 'NONE', body, created_at: updated, updated_at: updated });
+/** A summary with a limit notice, about the range ending at `head`. */
+const notice = (files: number, head = HEAD) =>
+  `> ## Review limit reached\n> <sub>This review includes ${files} billable file${files === 1 ? '' : 's'} and costs up to $${(files * 0.25).toFixed(2)}.</sub>\n> Reviewing files that changed from the base of the PR and between ${OLD} and ${head}.`;
+const NOTICE = notice(2);
 const thread = (resolved: boolean, author: unknown = { __typename: 'Bot', login: 'coderabbitai', databaseId: 136622811 }) => ({ isResolved: resolved, comments: { nodes: [{ author }] } });
 const graph = (threads: unknown[] = [], more = false) => ({
   data: { repository: { pullRequest: { headRefOid: HEAD, reviewRequests: { totalCount: 0, nodes: [] }, reviewThreads: { pageInfo: { hasNextPage: more }, nodes: threads } } } },
 });
+type Item = { id: number };
+/** Who last edited each comment and review: nobody, unless `editedBy` names an editor by id. */
+const editorsOf = (comments: Item[], reviews: Item[], editedBy: Record<number, unknown> = {}) => ({
+  data: {
+    repository: {
+      pullRequest: {
+        headRefOid: HEAD,
+        comments: { totalCount: comments.length, nodes: comments.map((c) => ({ databaseId: c.id, editor: editedBy[c.id] ?? null })) },
+        reviews: { totalCount: reviews.length, nodes: reviews.map((r) => ({ databaseId: r.id, editor: editedBy[r.id] ?? null })) },
+      },
+    },
+  },
+});
+/** GraphQL: the review state (threads), or the editors of the table's comments and reviews. */
+const gql = (threads: unknown[] = [], more = false, editedBy: Record<number, unknown> = {}): Handler => async (_url, init, table) => {
+  if (!String(init.body).includes('editor')) return graph(threads, more);
+  const list = async (path: string) => (await table![path]!(new URL(`https://api.github.com${path}`), {})) as Item[];
+  return editorsOf(await list(COMMENTS), await list(`${PR}/reviews`), editedBy);
+};
 const patch = (lines: string) => ({ files: [{ filename: 'docs/guide.md', status: 'modified', patch: lines }] });
 
 function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
@@ -57,7 +83,7 @@ function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
     [`${REPO}/activity`]: () => [{ activity_type: 'push', before: '0'.repeat(40), after: HEAD, actor: { login: 'alice' }, timestamp: PUSHED }],
     [`${REPO}/pulls`]: () => [{ number: 6, head: { sha: 'd'.repeat(40) } }],
     [`${REPO}/commits/${'d'.repeat(40)}/statuses`]: () => [status('Review completed')],
-    '/graphql': () => graph(),
+    '/graphql': gql(),
     ...over,
   };
 }
@@ -69,7 +95,7 @@ function fakeGitHub(table: Record<string, Handler>) {
     calls.push({ method: init.method ?? 'GET', path: url.pathname });
     const handler = table[url.pathname];
     if (!handler) return new Response('{"message":"Not Found"}', { status: 404 });
-    const body = await handler(url, init);
+    const body = await handler(url, init, table);
     return body instanceof Response ? body : Response.json(body);
   }) as typeof fetch;
   return { fetchFn, calls };
@@ -133,54 +159,73 @@ describe('CodeRabbit (coderabbit)', () => {
   it('outside-diff findings in the latest review', async () => {
     const body = '**Actionable comments posted: 1**\n<details><summary>⚠️ Outside diff range comments (1)</summary></details>';
     expect(await values(routes({ [`${PR}/reviews`]: () => [review('COMMENTED', HEAD, body)] }))).toMatchObject({ outside_diff_findings: true });
-    expect(await values(routes({ [`${PR}/reviews`]: () => [review('COMMENTED', OLD, body), review('COMMENTED')] }))).toMatchObject({ outside_diff_findings: false });
+    // An approval without text does not take the findings back; a later review with text does.
+    expect(await values(routes({ [`${PR}/reviews`]: () => [review('COMMENTED', OLD, body), review('APPROVED')] }))).toMatchObject({ outside_diff_findings: true });
+    expect(await values(routes({ [`${PR}/reviews`]: () => [review('COMMENTED', OLD, body), review('COMMENTED', HEAD, 'No further comments.')] }))).toMatchObject({ outside_diff_findings: false });
   });
 
   it('unresolved threads CodeRabbit started; no value over one page', async () => {
     const person = { __typename: 'User', login: 'bob', databaseId: 5 };
-    expect(await values(routes({ '/graphql': () => graph([thread(false), thread(true), thread(false, person)]) }))).toMatchObject({ unresolved_threads: 1 });
-    expect(await values(routes({ '/graphql': () => graph([thread(false)], true) }))).toMatchObject({ unresolved_threads: null });
+    expect(await values(routes({ '/graphql': gql([thread(false), thread(true), thread(false, person)]) }))).toMatchObject({ unresolved_threads: 1 });
+    expect(await values(routes({ '/graphql': gql([thread(false)], true) }))).toMatchObject({ unresolved_threads: null });
   });
 
   it('rebase only: the head has the same change as the approved commit', async () => {
     const compare = (head: string) => (url: URL) => (url.pathname.endsWith(`...${OLD}`) ? patch('@@ -1 +1 @@\n-a\n+b') : patch(head));
     const table = (head: string) => routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
-      [`${REPO}/compare/main...${OLD}`]: compare(head),
-      [`${REPO}/compare/main...${HEAD}`]: compare(head),
+      [`${REPO}/compare/${BASE}...${OLD}`]: compare(head),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: compare(head),
     });
     expect(await values(table('@@ -5 +5 @@\n-a\n+b'))).toMatchObject({ rebase_only: true, approved_head: false });
     expect(await values(table('@@ -1 +1 @@\n-a\n+c'))).toMatchObject({ rebase_only: false });
+    // The same removed line at another place (other context) is another change.
+    const at = (ctx: string) => (url: URL) => (url.pathname.endsWith(`...${OLD}`) ? patch('@@ -1,2 +1,1 @@\n helper()\n-check()') : patch(`@@ -9,2 +9,1 @@\n ${ctx}\n-check()`));
+    const placed = (ctx: string) => routes({ [`${PR}/reviews`]: () => [review('APPROVED', OLD)], [`${REPO}/compare/${BASE}...${OLD}`]: at(ctx), [`${REPO}/compare/${BASE}...${HEAD}`]: at(ctx) });
+    expect(await values(placed('handler()'))).toMatchObject({ rebase_only: false });
+    expect(await values(placed('helper()'))).toMatchObject({ rebase_only: true });
+    // No files listed (a very large comparison): cannot tell.
+    expect(await values(routes({ [`${PR}/reviews`]: () => [review('APPROVED', OLD)], [`${REPO}/compare/${BASE}...${OLD}`]: () => ({ files: [] }), [`${REPO}/compare/${BASE}...${HEAD}`]: () => ({ files: [] }) })))
+      .toMatchObject({ rebase_only: null });
     // A file without a patch (binary, too large): cannot tell.
     const noPatch = routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
-      [`${REPO}/compare/main...${OLD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }] }),
-      [`${REPO}/compare/main...${HEAD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }] }),
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }] }),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }] }),
     });
     expect(await values(noPatch)).toMatchObject({ rebase_only: null });
   });
 
   it('billable files: CodeRabbit\'s count for this head, else Pointsman\'s', async () => {
     expect(await values(routes({ [COMMENTS]: () => [comment(NOTICE)] }))).toMatchObject({ billable_files: 2, price_stated: true });
-    // Edited before the head was pushed: about an older head.
-    expect(await values(routes({ [COMMENTS]: () => [comment(NOTICE, BEFORE)] }))).toMatchObject({ billable_files: 2, price_stated: false });
-    const three = NOTICE.replace('2 billable files', '3 billable files');
-    expect(await values(routes({ [COMMENTS]: () => [comment(three, PUSHED), comment(NOTICE.replace('2 billable files', '1 billable file'), AFTER)] })))
-      .toMatchObject({ billable_files: 1, price_stated: true });
-    expect(await values(routes({ [COMMENTS]: () => [comment(three)] }), [{ name: 'cr', type: 'coderabbit', at: '$.pull_request' }])).toMatchObject({ billable_files: 3 });
+    // About another head: CodeRabbit edits its summary in place, so the edit time does not tell; the commit it names does.
+    expect(await values(routes({ [COMMENTS]: () => [comment(notice(5, OLD), AFTER)] }))).toMatchObject({ billable_files: 2, price_stated: false });
+    expect(await values(routes({ [COMMENTS]: () => [comment(notice(5).replace(/Reviewing files[^\n]*/, ''), AFTER)] }))).toMatchObject({ price_stated: false });
+    // The newest notice about the head wins.
+    expect(await values(routes({ [COMMENTS]: () => [comment(notice(3), PUSHED), comment(notice(1), AFTER)] }))).toMatchObject({ billable_files: 1, price_stated: true });
+    expect(await values(routes({ [COMMENTS]: () => [comment(notice(3))] }), [{ name: 'cr', type: 'coderabbit', at: '$.pull_request' }])).toMatchObject({ billable_files: 3 });
     // Without not_reviewed every changed file counts.
     expect(await values(routes(), [{ name: 'cr', type: 'coderabbit', at: '$.pull_request' }])).toMatchObject({ billable_files: 3, price_stated: false });
     expect(billableIn('This review includes **12** billable files')).toBe(12);
   });
 
-  it('when the push time is not known, text counts from CodeRabbit\'s first status on the head', async () => {
-    const noPush = { [`${REPO}/activity`]: () => [] };
-    expect(await values(routes({ ...noPush, [COMMENTS]: () => [comment(NOTICE, AFTER)], [STATUSES]: () => [status('Review rate limited', PUSHED)] })))
-      .toMatchObject({ price_stated: true });
-    expect(await values(routes({ ...noPush, [COMMENTS]: () => [comment(NOTICE, BEFORE)], [STATUSES]: () => [status('Review rate limited', PUSHED)] })))
-      .toMatchObject({ price_stated: false });
-    // Neither known: nothing counts for the head.
-    expect(await values(routes({ ...noPush, [COMMENTS]: () => [comment(NOTICE, AFTER)] }))).toMatchObject({ price_stated: false });
+  it('missing when someone other than CodeRabbit edited its comment or review', async () => {
+    const editor = { __typename: 'User', login: 'alice', databaseId: 3 };
+    const c = comment(notice(1));
+    expect(await reason(routes({ [COMMENTS]: () => [c], '/graphql': gql([], false, { [c.id]: editor }) }))).toBe('error');
+    const r = review('COMMENTED', HEAD, 'Outside diff range comments (1)');
+    expect(await reason(routes({ [`${PR}/reviews`]: () => [r], '/graphql': gql([], false, { [r.id]: editor }) }))).toBe('error');
+    // CodeRabbit editing its own comment is normal.
+    const self = { __typename: 'Bot', login: 'coderabbitai', databaseId: 136622811 };
+    expect(await values(routes({ [COMMENTS]: () => [c], '/graphql': gql([], false, { [c.id]: self }) }))).toMatchObject({ price_stated: true });
+    // A comment the editors list does not have: not known, so missing.
+    expect(await reason(routes({
+      [COMMENTS]: () => [c],
+      '/graphql': async (_u, init) => (String(init.body).includes('editor') ? editorsOf([], []) : graph()),
+    }))).toBe('error');
+    // Edits by others to someone else's comment do not matter.
+    const own = comment('a note', AFTER, { login: 'bob', id: 5, type: 'User' }, null);
+    expect(await values(routes({ [COMMENTS]: () => [own], '/graphql': gql([], false, { [own.id]: editor }) }))).toMatchObject({ price_stated: false });
   });
 
   it('only CodeRabbit\'s own account counts', async () => {
@@ -191,7 +236,7 @@ describe('CodeRabbit (coderabbit)', () => {
       [STATUSES]: () => [status('Review completed', AFTER, impostor), { ...status('Review completed'), context: 'coderabbit-ish' }],
       // The real bot without its app, a look-alike with the app, a person who pastes the notice.
       [COMMENTS]: () => [comment(NOTICE, AFTER, crBot, null), comment(NOTICE, AFTER, impostor), comment(NOTICE, AFTER, person, null), comment(NOTICE, AFTER, { login: 'alice', id: 3, type: 'User' }, null)],
-      '/graphql': () => graph([thread(false, { __typename: 'Bot', login: 'coderabbitai', databaseId: 1 })]),
+      '/graphql': gql([thread(false, { __typename: 'Bot', login: 'coderabbitai', databaseId: 1 })]),
       [`${REPO}/commits/${'d'.repeat(40)}/statuses`]: () => [status('Review completed', AFTER, impostor)],
     }))).toEqual({
       installed: false, ignored: false, reviewed_any: false, reviewed_head: false, in_progress: false,
@@ -209,8 +254,8 @@ describe('CodeRabbit (coderabbit)', () => {
     expect(await reason(routes({ [`${REPO}/pulls`]: () => new Response('{}', { status: 500 }) }))).toBe('error');
     expect(await reason(routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
-      [`${REPO}/compare/main...${OLD}`]: () => new Response('{}', { status: 500 }),
-      [`${REPO}/compare/main...${HEAD}`]: () => patch('@@ -1 +1 @@\n-a\n+b'),
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => new Response('{}', { status: 500 }),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => patch('@@ -1 +1 @@\n-a\n+b'),
     }))).toBe('error');
     expect(await reason(routes({ [PR]: () => ({ ...pullRequest(), head: { sha: OLD, ref: 'docs', repo: { id: 1, full_name: 'octo-org/demo' } } }) }))).toBe('stale');
     expect(await reason(routes({ [PR]: () => new Response('{}', { status: 404 }) }))).toBe('unavailable');
@@ -228,7 +273,9 @@ describe('CodeRabbit (coderabbit)', () => {
     const facts = await lookupFacts([...crSpec, { name: 'copilot', type: 'github_copilot', at: '$.pull_request' }], state, router);
     expect(facts.cr?.missing).toBe(false);
     expect(facts.copilot?.missing).toBe(false);
-    for (const path of [`${PR}/reviews`, `${PR}/files`, COMMENTS, '/graphql']) expect(server.calls.filter((c) => c.path === path).length, path).toBe(1);
+    for (const path of [`${PR}/reviews`, `${PR}/files`, COMMENTS]) expect(server.calls.filter((c) => c.path === path).length, path).toBe(1);
+    // Two GraphQL queries, each once: review state, and the editors of comments and reviews.
+    expect(server.calls.filter((c) => c.path === '/graphql')).toHaveLength(2);
     // The pull request: once at the start, and once more after each list that
     // describes it now (files, reviews, comments), so a push in between makes the facts stale.
     expect(server.calls.filter((c) => c.path === PR)).toHaveLength(4);

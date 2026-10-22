@@ -183,8 +183,8 @@ describe('the snapshot\'s review reads (for other modules)', () => {
       ],
     }));
     expect(await s.comments()).toEqual([
-      { by: { login: 'coderabbitai[bot]', id: 136622811, bot: true }, app: 347564, association: 'NONE', body: 'hi', created: '2026-10-22T01:00:00Z', updated: '2026-10-22T02:00:00Z' },
-      { by: { login: '', id: null, bot: false }, app: null, association: 'NONE', body: 'from a deleted account', created: '2026-10-22T01:00:00Z', updated: '2026-10-22T01:00:00Z' },
+      { id: null, by: { login: 'coderabbitai[bot]', id: 136622811, bot: true }, app: 347564, association: 'NONE', body: 'hi', created: '2026-10-22T01:00:00Z', updated: '2026-10-22T02:00:00Z' },
+      { id: null, by: { login: '', id: null, bot: false }, app: null, association: 'NONE', body: 'from a deleted account', created: '2026-10-22T01:00:00Z', updated: '2026-10-22T01:00:00Z' },
     ]);
   });
 
