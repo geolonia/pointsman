@@ -857,7 +857,8 @@ what voids it.
   and a pull request with another head commit is `stale`; a `CODEOWNERS`
   file or team that cannot be read, or a pattern or section header the
   engine does not read, makes the whole `github_pr` fact missing, and pushes GitHub does not show
-  make `pushed_by_author` `unavailable`; the model never sees the facts. Symptom: `bad-data-accepted`, `wrong-output`. Tier:
+  make `pushed_by_author` `unavailable` unless a known push by someone else
+  already makes it `no`; the model never sees the facts. Symptom: `bad-data-accepted`, `wrong-output`. Tier:
   security-critical (a guessed flood depth changes whether a report goes to
   a person; a guessed "docs only" skips a review). *(documented,
   docs/profile-format.md "A missing fact is never guessed"; "The model does

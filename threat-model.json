@@ -1063,7 +1063,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; the model never sees facts",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
