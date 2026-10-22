@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "20bdc8198c9383ec9de68cbd36139832bf8c6373",
+  "commit": "b373daecaf7df06027961a1754c7a6260bb0f6e6",
   "date": "2026-10-22",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 370,
+    "documented": 374,
     "inferred": 0
   },
   "components": [
@@ -771,6 +771,15 @@
     },
     {
       "entry_point": "config-repo workflows",
+      "parameter": "engine-json-modules",
+      "attacker_controllable": "no",
+      "component": "config-repo",
+      "caller_must_enforce": "none — only modules of this repository's catalog; a module listed twice or a pinned version that differs fails the config check and the build",
+      "provenance": "documented",
+      "source": "docs/modules.md \"Choosing modules\""
+    },
+    {
+      "entry_point": "config-repo workflows",
       "parameter": "engine-json-ref",
       "attacker_controllable": "no",
       "component": "config-repo",
@@ -808,6 +817,7 @@
     "does_not": [
       "spawn child processes (engine and bridge; the deploy-watch Action does: bash and the aws CLI)",
       "read environment variables beyond Worker bindings and vars (the Actions read INPUT_* and GITHUB_*)",
+      "hand a fact module bindings or secrets other than its own FACTS_* settings (the module still runs in the same isolate)",
       "touch a filesystem (the Actions append to GITHUB_OUTPUT and the step summary)",
       "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub facts: GET only plus one installation-token POST) and OAuth client-ID metadata URLs (engine), or the broker and Pointsman (bridge)",
       "follow redirects on outbound calls that carry a key, a token or the state (engine and bridge)",
@@ -833,6 +843,14 @@
       "discouraged": false,
       "provenance": "documented",
       "source": "docs/models.md \"MODEL_MODE\" table: \"development and tests\""
+    },
+    {
+      "name": "engine-json-modules",
+      "default": "unset: every module in this repository",
+      "effect": "preserves P-FACTS-NEVER-GUESSED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/modules.md \"Choosing modules\""
     },
     {
       "name": "FACTS_MODE",
@@ -1129,7 +1147,7 @@
       "severity_tier": "security",
       "conditions": "GET requests to the fixed host api.github.com and, with a GitHub App, one POST that creates an installation token; no write to a repository, pull request or check; redirects not followed; source names only the pull request",
       "provenance": "documented",
-      "source": "src/facts-github.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""
+      "source": "packages/facts-github/src/provider.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""
     },
     {
       "property": "P-GITHUB-FACTS-FOR-HEAD",

@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:d298feed4f8c60b12b728ba920841a684df19f7166c6c5946f36ffff6ff8b084"
+prose_version: "threat-model.md@sha256:10ebc9a59f70a652d2aa618d43d926d934a1f4dfc6bd8b9410777703092f128d"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 300, maintainer: 70, inferred: 0, assumption: 0}
+confidence: {documented: 304, maintainer: 70, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment: Claude Opus 5.5 (claude-opus-5-5)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment and re-binding to v0.5.0: Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -64,12 +64,12 @@ host_side_effects:
   - effect: network-sockets
     stance: conditional
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, action-triage, action-deploy-watch, config-repo]
-    conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub facts: GET only plus one installation-token POST) and OAuth client-ID metadata URLs (engine); the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); the Cloudflare API through wrangler (config-repo); all public addresses only"
+    conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub facts: GET only plus one installation-token POST) and OAuth client-ID metadata URLs (engine), a fact source only when engine.json chooses its module; the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); the Cloudflare API through wrangler (config-repo); all public addresses only"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: child-processes
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, action-triage, config-repo]
-    conditions: "grep for child_process/spawn/execFile in src and bridge/src: 0 hits; config-repo scripts call wrangler through scripts/lib/wrangler.mjs"
+    conditions: "grep for child_process/spawn/execFile in src, bridge/src and packages/*/src: no call (the one hit is a word list in packages/facts-github/src/workflows.ts); config-repo scripts call wrangler through scripts/lib/wrangler.mjs"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: child-processes
     stance: present
@@ -79,7 +79,7 @@ host_side_effects:
   - effect: environment-reads
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
-    conditions: "configuration comes from Worker bindings and vars only; grep for process.env in src and bridge/src: 0 hits"
+    conditions: "configuration comes from Worker bindings and vars only; each fact module is handed only its own FACTS_* settings; grep for process.env in src, bridge/src and packages/*/src: 0 hits"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: environment-reads
     stance: present
@@ -89,7 +89,7 @@ host_side_effects:
   - effect: filesystem
     stance: absent
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
-    conditions: "Workers have no filesystem; no fs import in src or bridge/src"
+    conditions: "Workers have no filesystem; no fs import in src, bridge/src or packages/*/src"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: filesystem
     stance: present
@@ -114,7 +114,7 @@ host_side_effects:
   - effect: global-state
     stance: conditional
     components: [engine-api, engine-facts, engine-mcp]
-    conditions: "module-level caches (profile store, adapters, GSI provider and tile memory cache, OAuth server map, GitHub fact providers with a GitHub App's installation tokens) shared within one isolate only"
+    conditions: "module-level caches (profile store, adapters, OAuth server map, and the providers each fact module keeps: GSI provider and tile memory cache, Valhalla routers, GitHub fact providers with a GitHub App's installation tokens) shared within one isolate only"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: logging
     stance: present
@@ -542,6 +542,12 @@ entry_points:
         obligation_id: protect-config-main
         caller_must_enforce: "protect main; require the Validate check"
         provenance: {kind: documented, source: "template/config-repo/README.md \"Protect main\""}
+      - name: engine-json-modules
+        attacker_controllable: false
+        control_kinds: [resource-name]
+        obligation_id: protect-config-main
+        caller_must_enforce: "none — only modules of this repository's catalog; a module listed twice or a pinned version that differs fails the config check and the build"
+        provenance: {kind: documented, source: "docs/modules.md \"Choosing modules\""}
       - name: engine-json-ref
         attacker_controllable: false
         control_kinds: [resource-name]
@@ -732,7 +738,7 @@ outputs:
       - id: github-read-only
         statement: "GET requests to api.github.com only, plus one POST that creates a GitHub App installation token; redirects not followed"
         property_id: P-GITHUB-READ-ONLY
-        provenance: {kind: documented, source: "src/facts-github.ts header"}
+        provenance: {kind: documented, source: "packages/facts-github/src/provider.ts header"}
     downstream_must_not_assume:
       - id: github-does-not-learn-prs
         statement: "that GitHub does not learn which pull requests the deployment decides about"
@@ -1081,6 +1087,12 @@ build_flags:
     maintainer_stance: dev-only
     affects_properties: [{property_id: P-ACTION-FROM-POLICY, effect: narrows}]
     provenance: {kind: documented, source: "docs/models.md \"MODEL_MODE\" table: \"development and tests\""}
+  - name: engine-json-modules
+    default: "unset: every module in this repository"
+    security_relevant: true
+    maintainer_stance: supported
+    affects_properties: [{property_id: P-FACTS-NEVER-GUESSED, effect: preserves}]
+    provenance: {kind: documented, source: "docs/modules.md \"Choosing modules\""}
   - name: FACTS_MODE
     default: "off"
     security_relevant: true
@@ -1303,7 +1315,7 @@ properties_claimed:
     tier: security-critical
     conditions: "GET requests to the fixed host api.github.com and, with a GitHub App, one POST that creates an installation token; no write to a repository, pull request or check; redirects not followed; source names only the pull request"
     violation_symptoms: [x-unauthorized-write, info-leak]
-    provenance: {kind: documented, source: "src/facts-github.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""}
+    provenance: {kind: documented, source: "packages/facts-github/src/provider.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""}
   - id: P-GITHUB-FACTS-FOR-HEAD
     kind: integrity
     components: [engine-facts]
