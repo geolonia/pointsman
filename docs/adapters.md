@@ -48,6 +48,7 @@ An adapter must:
 - Keep an idempotency key unique per client: of two inserts with the same key, exactly one succeeds.
 - Resolve a review only while it is pending, and claim a callback for one caller only (`resolve`, `claimCallback` are compare-and-set).
 - Keep decisions as they were written: only review, callback and discard fields change later.
+- Answer `recentFor(client, profiles, since, limit)` with that client's decisions of those profiles since a time, newest first, without discarded ones, and never more than `limit`. Facts read the log through it ([modules.md](modules.md#facts-from-the-decision-log)); the engine limits it to the profiles the client's token may use.
 
 ### Profile store
 

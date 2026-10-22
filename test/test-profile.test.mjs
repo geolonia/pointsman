@@ -70,7 +70,7 @@ test('a case that does not fit its profile cannot run, and says where', () => {
     ['error', 'answers: "colour" is not a question of this profile'],
     ['error', 'facts: "river" is not a fact of this profile'],
     ['error', 'facts.flood.rank: must be a number (or null for no value)'],
-    ['error', 'facts.flood: missing must be true or a reason (no_location, no_pr, stale, unavailable, timeout, error), and alone'],
+    ['error', 'facts.flood: missing must be true or a reason (no_location, no_pr, stale, no_log, unavailable, timeout, error), and alone'],
   ]);
 });
 
