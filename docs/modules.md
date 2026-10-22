@@ -18,7 +18,7 @@ Connectors are described in [connectors.md](connectors.md). A module can have bo
 | --- | --- | --- |
 | `@pointsman/facts-gsi` | `inside` and `nearest` for the layers `gsi-flood-max` and `gsi-shelters-flood` (Japan) | `FACTS_MODE` |
 | `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
-| `@pointsman/github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`; also a connector ([github-connector.md](github-connector.md)) | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
+| `@pointsman/github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`; also a connector ([github-connector.md](github-connector.md)) | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
 
 The settings and the facts are described in [profile-format.md](profile-format.md#facts). Each module is a package in this repository (pnpm workspace): `packages/facts-*`, with `src/definition.ts`, `src/index.ts` (the entry) and its provider. The interface and the capabilities are the package `@pointsman/module-api` (`packages/module-api`). The packages are not published to npm; the engine bundles them from this repository. For now they are released with the engine and have its version. The scripts load the definitions as TypeScript through pnpm's links to `packages/`, so the engine checkout needs pnpm's default layout (`pnpm install`, not a hoisted or copied install).
 
@@ -81,6 +81,34 @@ The provider has one function, `lookup(query, signal, scope)`. It returns field 
 ### Facts with a probability
 
 A field can hold a probability or a confidence, for example a geocoder's confidence or a classifier's score. Declare it with `probability: true`; the engine then refuses a value outside 0 to 1, and rules test it like any number (`facts.place.confidence >= 0.9`). The line between facts and AI questions is not "certain or probable": it is who computes the value (code or a chosen service, or a language model) and who controls its input.
+
+### Values and missing facts
+
+Every field has a value, or the whole fact is missing. A field may be
+`null` only where the type's `cases` allow it: a field in `nullable`, or,
+for types whose first field says whether something was found, an
+`optional` field or one whose `absent` value is `null` when nothing was
+found. The engine refuses any other `null` and records the fact as missing
+(`error`). This matters for safety: a rule with a field that has no value
+never matches, so a module that gave `null` could make a blocking rule
+silently not match.
+
+A value that does not apply is still a value: Copilot that never reviewed
+gives `reviews: 0`, not a missing fact.
+
+### Facts from reviews and comments
+
+Anyone can write a comment, and a login can look like a service's. A fact
+read from reviews, comments or commit statuses accepts only the real
+author: the service's bot account, by login and account id (GraphQL
+leaves out the `[bot]` of the login; both forms are the same account).
+Text that counts "for the head commit" (a price, a review started) counts
+only when it was written after that commit was pushed. `@pointsman/github`
+reads reviews, comments, the head's status history, review threads and
+review requests into the decision's snapshot; another module can read the
+same snapshot (`snapshotOf`, with the GitHub module's settings from
+`githubAuthFrom`), so all GitHub-based facts of a decision describe the
+same moment and read GitHub once.
 
 ### Not yet
 

@@ -590,6 +590,7 @@ decide on a state the client did not see.
 | `github_checks` | `required` (number), `green`, `pending`, `failed` (booleans) | The required checks of the base branch (rulesets and branch protection) and the workflows that a ruleset requires, on the head commit. `green`: every one passed (success, neutral or skipped). `failed`: one failed. `pending`: none failed, and one has not finished or not reported yet. `green` is false when there are no required checks. |
 | `github_property` | `value` (text) | The repository's custom property `property`. A property that is not set is `unset`: a known value, not a missing fact. A list (multi-select) is sorted and joined with commas. |
 | `github_workflows` | counts (numbers), `detail` (text, not for rules) | The GitHub Actions files the pull request changes: see [GitHub workflows](#github-workflows). |
+| `github_copilot` | `requested`, `reviewed_head`, `approved_head` (booleans), `reviews` (number) | Copilot's code review. `requested`: a Copilot review is requested now. `reviewed_head`: Copilot reviewed the head commit. `approved_head`: Copilot's latest review that decides (approve, request changes, or a dismissed one) approves the head commit. `reviews`: how many reviews Copilot made on the pull request. Only Copilot's own bot account counts (its login and its account id), so a person or another app cannot stand in for it. Without Copilot: false, false, false, 0. Copilot usually leaves its review as a comment, so `approved_head` is true only where it approves. |
 
 Fact settings:
 
@@ -647,6 +648,15 @@ without regular expressions, so a long pattern cannot slow a decision down.
   read once more after it: a push in between makes the facts `stale`.
 - A check run and a commit status with the same name that disagree: the
   stricter result counts.
+- Reviews and conversation comments: 100 per page, page by page, fewer
+  than 500 each; 500 or more make the facts that need them missing
+  (`error`). After them the pull request is read once more, as after the
+  file list: a push in between makes those facts `stale`. Review requests
+  and review threads come from GitHub's GraphQL API, in one query (checked
+  against `head`): at most 100 requests (more: `error`) and 100 threads
+  (more: the thread count has no value).
+- The head commit's status history (every status, not only the latest):
+  fewer than 300.
 - `CODEOWNERS`: at most 128 KiB, and each pattern at most 1,024
   characters. Matching all changed files against its patterns is limited
   to 50 million steps; a file of 1,000 folder patterns such as `build/`
@@ -659,7 +669,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | Reason | When |
 |---|---|
 | `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id. Nothing is sent to GitHub. |
-| `stale` | GitHub's head commit is not `head`: every GitHub fact of the decision is `stale`. A push that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); `github_checks` is read by the commit id, so a later push does not change it. |
+| `stale` | GitHub's head commit is not `head`: every GitHub fact of the decision is `stale`. A push that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); so does a push while the reviews or review threads are read (`github_copilot`); `github_checks` is read by the commit id, so a later push does not change it. |
 | `unavailable` | No GitHub provider (`FACTS_GITHUB` is off), or the token cannot see the repository (GitHub answers 404 or 403, or the app is not installed there). |
 | `timeout` | GitHub took longer than 5 seconds. |
 | `error` | Anything else: a GitHub error (5xx), a rate limit, a redirect (not followed: it would carry the token elsewhere), an answer of the wrong shape, too many files or checks. |
@@ -671,7 +681,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | `FACTS_GITHUB` | GitHub facts |
 |---|---|
 | `off` (default) | none: every GitHub fact is missing (`unavailable`) |
-| `mock` | fixed answers for development and tests: an open pull request by a member who pushed every commit and is not the only code owner, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset`; one changed workflow file with no findings |
+| `mock` | fixed answers for development and tests: an open pull request by a member who pushed every commit and is not the only code owner, one changed file (10 lines) that matches every path list, signed commits, one required check that passed; every property is `unset`; one changed workflow file with no findings; no Copilot review |
 | `token` | read with the Worker secret `FACTS_GITHUB_TOKEN` |
 | `app` | read as a GitHub App: `FACTS_GITHUB_APP_ID` and the Worker secret `FACTS_GITHUB_APP_PRIVATE_KEY` (the PEM file GitHub gives you) |
 
@@ -680,7 +690,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 - With `app`, Pointsman finds the app's installation for the repository and
   makes an installation token. The token is kept until 5 minutes before it
   expires (after one hour). Making the token is the only request that is
-  not a read. The token is down-scoped: it gets only the permissions the
+  not a read (GraphQL queries are sent as POST, but they only read). The token is down-scoped: it gets only the permissions the
   facts use, as read only. Still give the app read permissions only, and
   use another app for anything that writes ([github-connector.md](github-connector.md#the-two-github-apps)).
   An app can read the checks of private repositories; a fine-grained token
@@ -696,10 +706,10 @@ Permissions (all read) for a fine-grained token or an app:
 
 | Permission | For |
 |---|---|
-| Pull requests | `github_pr`, `github_paths`, `github_workflows` |
+| Pull requests | `github_pr`, `github_paths`, `github_workflows`, `github_copilot` (reviews, review requests, review threads, conversation comments) |
 | Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS`, the files `github_workflows` reads |
 | Metadata | always (every app has it) |
-| Checks (apps only), Commit statuses | `github_checks` |
+| Checks (apps only), Commit statuses | `github_checks`; commit statuses also for facts of other modules that read the snapshot |
 | Actions | `github_checks`, when a ruleset requires workflows |
 | Custom properties | `github_property` |
 | Organization: Members | `author_member` for members who hide their membership; the members of a team in `CODEOWNERS` |

@@ -35,7 +35,7 @@ const mod = (name, extra) => ({ name, version: '1.0.0', roles: ['facts'], settin
 
 test('the modules of this repository fit together', () => {
   const r = new FactRegistry([gsi, valhalla, github]);
-  assert.deepEqual([...r.types.keys()].sort(), ['detour', 'github_checks', 'github_paths', 'github_pr', 'github_property', 'github_workflows', 'inside', 'nearest']);
+  assert.deepEqual([...r.types.keys()].sort(), ['detour', 'github_checks', 'github_copilot', 'github_paths', 'github_pr', 'github_property', 'github_workflows', 'inside', 'nearest']);
   assert.deepEqual([...r.reasons.keys()], ['no_location', 'no_pr', 'stale', 'unavailable', 'timeout', 'error']);
   assert.equal(r.moduleFor('inside', 'gsi-flood-max')?.name, '@pointsman/facts-gsi');
   assert.equal(r.moduleFor('detour')?.name, '@pointsman/facts-valhalla');

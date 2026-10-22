@@ -33,7 +33,7 @@ export interface GitHubFactSpec extends FactSpec {
 
 const gh = (spec: FactSpec) => spec as GitHubFactSpec;
 
-export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows';
+export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot';
 
 export interface GitHubFactQuery {
   type: GitHubFactType;
@@ -348,6 +348,41 @@ const github_workflows: FactTypeDef = {
   cases: { nullable: [], defaults: { detail: '' } },
 };
 
+/**
+ * Copilot's code review on the pull request (reviews.ts): only reviews and
+ * requests of Copilot's own bot account count. Without Copilot: false, false, false, 0.
+ */
+const github_copilot: FactTypeDef = {
+  type: 'github_copilot',
+  description: 'github_copilot: Copilot code review on the pull request.',
+  fields: { requested: { kind: 'boolean' }, reviewed_head: { kind: 'boolean' }, approved_head: { kind: 'boolean' }, reviews: { kind: 'number' } },
+  input: pullRequest,
+  query: base,
+  timeoutMs: GITHUB_TIMEOUT_MS,
+  mock: { requested: false, reviewed_head: false, approved_head: false, reviews: 0 },
+  words: {
+    en: {
+      describe: (f, s) => `${f}: Copilot's code review of the pull request (${s.at}), read from GitHub: whether it is requested, whether Copilot reviewed or approved the head commit, and how many reviews it made.`,
+      fields: {
+        requested: ['a Copilot review of % is requested', 'no Copilot review of % is requested'],
+        reviewed_head: ['Copilot reviewed the head commit of %', 'Copilot did not review the head commit of %'],
+        approved_head: ['Copilot approved the head commit of %', 'Copilot did not approve the head commit of %'],
+        reviews: 'the number of Copilot reviews of %',
+      },
+    },
+    ja: {
+      describe: (f, s) => `${f}：GitHub から読むプルリクエスト（${s.at}）の Copilot のコードレビュー。依頼されているか、head コミットをレビュー・承認したか、レビューの数。`,
+      fields: {
+        requested: ['%の Copilot レビューが依頼されている', '%の Copilot レビューが依頼されていない'],
+        reviewed_head: ['Copilot が%の head コミットをレビューした', 'Copilot が%の head コミットをレビューしていない'],
+        approved_head: ['Copilot が%の head コミットを承認した', 'Copilot が%の head コミットを承認していない'],
+        reviews: '%の Copilot レビューの数',
+      },
+    },
+  },
+  cases: { nullable: [], defaults: {} },
+};
+
 const STALE: Bilingual = { en: 'the pull request has a newer commit', ja: 'プルリクエストに新しいコミットがある' };
 
 export const definition: FactModule = {
@@ -355,7 +390,7 @@ export const definition: FactModule = {
   // As in package.json (a test checks); released with the engine for now.
   version: '0.7.0',
   roles: ['facts', 'connector'],
-  types: [github_pr, github_paths, github_checks, github_property, github_workflows],
+  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot],
   reasons: { stale: STALE },
   settings: ['FACTS_GITHUB', 'FACTS_GITHUB_TOKEN', 'FACTS_GITHUB_APP_ID', 'FACTS_GITHUB_APP_PRIVATE_KEY', 'FACTS_GITHUB_IGNORE_CHECK'],
   // The connector (docs/github-connector.md): in its own Worker only, with the write app's key.
