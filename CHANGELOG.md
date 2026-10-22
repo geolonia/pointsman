@@ -48,20 +48,27 @@ deployment turns it on.
 ### Changed
 
 - Facts can be missing for two more reasons: `no_pr` (no pull request at
-  the fact's path) and `stale` (GitHub has another head commit). Rules
-  that test `facts.<name>.reason` may want to handle them.
+  the fact's path) and `stale` (GitHub has another head commit), also in
+  the API (`Fact.reason` in `openapi.yaml`): clients that check the reason
+  must accept them. Rules that test `facts.<name>.reason` may want to
+  handle them.
 - `FACTS_MODE` and `FACTS_GITHUB` are separate: `FACTS_MODE: mock` does
   not answer GitHub facts, and `FACTS_GITHUB: mock` does not answer
   spatial ones.
 - Config repository template: AGENTS.md says how to make and revoke a
-  short-lived replay token; `actions/setup-node` 7.1.0 (#136).
+  short-lived replay token; `actions/setup-node` 7.1.0; Dependabot also
+  watches the template's workflows (#136).
 
 ### For existing deployments
 
-Nothing changes until `FACTS_GITHUB` is set. To turn GitHub facts on, set
-the secret first, then the setting: with `FACTS_GITHUB: "token"` and no
+Move `ref` in `engine.json` to the commit of `v0.4.0` as usual. Nothing
+changes until `FACTS_GITHUB` is set. To turn GitHub facts on, set the
+secret first, then the setting: with `FACTS_GITHUB: "token"` and no
 `FACTS_GITHUB_TOKEN`, the engine refuses every request (a config error).
-See [docs/deployment.md](docs/deployment.md), step 7.
+It also refuses every request when another `FACTS_GITHUB_*` setting does
+not fit `FACTS_GITHUB` (for example `FACTS_GITHUB_TOKEN` without
+`"token"`), or `FACTS_GITHUB` has another value than `off`, `mock`,
+`token` or `app`. See [docs/deployment.md](docs/deployment.md), step 7.
 
 ## 0.3.0 (2026-10-21)
 
