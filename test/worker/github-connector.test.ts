@@ -3,8 +3,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
-  type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type PullRequestInfo,
+  AppGitHub, GitHubError, actingScope, actsOnGitHub, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
 
@@ -26,7 +26,7 @@ const KEY = await pemKey();
 
 const settings = (extra: Partial<ConnectorSettings> = {}): ConnectorSettings => ({
   appId: APP_ID, privateKey: KEY, webhookSecret: SECRET, pointsmanToken: `pm_${crypto.randomUUID()}`,
-  repos: new Set([REPO]), profiles: ['pr-docs-check', 'workflow-check'], ...extra,
+  repos: new Set([REPO]), profiles: ['pr-docs-check', 'workflow-check'], actions: {}, ...extra,
 });
 
 function memoryStorage() {
@@ -42,14 +42,30 @@ function memoryStorage() {
 
 function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
   let nextId = 100;
-  const calls: { op: string; head?: string; name?: string; id?: number; output?: CheckRunOutput }[] = [];
-  const state: PullRequestInfo = { open: true, head: HEAD, draft: false, base: 'main', title: 'Docs', body: 'A body', ...pr };
-  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number } = {
+  const calls: { op: string; head?: string; name?: string; id?: number; output?: CheckRunOutput; body?: string; list?: string[] }[] = [];
+  const state: PullRequestInfo = {
+    open: true, head: HEAD, draft: false, base: 'main', title: 'Docs', body: 'A body', fork: false, labels: [], requestedReviewers: [], ...pr,
+  };
+  const approvals: OwnApproval[] = [];
+  const comments: string[] = [];
+  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[] } = {
     state,
-    pullRequest: async () => (calls.push({ op: 'get' }), { ...github.state }),
+    approvals,
+    comments,
+    pullRequest: async () => (calls.push({ op: 'get' }), { ...github.state, labels: [...github.state.labels], requestedReviewers: [...github.state.requestedReviewers] }),
     findCheckRun: async (_r, head, name) => (calls.push({ op: 'find', head, name }), github.existing),
     createCheckRun: async (_r, head, name, output) => (calls.push({ op: 'create', head, name, output }), nextId++),
     updateCheckRun: async (_r, id, output) => void calls.push({ op: 'update', id, output }),
+    findComment: async (_r, _n, marker) => (calls.push({ op: 'findComment' }), comments.some((c) => c.startsWith(marker))),
+    createComment: async (_r, _n, body) => { calls.push({ op: 'comment', body }); comments.push(body); },
+    addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
+    requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
+    ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
+    approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head, marker: body.split('\n')[0]! }); return nextId++; },
+    dismissReview: async (_r, _n, id) => {
+      calls.push({ op: 'dismiss', id });
+      approvals.splice(approvals.findIndex((a) => a.id === id), 1);
+    },
   };
   return { github, calls };
 }
@@ -231,7 +247,7 @@ describe('the work of one pull request', () => {
     expect(gh.calls.filter((c) => c.op !== 'get').map((c) => [c.op, c.id ?? c.name])).toEqual([['find', 'Pointsman: pr-docs-check'], ['update', 555]]);
   });
 
-  it('is tried again when Pointsman is down, with the same idempotency key', async () => {
+  it('is tried again when Pointsman is down', async () => {
     const mem = memoryStorage();
     const gh = fakeGitHub();
     let down = true;
@@ -242,7 +258,6 @@ describe('the work of one pull request', () => {
     down = false;
     await work.run();
     expect(pm.calls).toHaveLength(2);
-    expect(pm.calls[0]!.key).toBe(pm.calls[1]!.key);
     expect(gh.calls.filter((c) => c.op === 'create')).toHaveLength(1);
   });
 
@@ -306,7 +321,7 @@ describe('settings and tokens', () => {
     expect(() => connectorSettings({ ...env, GITHUB_WEBHOOK_SECRET: '' })).toThrow(/GITHUB_WEBHOOK_SECRET is not set/);
     expect(() => connectorSettings({ ...env, GITHUB_WEBHOOK_SECRET: 'short' })).toThrow(/at least 20/);
     expect(() => connectorSettings({ ...env, GITHUB_APP_PRIVATE_KEY: 'x' })).toThrow(/PEM/);
-    expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":["a/b"],"profiles":["p"],"actions":{}}' })).toThrow(/unknown key actions/);
+    expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":["a/b"],"profiles":["p"],"extra":{}}' })).toThrow(/unknown key extra/);
     expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":[],"profiles":["p"]}' })).toThrow(/repos/);
     expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":["a/b"],"profiles":["../x"]}' })).toThrow(/profiles/);
   });
@@ -345,5 +360,228 @@ describe('settings and tokens', () => {
     await expect(down.pullRequest(REPO, 7)).rejects.toMatchObject({ retry: true });
     const busy = new AppGitHub(APP_ID, KEY, (async () => new Response(null, { status: 502 })) as unknown as typeof fetch);
     await expect(busy.pullRequest(REPO, 7)).rejects.toMatchObject({ retry: true });
+  });
+});
+
+describe('actions (switched on per profile action)', () => {
+  const ACT = { 'pr-docs-check': { light: { do: 'label' as const, labels: ['docs-only'] }, review: { do: 'request_reviewer' as const, reviewers: ['dkastl'] } } };
+
+  async function acting(actions: ConnectorSettings['actions'], answer?: (p: string) => Response, pr: Partial<PullRequestInfo> = {}) {
+    const mem = memoryStorage();
+    const gh = fakeGitHub(pr);
+    const pm = fakeEngine(answer);
+    const work = pullRequestWork(settings({ profiles: ['pr-docs-check'], actions }), mem.storage, pm.engine, gh.github);
+    const event = () => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await event();
+    return { work, mem, gh, pm, event };
+  }
+  const ops = (calls: { op: string }[]) => calls.map((c) => c.op).filter((o) => !['get', 'find', 'create', 'update', 'approvals'].includes(o));
+
+  it('does nothing but the check run for an action that is not mapped', async () => {
+    const { work, gh } = await acting(ACT, (p) => Response.json(decision(p, { action: 'wait' })));
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.title).toBe('wait (shadow)');
+  });
+
+  it('carries out a mapped action once per head, and says so on the check run', async () => {
+    const { work, gh, mem, event } = await acting(ACT, (p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['label']);
+    const last = gh.calls.filter((c) => c.output).at(-1)!.output!;
+    expect(last.title).toBe('light');
+    expect(last.conclusion).toBe('neutral');
+    expect(last.summary).toContain('labels added: docs-only');
+    expect((mem.data.get('acts') as any).done['pr-docs-check:label'].state).toBe('done');
+    // A new head: once more.
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['label', 'label']);
+  });
+
+  it('does nothing while a person checks the decision', async () => {
+    const { work, gh } = await acting(ACT, (p) => Response.json(decision(p, { action: 'review', review: { status: 'pending' } })));
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('a person checks this decision first');
+  });
+
+  it('writes the record before the action; after a stop it looks for the trace, and waits before doing it again', async () => {
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'comment', text: 'Docs only.' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    let t = 1_000_000;
+    work.now = () => t;
+    gh.github.createComment = async () => {
+      expect((mem.data.get('acts') as any).done['pr-docs-check:comment'].state).toBe('pending');
+      throw new Error('stopped');
+    };
+    await expect(work.run()).resolves.toBeUndefined();
+    // Not a GitHub answer that may pass: failed, not done again for this commit.
+    expect((mem.data.get('acts') as any).done['pr-docs-check:comment'].state).toBe('failed');
+
+    // A real stop between record and action: pending, no trace, young: not done again yet.
+    mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:comment': { decision: 'd', state: 'pending', at: t } } });
+    gh.github.createComment = async (_r, _n, body) => void gh.github.comments.push(body);
+    await event();
+    await work.run();
+    expect(gh.github.comments).toEqual([]);
+    expect(mem.alarms.at(-1)).toBe(t + UNCLEAR_MS);
+    // Before the time: the alarm finds nothing to do.
+    await work.run();
+    expect(gh.github.comments).toEqual([]);
+    // At the time, without a new event (the alarm alone): still no trace, so done again, once.
+    t += UNCLEAR_MS;
+    await work.run();
+    expect(gh.github.comments).toHaveLength(1);
+    expect(gh.github.comments[0]).toContain('Docs only.');
+    expect(gh.github.comments[0]).toContain(`pointsman comment pr-docs-check ${HEAD}`);
+  });
+
+  it('a pending record with a trace on GitHub counts as done', async () => {
+    const { work, gh, mem, event } = await acting(ACT, (p) => Response.json(decision(p, { action: 'light' })));
+    mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:label': { decision: 'd', state: 'pending', at: Date.now() } } });
+    gh.github.state.labels.push('docs-only');
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect((mem.data.get('acts') as any).done['pr-docs-check:label'].state).toBe('done');
+  });
+
+  it('approves only the decided commit, never a draft or a fork, and dismisses its approval after a push', async () => {
+    const APPROVE = { 'pr-docs-check': { light: { do: 'approve' as const } } };
+    const light = (p: string) => Response.json(decision(p, { action: 'light' }));
+    const draft = await acting(APPROVE, light, { draft: true });
+    await draft.work.run();
+    expect(ops(draft.gh.calls)).toEqual([]);
+    const fork = await acting(APPROVE, light, { fork: true });
+    await fork.work.run();
+    expect(ops(fork.gh.calls)).toEqual([]);
+
+    const { work, gh, event } = await acting(APPROVE, light);
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD]);
+    expect(gh.github.approvals).toEqual([{ id: expect.any(Number), commit: HEAD, marker: expect.stringContaining(HEAD) }]);
+
+    // A push: the old approval is dismissed, and the new head is approved on its own decision.
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(gh.github.approvals.map((a) => a.commit)).toEqual([HEAD2]);
+  });
+
+  it('does not approve when the head moved between the decision and the approval', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.state.head = HEAD2; // a push while Pointsman decided
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('the pull request changed');
+  });
+
+  it('a refused action (a missing label) is shown and not tried again for that commit', async () => {
+    const { work, gh, event } = await acting(ACT, (p) => Response.json(decision(p, { action: 'light' })));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let tries = 0;
+    gh.github.addLabels = async () => { tries++; throw new GitHubError('GitHub labels: 422', false, 422); };
+    await work.run();
+    await event();
+    await work.run();
+    expect(tries).toBe(1);
+    const outputs = gh.calls.filter((c) => c.output).map((c) => c.output!.summary);
+    expect(outputs[0]).toContain('failed (422)');
+    expect(outputs.at(-1)).toContain('failed earlier; not tried again');
+    errors.mockRestore();
+  });
+
+  it('settings: actions only for listed profiles, from the fixed list, with checked values', () => {
+    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x' };
+    const conf = (actions: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p'], actions }) });
+    expect(connectorSettings(conf({ p: { light: { do: 'label', labels: ['x'] } } }))!.actions).toEqual({ p: { light: { do: 'label', labels: ['x'] } } });
+    expect(actsOnGitHub(connectorSettings(conf({ p: {} }))!)).toBe(false);
+    expect(() => connectorSettings(conf({ q: { light: { do: 'label', labels: ['x'] } } }))).toThrow(/not in "profiles"/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'merge' } } }))).toThrow(/"do" must be one of/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'label', labels: [] } } }))).toThrow(/labels/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'request_reviewer', reviewers: ['bad name'] } } }))).toThrow(/reviewers/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'comment', text: '' } } }))).toThrow(/text/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'approve', body: 'x' } } }))).toThrow(/unknown key body/);
+  });
+
+  it('asks for pull requests: write only when actions are switched on', () => {
+    expect(actingScope({ metadata: 'read', pull_requests: 'write', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'write', checks: 'write' });
+    expect(connectorScope({ metadata: 'read', pull_requests: 'write', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+    // An app without write on pull requests: the token reads them; the actions then fail (403) and show on the check run.
+    expect(actingScope({ metadata: 'read', pull_requests: 'read', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+  });
+
+  it('withdraws its approval when a later decision on the same commit no longer approves', async () => {
+    let action = 'light';
+    const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(1);
+    action = 'review'; // CI failed, say: same commit, another decision
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(0);
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss']);
+    // Approving again later is possible.
+    action = 'light';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+  });
+
+  it('dismisses only approvals it recorded giving, and approves nothing while an old one cannot be dismissed', async () => {
+    const light = (p: string) => Response.json(decision(p, { action: 'light' }));
+    const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, light);
+    // Another bot's review with the marker: never touched.
+    gh.github.approvals.push({ id: 999, commit: 'c'.repeat(40), marker: '<!-- pointsman approve pr-docs-check ' + 'c'.repeat(40) + ' -->' });
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'dismiss')).toEqual([]);
+    // A push; dismissing its own old approval fails: no new approval, the run still shows its checks.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismissal: 422', false, 422); };
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD]);
+    const last = gh.calls.filter((c) => c.output).at(-1)!.output!;
+    expect(last.summary).toContain('an older approval could not be dismissed');
+    errors.mockRestore();
+  });
+
+  it('asks Pointsman anew on every run, also on a retry', async () => {
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    let down = true;
+    const pm = fakeEngine((p) => (down ? new Response(null, { status: 503 }) : Response.json(decision(p))));
+    const work = pullRequestWork(settings({ profiles: ['pr-docs-check'] }), mem.storage, pm.engine, gh.github);
+    await work.accept({ target: { repo: REPO, number: 7 }, delivery: 'd1', digest: 'x1' }, Date.now());
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    down = false;
+    await work.run();
+    expect(pm.calls[0]!.key).not.toBe(pm.calls[1]!.key);
+  });
+
+  it('keeps a due recheck when that run is to be tried again', async () => {
+    const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'comment', text: 'Docs only.' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    let t = 2_000_000;
+    work.now = () => t;
+    await work.run(); // the event: comment written
+    // An unclear comment on this head, due for its recheck now.
+    mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:comment': { decision: 'd', state: 'pending', at: t - UNCLEAR_MS } } });
+    mem.data.set('recheckAt', t);
+    gh.github.comments.length = 0;
+    const findComment = gh.github.findComment;
+    gh.github.findComment = async () => { throw new GitHubError('GitHub comments: 502', true, 502); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(mem.data.get('recheckAt')).toBe(t);
+    // The retried alarm: the recheck runs, no trace, the comment is written again once.
+    gh.github.findComment = findComment;
+    await work.run();
+    expect(gh.github.comments).toHaveLength(1);
   });
 });

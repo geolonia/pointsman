@@ -17,6 +17,77 @@ export interface ConnectorSettings {
   /** Repositories (owner/name, lower case) and the profiles asked for each pull request. */
   repos: Set<string>;
   profiles: string[];
+  /**
+   * What to do on GitHub for a decision, by profile and decision action. A
+   * profile or action that is not here gets only its check run (shadow mode).
+   */
+  actions: Record<string, Record<string, ActionSpec>>;
+}
+
+/** The actions the connector can carry out, besides its check run (the definition's fixed list). */
+export type ActionSpec =
+  /** A comment with this fixed text (never text from the pull request). */
+  | { do: 'comment'; text: string }
+  /** Add these labels (GitHub creates one that does not exist yet). */
+  | { do: 'label'; labels: string[] }
+  /** Ask these people for a review. */
+  | { do: 'request_reviewer'; reviewers: string[] }
+  /** Approve the head commit the decision was made on. */
+  | { do: 'approve' };
+
+export const ACTION_KINDS = ['comment', 'label', 'request_reviewer', 'approve'] as const;
+
+const LABEL = /^\S(?:.{0,48}\S)?$/;
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const ACTION = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+function actionSpec(v: unknown, where: string): ActionSpec {
+  const o = (v ?? {}) as Record<string, unknown>;
+  const keys = Object.keys(o).filter((k) => k !== 'do');
+  const only = (allowed: string[]) => {
+    const extra = keys.find((k) => !allowed.includes(k));
+    if (extra) throw new ConfigError(`${where}: unknown key ${extra}`);
+  };
+  const list = (key: string, re: RegExp, what: string): string[] => {
+    const l = o[key];
+    if (!Array.isArray(l) || l.length === 0 || l.length > 10 || !l.every((x) => typeof x === 'string' && re.test(x))) {
+      throw new ConfigError(`${where}: "${key}" must be a list of 1 to 10 ${what}`);
+    }
+    return [...new Set(l as string[])];
+  };
+  switch (o.do) {
+    case 'comment':
+      only(['text']);
+      if (typeof o.text !== 'string' || o.text.trim() === '' || o.text.length > 1000) throw new ConfigError(`${where}: "text" must be 1 to 1000 characters`);
+      return { do: 'comment', text: o.text };
+    case 'label':
+      only(['labels']);
+      return { do: 'label', labels: list('labels', LABEL, 'label names') };
+    case 'request_reviewer':
+      only(['reviewers']);
+      return { do: 'request_reviewer', reviewers: list('reviewers', LOGIN, 'GitHub logins') };
+    case 'approve':
+      only([]);
+      return { do: 'approve' };
+    default:
+      throw new ConfigError(`${where}: "do" must be one of ${ACTION_KINDS.join(', ')}`);
+  }
+}
+
+function actionsOf(v: unknown, profiles: string[]): Record<string, Record<string, ActionSpec>> {
+  if (v === undefined) return {};
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) throw new ConfigError('GITHUB_CONNECTOR: "actions" must be an object');
+  const out: Record<string, Record<string, ActionSpec>> = {};
+  for (const [profile, byAction] of Object.entries(v)) {
+    if (!profiles.includes(profile)) throw new ConfigError(`GITHUB_CONNECTOR: actions for ${profile}, which is not in "profiles"`);
+    if (byAction === null || typeof byAction !== 'object' || Array.isArray(byAction)) throw new ConfigError(`GITHUB_CONNECTOR: actions.${profile} must be an object`);
+    out[profile] = {};
+    for (const [action, spec] of Object.entries(byAction)) {
+      if (!ACTION.test(action)) throw new ConfigError(`GITHUB_CONNECTOR: actions.${profile}: "${action}" is not an action name`);
+      out[profile][action] = actionSpec(spec, `GITHUB_CONNECTOR: actions.${profile}.${action}`);
+    }
+  }
+  return out;
 }
 
 const REPO = /^[a-z0-9-]{1,39}\/[a-z0-9._-]{1,100}$/;
@@ -38,7 +109,7 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
   } catch {
     throw new ConfigError('GITHUB_CONNECTOR is not valid JSON');
   }
-  const { repos, profiles, ...rest } = (config ?? {}) as { repos?: unknown; profiles?: unknown };
+  const { repos, profiles, actions, ...rest } = (config ?? {}) as { repos?: unknown; profiles?: unknown; actions?: unknown };
   const unknown = Object.keys(rest);
   if (unknown.length > 0) throw new ConfigError(`GITHUB_CONNECTOR: unknown key ${unknown[0]}`);
   if (!Array.isArray(repos) || repos.length === 0 || !repos.every((r) => typeof r === 'string' && REPO.test(r.toLowerCase()))) {
@@ -55,8 +126,12 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
     pointsmanToken: env.POINTSMAN_TOKEN as string,
     repos: new Set((repos as string[]).map((r) => r.toLowerCase())),
     profiles: profiles as string[],
+    actions: actionsOf(actions, profiles as string[]),
   };
 }
+
+/** Whether any action is switched on: then the token may write pull requests. */
+export const actsOnGitHub = (s: ConnectorSettings) => Object.values(s.actions).some((a) => Object.keys(a).length > 0);
 
 /** The check run's name for a profile. */
 export const checkName = (profile: string) => `Pointsman: ${profile}`;

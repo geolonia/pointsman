@@ -2,7 +2,7 @@
 
 The GitHub connector asks Pointsman about pull requests and shows each decision on the pull request as a check run. It is the connector role of the module `@pointsman/github` ([connectors.md](connectors.md)); the same module's fact role reads pull requests for the engine ([profile-format.md](profile-format.md#facts)).
 
-For now it runs in **shadow mode**: it only writes its check runs, with the conclusion `neutral`, so they never block a merge. Pointsman acts on nothing else.
+By default it runs in **shadow mode**: it only writes its check runs, with the conclusion `neutral`, so they never block a merge. A deployment can switch on [actions](#actions) for chosen decisions: a comment, labels, a review request or an approval. The check runs stay `neutral`.
 
 ## How it works
 
@@ -20,7 +20,7 @@ What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token, and
 }
 ```
 
-Title and body are cut to 300 and 8,000 characters. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's events, so a retry of the same run gets the decision already logged, and each new event (for example finished CI) a new decision.
+Title and body are cut to 300 and 8,000 characters. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's runs, so every run asks anew (a retry too): an action never rests on an older answer, and each new event (for example finished CI) gets a new decision.
 
 ### Safety
 
@@ -29,8 +29,53 @@ Title and body are cut to 300 and 8,000 characters. Pointsman reads every fact f
 - **Only its repositories.** Events for other repositories are ignored. Its own check runs' events are ignored too, so a check run does not start the next run.
 - **One check run per profile and head.** The record of a check run is written before the check run is created. If a run stops in between, the next run first looks for the check run on GitHub and updates it, instead of creating a second one. Later decisions on the same head update the same check run.
 - **Retries.** When GitHub or Pointsman is busy, down or not reached (5xx, 429, a network error or timeout), the run is tried again later (the Durable Object's alarm, a few times with growing delays). When Pointsman refuses (another 4xx) or the app cannot do it (not installed, no permission, a broken key), it is a setting to fix: the error is logged without the token or key, and nothing is shown on the pull request. In both cases the next event of the pull request starts a new run; a redelivery of the same webhook from GitHub's settings is dropped as a replay.
-- **Write access only here.** Only the connector has the key of the app that can write, and only in its own Worker. Its tokens are down-scoped to what it needs (read pull requests, write check runs) and to the one repository.
+- **Write access only here.** Only the connector has the key of the app that can write, and only in its own Worker. Its tokens are down-scoped to what it needs (read pull requests, write check runs; write pull requests only when actions are switched on) and to the one repository.
 - **Check runs deleted on GitHub** are made again on the next run.
+
+## Actions
+
+The connector carries out an action only where the deployment maps a profile's decision action to one, in `GITHUB_CONNECTOR`:
+
+```json
+{
+  "repos": ["owner/name"],
+  "profiles": ["pr-docs-check"],
+  "actions": {
+    "pr-docs-check": {
+      "light": { "do": "label", "labels": ["docs-only"] },
+      "review": { "do": "request_reviewer", "reviewers": ["octocat"] }
+    }
+  }
+}
+```
+
+| `do` | Settings | What it does |
+| --- | --- | --- |
+| `comment` | `text` (1 to 1,000 characters, fixed) | Writes the text as a comment, with the decision id. Never text from the pull request. |
+| `label` | `labels` (1 to 10) | Adds the labels. GitHub creates a label that does not exist yet, so check the names. |
+| `request_reviewer` | `reviewers` (1 to 10 GitHub logins) | Asks them for a review. |
+| `approve` | none | Approves the head commit the decision was made on. |
+
+This is the whole list: a deployment can switch actions on, never add one. A decision action that is not mapped gets only its check run, as in shadow mode, and the check run says which action was done or why not.
+
+Rules for every action:
+
+- **At most once per head commit**, per profile and kind. The record is written before the action and closed after it. A new commit starts again.
+- **A stop in between:** a record left open is settled by its trace on GitHub (the comment or approval with its marker, the labels, the requested reviewers). Without a trace, the action may be done again only after 10 minutes; the connector looks again then, also without a new event.
+- **A person first:** while a person still checks the decision (the profile's `people_check`, `review: pending`), nothing is done.
+- **Refused by GitHub** (no permission, a reviewer who cannot be asked): shown on the check run and logged, and not tried again for that commit. Busy or down: tried again later.
+- **One record per profile and kind:** two decision actions of one profile mapped to the same kind (for example two `label` actions) are done only once per commit, whichever comes first.
+
+For `approve` also:
+
+- Only on the commit that was decided on: the pull request is read again right before, and nothing is done if its head changed, it is a draft or it was closed. The approval names that commit (`commit_id`).
+- Never for a pull request from a fork.
+- After a push, the connector dismisses its own approvals of older commits, on every run. It dismisses only approvals it recorded giving, never someone else's review.
+- When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again.
+- If an old approval cannot be dismissed, it approves nothing in that run.
+- **Required:** the branch's ruleset (or branch protection) must have "Dismiss stale pull request approvals when new commits are pushed" on. Otherwise an approval of an older commit counts for merging until the connector's next run dismisses it.
+
+Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run).
 
 ## The two GitHub apps
 
@@ -39,7 +84,7 @@ The part that reads pull-request text (the engine, with its AI questions) never 
 | App | Used by | Permissions (repository) | Webhook |
 | --- | --- | --- | --- |
 | Facts (read-only) | the Pointsman Worker, for its GitHub facts (`FACTS_GITHUB: app`) | Read: Metadata, Contents, Pull requests, Checks, Commit statuses, Actions, Custom properties. Organization: Members (read) | none |
-| Connector | the connector Worker | Read and write: Checks. Read: Pull requests, Metadata | on: Pull request, Pull request review, Check suite |
+| Connector | the connector Worker | Read and write: Checks. Read: Pull requests (read and write for [actions](#actions)), Metadata | on: Pull request, Pull request review, Check suite |
 
 Notes:
 
@@ -57,7 +102,7 @@ The connector Worker ([connectors/github/wrangler.jsonc](../connectors/github/wr
 | `GITHUB_APP_ID` | The connector app's id (a number) |
 | `GITHUB_APP_PRIVATE_KEY` | Secret: the connector app's private key (PEM, as GitHub gives it) |
 | `GITHUB_WEBHOOK_SECRET` | Secret: the webhook secret set in the app (at least 20 characters) |
-| `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }` |
+| `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)) |
 | `POINTSMAN_URL` | Pointsman's base URL (https) |
 | `POINTSMAN_TOKEN` | Secret: a Pointsman API token for the connector's client, limited to its profiles |
 | `PULL_REQUESTS` | The Durable Object binding (class `PullRequest`) |
@@ -75,7 +120,8 @@ The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `F
 
 ## Not yet
 
-- **Actions.** Comments, labels, review requests and approvals, each at most once per head with a record written first, switched on per profile action by the deployment (#147). Until then the connector's only action is its check run.
+- **Check-run conclusions** other than `neutral` (for example `failure` for a decision that should block): the design leaves them open.
+- **Paid reviews and review-service commands** (the design's `pay`, `coderabbit-approve`, `copilot`): not in the list of actions.
 - **Commit statuses.** A `status` event names a commit, not a pull request, so it starts no run; a finished check suite does.
 - **One commit in two pull requests** (one branch to two bases) gets a check run from each.
 - **Pull requests from forks.** GitHub lists no pull requests on a fork's check suites, so only the pull request's own events start a run.

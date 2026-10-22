@@ -365,7 +365,8 @@ export const definition: FactModule = {
     settings: [
       'GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR', 'POINTSMAN_URL', 'POINTSMAN_TOKEN', 'PULL_REQUESTS',
     ],
-    // Shadow mode: only the check run with the decision.
-    actions: ['check'],
+    // The check run always; the others only as the deployment maps decision
+    // actions to them (GITHUB_CONNECTOR "actions"); dismiss undoes its own approval after a push.
+    actions: ['check', 'comment', 'label', 'request_reviewer', 'approve', 'dismiss'],
   },
 };

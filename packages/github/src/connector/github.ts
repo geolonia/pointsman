@@ -1,6 +1,7 @@
 // What the connector reads and writes on GitHub, with the write app's
 // installation token, down-scoped to what it needs: read the pull request,
-// write check runs (docs/github-connector.md).
+// write check runs, and only when the deployment switched actions on, write
+// pull requests (docs/github-connector.md).
 
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
@@ -12,11 +13,16 @@ const LEVEL = { read: 1, write: 2 } as Record<string, number>;
 
 /** The permissions the connector asks for; each one only up to what the app has. */
 export const CONNECTOR_PERMISSIONS: Record<string, 'read' | 'write'> = { metadata: 'read', pull_requests: 'read', checks: 'write' };
+/** With actions switched on: comments, labels, review requests and reviews need pull requests: write. */
+export const ACTING_PERMISSIONS: Record<string, 'read' | 'write'> = { ...CONNECTOR_PERMISSIONS, pull_requests: 'write' };
 
 /** Each permission it needs, at most at the level the app has; none the app lacks. */
-export const connectorScope: Scope = (granted) => {
+export const connectorScope: Scope = (granted) => scopeOf(CONNECTOR_PERMISSIONS, granted);
+export const actingScope: Scope = (granted) => scopeOf(ACTING_PERMISSIONS, granted);
+
+function scopeOf(wanted: Record<string, 'read' | 'write'>, granted: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [p, want] of Object.entries(CONNECTOR_PERMISSIONS)) {
+  for (const [p, want] of Object.entries(wanted)) {
     const has = LEVEL[granted[p] ?? ''] ?? 0;
     if (has > 0) out[p] = has >= LEVEL[want]! ? want : 'read';
   }
@@ -54,6 +60,19 @@ export interface PullRequestInfo {
   base: string;
   title: string;
   body: string;
+  /** The head is in another repository (a fork). */
+  fork: boolean;
+  labels: string[];
+  /** Logins asked for a review and not answered yet. */
+  requestedReviewers: string[];
+}
+
+/** One of the app's approvals on a pull request. */
+export interface OwnApproval {
+  id: number;
+  commit: string;
+  /** The first line of its body (the connector's marker). */
+  marker?: string;
 }
 
 export interface CheckRunOutput {
@@ -70,7 +89,20 @@ export interface ConnectorGitHub {
   findCheckRun(repo: string, head: string, name: string): Promise<number | undefined>;
   createCheckRun(repo: string, head: string, name: string, output: CheckRunOutput): Promise<number>;
   updateCheckRun(repo: string, id: number, output: CheckRunOutput): Promise<void>;
+  /** Whether the app already wrote a comment with this marker. */
+  findComment(repo: string, number: number, marker: string): Promise<boolean>;
+  createComment(repo: string, number: number, body: string): Promise<void>;
+  addLabels(repo: string, number: number, labels: string[]): Promise<void>;
+  requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
+  /** Bot approvals still standing (not dismissed) that carry the marker; the caller matches them with the ids it recorded. */
+  ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
+  approve(repo: string, number: number, head: string, body: string): Promise<number>;
+  dismissReview(repo: string, number: number, id: number, message: string): Promise<void>;
 }
+
+/** Every comment and review the connector writes starts with this; with the head and profile it is the action's trace. */
+export const MARKER = '<!-- pointsman';
+export const markerOf = (head: string, profile: string, kind: string) => `${MARKER} ${kind} ${profile} ${head} -->`;
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const SHA = /^[0-9a-f]{40}$/;
@@ -80,14 +112,15 @@ export class AppGitHub implements ConnectorGitHub {
   readonly #appId: number;
   readonly #fetch: typeof fetch;
 
-  constructor(appId: number, privateKey: string, fetchFn: typeof fetch = (u, i) => fetch(u, i)) {
+  /** acting: actions are switched on, so the token may write pull requests. */
+  constructor(appId: number, privateKey: string, fetchFn: typeof fetch = (u, i) => fetch(u, i), acting = false) {
     // Each token only for the one repository, with only these permissions.
-    this.#auth = new GitHubAppAuth(String(appId), privateKey, connectorScope, true);
+    this.#auth = new GitHubAppAuth(String(appId), privateKey, acting ? actingScope : connectorScope, true);
     this.#appId = appId;
     this.#fetch = fetchFn;
   }
 
-  async #call(repo: string, method: 'GET' | 'POST' | 'PATCH', path: string, what: string, body?: unknown): Promise<unknown> {
+  async #call(repo: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, what: string, body?: unknown): Promise<unknown> {
     const [owner, name] = repo.split('/') as [string, string];
     let token: string;
     try {
@@ -114,6 +147,7 @@ export class AppGitHub implements ConnectorGitHub {
       // Not reached, or too slow: later.
       throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
     }
+    if (res.status === 204) return null;
     if (res.status >= 200 && res.status < 300) {
       try {
         return await res.json();
@@ -139,7 +173,60 @@ export class AppGitHub implements ConnectorGitHub {
       base: typeof pr.base.ref === 'string' ? pr.base.ref : '',
       title: typeof pr.title === 'string' ? pr.title : '',
       body: typeof pr.body === 'string' ? pr.body : '',
+      fork: !isObject(pr.head.repo) || !isObject(pr.base.repo) || pr.head.repo.full_name !== pr.base.repo.full_name,
+      labels: Array.isArray(pr.labels) ? pr.labels.filter(isObject).map((l) => l.name).filter((n): n is string => typeof n === 'string') : [],
+      requestedReviewers: Array.isArray(pr.requested_reviewers)
+        ? pr.requested_reviewers.filter(isObject).map((u) => u.login).filter((n): n is string => typeof n === 'string') : [],
     };
+  }
+
+  /** Every page of a list (100 each, at most 10 pages). */
+  async #list(repo: string, path: string, what: string): Promise<Record<string, unknown>[]> {
+    const out: Record<string, unknown>[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const data = await this.#call(repo, 'GET', `${path}?per_page=100&page=${page}`, what);
+      const items = Array.isArray(data) ? data.filter(isObject) : [];
+      out.push(...items);
+      if (items.length < 100) break;
+    }
+    return out;
+  }
+
+  async findComment(repo: string, number: number, marker: string): Promise<boolean> {
+    const comments = await this.#list(repo, `/issues/${number}/comments`, 'comments');
+    return comments.some((c) => typeof c.body === 'string' && c.body.startsWith(marker)
+      && isObject(c.performed_via_github_app) && c.performed_via_github_app.id === this.#appId);
+  }
+
+  async createComment(repo: string, number: number, body: string): Promise<void> {
+    await this.#call(repo, 'POST', `/issues/${number}/comments`, 'comment', { body });
+  }
+
+  async addLabels(repo: string, number: number, labels: string[]): Promise<void> {
+    await this.#call(repo, 'POST', `/issues/${number}/labels`, 'labels', { labels });
+  }
+
+  async requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void> {
+    await this.#call(repo, 'POST', `/pulls/${number}/requested_reviewers`, 'review request', { reviewers });
+  }
+
+  async ownApprovals(repo: string, number: number): Promise<OwnApproval[]> {
+    const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    return reviews
+      .filter((r) => r.state === 'APPROVED' && typeof r.body === 'string' && r.body.startsWith(MARKER)
+        && isObject(r.user) && r.user.type === 'Bot' && typeof r.id === 'number' && typeof r.commit_id === 'string')
+      .map((r) => ({ id: r.id as number, commit: r.commit_id as string, marker: (r.body as string).split('\n', 1)[0]! }));
+  }
+
+  async approve(repo: string, number: number, head: string, body: string): Promise<number> {
+    // commit_id: the approval is for the decided commit only, also if a push came in between.
+    const review = await this.#call(repo, 'POST', `/pulls/${number}/reviews`, 'review', { commit_id: head, event: 'APPROVE', body });
+    if (!isObject(review) || typeof review.id !== 'number') throw new GitHubError('GitHub review: unexpected answer', false);
+    return review.id;
+  }
+
+  async dismissReview(repo: string, number: number, id: number, message: string): Promise<void> {
+    await this.#call(repo, 'PUT', `/pulls/${number}/reviews/${id}/dismissals`, 'dismissal', { message, event: 'DISMISS' });
   }
 
   async findCheckRun(repo: string, head: string, name: string): Promise<number | undefined> {
