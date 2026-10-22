@@ -12,7 +12,18 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
-## Unreleased
+## 0.7.0 (2026-10-22)
+
+The GitHub connector can act on decisions (#147, from #162): a comment,
+labels, a review request or an approval, each only where a deployment maps a
+profile's decision action to it. Without that mapping nothing changes: the
+connector stays in shadow mode and writes only its neutral check runs.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.7.0` as usual (and a module pinned with `@0.6.0` to `@0.7.0`).
+- Nothing else is required. To switch actions on: an `"actions"` map in `GITHUB_CONNECTOR`, the connector app's permission Pull requests: Read and write, and for `approve` a ruleset that dismisses stale approvals ([docs/github-connector.md](docs/github-connector.md#actions)).
+- No database migration.
 
 GitHub connector actions (#147), off unless a deployment switches them on ([docs/github-connector.md](docs/github-connector.md#actions)):
 
