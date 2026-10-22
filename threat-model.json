@@ -4,9 +4,9 @@
   "commit": "b373daecaf7df06027961a1754c7a6260bb0f6e6",
   "date": "2026-10-22",
   "scope_subpath": null,
-  "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
+  "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted. The `github_workflows` fact (since 0.4.0) is not covered by this model yet; a report about it is a MODEL-GAP.",
   "confidence": {
-    "documented": 374,
+    "documented": 376,
     "inferred": 0
   },
   "components": [

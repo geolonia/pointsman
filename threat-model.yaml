@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:10ebc9a59f70a652d2aa618d43d926d934a1f4dfc6bd8b9410777703092f128d"
+prose_version: "threat-model.md@sha256:30c81cef450065ae5066be4d6f07600b2a615dc2c3e3636f5eb1be2aaec49bfb"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 304, maintainer: 70, inferred: 0, assumption: 0}
+confidence: {documented: 306, maintainer: 70, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment and re-binding to v0.5.0: Claude Opus 5.5 (claude-opus-5-5)"
@@ -23,6 +23,8 @@ components:
     scope: in
     reachability_precondition: "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response"
     provenance: {kind: documented, source: "README \"API\""}
+  # GitHub facts here means github_pr, github_paths, github_checks and github_property;
+  # github_workflows (pointsman#141) is not covered yet: a report about it is a MODEL-GAP (prose §1.16).
   - name: engine-facts
     scope: in
     reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing or GitHub API response"
