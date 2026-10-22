@@ -1,5 +1,5 @@
 // GitHub pull-request facts (docs/profile-format.md#github-pull-requests):
-// the definition of the module @pointsman/facts-github. The provider is in
+// the definition of the module @pointsman/github. The provider is in
 // provider.ts. Node-safe, like packages/module-api/src/api.ts.
 
 import type { Bilingual, FactInput, FactModule, FactSpec, FactTypeDef, JsonSchema } from '@pointsman/module-api';
@@ -351,11 +351,21 @@ const github_workflows: FactTypeDef = {
 const STALE: Bilingual = { en: 'the pull request has a newer commit', ja: 'プルリクエストに新しいコミットがある' };
 
 export const definition: FactModule = {
-  name: '@pointsman/facts-github',
+  name: '@pointsman/github',
   // As in package.json (a test checks); released with the engine for now.
   version: '0.5.0',
-  roles: ['facts'],
+  roles: ['facts', 'connector'],
   types: [github_pr, github_paths, github_checks, github_property, github_workflows],
   reasons: { stale: STALE },
   settings: ['FACTS_GITHUB', 'FACTS_GITHUB_TOKEN', 'FACTS_GITHUB_APP_ID', 'FACTS_GITHUB_APP_PRIVATE_KEY', 'FACTS_GITHUB_IGNORE_CHECK'],
+  // The connector (docs/github-connector.md): in its own Worker only, with the write app's key.
+  connector: {
+    id: 'github',
+    placements: ['own'],
+    settings: [
+      'GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR', 'POINTSMAN_URL', 'POINTSMAN_TOKEN', 'PULL_REQUESTS',
+    ],
+    // Shadow mode: only the check run with the decision.
+    actions: ['check'],
+  },
 };

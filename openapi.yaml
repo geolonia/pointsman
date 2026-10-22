@@ -685,7 +685,7 @@ components:
         engine: { type: string }
         modules:
           type: object
-          description: Module name to version, for example "@pointsman/facts-github".
+          description: Module name to version, for example "@pointsman/github".
           additionalProperties: { type: string }
     ProfileStats:
       type: object

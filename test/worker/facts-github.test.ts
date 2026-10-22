@@ -1,4 +1,4 @@
-// GitHub pull-request facts (packages/facts-github/src/provider.ts) against a fake GitHub API:
+// GitHub pull-request facts (packages/github/src/provider.ts) against a fake GitHub API:
 // every field, the shared snapshot, each way a fact can be missing, the
 // settings, and that only GET requests are sent.
 
@@ -8,10 +8,10 @@ import { answersMock, noCallbacks, providerOf } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { FactError, lookupFacts, MockFactProvider, ModuleRouter, resultError, type FactProvider } from '../../src/facts';
-import { toPullRequest } from '@pointsman/facts-github/definition';
-import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '@pointsman/facts-github';
-import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '@pointsman/facts-github';
-import { matchGlob } from '@pointsman/facts-github';
+import { toPullRequest } from '@pointsman/github/definition';
+import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '@pointsman/github';
+import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '@pointsman/github';
+import { matchGlob } from '@pointsman/github';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';
@@ -739,9 +739,11 @@ describe('GitHub App', () => {
       expect(JSON.parse(new TextDecoder().decode(b64urlDecode(p)))).toMatchObject({ iss: '123' });
     };
     const server = fakeGitHub(routes({
-      [`${REPO}/installation`]: async (_url, init) => (await verifyJwt(init), { id: 9 }),
+      // The app may write; the facts' token may not.
+      [`${REPO}/installation`]: async (_url, init) => (await verifyJwt(init), { id: 9, permissions: { metadata: 'read', contents: 'write', checks: 'write', pull_requests: 'read', workflows: 'write', administration: 'write' } }),
       '/app/installations/9/access_tokens': async (_url, init) => {
         expect(init.method).toBe('POST');
+        expect(JSON.parse(String(init.body))).toEqual({ permissions: { metadata: 'read', contents: 'read', checks: 'read', pull_requests: 'read' } });
         await verifyJwt(init);
         posts++;
         return Response.json({ token: installationToken, expires_at: new Date(now + 3600_000).toISOString() }, { status: 201 });
@@ -764,6 +766,14 @@ describe('GitHub App', () => {
     expect(posts).toBe(2);
   });
 
+  it('an installation without permissions gives no token', async () => {
+    const { pkcs8 } = await appKeys();
+    const server = fakeGitHub(routes({ [`${REPO}/installation`]: async () => ({ id: 9, permissions: {} }) }));
+    const p = new GitHubFactProvider({ auth: new GitHubAppAuth('123', pkcs8), fetch: server.fetchFn });
+    expect((await lookupFacts(spec('pr'), state, p)).pr).toMatchObject({ missing: true });
+    expect(server.count('/app/installations/9/access_tokens')).toBe(0);
+  });
+
   it('not installed: unavailable, and asked again next time', async () => {
     const { pkcs8 } = await appKeys();
     const server = fakeGitHub(routes());
@@ -778,7 +788,7 @@ describe('GitHub App', () => {
 
 describe('FACTS_GITHUB', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
-  const githubOf = (deps: Deps) => providerOf(deps, '@pointsman/facts-github');
+  const githubOf = (deps: Deps) => providerOf(deps, '@pointsman/github');
 
   it('is off unless set: GitHub facts are unavailable, also with FACTS_MODE mock', async () => {
     expect(depsFor(base).facts).toBeUndefined();
@@ -844,13 +854,13 @@ describe('a decision with GitHub facts', () => {
   }
 
   it('uses the facts in rules and returns them', async () => {
-    const d = await decide(new ModuleRouter(new Map([['@pointsman/facts-github', provider(fakeGitHub())]])));
+    const d = await decide(new ModuleRouter(new Map([['@pointsman/github', provider(fakeGitHub())]])));
     expect(d).toMatchObject({ action: 'light', rule: 1 });
     expect(d.facts.level).toEqual({ missing: false, values: { value: 'high' }, source: `GitHub octo-org/demo#7 at ${HEAD.slice(0, 7)}` });
   });
 
   it('a stale snapshot goes to the retry rule', async () => {
-    const d = await decide(new ModuleRouter(new Map([['@pointsman/facts-github', provider(fakeGitHub(routes({ [`${PR}/commits`]: () => [commit(OTHER)] })))]])));
+    const d = await decide(new ModuleRouter(new Map([['@pointsman/github', provider(fakeGitHub(routes({ [`${PR}/commits`]: () => [commit(OTHER)] })))]])));
     expect(d).toMatchObject({ action: 'retry', rule: 0, facts: { pr: { missing: true, reason: 'stale' } } });
   });
 });

@@ -16,7 +16,7 @@ import { useFactModules } from '../../src/modules/registry';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import { ENGINE_VERSION } from '../../src/version';
-import { definition as githubDef } from '@pointsman/facts-github/definition';
+import { definition as githubDef } from '@pointsman/github/definition';
 import { definition as gsiDef } from '@pointsman/facts-gsi/definition';
 import type { FactSpec, Profile } from '../../src/types';
 import modules from '../../generated/modules';
@@ -88,7 +88,7 @@ describe('ModuleRouter', () => {
   });
 
   it('a module that is off makes its facts unavailable', async () => {
-    const router = new ModuleRouter(new Map([['@pointsman/facts-github', undefined]]));
+    const router = new ModuleRouter(new Map([['@pointsman/github', undefined]]));
     expect((await lookupFacts([{ name: 'pr', type: 'github_pr', at: '$.pr' }], state, router)).pr).toEqual({ missing: true, reason: 'unavailable' });
   });
 });
@@ -132,7 +132,7 @@ describe('what a module may answer', () => {
   });
 
   it('a type no chosen module answers is unavailable', async () => {
-    useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-github'));
+    useFactModules(modules.filter((m) => m.name !== '@pointsman/github'));
     expect((await lookupFacts([{ name: 'pr', type: 'github_pr', at: '$.pr' }], state, new MockFactProvider())).pr)
       .toEqual({ missing: true, reason: 'unavailable' });
   });
@@ -151,7 +151,7 @@ describe('a published profile whose module is no longer chosen', () => {
     };
     const model = new MockAdapter();
     const decide = vi.spyOn(model, 'decide');
-    useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-github'));
+    useFactModules(modules.filter((m) => m.name !== '@pointsman/github'));
     const deps: Deps = { callbacks: noCallbacks, store: new MemoryProfileStore([profile]), tokens, log: new D1DecisionLog(env.DB), adapterFor: () => model };
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const res = await createApp(() => deps).request('/v1/decide/pr-check', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ state }) }, env);
@@ -176,10 +176,10 @@ describe('versions', () => {
   };
 
   it('lists the modules that answer a profile\'s facts', () => {
-    expect(factModules(profile.facts!)).toEqual({ '@pointsman/facts-gsi': gsiDef.version, '@pointsman/facts-github': githubDef.version });
+    expect(factModules(profile.facts!)).toEqual({ '@pointsman/facts-gsi': gsiDef.version, '@pointsman/github': githubDef.version });
     // A layer no module names goes to the type's only module.
     expect(factModules([{ name: 'x', type: 'inside', layer: 'unknown', at: '$.x' }])).toEqual({ '@pointsman/facts-gsi': gsiDef.version });
-    useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-github'));
+    useFactModules(modules.filter((m) => m.name !== '@pointsman/github'));
     expect(factModules([{ name: 'pr', type: 'github_pr', at: '$.pr' }])).toEqual({});
   });
 
@@ -195,7 +195,7 @@ describe('versions', () => {
     const app = createApp(() => deps);
     const headers = { authorization: `Bearer ${TOKEN}` };
     for (const [id, versions] of [
-      ['versions-check', { engine: ENGINE_VERSION, modules: { '@pointsman/facts-gsi': gsiDef.version, '@pointsman/facts-github': githubDef.version } }],
+      ['versions-check', { engine: ENGINE_VERSION, modules: { '@pointsman/facts-gsi': gsiDef.version, '@pointsman/github': githubDef.version } }],
       ['plain', { engine: ENGINE_VERSION, modules: {} }],
     ] as const) {
       const res = await app.request(`/v1/decide/${id}`, { method: 'POST', headers, body: JSON.stringify({ state }) }, env);

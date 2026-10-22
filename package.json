@@ -18,7 +18,7 @@
     "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
     "test:cases": "node scripts/test-profile.mjs examples/cases --profiles examples/profiles",
     "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm test:cases && pnpm check:public && pnpm deploy:dry-run",
-    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler deploy --dry-run --config connectors/github/wrangler.jsonc --outdir .wrangler/dry-run-github",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "dev:live": "pnpm build && wrangler dev --env live",
     "ai-gateway": "node scripts/ai-gateway.mjs",
@@ -37,7 +37,7 @@
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^1.2.3",
     "@modelcontextprotocol/server": "^2.3.1",
-    "@pointsman/facts-github": "workspace:*",
+    "@pointsman/github": "workspace:*",
     "@pointsman/facts-gsi": "workspace:*",
     "@pointsman/facts-valhalla": "workspace:*",
     "@pointsman/fiware": "workspace:*",

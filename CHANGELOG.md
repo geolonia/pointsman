@@ -21,6 +21,12 @@ Connectors as modules (#149, #118):
 - The bridge compares its secret without `crypto.subtle.timingSafeEqual` (Cloudflare only); still in constant time.
 - `engine.json` with `"modules"` but without `"connectors"` chooses no connector; config repositories need no change.
 
+GitHub connector (#147), in shadow mode ([docs/github-connector.md](docs/github-connector.md)):
+
+- The module `@pointsman/facts-github` is now `@pointsman/github`, with two roles: facts, and a connector. `engine.json` still accepts the old name. Decisions record the module under its new name in `versions`.
+- The connector runs in its own Worker ([connectors/github](connectors/github)) with a GitHub App that can write check runs. It takes pull-request webhooks (signature checked, replays dropped), runs one pull request at a time (a Durable Object per pull request), asks Pointsman with the configured profiles and shows each decision as a `neutral` check run, created once per profile and head commit with a record written first. It does nothing else on GitHub yet.
+- GitHub facts with an app (`FACTS_GITHUB: app`) now ask for a down-scoped token: only the permissions the facts use, as read only. Use a separate read-only app for the facts; an app can read checks on private repositories, a fine-grained token cannot.
+
 ## 0.5.0 (2026-10-22)
 
 Fact modules (#145) and a core without Cloudflare (#153): the engine no

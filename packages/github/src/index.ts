@@ -1,12 +1,13 @@
-// The module @pointsman/facts-github: its definition and its provider.
+// The module @pointsman/github: its definition and its provider.
 // Settings: FACTS_GITHUB "token", "app", "mock", "off" or unset;
 // FACTS_GITHUB_TOKEN (secret, with "token"); FACTS_GITHUB_APP_ID and the
 // secret FACTS_GITHUB_APP_PRIVATE_KEY (with "app"); FACTS_GITHUB_IGNORE_CHECK
 // (Pointsman's own check run, never counted as a required check).
 
-import { ConfigError, mockProvider, type FactModuleEntry, type FactProvider } from '@pointsman/module-api';
+import { ConfigError, mockProvider, type ConnectorEntry, type FactModuleEntry, type FactProvider } from '@pointsman/module-api';
 import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth } from './provider';
 import { definition } from './definition';
+import { githubConnector, settingsWithObjects } from './connector/index.ts';
 
 const mock = mockProvider(definition.types ?? []);
 // One per isolate and settings, so a GitHub App's installation tokens are reused between requests.
@@ -14,8 +15,16 @@ const providers = new Map<string, GitHubFactProvider>();
 
 const text = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
-export const githubModule: FactModuleEntry = {
+export const githubModule: FactModuleEntry & ConnectorEntry = {
   ...definition,
+  connector: definition.connector!,
+  // The connector role: only in its own Worker (connectors/github), which also runs the pull requests' objects.
+  connect(env, _runtime, placement) {
+    const found = settingsWithObjects(env);
+    if (!found) return undefined;
+    if (placement !== 'own') throw new ConfigError('the GitHub connector runs in its own Worker, not inside the engine');
+    return githubConnector(found.settings, found.objects);
+  },
   create(env): FactProvider | undefined {
     const mode = text(env.FACTS_GITHUB) ?? 'off';
     const token = text(env.FACTS_GITHUB_TOKEN);
@@ -57,5 +66,6 @@ export * from './settings';
 export * from './workflows';
 export * from './codeowners';
 export * from './glob';
+export * from './connector/index.ts';
 
 export default githubModule;

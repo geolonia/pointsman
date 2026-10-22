@@ -102,25 +102,53 @@ export function privateKeyDer(pem: string): Uint8Array<ArrayBuffer> | null {
   return m[1] ? pkcs1ToPkcs8(bytes) : bytes;
 }
 
+/** Permissions GitHub has only as "write"; a read-only token leaves them out. */
+const WRITE_ONLY = new Set(['workflows']);
+
+/** The permissions of a token, from those the installation has. */
+export type Scope = (granted: Record<string, string>) => Record<string, string>;
+
+/**
+ * What the facts read (docs/github-connector.md): pull requests, files,
+ * checks, statuses, workflow runs, custom properties, organization members.
+ */
+export const FACTS_PERMISSIONS = ['metadata', 'contents', 'pull_requests', 'checks', 'statuses', 'actions', 'repository_custom_properties', 'members'];
+
+/** The facts' scope: of the permissions the facts use, those the installation has, as "read" only. */
+export const readOnly: Scope = (granted) =>
+  Object.fromEntries(FACTS_PERMISSIONS.filter((p) => granted[p] !== undefined && !WRITE_ONLY.has(p)).map((p) => [p, 'read']));
+
 /**
  * A GitHub App (FACTS_GITHUB "app"): signs a JWT with the app's private key,
  * finds the app's installation for the repository and creates an
  * installation token, kept until five minutes before it expires (one hour).
- * The app should have read permissions only; Pointsman only reads.
+ * The token is down-scoped (default: read-only, whatever the app may do),
+ * so even an app with write permissions gives the facts a token that only
+ * reads. The app for facts should still have read permissions only
+ * (docs/github-connector.md).
  */
 export class GitHubAppAuth implements GitHubAuth {
   private readonly appId: string;
   private readonly der: Uint8Array<ArrayBuffer>;
+  private readonly scope: Scope;
+  private readonly perRepository: boolean;
   private key: Promise<CryptoKey> | undefined;
   private readonly tokens = new Map<string, { token: Promise<string>; until: number }>();
   /** The clock (tests set it). */
   now: () => number = () => Date.now();
 
-  constructor(appId: string, privateKeyPem: string) {
+  /** perRepository: each token only for the one repository (the connector's); default one per owner (the facts read org data too). */
+  constructor(appId: string, privateKeyPem: string, scope: Scope = readOnly, perRepository = false) {
     const der = privateKeyDer(privateKeyPem);
     if (!der) throw new Error('not a PEM private key');
     this.appId = appId;
     this.der = der;
+    this.scope = scope;
+    this.perRepository = perRepository;
+  }
+
+  private key_(pr: PullRequestRef): string {
+    return (this.perRepository ? `${pr.owner}/${pr.repo}` : pr.owner).toLowerCase();
   }
 
   private async jwt(): Promise<string> {
@@ -141,7 +169,7 @@ export class GitHubAppAuth implements GitHubAuth {
 
   token(pr: PullRequestRef, fetchFn: typeof fetch): Promise<string> {
     // One installation per owner.
-    const id = pr.owner.toLowerCase();
+    const id = this.key_(pr);
     const cached = this.tokens.get(id);
     if (cached && cached.until > this.now()) return cached.token;
     const entry = { token: this.create(pr, fetchFn), until: this.now() + 60_000 };
@@ -157,17 +185,19 @@ export class GitHubAppAuth implements GitHubAuth {
     const jwt = await this.jwt();
     const signal = AbortSignal.timeout(GITHUB_TIMEOUT_MS);
     const installation = await getJson(fetchFn, `/repos/${pr.owner}/${pr.repo}/installation`, jwt, signal, 'installation');
-    const installationId = (installation as { id?: unknown }).id;
+    const { id: installationId, permissions: granted } = installation as { id?: unknown; permissions?: unknown };
     if (typeof installationId !== 'number') throw new FactError('GitHub installation: unexpected answer');
+    const permissions = this.scope(isObject(granted) ? Object.fromEntries(Object.entries(granted).filter((e): e is [string, string] => typeof e[1] === 'string')) : {});
+    if (Object.keys(permissions).length === 0) throw new FactError('GitHub installation: the app has none of the permissions needed');
     // The only request that is not a GET: it creates a token, it changes no repository.
     const res = await fetchFn(`${API}/app/installations/${installationId}/access_tokens`, {
-      method: 'POST', headers: headers(jwt), redirect: 'manual', signal,
+      method: 'POST', headers: { ...headers(jwt), 'content-type': 'application/json' }, body: JSON.stringify({ permissions, ...(this.perRepository && { repositories: [pr.repo] }) }), redirect: 'manual', signal,
     });
     const body = await readJson(res, 'installation token');
     const { token, expires_at: expiresAt } = body as { token?: unknown; expires_at?: unknown };
     const until = typeof expiresAt === 'string' ? Date.parse(expiresAt) : NaN;
     if (typeof token !== 'string' || token === '' || !Number.isFinite(until)) throw new FactError('GitHub installation token: unexpected answer');
-    const entry = this.tokens.get(pr.owner.toLowerCase());
+    const entry = this.tokens.get(this.key_(pr));
     if (entry) entry.until = until - 5 * 60_000;
     return token;
   }

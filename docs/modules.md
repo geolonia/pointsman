@@ -18,7 +18,7 @@ Connectors are described in [connectors.md](connectors.md). A module can have bo
 | --- | --- | --- |
 | `@pointsman/facts-gsi` | `inside` and `nearest` for the layers `gsi-flood-max` and `gsi-shelters-flood` (Japan) | `FACTS_MODE` |
 | `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
-| `@pointsman/facts-github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows` | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
+| `@pointsman/github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`; also a connector ([github-connector.md](github-connector.md)) | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
 
 The settings and the facts are described in [profile-format.md](profile-format.md#facts). Each module is a package in this repository (pnpm workspace): `packages/facts-*`, with `src/definition.ts`, `src/index.ts` (the entry) and its provider. The interface and the capabilities are the package `@pointsman/module-api` (`packages/module-api`). The packages are not published to npm; the engine bundles them from this repository. For now they are released with the engine and have its version. The scripts load the definitions as TypeScript through pnpm's links to `packages/`, so the engine checkout needs pnpm's default layout (`pnpm install`, not a hoisted or copied install).
 
@@ -31,7 +31,7 @@ A deployment lists its modules in `engine.json`, next to the engine version:
   "repository": "geolonia/pointsman",
   "ref": "<engine commit>",
   "modules": {
-    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github@0.5.0"]
+    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/github@0.5.0"]
   }
 }
 ```
@@ -92,7 +92,7 @@ A field can hold a probability or a confidence, for example a geocoder's confide
 Each decision records the engine version and the modules that answered its facts, with their versions:
 
 ```json
-"versions": { "engine": "0.5.0", "modules": { "@pointsman/facts-github": "0.5.0" } }
+"versions": { "engine": "0.5.0", "modules": { "@pointsman/github": "0.5.0" } }
 ```
 
 Decisions made before modules have no `versions`.
