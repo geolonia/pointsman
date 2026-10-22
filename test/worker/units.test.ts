@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { buildState, resolvePath } from '../../src/input';
 import { ModelError, toModelRequest } from '../../src/models/adapter';
 import { normalizeAnswers } from '../../src/models/normalize';
-import { KvProfileStore, MemoryProfileStore } from '../../src/profiles/store';
+import { MemoryProfileStore } from '../../src/profiles/store';
+import { KvProfileStore } from '../../src/profiles/store-kv';
 import type { Profile } from '../../src/types';
 import bundled from '../../generated/profiles.json';
 

@@ -12,7 +12,7 @@ import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGE
 import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '../../src/codeowners';
 import { matchGlob } from '../../src/glob';
 import { depsFor } from '../../src/index';
-import { D1DecisionLog } from '../../src/log';
+import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { FactSpec, Profile } from '../../src/types';

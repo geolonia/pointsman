@@ -17,30 +17,14 @@ import {
   OAuthResourceServer,
   type ConsentDescription,
 } from '@cloudflare/workers-oauth-provider';
-import { authenticate, type TokenRecord, type TokenStore } from './auth';
-import type { Fetch } from './callbacks';
+import { authenticate, type Caller, type OAuthConfig, type TokenStore } from './auth';
 
-export interface OAuthConfig {
-  /** Public origin of the Worker, for example https://pointsman.example.workers.dev. */
-  issuer: string;
-  github: {
-    clientId: string;
-    clientSecret: string;
-    /** GitHub organizations whose members may log in (any one is enough). */
-    orgs: string[];
-    fetch: Fetch;
-  };
-}
+export type { Caller, OAuthConfig } from './auth';
 
 /** The env the OAuth library reads its storage from. */
 export interface OAuthEnv {
   OAUTH_KV: KVNamespace;
 }
-
-/** Who is calling /mcp: an API token, or a person logged in through OAuth. */
-export type Caller =
-  | { kind: 'token'; record: TokenRecord }
-  | { kind: 'person'; login: string };
 
 /** Props stored with an OAuth grant (encrypted by the library). */
 interface PersonProps {

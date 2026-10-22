@@ -77,7 +77,7 @@ function derLength(n: number): number[] {
 }
 
 /** A PKCS#1 RSA key (GitHub's "BEGIN RSA PRIVATE KEY") wrapped as PKCS#8, which WebCrypto reads. */
-function pkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array {
+function pkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array<ArrayBuffer> {
   // AlgorithmIdentifier: rsaEncryption, NULL parameters.
   const algorithm = [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00];
   const octets = [0x04, ...derLength(pkcs1.length)];
@@ -88,10 +88,10 @@ function pkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array {
 }
 
 /** The key's DER bytes as PKCS#8, from a PEM in either format; null when it is not one. */
-export function privateKeyDer(pem: string): Uint8Array | null {
+export function privateKeyDer(pem: string): Uint8Array<ArrayBuffer> | null {
   const m = /-----BEGIN (RSA )?PRIVATE KEY-----([\s\S]+?)-----END (RSA )?PRIVATE KEY-----/.exec(pem.replace(/\\n/g, '\n'));
   if (!m || Boolean(m[1]) !== Boolean(m[3])) return null;
-  let bytes: Uint8Array;
+  let bytes: Uint8Array<ArrayBuffer>;
   try {
     bytes = Uint8Array.from(atob(m[2]!.replace(/\s+/g, '')), (c) => c.charCodeAt(0));
   } catch {
@@ -109,7 +109,7 @@ export function privateKeyDer(pem: string): Uint8Array | null {
  */
 export class GitHubAppAuth implements GitHubAuth {
   private readonly appId: string;
-  private readonly der: Uint8Array;
+  private readonly der: Uint8Array<ArrayBuffer>;
   private key: Promise<CryptoKey> | undefined;
   private readonly tokens = new Map<string, { token: Promise<string>; until: number }>();
   /** The clock (tests set it). */

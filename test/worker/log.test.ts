@@ -299,7 +299,7 @@ describe('replay on the decision log (D1)', () => {
   it('replays the newest decisions of the version, without discarded ones, newest first', async () => {
     const ids = [];
     for (const ref of ['replay:1', 'replay:2', 'replay:3']) ids.push(await decide('issue-triage', { state: issue, ref }));
-    const { D1DecisionLog } = await import('../../src/log');
+    const { D1DecisionLog } = await import('../../src/log-d1');
     await new D1DecisionLog(DB).discard(ids[1]!, new Date().toISOString());
     const triage = (bundled as Profile[]).find((p) => p.id === 'issue-triage')!;
     const before = await (await call('POST', '/v1/profiles/issue-triage/replay', { policy: triage.policy, limit: 500 })).json<any>();

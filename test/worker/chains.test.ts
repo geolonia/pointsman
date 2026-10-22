@@ -6,7 +6,7 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
-import { D1DecisionLog } from '../../src/log';
+import { D1DecisionLog } from '../../src/log-d1';
 import { noCallbacks } from './helpers';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';

@@ -3,7 +3,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
-import { D1DecisionLog } from '../../src/log';
+import { D1DecisionLog } from '../../src/log-d1';
 
 const ALL = newToken();
 const DEPLOY_ONLY = newToken();
