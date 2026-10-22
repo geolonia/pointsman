@@ -1,6 +1,6 @@
 {
   "name": "@pointsman/fiware",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Pointsman connector module: the FIWARE bridge (NGSI-LD notifications in, results back on the entity).",
   "license": "MIT",

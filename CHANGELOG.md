@@ -12,7 +12,20 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
-## Unreleased
+## 0.6.0 (2026-10-22)
+
+Connectors as modules (#149): the FIWARE bridge and a new GitHub connector
+are modules, like the fact modules. A connector runs inside the Pointsman
+Worker or in its own Worker, and reaches the engine only through its public
+API with its own token. The GitHub connector shows decisions about pull
+requests as check runs (shadow mode). From #159 and #160.
+
+What a deployment may change (nothing is required):
+
+- `engine.json`: `@pointsman/facts-github` is now `@pointsman/github`; the old name still works.
+- To run the FIWARE bridge inside the Pointsman Worker: `"connectors": ["@pointsman/fiware"]` in `engine.json` and its settings on the Pointsman Worker ([bridge/README.md](bridge/README.md#run-it)).
+- To run the GitHub connector: a second Worker from [connectors/github/wrangler.jsonc](connectors/github/wrangler.jsonc), and two GitHub Apps ([docs/github-connector.md](docs/github-connector.md#setting-it-up)).
+- No database migration.
 
 Connectors as modules (#149, #118):
 
