@@ -14,11 +14,11 @@ works for annotated tags).
 
 ## 0.5.0 (2026-10-22)
 
-Fact modules (#145) and a core without Cloudflare (#146): the engine no
+Fact modules (#145) and a core without Cloudflare (#153): the engine no
 longer has its fact providers built in. GSI, Valhalla and GitHub are
 modules (packages in this repository), and each deployment chooses the
-modules it uses. Profiles, fact names, settings and decisions stay the
-same.
+modules it uses. Profiles, fact names and settings stay the same;
+decisions gain a `versions` field.
 
 ### Added
 
@@ -57,9 +57,14 @@ same.
 
 ### For deployments
 
+- Move `ref` in `engine.json` to the commit of `v0.5.0` as usual. Without
+  `"modules"`, nothing else changes.
 - Optional: add `"modules"` to `engine.json` to bundle only what your
-  profiles need. The scripts read `engine.json` from the config
-  repository's root, so the workflows need no change.
+  profiles need. Then also remove the `FACTS_*` settings and secrets of the
+  modules you leave out, or the engine refuses every request (a config
+  error). The scripts read `engine.json` from the config repository's
+  root, so the workflows need no change. The config repository template
+  lists all three modules.
 - The deploy applies migration `0007_versions.sql` as usual.
 
 ## 0.4.0 (2026-10-22)
