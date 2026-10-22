@@ -38,6 +38,8 @@ export const MAX_FILES = 1000;
 export const MAX_PUSH_PAGES = 5;
 /** GitHub lists at most 250 commits of a pull request. */
 const MAX_COMMITS = 250;
+/** The compare API lists at most this many files. */
+const COMPARE_MAX_FILES = 300;
 /** Check runs and statuses on the head: more fail `github_checks` (`error`). */
 const MAX_CHECKS = 300;
 /** Pages of reviews and of comments (100 each) read; a pull request with more fails the facts that need them (`error`). */
@@ -276,6 +278,8 @@ export interface PullRequest {
   merged: boolean;
   draft: boolean;
   title: string;
+  /** The description; empty when there is none. */
+  body: string;
   head: string;
   /** The head branch and its repository ("owner/name"; null when a fork was deleted). */
   headRef: string;
@@ -326,7 +330,7 @@ function pullRequest(v: unknown): PullRequest {
     || pr.head === null || typeof pr.headRef !== 'string' || typeof pr.base !== 'string' || typeof pr.defaultBranch !== 'string' || typeof pr.author !== 'string'
     || pr.additions === null || pr.deletions === null || pr.files === null || pr.commits === null || typeof baseRepo.id !== 'number') throw bad();
   return {
-    open: pr.open, merged: pr.merged, draft: pr.draft, title: pr.title, head: pr.head, headRef: pr.headRef, headRepo: pr.headRepo, fork: pr.fork,
+    open: pr.open, merged: pr.merged, draft: pr.draft, title: pr.title, body: typeof v.body === 'string' ? v.body : '', head: pr.head, headRef: pr.headRef, headRepo: pr.headRepo, fork: pr.fork,
     base: pr.base, baseSha: pr.baseSha, defaultBranch: pr.defaultBranch, repoId: baseRepo.id as number, ownerIsOrg: pr.ownerIsOrg, author: pr.author, authorIsBot: pr.authorIsBot,
     changedLines: pr.additions + pr.deletions, files: pr.files, commits: pr.commits,
   };
@@ -532,6 +536,32 @@ export function nextCursor(link: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A change as text that two changes can be compared by: per file its path,
+ * status, earlier name, and its removed and added lines exactly (context
+ * lines and line numbers left out, so a rebase onto a newer base gives the
+ * same text). Null when a file has no patch.
+ */
+export function changeSignature(files: unknown[]): string | null {
+  const out: { path: string; status: string | null; from: string | null; minus: string[]; plus: string[] }[] = [];
+  for (const f of files) {
+    if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub compare: unexpected answer');
+    if (typeof f.patch !== 'string') return null;
+    const minus: string[] = [];
+    const plus: string[] = [];
+    let last: string[] | null = null;
+    for (const line of f.patch.split('\n')) {
+      if (line.startsWith('+')) (last = plus).push(line.slice(1));
+      else if (line.startsWith('-')) (last = minus).push(line.slice(1));
+      // "\ No newline at end of file" belongs to the line before it.
+      else if (line.startsWith('\\') && last) last.push('\\ no newline at end of file');
+      else last = null;
+    }
+    out.push({ path: f.filename, status: typeof f.status === 'string' ? f.status : null, from: typeof f.previous_filename === 'string' ? f.previous_filename : null, minus, plus });
+  }
+  return JSON.stringify(out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)));
 }
 
 const base64Bytes = (b64: string): Uint8Array => Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0));
@@ -896,6 +926,41 @@ export class Snapshot {
     const list = await this.pushes();
     const push = list?.find((p) => p.after === this.ref.head && Number.isFinite(Date.parse(p.at)));
     return push?.at ?? null;
+  }
+
+  /**
+   * The status history of the head commits of the repository's newest other
+   * pull requests (at most `n`, open or closed): for telling whether a
+   * service runs in the repository at all.
+   */
+  recentHeadStatuses(n: number): Promise<Status[][]> {
+    return this.part(`recent:${n}`, async () => {
+      const list = await this.json(`${this.repoPath}/pulls?state=all&sort=created&direction=desc&per_page=${Math.min(n + 1, PER_PAGE)}`, 'pull requests');
+      if (!Array.isArray(list)) throw new FactError('GitHub pull requests: unexpected answer');
+      const heads = list
+        .filter((p) => isObject(p) && p.number !== this.ref.number && isObject(p.head) && typeof p.head.sha === 'string' && /^[0-9a-f]{40}$/i.test(p.head.sha))
+        .slice(0, n)
+        .map((p) => ((p as Record<string, Record<string, string>>).head!.sha!).toLowerCase());
+      return Promise.all(heads.map(async (sha) => statusHistory(await this.json(`${this.repoPath}/commits/${sha}/statuses?per_page=${PER_PAGE}`, 'statuses'))));
+    });
+  }
+
+  /**
+   * The change from the base branch to a commit, as the compare API shows it
+   * (from their merge base): each file's added and removed lines, its status
+   * and earlier name, without context lines or line numbers. Null when it
+   * cannot be compared: a file without a patch (binary, too large), or more
+   * files than the API lists.
+   */
+  changeOf(sha: string): Promise<string | null> {
+    return this.part(`change:${sha}`, async () => {
+      const { pr } = await this.base;
+      const v = await this.json(`${this.repoPath}/compare/${encodeURIComponent(pr.base)}...${sha}?per_page=${PER_PAGE}`, 'compare');
+      if (!isObject(v) || !Array.isArray(v.files)) throw new FactError('GitHub compare: unexpected answer');
+      // The API lists at most 300 files; a list that may be cut short cannot be compared.
+      if (v.files.length >= COMPARE_MAX_FILES) return null;
+      return changeSignature(v.files);
+    });
   }
 
   properties(): Promise<unknown> {

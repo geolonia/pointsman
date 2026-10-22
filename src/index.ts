@@ -35,6 +35,7 @@ interface PointsmanEnv {
   /** Worker secret. */
   FACTS_GITHUB_APP_PRIVATE_KEY?: string | undefined;
   FACTS_GITHUB_IGNORE_CHECK?: string | undefined;
+  FACTS_CODERABBIT?: string | undefined;
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
   DB?: D1Database | undefined;

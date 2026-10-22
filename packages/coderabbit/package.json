@@ -1,0 +1,16 @@
+{
+  "name": "@pointsman/coderabbit",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Pointsman fact module: CodeRabbit reviews of a pull request, read from GitHub.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./definition": "./src/definition.ts"
+  },
+  "dependencies": {
+    "@pointsman/github": "workspace:*",
+    "@pointsman/module-api": "workspace:*"
+  }
+}

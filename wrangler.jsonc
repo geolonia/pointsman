@@ -25,7 +25,10 @@
     // GitHub pull-request facts: "mock" (fixed answers), "token" (secret
     // FACTS_GITHUB_TOKEN) or "app" (FACTS_GITHUB_APP_ID and the secret
     // FACTS_GITHUB_APP_PRIVATE_KEY). "off": they are missing.
-    "FACTS_GITHUB": "mock"
+    "FACTS_GITHUB": "mock",
+    // CodeRabbit facts: "mock" (fixed answers) or "on" (reads GitHub with
+    // the FACTS_GITHUB settings). "off": they are missing.
+    "FACTS_CODERABBIT": "mock"
   },
   // API tokens (see scripts/tokens.mjs). The id is a placeholder: in local
   // development (wrangler dev) KV is simulated, and real deployments set
