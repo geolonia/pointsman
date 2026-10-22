@@ -61,7 +61,6 @@ export function factModules(specs: FactSpec[]): Record<string, string> {
   return out;
 }
 
-/** Null when the result fits the fact type, otherwise what is wrong. */
 /**
  * Whether a field may be null, by the type's case rules (FactTypeDef.cases):
  * a `nullable` field; or, for types whose first field says whether
@@ -75,6 +74,7 @@ export function mayBeNull(def: FactTypeDef, field: string, values: Record<string
   return values[rules.key] === false && Object.hasOwn(rules.absent, field) && rules.absent[field] === null;
 }
 
+/** Null when the result fits the fact type, otherwise what is wrong. */
 export function resultError(type: string, result: unknown): string | null {
   if (result === null || typeof result !== 'object') return 'not an object';
   const { values, source } = result as Partial<FactResult>;

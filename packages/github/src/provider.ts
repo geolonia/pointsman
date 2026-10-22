@@ -823,7 +823,11 @@ export class Snapshot {
     });
   }
 
-  /** Pages of a list until one is not full; more than `max` pages fail. */
+  /**
+   * Pages of a list until one is not full; `max` full pages fail (so the
+   * limit is fewer than max × 100 entries). Pages are read one after another:
+   * an entry deleted in between can move an entry to an earlier page.
+   */
   private async list<T>(path: string, what: string, max: number, parse: (v: unknown) => T[]): Promise<T[]> {
     const out: T[] = [];
     for (let p = 1; p <= max; p++) {
@@ -834,11 +838,23 @@ export class Snapshot {
     throw new FactError(`GitHub ${what}: more than ${max * PER_PAGE}`);
   }
 
+  /**
+   * Reads the pull request once more after a list: a push while the list
+   * was read makes the facts that use it stale, so nothing written about a
+   * newer head is taken for this one.
+   */
+  private async stillAtHead(what: string): Promise<void> {
+    const again = pullRequest(await this.json(`${this.repoPath}/pulls/${this.ref.number}`, 'pull request'));
+    if (again.head !== this.ref.head) throw new FactStaleError(`the pull request changed while its ${what} were read`);
+  }
+
   /** The pull request's reviews, oldest first. */
   reviews(): Promise<Review[]> {
     return this.part('reviews', async () => {
       await this.base;
-      return this.list(`${this.repoPath}/pulls/${this.ref.number}/reviews`, 'reviews', MAX_REVIEW_PAGES, reviews);
+      const list = await this.list(`${this.repoPath}/pulls/${this.ref.number}/reviews`, 'reviews', MAX_REVIEW_PAGES, reviews);
+      await this.stillAtHead('reviews');
+      return list;
     });
   }
 
@@ -846,7 +862,9 @@ export class Snapshot {
   comments(): Promise<Comment[]> {
     return this.part('comments', async () => {
       await this.base;
-      return this.list(`${this.repoPath}/issues/${this.ref.number}/comments`, 'comments', MAX_REVIEW_PAGES, comments);
+      const list = await this.list(`${this.repoPath}/issues/${this.ref.number}/comments`, 'comments', MAX_REVIEW_PAGES, comments);
+      await this.stillAtHead('comments');
+      return list;
     });
   }
 

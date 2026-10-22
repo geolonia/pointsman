@@ -42,13 +42,13 @@ export const githubModule: FactModuleEntry & ConnectorEntry = {
   },
 };
 
-/** One per isolate and settings, so a GitHub App's installation tokens are reused between requests and modules. */
-const auths = new Map<string, GitHubAuth>();
+/** One per isolate and settings, so a GitHub App's installation tokens are reused between requests and modules. Keyed by the secrets: never leaves this file. */
+const auths = new Map<string, { auth: GitHubAuth; id: string }>();
 
 /**
  * How the GitHub facts read GitHub, from FACTS_GITHUB and its secrets:
- * "off", "mock", or the credentials (with an id of the settings, never
- * logged). Other modules that read pull requests through the snapshot
+ * "off", "mock", or the credentials with an id for these settings (a
+ * counter, not derived from the secrets). Other modules that read pull requests through the snapshot
  * (snapshotOf) use the same settings. Throws ConfigError on settings that
  * do not fit together.
  */
@@ -68,13 +68,13 @@ export function githubAuthFrom(env: Record<string, unknown>): 'off' | 'mock' | {
       if (mode === 'token' && !token) throw new ConfigError('FACTS_GITHUB "token" needs the secret FACTS_GITHUB_TOKEN');
       if (mode === 'app' && (!appId || !/^[0-9]+$/.test(appId))) throw new ConfigError('FACTS_GITHUB "app" needs FACTS_GITHUB_APP_ID (a number)');
       if (mode === 'app' && (!key || !privateKeyDer(key))) throw new ConfigError('FACTS_GITHUB "app" needs the secret FACTS_GITHUB_APP_PRIVATE_KEY (a PEM private key)');
-      const id = JSON.stringify([mode, token ?? '', appId ?? '', key ?? '']);
-      let auth = auths.get(id);
-      if (!auth) {
-        auth = mode === 'token' ? new TokenAuth(token!) : new GitHubAppAuth(appId!, key!);
-        auths.set(id, auth);
+      const secretKey = JSON.stringify([mode, token ?? '', appId ?? '', key ?? '']);
+      let found = auths.get(secretKey);
+      if (!found) {
+        found = { auth: mode === 'token' ? new TokenAuth(token!) : new GitHubAppAuth(appId!, key!), id: `github-auth-${auths.size + 1}` };
+        auths.set(secretKey, found);
       }
-      return { auth, id };
+      return found;
     }
     default:
       throw new ConfigError('FACTS_GITHUB must be "off", "mock", "token" or "app"');

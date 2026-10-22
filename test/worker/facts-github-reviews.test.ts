@@ -125,6 +125,12 @@ describe('Copilot (github_copilot)', () => {
     expect(await reason(routes({ [`${PR}/reviews`]: () => new Response('{}', { status: 500 }) }))).toBe('error');
     expect(await reason(routes({ [`${PR}/reviews`]: () => ({ not: 'a list' }) }))).toBe('error');
     expect(await reason(routes({ '/graphql': () => ({ data: null, errors: [{ message: 'no' }] }) }))).toBe('error');
+    // Partial data with errors (GitHub's usual answer for NOT_FOUND or RATE_LIMITED) is no answer.
+    expect(await reason(routes({ '/graphql': () => ({ ...graph({ requested: [copilotRequest] }), errors: [{ type: 'RATE_LIMITED' }] }) }))).toBe('error');
+    // A push while the reviews were read: the pull request is read once more after them.
+    let reads = 0;
+    const moving = () => (++reads === 1 ? pullRequest() : { ...pullRequest(), head: { sha: OLD, ref: 'docs', repo: { id: 1, full_name: 'octo-org/demo' } } });
+    expect(await reason(routes({ [PR]: moving }))).toBe('stale');
     expect(await reason(routes({ '/graphql': () => new Response('{}', { status: 403 }) }))).toBe('unavailable');
     expect(await reason(routes({ '/graphql': () => graph({ head: OLD }) }))).toBe('stale');
     expect(await reason(routes({ '/graphql': () => graph({ requested: [copilotRequest], total: 101 }) }))).toBe('error');
@@ -214,5 +220,19 @@ describe('the snapshot\'s review reads (for other modules)', () => {
     expect(isService({ login: 'Copilot-Pull-Request-Reviewer[bot]', id: COPILOT.id, bot: true }, COPILOT)).toBe(true);
     expect(isService({ login: 'copilot-pull-request-reviewer[bot]', id: 7, bot: true }, COPILOT)).toBe(false);
     expect(isService({ login: 'someone', id: COPILOT.id, bot: false }, COPILOT)).toBe(false);
+  });
+});
+
+describe('the GitHub settings other modules use', () => {
+  it('give an id that is not made of the secrets', async () => {
+    const { githubAuthFrom } = await import('@pointsman/github');
+    const found = githubAuthFrom({ FACTS_GITHUB: 'token', FACTS_GITHUB_TOKEN: TOKEN });
+    if (typeof found === 'string') throw new Error('expected credentials');
+    expect(found.id).not.toContain(TOKEN);
+    // The same settings give the same credentials (an app's tokens are reused).
+    const again = githubAuthFrom({ FACTS_GITHUB: 'token', FACTS_GITHUB_TOKEN: TOKEN });
+    expect(again).toBe(found);
+    expect(githubAuthFrom({})).toBe('off');
+    expect(githubAuthFrom({ FACTS_GITHUB: 'mock' })).toBe('mock');
   });
 });
