@@ -23,7 +23,8 @@ export const fiwareModule: ConnectorEntry = {
     }
     return {
       fetch: (request) => handleRequest(request, config),
-      queue: (batch) => handleQueueBatch(batch as { messages: readonly QueuedMessage[] }, config),
+      // A consumer only with a queue set up (BRIDGE_QUEUE).
+      ...(config.queue && { queue: (batch: { messages: readonly QueuedMessage[] }) => handleQueueBatch(batch, config) }),
     };
   },
 };

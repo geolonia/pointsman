@@ -994,6 +994,8 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   }
 
   const decisionId = id.slice('urn:ngsi-ld:Decision:'.length);
+  // encodeURIComponent keeps dots: "." or ".." would change the URL's path.
+  if (/^\.*$/.test(decisionId)) return { id, error: 'not a Pointsman decision id', retry: false };
   const pointsman = (path: string, body?: unknown) => send(config, 'pointsman', `${config.pointsman.url}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { authorization: `Bearer ${config.pointsman.token}`, 'user-agent': USER_AGENT, ...(body !== undefined && { 'content-type': 'application/json' }) },

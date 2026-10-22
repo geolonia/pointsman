@@ -107,7 +107,7 @@ describe('the FIWARE bridge inside the engine Worker', () => {
   });
 
   it('hands the queue to the bridge, and retries the batch when no connector can take it', async () => {
-    const settings = { BRIDGE_ROUTES: ROUTES, BROKER_URL: BROKER, NOTIFY_SECRET: SECRET, POINTSMAN_TOKEN: await clientToken('fiware-bridge') };
+    const settings = { BRIDGE_ROUTES: ROUTES, BROKER_URL: BROKER, NOTIFY_SECRET: SECRET, POINTSMAN_TOKEN: await clientToken('fiware-bridge'), BRIDGE_QUEUE: { sendBatch: async () => {} } };
     fakeBroker();
     const message = { body: { path: '/notify', entity }, attempts: 1, ack: vi.fn(), retry: vi.fn() };
     const batch = { queue: 'q', messages: [message], retryAll: vi.fn(), ackAll: vi.fn() } as unknown as MessageBatch<unknown>;
@@ -116,8 +116,10 @@ describe('the FIWARE bridge inside the engine Worker', () => {
     expect(message.ack).toHaveBeenCalled();
     expect(batch.retryAll).not.toHaveBeenCalled();
 
+    // Without BRIDGE_QUEUE the bridge is no consumer.
     const off = { queue: 'q', messages: [], retryAll: vi.fn(), ackAll: vi.fn() } as unknown as MessageBatch<unknown>;
-    await worker([fiwareModule]).queue(off, env, createExecutionContext());
+    const { BRIDGE_QUEUE: _, ...noQueue } = settings;
+    await worker([fiwareModule]).queue(off, { ...env, ...noQueue } as Env, createExecutionContext());
     expect(off.retryAll).toHaveBeenCalledWith({ delaySeconds: 300 });
   });
 });

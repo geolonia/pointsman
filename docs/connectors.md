@@ -12,7 +12,7 @@ A **connector** connects Pointsman to another system. It brings cases in (webhoo
 
 A connector asks the engine only through its public API ([openapi.yaml](../openapi.yaml)), with its own client token. So each of its decisions passes the same checks as any other client's: the token and the profiles it may use, the profile's rules, idempotency, and the decision log, where the decision shows the connector's client name. A connector never calls the engine's code around that.
 
-A connector carries out only the actions in its fixed list (`actions` in its definition). A deployment can switch them on, never add one.
+A connector says which actions it can carry out, a fixed list (`actions` in its definition), so a review sees everything it may do to the other system. The bridge's are its writes to the context broker. A connector that acts on its own judgement, like the GitHub connector (#147), carries out only the actions a deployment switched on from that list.
 
 ## Where it runs
 
@@ -25,9 +25,12 @@ Each connector says where it can run (`placements`). The FIWARE bridge can run i
 
 Inside the engine Worker:
 
-- A connector sees only its own settings, not the engine's secrets or the other modules' settings.
-- It is off when none of its settings is set. With some of them missing or wrong, its paths answer 500 (`not_configured`) and the log names the setting, so a half-configured connector is noticed.
-- The Worker's queue consumer hands the messages to its only connector with a queue.
+- A connector gets only the settings it lists, not the engine's or the other modules'. The list is part of the module, so a review checks it; code in the same Worker could still reach more.
+- It is off when none of its settings is set. With some of them missing or wrong, its paths answer 500 (`not_configured`) and the log names the setting, so a half-configured connector is noticed. Other connectors keep working.
+- It reaches only the engine's API (`/v1/`), with its own token.
+- The Worker's queue consumer hands the messages to its only connector with a queue set up.
+- All the work of one request to the connector runs in that request, within the Worker's limits per request (time, subrequests). For many entities per notification, use the bridge's queue: each batch is then a request of its own.
+- Edge rules on the engine's `/v1/` paths (a firewall, rate limits) do not see a connector's calls inside the Worker, only the request to `/connectors/…`.
 
 ## Choosing connectors
 

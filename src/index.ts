@@ -196,20 +196,24 @@ const CONNECTORS = '/connectors/';
 /** Never reached over the network: requests to it go to this Worker's routes in process. */
 const IN_PROCESS = 'https://engine.invalid';
 
-/** The connectors switched on by their settings, by id. Throws ConfigError on broken settings. */
-export function connectorsFor(env: Env, ctx: ExecutionContext, entries: readonly ConnectorEntry[] = connectorModules): Map<string, Connector> {
+/**
+ * The connectors switched on by their settings, by id (only `id` when given).
+ * Throws ConfigError on broken settings.
+ */
+export function connectorsFor(env: Env, ctx: ExecutionContext, entries: readonly ConnectorEntry[] = connectorModules, id?: string): Map<string, Connector> {
   const all = env as unknown as Record<string, unknown>;
   const engine = {
     url: IN_PROCESS,
+    // Only the API (/v1/), with the connector's token, like any client.
     fetch: async (url: string, init: RequestInit) => {
-      if (!url.startsWith(`${IN_PROCESS}/`)) throw new Error('the engine in process takes only its own URL');
+      if (!url.startsWith(`${IN_PROCESS}/v1/`)) throw new Error('the engine in process takes only its own /v1/ URLs');
       return app.fetch(new Request(url, init), env, ctx);
     },
   };
   const out = new Map<string, Connector>();
   for (const m of entries) {
-    if (!m.connector.placements.includes('engine')) continue;
-    // Each connector sees only its own settings, not the engine's secrets.
+    if (!m.connector.placements.includes('engine') || (id !== undefined && m.connector.id !== id)) continue;
+    // Each connector gets only the settings it lists (reviewed with the module), not the engine's.
     const own = Object.fromEntries(m.connector.settings.map((s) => [s, all[s]]));
     const c = m.connect(own, { engine }, 'engine');
     if (c) out.set(m.connector.id, c);
@@ -226,11 +230,13 @@ async function toConnector(request: Request, env: Env, ctx: ExecutionContext, en
   const id = slash < 0 ? rest : rest.slice(0, slash);
   let connectors: Map<string, Connector>;
   try {
-    connectors = connectorsFor(env, ctx, entries);
+    // Only this one: another connector's broken settings do not stop it.
+    connectors = connectorsFor(env, ctx, entries, id);
   } catch (err) {
+    if (!(err instanceof ConfigError)) throw err;
     // The operator's to fix; the message names the setting, never its value.
-    console.error(`connector configuration: ${err instanceof Error ? err.message : String(err)}`);
-    return Response.json({ error: { code: 'not_configured', message: 'a connector is not configured' } }, { status: 500 });
+    console.error(`connector configuration: ${err.message}`);
+    return Response.json({ error: { code: 'not_configured', message: 'the connector is not configured' } }, { status: 500 });
   }
   const connector = connectors.get(id);
   if (!connector) return Response.json({ error: { code: 'not_found', message: 'not found' } }, { status: 404 });
@@ -244,7 +250,8 @@ export function worker(entries?: readonly ConnectorEntry[]) {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
       return (await toConnector(request, env, ctx, entries)) ?? app.fetch(request, env, ctx);
     },
-    // The queue consumer: the Worker's queue belongs to its only connector with one.
+    // The queue consumer: the Worker's queue belongs to its only connector with
+    // a queue set up. A second one would need the queue's name to tell them apart.
     async queue(batch: MessageBatch<unknown>, env: Env, ctx: ExecutionContext): Promise<void> {
       let consumers: Connector[];
       try {
