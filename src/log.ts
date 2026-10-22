@@ -36,7 +36,7 @@ export interface DecisionRecord {
   discarded_at?: string;
   /** Set when the decision has a callback_url and a callback was due. */
   callback?: CallbackState;
-  /** The engine and fact modules that made it; missing for decisions from before 0.5.0. */
+  /** The engine and fact modules that made it; missing for decisions made before fact modules. */
   versions?: DecisionVersions;
 }
 

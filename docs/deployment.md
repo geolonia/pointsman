@@ -34,9 +34,10 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 
 3. **Fill in the placeholders** in `wrangler.jsonc` (the ids from step 1, a
    worker name) and pin the engine in `engine.json` to a commit SHA of this
-   repository. List the [fact modules](modules.md) your profiles need under
-   `modules` (or none); the build bundles only those. The workflows refuse to
-   run while a `<placeholder>` is left, or a module is unknown
+   repository. List the [fact modules](modules.md) your profiles need in
+   `modules.facts` (`[]` for none); the build bundles only those. Without
+   `modules`, every module is chosen. The workflows refuse to run while a
+   `<placeholder>` is left, or a module is unknown
    (`engine/scripts/check-config.mjs`).
 
 4. **Add your profiles** to `profiles/` (`<id>.yaml`, see

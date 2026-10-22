@@ -677,7 +677,7 @@ components:
     Versions:
       description: >-
         The engine version and the fact modules that answered the decision's facts, with their
-        versions (docs/modules.md). Missing for decisions made before engine 0.5.0.
+        versions (docs/modules.md). Missing for decisions made before fact modules.
       type: object
       additionalProperties: false
       required: [engine, modules]

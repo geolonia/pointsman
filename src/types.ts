@@ -166,7 +166,7 @@ export interface Decision {
   replaces?: string;
   /** A person checks it before it counts (the profile's people_check). */
   review?: { status: 'pending' };
-  /** The engine and the fact modules that answered its facts. Missing for decisions from before 0.5.0. */
+  /** The engine and the fact modules that answered its facts. Missing for decisions made before fact modules. */
   versions?: DecisionVersions;
 }
 
