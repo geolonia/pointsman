@@ -19,7 +19,8 @@ import type { PullRequestTarget } from './webhook.ts';
 /** What a run needs of the object's storage (a Durable Object's storage has it). */
 export interface ObjectStorage {
   get<T>(key: string): Promise<T | undefined>;
-  put(key: string, value: unknown): Promise<void>;
+  /** Writes these keys at once. */
+  put(entries: Record<string, unknown>): Promise<void>;
   /** Run `run()` at this time (a Durable Object alarm). */
   setAlarm(at: number): Promise<void>;
 }
@@ -36,6 +37,8 @@ export interface Accepted {
 /** Same as the shadow poller: enough for the AI questions, keeps a very long description out of the model. */
 const MAX_TITLE = 300;
 const MAX_BODY = 8000;
+/** A run starts this long after an event, so a burst (several finished check suites) becomes one run. */
+export const SETTLE_MS = 20_000;
 /** Deliveries and bodies are remembered this long, at most this many. */
 const SEEN_MS = 7 * 24 * 3600_000;
 const SEEN_MAX = 500;
@@ -83,11 +86,10 @@ export class PullRequestWork {
     const keys = [`d:${event.delivery}`, `b:${event.digest}`];
     if (keys.some((k) => seen[k] !== undefined && now - seen[k]! < SEEN_MS)) return 'replay';
     const kept = Object.entries(seen).filter(([, t]) => now - t < SEEN_MS).sort((a, b) => b[1] - a[1]).slice(0, SEEN_MAX - keys.length);
-    await this.#storage.put('seen', Object.fromEntries([...kept, ...keys.map((k) => [k, now] as const)]));
-    await this.#storage.put('target', event.target);
+    const generation = ((await this.#storage.get<number>('generation')) ?? 0) + 1;
     // Each accepted event is a new generation; a run ends only when it has handled the newest.
-    await this.#storage.put('generation', ((await this.#storage.get<number>('generation')) ?? 0) + 1);
-    await this.#storage.setAlarm(now);
+    await this.#storage.put({ seen: Object.fromEntries([...kept, ...keys.map((k) => [k, now] as const)]), target: event.target, generation });
+    await this.#storage.setAlarm(now + SETTLE_MS);
     return 'accepted';
   }
 
@@ -104,7 +106,7 @@ export class PullRequestWork {
         // Needs a person (a permission, a setting); the next event tries again.
         console.error(`github connector: ${target?.repo}#${target?.number}: ${err instanceof Error ? err.message : String(err)}`);
       }
-      await this.#storage.put('done', generation);
+      await this.#storage.put({ done: generation });
     }
   }
 
@@ -138,7 +140,7 @@ export class PullRequestWork {
     if (res.ok) return (await res.json()) as Decision;
     await res.body?.cancel();
     if (res.status >= 500 || res.status === 429) throw new RetryError(`Pointsman ${profile}: ${res.status}`);
-    // 401, 403, 404, 409, 422 and redirects: not better on a retry.
+    // Other 4xx (400, 401, 403, 404, 409, 422) and redirects: not better on a retry.
     console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: ${res.status}`);
     return null;
   }
@@ -153,14 +155,25 @@ export class PullRequestWork {
     // A record without an id: an earlier run may have created it before it stopped.
     if (record && id === undefined) id = await retrying(() => this.#github.findCheckRun(repo, head, name));
     if (id === undefined) {
-      checks.runs[profile] = { decision: decision.decision_id };
-      await this.#storage.put('checks', checks);
-      id = await retrying(() => this.#github.createCheckRun(repo, head, name, output));
+      id = await this.#create(checks, repo, head, profile, decision, output);
     } else {
-      await retrying(() => this.#github.updateCheckRun(repo, id!, output));
+      try {
+        await retrying(() => this.#github.updateCheckRun(repo, id!, output));
+      } catch (err) {
+        // Deleted on GitHub: make a new one.
+        if (!(err instanceof GitHubError && err.status === 404)) throw err;
+        id = await this.#create(checks, repo, head, profile, decision, output);
+      }
     }
     checks.runs[profile] = { decision: decision.decision_id, id };
-    await this.#storage.put('checks', checks);
+    await this.#storage.put({ checks });
+  }
+
+  /** The record first, then the check run. */
+  async #create(checks: Checks, repo: string, head: string, profile: string, decision: Decision, output: CheckRunOutput): Promise<number> {
+    checks.runs[profile] = { decision: decision.decision_id };
+    await this.#storage.put({ checks });
+    return retrying(() => this.#github.createCheckRun(repo, head, checkName(profile), output));
   }
 }
 

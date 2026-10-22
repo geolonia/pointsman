@@ -45,7 +45,7 @@ function repoOf(payload: Record<string, unknown>): string | undefined {
   return typeof name === 'string' && /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(name) ? name : undefined;
 }
 
-/** The numbers of a check suite's or run's pull requests in this repository (none for pull requests from forks). */
+/** The numbers of a check suite's pull requests in this repository (none for pull requests from forks). */
 function numbersOf(list: unknown): number[] {
   if (!Array.isArray(list)) return [];
   return list.filter(isObject).map((p) => p.number).filter(isNumber);
@@ -53,7 +53,7 @@ function numbersOf(list: unknown): number[] {
 
 /**
  * The pull requests an event is about. Events of the connector's own app
- * (its check runs) are left out: they would start the next run.
+ * (its check suites) are left out: they would start the next run.
  */
 export function targetsOf(event: string, payload: unknown, appId: number): PullRequestTarget[] {
   if (!isObject(payload)) return [];
@@ -66,15 +66,15 @@ export function targetsOf(event: string, payload: unknown, appId: number): PullR
       return typeof action === 'string' && PR_ACTIONS.has(action) ? one(payload.pull_request) : [];
     case 'pull_request_review':
       return typeof action === 'string' && REVIEW_ACTIONS.has(action) ? one(payload.pull_request) : [];
-    case 'check_suite':
-    case 'check_run': {
+    // A finished check suite (one per app and push), not each check run:
+    // fewer runs, and each one asks Pointsman.
+    case 'check_suite': {
       if (action !== 'completed') return [];
-      const item = payload[event];
-      if (!isObject(item)) return [];
-      const app = isObject(item.app) ? item.app.id : undefined;
+      const suite = payload.check_suite;
+      if (!isObject(suite)) return [];
+      const app = isObject(suite.app) ? suite.app.id : undefined;
       if (app === appId) return [];
-      const suite = event === 'check_run' && isObject(item.check_suite) ? item.check_suite : item;
-      return [...new Set(numbersOf(item.pull_requests ?? suite.pull_requests))].map((number) => ({ repo, number }));
+      return [...new Set(numbersOf(suite.pull_requests))].map((number) => ({ repo, number }));
     }
     default:
       return [];

@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type PullRequestInfo,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -34,7 +34,7 @@ function memoryStorage() {
   const alarms: number[] = [];
   const storage: ObjectStorage = {
     get: async <T>(k: string) => structuredClone(data.get(k)) as T | undefined,
-    put: async (k, v) => void data.set(k, structuredClone(v)),
+    put: async (entries) => { for (const [k, v] of Object.entries(entries)) data.set(k, structuredClone(v)); },
     setAlarm: async (at) => void alarms.push(at),
   };
   return { storage, data, alarms };
@@ -143,9 +143,11 @@ describe('webhook', () => {
     expect(await (await post('pull_request', prEvent(7, 'opened', 'other/repo'))).json()).toEqual({ ignored: true });
     await post('pull_request', prEvent(7, 'closed'));
     await post('issues', { action: 'opened', repository: { full_name: REPO } });
-    await post('check_run', { action: 'completed', repository: { full_name: REPO }, check_run: { app: { id: APP_ID }, pull_requests: [{ number: 7 }] } });
+    await post('check_suite', { action: 'completed', repository: { full_name: REPO }, check_suite: { app: { id: APP_ID }, pull_requests: [{ number: 7 }] } });
+    // Each check run: no (its suite counts).
+    await post('check_run', { action: 'completed', repository: { full_name: REPO }, check_run: { app: { id: 1 }, pull_requests: [{ number: 7 }] } });
     expect(accepted).toEqual([]);
-    await post('check_run', { action: 'completed', repository: { full_name: REPO }, check_run: { app: { id: 1 }, pull_requests: [{ number: 7 }, { number: 8 }] } });
+    await post('check_suite', { action: 'completed', repository: { full_name: REPO }, check_suite: { app: { id: 1 }, pull_requests: [{ number: 7 }, { number: 8 }] } });
     expect(accepted).toEqual(['example/repo#7:accepted', 'example/repo#8:accepted']);
   });
 
@@ -156,6 +158,12 @@ describe('webhook', () => {
     expect((await post('pull_request', prEvent(), { delivery: '../x' })).status).toBe(400);
     const big = new Request('https://c.example.org/webhook', { method: 'POST', body: 'x', headers: { 'content-length': String(3 * 1024 * 1024) } });
     expect((await connector.fetch(big)).status).toBe(413);
+    // Without a Content-Length (a stream): read only up to the limit.
+    const chunk = new Uint8Array(1024 * 1024);
+    let sent = 0;
+    const stream = new ReadableStream({ pull(c) { if (sent++ < 3) c.enqueue(chunk); else c.close(); } });
+    const chunked = new Request('https://c.example.org/webhook', { method: 'POST', body: stream, headers: { 'x-hub-signature-256': 'sha256=' + '0'.repeat(64) } });
+    expect((await connector.fetch(chunked)).status).toBe(413);
   });
 
   it('reads pull requests from check suites, not from forks (no numbers)', () => {
@@ -251,6 +259,26 @@ describe('the work of one pull request', () => {
     errors.mockRestore();
   });
 
+  it('is tried again when GitHub cannot be reached, not when it refuses', async () => {
+    const { work, gh } = await accepted();
+    gh.github.pullRequest = async () => { throw new GitHubError('GitHub pull request: TypeError', true); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.pullRequest = async () => { throw new GitHubError('GitHub pull request: 404', false, 404); };
+    await work.run();
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('makes a new check run when its check run was deleted', async () => {
+    const { work, gh } = await accepted(settings({ profiles: ['pr-docs-check'] }));
+    await work.run();
+    gh.github.updateCheckRun = async () => { throw new GitHubError('GitHub check run: 404', false, 404); };
+    await work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'create')).toHaveLength(2);
+  });
+
   it('leaves closed pull requests alone', async () => {
     const { work, gh, pm } = await accepted();
     gh.github.state.open = false;
@@ -306,7 +334,16 @@ describe('settings and tokens', () => {
     }) as typeof fetch;
     const gh = new AppGitHub(APP_ID, KEY, fetchFn);
     expect(await gh.createCheckRun(REPO, HEAD, 'Pointsman: x', checkOutput(decision('x')))).toBe(77);
-    expect(requests.find((r) => r.url.endsWith('/access_tokens'))!.body).toEqual({ permissions: { metadata: 'read', pull_requests: 'read', checks: 'write' } });
+    expect(requests.find((r) => r.url.endsWith('/access_tokens'))!.body).toEqual({ permissions: { metadata: 'read', pull_requests: 'read', checks: 'write' }, repositories: ['repo'] });
     expect(requests.at(-1)).toMatchObject({ method: 'POST', body: { name: 'Pointsman: x', head_sha: HEAD, status: 'completed', conclusion: 'neutral' } });
+  });
+
+  it('classifies failures: not installed needs a person, a network error is tried again', async () => {
+    const notInstalled = new AppGitHub(APP_ID, KEY, (async () => new Response(null, { status: 404 })) as unknown as typeof fetch);
+    await expect(notInstalled.pullRequest(REPO, 7)).rejects.toMatchObject({ retry: false });
+    const down = new AppGitHub(APP_ID, KEY, (async () => { throw new TypeError('network'); }) as unknown as typeof fetch);
+    await expect(down.pullRequest(REPO, 7)).rejects.toMatchObject({ retry: true });
+    const busy = new AppGitHub(APP_ID, KEY, (async () => new Response(null, { status: 502 })) as unknown as typeof fetch);
+    await expect(busy.pullRequest(REPO, 7)).rejects.toMatchObject({ retry: true });
   });
 });

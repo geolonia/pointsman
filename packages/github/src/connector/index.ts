@@ -20,6 +20,31 @@ export interface PullRequestObjects {
 
 const DELIVERY = /^[0-9a-f-]{1,64}$/i;
 
+/** The body, read only up to `max` bytes (also without a Content-Length); null when larger. */
+async function readCapped(request: Request, max: number): Promise<Uint8Array<ArrayBuffer> | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
+}
+
 function json(status: number, body: unknown): Response {
   return Response.json(body, { status });
 }
@@ -33,8 +58,8 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
       if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
       const length = Number(request.headers.get('content-length') ?? '0');
       if (!Number.isFinite(length) || length > MAX_BODY_BYTES) return json(413, { error: 'too large' });
-      const body = new Uint8Array(await request.arrayBuffer());
-      if (body.byteLength > MAX_BODY_BYTES) return json(413, { error: 'too large' });
+      const body = await readCapped(request, MAX_BODY_BYTES);
+      if (!body) return json(413, { error: 'too large' });
       // Nothing is read from the body before its signature is checked.
       if (!(await verifySignature(settings.webhookSecret, body, request.headers.get('x-hub-signature-256')))) {
         return json(401, { error: 'bad signature' });

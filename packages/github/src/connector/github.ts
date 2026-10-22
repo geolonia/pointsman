@@ -2,6 +2,7 @@
 // installation token, down-scoped to what it needs: read the pull request,
 // write check runs (docs/github-connector.md).
 
+import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
 
@@ -22,14 +23,28 @@ export const connectorScope: Scope = (granted) => {
   return out;
 };
 
-/** A failed request. `retry`: worth trying again later (GitHub busy or down). */
+/** A failed request. `retry`: worth trying again later (GitHub busy, down or not reached). */
 export class GitHubError extends Error {
   override name = 'GitHubError';
   readonly retry: boolean;
-  constructor(message: string, retry: boolean) {
+  readonly status: number | undefined;
+  constructor(message: string, retry: boolean, status?: number) {
     super(message);
     this.retry = retry;
+    this.status = status;
   }
+}
+
+/**
+ * Whether a failure to get a token may pass later: GitHub busy, rate limited
+ * or not reached. Not installed, no permission, a broken key: a person fixes it.
+ */
+function tokenRetry(err: unknown): boolean {
+  if (err instanceof FactUnavailableError) return false;
+  const message = err instanceof Error ? err.message : '';
+  if (/rate limited|: 5\d\d$/.test(message)) return true;
+  // Errors of fetch itself (network, timeout) are not FactErrors.
+  return !(err instanceof FactError);
 }
 
 export interface PullRequestInfo {
@@ -66,7 +81,8 @@ export class AppGitHub implements ConnectorGitHub {
   readonly #fetch: typeof fetch;
 
   constructor(appId: number, privateKey: string, fetchFn: typeof fetch = (u, i) => fetch(u, i)) {
-    this.#auth = new GitHubAppAuth(String(appId), privateKey, connectorScope);
+    // Each token only for the one repository, with only these permissions.
+    this.#auth = new GitHubAppAuth(String(appId), privateKey, connectorScope, true);
     this.#appId = appId;
     this.#fetch = fetchFn;
   }
@@ -77,9 +93,11 @@ export class AppGitHub implements ConnectorGitHub {
     try {
       token = await this.#auth.token({ owner, repo: name, number: 0, head: '' }, this.#fetch);
     } catch (err) {
-      throw new GitHubError(`GitHub app token: ${err instanceof Error ? err.message : String(err)}`, true);
+      throw new GitHubError(`GitHub app token: ${err instanceof Error ? err.message : String(err)}`, tokenRetry(err));
     }
-    const res = await this.#fetch(`${API}/repos/${owner}/${name}${path}`, {
+    let res: Response;
+    try {
+      res = await this.#fetch(`${API}/repos/${owner}/${name}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${token}`,
@@ -91,7 +109,11 @@ export class AppGitHub implements ConnectorGitHub {
       ...(body !== undefined && { body: JSON.stringify(body) }),
       redirect: 'manual',
       signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
-    });
+      });
+    } catch (err) {
+      // Not reached, or too slow: later.
+      throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
+    }
     if (res.status >= 200 && res.status < 300) {
       try {
         return await res.json();
@@ -102,7 +124,7 @@ export class AppGitHub implements ConnectorGitHub {
     await res.body?.cancel();
     // Busy, down or rate limited: later. Anything else (no permission, not found) needs a person.
     const retry = res.status >= 500 || res.status === 429 || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')));
-    throw new GitHubError(`GitHub ${what}: ${res.status}`, retry);
+    throw new GitHubError(`GitHub ${what}: ${res.status}`, retry, res.status);
   }
 
   async pullRequest(repo: string, number: number): Promise<PullRequestInfo> {
