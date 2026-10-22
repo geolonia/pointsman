@@ -18,6 +18,7 @@ Connectors are described in [connectors.md](connectors.md). A module can have bo
 | --- | --- | --- |
 | `@pointsman/facts-gsi` | `inside` and `nearest` for the layers `gsi-flood-max` and `gsi-shelters-flood` (Japan) | `FACTS_MODE` |
 | `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
+| `@pointsman/coderabbit` | `coderabbit`, read through the GitHub module's snapshot | `FACTS_CODERABBIT`, and the GitHub module's `FACTS_GITHUB` settings |
 | `@pointsman/github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`; also a connector ([github-connector.md](github-connector.md)) | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
 
 The settings and the facts are described in [profile-format.md](profile-format.md#facts). Each module is a package in this repository (pnpm workspace): `packages/facts-*`, with `src/definition.ts`, `src/index.ts` (the entry) and its provider. The interface and the capabilities are the package `@pointsman/module-api` (`packages/module-api`). The packages are not published to npm; the engine bundles them from this repository. For now they are released with the engine and have its version. The scripts load the definitions as TypeScript through pnpm's links to `packages/`, so the engine checkout needs pnpm's default layout (`pnpm install`, not a hoisted or copied install).
@@ -102,8 +103,10 @@ Anyone can write a comment, and a login can look like a service's. A fact
 read from reviews, comments or commit statuses accepts only the real
 author: the service's bot account, by login and account id (GraphQL
 leaves out the `[bot]` of the login; both forms are the same account).
-Text that counts "for the head commit" (a price, a review started) counts
-only when it was written after that commit was pushed. `@pointsman/github`
+Text about one head commit counts only when it is tied to that commit.
+CodeRabbit's billable count must name the commit, and, when the push time
+is known, must also be edited after the push. Reviews and commit statuses
+belong to a commit already. `@pointsman/github`
 reads reviews, comments, the head's status history, review threads and
 review requests into the decision's snapshot; another module can read the
 same snapshot (`snapshotOf`, with the GitHub module's settings from

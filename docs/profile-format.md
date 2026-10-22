@@ -721,6 +721,48 @@ The required checks come from the branch's rules and its protection, as
 GitHub shows them to anyone who can read the repository: no administration
 permission is needed.
 
+### CodeRabbit reviews
+
+The module `@pointsman/coderabbit` reads what [CodeRabbit](https://coderabbit.ai)
+did on a pull request, from GitHub, through the same snapshot as the
+GitHub facts:
+
+```yaml
+facts:
+  - { name: coderabbit, type: coderabbit, at: $.pull_request, not_reviewed: ["**/pnpm-lock.yaml", "**/dist/**"] }
+```
+
+| Field | Meaning |
+|---|---|
+| `installed` | CodeRabbit runs in the repository: it left a review, comment or status on this pull request, or a status on the head of one of the 5 newest other pull requests. No value when it cannot tell (no other pull requests). |
+| `ignored` | The description has `@coderabbitai ignore`, outside CodeRabbit's own summary block there. |
+| `reviewed_any`, `reviewed_head` | CodeRabbit reviewed a commit of the pull request; the head commit (a review on it, or a CodeRabbit status on it that says it was reviewed: "Review completed", "Review approved", or the approve command's). |
+| `in_progress` | CodeRabbit's latest status on the head is "Review in progress". |
+| `approved_head`, `changes_requested` | CodeRabbit's latest review that decides (approve, request changes, or a dismissed one) approves the head commit; requests changes. |
+| `rebase_only` | The head has exactly the change of the commit CodeRabbit approved: compared with the base commit of the pull request, every file's patch is the same, line for line with its context lines, only the hunks' line numbers may differ (like `git patch-id`). So the same edit at another place is a new change, and a rebase that changed lines next to the edit asks for a review again. False when there is no approval or it is on the head. No value when the change cannot be compared (a file without a patch, such as a binary file, no files listed, or 300 files or more). |
+| `unresolved_threads` | Open review threads that CodeRabbit started. No value for more than 100 threads. |
+| `outside_diff_findings` | CodeRabbit's latest review with text has findings outside the diff (they are not threads). An approval without text does not take them back. |
+| `billable_files`, `price_stated` | The files a review would bill: CodeRabbit's own count for this head when it stated one (`price_stated` true), else the changed files minus `not_reviewed` (a renamed file counts once). A count is for this head only when CodeRabbit's comment names the head as the end of the range it is about ("between <commit> and <head>"): it edits its summary in place, so the time of an edit does not tell. |
+
+Only CodeRabbit's own account counts: reviews and statuses of its bot
+(login `coderabbitai[bot]` and its account id), comments of its bot made
+through its GitHub App. Anyone else who writes the same text, or an account
+with the same login, does not count. People with write access can edit a
+bot's comment: when anyone but CodeRabbit last edited one of its comments
+or reviews, the whole fact is missing (`error`), and so it is when the
+editors cannot be read (more than 100 comments or reviews).
+
+The fact is missing (`error`, `stale`, `unavailable`, `timeout`) as the
+GitHub facts are, and also when the reviews, comments, the head's statuses,
+the review threads, the other pull requests or a comparison cannot be read.
+
+Settings: `FACTS_CODERABBIT` `on` reads GitHub with the GitHub module's
+settings (`FACTS_GITHUB` `token` or `app`, so choose `@pointsman/github`
+too), `mock` gives fixed answers (CodeRabbit runs and has not reviewed;
+one billable file), `off` (default) makes the facts missing. Permissions
+as for the GitHub facts: pull requests, contents (to compare commits),
+commit statuses.
+
 ### GitHub workflows
 
 A `github_workflows` fact reads the GitHub Actions files a pull request

@@ -182,8 +182,8 @@
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "type": {
-          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes. github_copilot: Copilot code review on the pull request.",
-          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows", "github_copilot"]
+          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes. github_copilot: Copilot code review on the pull request. coderabbit: CodeRabbit reviews of the pull request.",
+          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows", "github_copilot", "coderabbit"]
         },
         "at": {
           "description": "JSONPath into the request state: a GeoJSON Point or LineString (WGS 84) for spatial facts, for example $.location.value; a pull request { repo, number, head } for GitHub facts.",
@@ -289,6 +289,17 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?:\\*|(?!\\.\\.?$)[A-Za-z0-9._-]{1,100})$"
           }
+        },
+        "not_reviewed": {
+          "description": "For coderabbit: files CodeRabbit does not review (globs, for example **/pnpm-lock.yaml), left out of the billable count Pointsman makes when CodeRabbit stated none.",
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "description": "A path glob: * (any characters but /), ** (any folders), ? (one character). Not starting with /, without .. parts, without [ ] { } ! or backslashes.",
+            "type": "string",
+            "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\s\\[\\]{}!\\\\]{1,200}$"
+          }
         }
       },
       "allOf": [
@@ -347,6 +358,10 @@
         {
           "if": { "properties": { "type": { "const": "github_copilot" } }, "required": ["type"] },
           "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "coderabbit" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at", "not_reviewed"] } }
         }
       ]
     },

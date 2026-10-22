@@ -26,6 +26,8 @@ function account(v: unknown): Account {
 
 /** A review: who, its state (APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, PENDING), the commit it is on, and when. */
 export interface Review {
+  /** GitHub's id of the review (REST id, GraphQL databaseId); null when not given. */
+  id: number | null;
   by: Account;
   state: string;
   commit: string | null;
@@ -38,6 +40,7 @@ export function reviews(v: unknown): Review[] {
   return v.map((r) => {
     if (!isObject(r) || typeof r.state !== 'string') throw new FactError('GitHub reviews: unexpected answer');
     return {
+      id: id(r.id),
       by: account(r.user),
       state: r.state,
       commit: typeof r.commit_id === 'string' ? r.commit_id.toLowerCase() : null,
@@ -49,6 +52,8 @@ export function reviews(v: unknown): Review[] {
 
 /** A comment in the pull request's conversation. `app`: the GitHub App it was made through, if any. */
 export interface Comment {
+  /** GitHub's id of the comment (REST id, GraphQL databaseId); null when not given. */
+  id: number | null;
   by: Account;
   app: number | null;
   /** GitHub's author_association: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE … */
@@ -64,6 +69,7 @@ export function comments(v: unknown): Comment[] {
     if (!isObject(c)) throw new FactError('GitHub comments: unexpected answer');
     const app = isObject(c.performed_via_github_app) ? id(c.performed_via_github_app.id) : null;
     return {
+      id: id(c.id),
       by: account(c.user),
       app,
       association: typeof c.author_association === 'string' ? c.author_association : 'NONE',
@@ -133,6 +139,46 @@ export function reviewState(v: unknown): ReviewState & { head: string } {
     })
     : null;
   return { head: pr.headRefOid.toLowerCase(), requested, threads };
+}
+
+/**
+ * Who last edited each comment and review of the pull request (GraphQL):
+ * by id, the editor's account, or null when it was never edited. People
+ * with write access can edit a bot's comment; the text then is no longer
+ * only the bot's.
+ */
+export interface Editors {
+  comments: Map<number, Account | null>;
+  reviews: Map<number, Account | null>;
+}
+
+export const EDITORS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
+      comments(last: 100) { totalCount nodes { databaseId editor { __typename login ... on Bot { databaseId } ... on User { databaseId } } } }
+      reviews(last: 100) { totalCount nodes { databaseId editor { __typename login ... on Bot { databaseId } ... on User { databaseId } } } }
+    }
+  }
+}`;
+
+/** The answer to EDITORS_QUERY, with its head commit (checked by the caller). More than 100 comments or reviews: a FactError. */
+export function editors(v: unknown): Editors & { head: string } {
+  const bad = () => new FactError('GitHub editors: unexpected answer');
+  const pr = isObject(v) && isObject(v.repository) ? v.repository.pullRequest : undefined;
+  if (!isObject(pr) || typeof pr.headRefOid !== 'string') throw bad();
+  const read = (conn: unknown, what: string): Map<number, Account | null> => {
+    if (!isObject(conn) || typeof conn.totalCount !== 'number' || !Array.isArray(conn.nodes)) throw bad();
+    if (conn.totalCount > conn.nodes.length) throw new FactError(`GitHub ${what}: more than ${conn.nodes.length}, their editors are not known`);
+    const out = new Map<number, Account | null>();
+    for (const n of conn.nodes) {
+      const key = isObject(n) ? id(n.databaseId) : null;
+      if (key === null) throw bad();
+      out.set(key, isObject(n) && isObject(n.editor) ? account(n.editor) : null);
+    }
+    return out;
+  };
+  return { head: pr.headRefOid.toLowerCase(), comments: read(pr.comments, 'comments'), reviews: read(pr.reviews, 'reviews') };
 }
 
 /** A service's account: its bot's login (as REST names it, with "[bot]") and account id. */

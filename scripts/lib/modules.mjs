@@ -27,6 +27,7 @@ export const CATALOG = {
   '@pointsman/facts-gsi': { definition: '@pointsman/facts-gsi/definition', entry: '@pointsman/facts-gsi', roles: ['facts'] },
   '@pointsman/facts-valhalla': { definition: '@pointsman/facts-valhalla/definition', entry: '@pointsman/facts-valhalla', roles: ['facts'] },
   '@pointsman/github': { definition: '@pointsman/github/definition', entry: '@pointsman/github', roles: ['facts', 'connector'] },
+  '@pointsman/coderabbit': { definition: '@pointsman/coderabbit/definition', entry: '@pointsman/coderabbit', roles: ['facts'] },
   '@pointsman/fiware': { definition: '@pointsman/fiware/definition', entry: '@pointsman/fiware', roles: ['connector'] },
 };
 
