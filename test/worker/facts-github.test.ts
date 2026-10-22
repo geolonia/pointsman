@@ -1,4 +1,4 @@
-// GitHub pull-request facts (src/facts-github.ts) against a fake GitHub API:
+// GitHub pull-request facts (packages/facts-github/src/provider.ts) against a fake GitHub API:
 // every field, the shared snapshot, each way a fact can be missing, the
 // settings, and that only GET requests are sent.
 
@@ -8,10 +8,10 @@ import { answersMock, noCallbacks, providerOf } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { FactError, lookupFacts, MockFactProvider, ModuleRouter, resultError, type FactProvider } from '../../src/facts';
-import { toPullRequest } from '../../src/modules/github/definition';
-import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '../../src/facts-github';
-import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '../../src/codeowners';
-import { matchGlob } from '../../src/glob';
+import { toPullRequest } from '@pointsman/facts-github/definition';
+import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '@pointsman/facts-github';
+import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '@pointsman/facts-github';
+import { matchGlob } from '@pointsman/facts-github';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';

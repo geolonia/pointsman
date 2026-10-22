@@ -2,7 +2,10 @@
 // answer format (POST /v1/systemone), for example a local Strands Decider
 // (`strands-decider serve`). See docs/models.md.
 
+import { checkServerUrl } from '@pointsman/module-api';
 import { ModelError, type ModelAdapter, type ModelRequest, type ModelResponse } from './adapter';
+
+export { checkServerUrl };
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -19,31 +22,7 @@ export interface ModelServerConfig {
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
-
-/**
- * Checks a server base URL: https, or http for a loopback host (local
- * development). No credentials, query or fragment. The value has no trailing
- * slash.
- */
-export function checkServerUrl(raw: string): Parsed<string> {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return { ok: false, error: 'is not a URL' };
-  }
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK.has(url.hostname))) {
-    return { ok: false, error: 'must use https (http only for localhost)' };
-  }
-  if (url.username || url.password) return { ok: false, error: 'must not contain credentials' };
-  if (url.search || url.hash || raw.includes('?') || raw.includes('#')) {
-    return { ok: false, error: 'must not have a query or fragment' };
-  }
-  return { ok: true, value: url.toString().replace(/\/+$/, '') };
-}
 
 /** Parses comma-separated `id` or `id=server-name` entries. */
 export function parseModelList(raw: string): Parsed<Record<string, string>> {

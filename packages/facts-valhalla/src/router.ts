@@ -14,9 +14,7 @@
 //   way around" from "the road edge at an end is closed too", so it is an
 //   error, like any other failure; this provider never says possible: false.
 
-import { FactError, type FactResult, type Geometry, type Position } from './facts';
-import type { DetourMode } from './types';
-import { distance, offset } from './geo';
+import { distance, FactError, offset, type DetourMode, type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery } from '@pointsman/module-api';
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 /** Per call; below the detour fact's 8 s, so a retry can still fit. */
@@ -386,4 +384,17 @@ export function corridor(ps: Position[], r: number): Position[] {
   const left = ps.map((_, i) => side(i, 1));
   const right = ps.map((_, i) => side(i, -1)).reverse();
   return [...left, ...right, left[0]!];
+}
+
+/** The `detour` facts of a router. Routing requests are not shared, so the lookup's time limit stops them. */
+export class ValhallaFactProvider implements FactProvider<SpatialFactQuery> {
+  readonly router: ValhallaRouter;
+
+  constructor(router: ValhallaRouter) {
+    this.router = router;
+  }
+
+  lookup(query: SpatialFactQuery, signal: AbortSignal): Promise<FactResult> {
+    return this.router.detour(query.geometry, signal, query.mode, query.route === true);
+  }
 }

@@ -1,6 +1,8 @@
 // Types for decision profiles and decisions.
 // Profiles follow schema/profile-v1.schema.json; see docs/profile-format.md.
 
+import type { FactSpec } from '@pointsman/module-api';
+
 export interface BilingualText {
   en: string;
   ja: string;
@@ -29,52 +31,17 @@ export interface ScoreQuestion {
 
 export type Question = NoulQuestion | ChoiceQuestion | ScoreQuestion;
 
-/** Kinds of spatial fact (capabilities, src/modules/capabilities.ts). */
+/** Kinds of spatial fact (capabilities, packages/module-api/src/capabilities.ts). */
 export type SpatialFactType = 'inside' | 'nearest' | 'detour';
 /** Kinds of GitHub pull-request fact (docs/profile-format.md#github-pull-requests). */
 export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows';
 /** A kind of fact: a capability, or a type of a chosen module (src/modules/registry.ts). */
 export type FactType = string;
 
-/** A fact a profile asks for (docs/profile-format.md#facts). */
-export interface FactSpec {
-  name: string;
-  type: FactType;
-  /**
-   * JSONPath into the request state: a GeoJSON geometry for spatial facts,
-   * a pull request ({ repo, number, head }) for GitHub facts.
-   */
-  at: string;
-  /** Layer id for `inside` and `nearest`, configured per deployment. */
-  layer?: string;
-  /** For `detour`: by car (`drive`, the default) or on foot (`walk`). */
-  mode?: DetourMode;
-  /**
-   * For `detour`: also return the way around (`route`). Off by default: the
-   * route starts and ends at the section, so it is stored with each decision.
-   */
-  route?: boolean;
-  /** For `github_paths`: the files that count (globs). */
-  paths?: string[];
-  /** For `github_paths`: files that never count, even when they match `paths`. */
-  except?: string[];
-  /** For `github_property`: the name of a repository custom property. */
-  property?: string;
-  /**
-   * For `github_workflows`: entries added to the defaults
-   * (src/workflows.ts, docs/profile-format.md#github-workflows).
-   */
-  privileged_triggers?: string[];
-  inert_actions?: string[];
-  safe_contexts?: string[];
-  base_refs?: string[];
-  git_actions?: string[];
-  pin_exempt?: string[];
-  /** Settings of fact types from other modules (src/modules/api.ts). */
-  [setting: string]: unknown;
-}
+/** A fact a profile asks for (docs/profile-format.md#facts); the settings of each type come from its module. */
+export type { FactSpec } from '@pointsman/module-api';
 
-export type DetourMode = 'drive' | 'walk';
+export type { DetourMode } from '@pointsman/module-api';
 
 /** A fact as looked up for one decision. */
 export type Fact =

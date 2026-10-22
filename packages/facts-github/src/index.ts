@@ -4,8 +4,8 @@
 // secret FACTS_GITHUB_APP_PRIVATE_KEY (with "app"); FACTS_GITHUB_IGNORE_CHECK
 // (Pointsman's own check run, never counted as a required check).
 
-import { ConfigError, mockProvider, type FactModuleEntry, type FactProvider } from '../api';
-import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth } from '../../facts-github';
+import { ConfigError, mockProvider, type FactModuleEntry, type FactProvider } from '@pointsman/module-api';
+import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth } from './provider';
 import { definition } from './definition';
 
 const mock = mockProvider(definition.types ?? []);
@@ -49,5 +49,13 @@ export const githubModule: FactModuleEntry = {
     }
   },
 };
+
+// The provider's parts, for tests and other modules.
+export * from './provider';
+export * from './definition';
+export * from './settings';
+export * from './workflows';
+export * from './codeowners';
+export * from './glob';
 
 export default githubModule;

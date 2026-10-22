@@ -4,7 +4,7 @@
 //   github_paths     changed files that match the fact's path list
 //   github_checks    required checks of the base branch on the head commit
 //   github_property  a repository custom property
-//   github_workflows the GitHub Actions files it changes (src/workflows.ts)
+//   github_workflows the GitHub Actions files it changes (workflows.ts)
 //
 // Read-only: this file only sends GET requests to the GitHub API (and, for a
 // GitHub App, the one POST that creates an installation token). All GitHub
@@ -16,8 +16,8 @@
 import {
   FactError, FactStaleError, FactUnavailableError,
   type FactProvider, type FactResult, type FactScope,
-} from './facts';
-import { GITHUB_TIMEOUT_MS, type GitHubFactQuery, type PullRequestRef } from './modules/github/definition';
+} from '@pointsman/module-api';
+import { GITHUB_TIMEOUT_MS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 import {
@@ -733,7 +733,7 @@ class Snapshot {
    * as its members. False without CODEOWNERS, for a file without an owner,
    * for an email owner, for no changed files, and for more files than are
    * read. CODEOWNERS or a team that cannot be read fails the fact, and so
-   * does CODEOWNERS over its limits (src/codeowners.ts).
+   * does CODEOWNERS over its limits (codeowners.ts).
    */
   soleCodeOwner(): Promise<boolean> {
     return this.part('owner', async () => {

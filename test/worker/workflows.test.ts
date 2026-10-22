@@ -1,4 +1,4 @@
-// The github_workflows counts (src/workflows.ts) on fixture files: one
+// The github_workflows counts (packages/facts-github/src/workflows.ts) on fixture files: one
 // workflow per field, each parser limit, and the known bypasses (index
 // syntax, toJSON(github.event), a ref from a step output, a post: step, a
 // pull request that changes only a local action).
@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   countWorkflows, expressions, kindOf, MAX_PARSED_FILES, parseYaml, references, ShapeError, workflowSettings, WORKFLOW_DEFAULTS,
   type WorkflowFile, type WorkflowSettings,
-} from '../../src/workflows';
+} from '@pointsman/facts-github';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const REPO = 'example-org/demo';

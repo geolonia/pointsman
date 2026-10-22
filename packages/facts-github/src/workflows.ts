@@ -1,16 +1,16 @@
 // GitHub Actions files of a pull request, read for the `github_workflows`
 // fact (docs/profile-format.md#github-workflows). Pure functions: the YAML
 // parser with limits, the `${{ }}` tokenizer, and the counts. Nothing here
-// runs or evaluates anything, and nothing reads GitHub (src/facts-github.ts
+// runs or evaluates anything, and nothing reads GitHub (provider.ts
 // does).
 //
 // The files are written by the pull request's author, so every limit or
 // shape the reader does not expect makes the file "unparsed", never skipped.
 
 import { isAlias, isMap, isScalar, isSeq, LineCounter, parseAllDocuments, type Document, type Node } from 'yaml';
-// The settings and the field list are in src/modules/github/settings.ts, so
+// The settings and the field list are in settings.ts, so
 // the profile validator can read them under Node.js.
-import { WORKFLOW_DEFAULTS, WORKFLOW_FIELDS, workflowSettings, type WorkflowSettings } from './modules/github/settings';
+import { WORKFLOW_DEFAULTS, WORKFLOW_FIELDS, workflowSettings, type WorkflowSettings } from './settings';
 
 export { WORKFLOW_DEFAULTS, WORKFLOW_FIELDS, workflowSettings, type WorkflowSettings };
 

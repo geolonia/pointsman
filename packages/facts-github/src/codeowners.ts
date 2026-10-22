@@ -17,7 +17,7 @@
 // at most MAX_MATCH_STEPS steps of matching for one decision. Past any limit
 // the file cannot be read safely: an error, never a guessed owner.
 
-import { FactError } from './facts';
+import { FactError } from '@pointsman/module-api';
 import { globParts, matchParts, MatchBudget } from './glob';
 
 /** The largest CODEOWNERS file read, in bytes (GitHub itself ignores one over 3 MB). */

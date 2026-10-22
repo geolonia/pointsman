@@ -1,0 +1,15 @@
+{
+  "name": "@pointsman/facts-gsi",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Pointsman fact module: inside and nearest from GSI data for Japan (flood zones, evacuation sites).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./definition": "./src/definition.ts"
+  },
+  "dependencies": {
+    "@pointsman/module-api": "workspace:*"
+  }
+}

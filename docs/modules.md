@@ -20,7 +20,7 @@ Connectors use the public API and need no interface of their own yet; a module w
 | `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
 | `@pointsman/facts-github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows` | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
 
-The settings and the facts are described in [profile-format.md](profile-format.md#facts). The code is in `src/modules/` (definitions and entries) and in `src/facts-*.ts` (the providers).
+The settings and the facts are described in [profile-format.md](profile-format.md#facts). Each module is a package in this repository (pnpm workspace): `packages/facts-*`, with `src/definition.ts`, `src/index.ts` (the entry) and its provider. The interface and the capabilities are the package `@pointsman/module-api` (`packages/module-api`). The packages are not published to npm; the engine bundles them from this repository. For now they are released with the engine and have its version. The scripts load the definitions as TypeScript through pnpm's links to `packages/`, so the engine checkout needs pnpm's default layout (`pnpm install`, not a hoisted or copied install).
 
 ## Choosing modules
 
@@ -49,7 +49,7 @@ The scripts read `engine.json` from the current directory, else from where pnpm 
 
 Fact types come in two kinds.
 
-**Capabilities** are a small set of shared types with fixed fields, defined by the engine in `src/modules/capabilities.ts`: `inside`, `nearest` and `detour`. A profile asks for `detour` and gets `extra_m`, whatever module answers. The deployment chooses the module, as it chooses layers. A new capability is a pull request to this repository, reviewed like code (decided 2026-10-22, #145).
+**Capabilities** are a small set of shared types with fixed fields, defined by the engine in `packages/module-api/src/capabilities.ts`: `inside`, `nearest` and `detour`. A profile asks for `detour` and gets `extra_m`, whatever module answers. The deployment chooses the module, as it chooses layers. A new capability is a pull request to this repository, reviewed like code (decided 2026-10-22, #145).
 
 - Each capability is answered by one chosen module. `inside` and `nearest` can be shared by layers: each module names its layers, and each layer is answered by one module. A layer that no module names goes to the type's only module, if there is just one (its mock answers any layer; its real provider refuses an unknown one as `unavailable`).
 - A module that implements a capability is named after its service, for example `facts-valhalla`; another routing service would be another module.
@@ -58,7 +58,7 @@ Fact types come in two kinds.
 
 ## The module interface
 
-A module has two parts (`src/modules/api.ts`):
+A module has two parts (`packages/module-api/src/api.ts`):
 
 - **Its definition** (`FactModule`): name, version, roles, the capabilities it answers, its own fact types, the missing reasons it can give, and the settings it reads. The definition is data and small pure functions, readable under Node.js (the validator reads it), so it uses only TypeScript syntax Node can strip.
 - **Its entry** (`FactModuleEntry`): the definition plus `create(env, runtime)`, which reads the module's settings and returns a provider, `undefined` when the module is off, or throws `ConfigError` for settings that do not fit together. `runtime` gives a shared cache when the runtime has one ([adapters.md](adapters.md#cache)).
@@ -85,7 +85,7 @@ A field can hold a probability or a confidence, for example a geocoder's confide
 ### Not yet
 
 - Showing a fact to the model (`show_model` per fact, #145): the model does not see facts ([profile-format.md](profile-format.md#facts)).
-- Modules from outside this repository. A module from npm would have to ship JavaScript (Node does not strip types inside `node_modules`). Until someone outside contributes one, modules live in this repository.
+- Modules from outside this repository. A module from npm would have to ship JavaScript (Node does not strip types inside `node_modules`), and the catalog in `scripts/lib/modules.mjs` lists only this repository's packages. Until someone outside contributes one, modules live here.
 
 ## Versions in the decision log
 

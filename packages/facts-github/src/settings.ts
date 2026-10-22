@@ -1,5 +1,5 @@
-// Settings of the `github_workflows` fact and its fields (src/workflows.ts
-// does the reading). Node-safe, like src/modules/api.ts.
+// Settings of the `github_workflows` fact and its fields (workflows.ts
+// does the reading). Node-safe, like packages/module-api/src/api.ts.
 
 export interface WorkflowSettings {
   /** Triggers that run in the base repository's context, with its secrets and a write token. */

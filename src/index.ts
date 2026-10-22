@@ -4,7 +4,7 @@
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth-kv';
 import { ModuleRouter, type FactProvider } from './facts';
-import type { FactModuleEntry } from './modules/api';
+import type { FactModuleEntry } from '@pointsman/module-api';
 import { useFactModules } from './modules/registry';
 import { D1DecisionLog } from './log-d1';
 import { purgeExpired, type OAuthConfig } from './oauth';
@@ -23,7 +23,7 @@ import factModules from '../generated/modules';
 interface PointsmanEnv {
   PROFILE_SOURCE?: string | undefined;
   MODEL_MODE?: string | undefined;
-  // Settings of the fact modules, read by each module (src/modules/*/index.ts).
+  // Settings of the fact modules, read by each module (packages/facts-*/src/index.ts).
   FACTS_MODE?: string | undefined;
   FACTS_ROUTING_URL?: string | undefined;
   /** Worker secret. */

@@ -1,11 +1,11 @@
-// The github_workflows fact (src/facts-github.ts, src/workflows.ts) against a
+// The github_workflows fact (packages/facts-github/src/provider.ts, packages/facts-github/src/workflows.ts) against a
 // fake GitHub API: which files it reads, at head and at the base tip, the
 // limits, each way the fact can be missing, and that only GET requests are
 // sent. The counts themselves are tested in workflows.test.ts.
 
 import { describe, expect, it } from 'vitest';
 import { lookupFacts, MockFactProvider, resultError } from '../../src/facts';
-import { GitHubFactProvider, TokenAuth } from '../../src/facts-github';
+import { GitHubFactProvider, TokenAuth } from '@pointsman/facts-github';
 import type { FactSpec } from '../../src/types';
 
 const HEAD = 'a'.repeat(40);

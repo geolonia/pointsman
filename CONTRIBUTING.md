@@ -34,7 +34,7 @@ checks this (`pnpm check:core`).
 
 A new source of facts is a fact module, not a change to the engine: see
 [docs/modules.md](docs/modules.md). A new shared fact type (a capability) is
-a change to `src/modules/capabilities.ts`.
+a change to `packages/module-api/src/capabilities.ts`.
 
 A new example profile goes in `examples/profiles/` and is linked from one
 use-case topic, `examples/<topic>/README.md` (see

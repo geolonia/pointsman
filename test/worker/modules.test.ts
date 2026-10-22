@@ -10,12 +10,14 @@ import { depsFor } from '../../src/index';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { factModules, lookupFacts, MockFactProvider, ModuleRouter, resultError, type FactProvider } from '../../src/facts';
 import { D1DecisionLog } from '../../src/log-d1';
-import { FactMissingError, type FactModuleEntry } from '../../src/modules/api';
-import { inside } from '../../src/modules/capabilities';
+import { FactMissingError, type FactModuleEntry } from '@pointsman/module-api';
+import { inside } from '@pointsman/module-api';
 import { useFactModules } from '../../src/modules/registry';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import { ENGINE_VERSION } from '../../src/version';
+import { definition as githubDef } from '@pointsman/facts-github/definition';
+import { definition as gsiDef } from '@pointsman/facts-gsi/definition';
 import type { FactSpec, Profile } from '../../src/types';
 import modules from '../../generated/modules';
 import * as contract from '../../generated/openapi-validators.mjs';
@@ -174,9 +176,9 @@ describe('versions', () => {
   };
 
   it('lists the modules that answer a profile\'s facts', () => {
-    expect(factModules(profile.facts!)).toEqual({ '@pointsman/facts-gsi': ENGINE_VERSION, '@pointsman/facts-github': ENGINE_VERSION });
+    expect(factModules(profile.facts!)).toEqual({ '@pointsman/facts-gsi': gsiDef.version, '@pointsman/facts-github': githubDef.version });
     // A layer no module names goes to the type's only module.
-    expect(factModules([{ name: 'x', type: 'inside', layer: 'unknown', at: '$.x' }])).toEqual({ '@pointsman/facts-gsi': ENGINE_VERSION });
+    expect(factModules([{ name: 'x', type: 'inside', layer: 'unknown', at: '$.x' }])).toEqual({ '@pointsman/facts-gsi': gsiDef.version });
     useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-github'));
     expect(factModules([{ name: 'pr', type: 'github_pr', at: '$.pr' }])).toEqual({});
   });
@@ -193,7 +195,7 @@ describe('versions', () => {
     const app = createApp(() => deps);
     const headers = { authorization: `Bearer ${TOKEN}` };
     for (const [id, versions] of [
-      ['versions-check', { engine: ENGINE_VERSION, modules: { '@pointsman/facts-gsi': ENGINE_VERSION, '@pointsman/facts-github': ENGINE_VERSION } }],
+      ['versions-check', { engine: ENGINE_VERSION, modules: { '@pointsman/facts-gsi': gsiDef.version, '@pointsman/facts-github': githubDef.version } }],
       ['plain', { engine: ENGINE_VERSION, modules: {} }],
     ] as const) {
       const res = await app.request(`/v1/decide/${id}`, { method: 'POST', headers, body: JSON.stringify({ state }) }, env);

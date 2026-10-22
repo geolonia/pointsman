@@ -1,0 +1,16 @@
+{
+  "name": "@pointsman/facts-github",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Pointsman fact module: pull-request facts read from GitHub.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./definition": "./src/definition.ts"
+  },
+  "dependencies": {
+    "@pointsman/module-api": "workspace:*",
+    "yaml": "^2.9.1"
+  }
+}

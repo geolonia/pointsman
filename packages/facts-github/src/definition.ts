@@ -1,11 +1,9 @@
 // GitHub pull-request facts (docs/profile-format.md#github-pull-requests):
 // the definition of the module @pointsman/facts-github. The provider is in
-// src/facts-github.ts. Node-safe, like src/modules/api.ts.
+// provider.ts. Node-safe, like packages/module-api/src/api.ts.
 
-import type { Bilingual, FactInput, FactModule, FactTypeDef, JsonSchema } from '../api.ts';
-import type { FactSpec } from '../../types.ts';
+import type { Bilingual, FactInput, FactModule, FactSpec, FactTypeDef, JsonSchema } from '@pointsman/module-api';
 import { WORKFLOW_DEFAULTS, WORKFLOW_FIELDS, type WorkflowSettings } from './settings.ts';
-import { ENGINE_VERSION } from '../../version.ts';
 
 /** A pull request at a commit, as the request state names it. */
 export interface PullRequestRef {
@@ -15,6 +13,25 @@ export interface PullRequestRef {
   /** The head commit the caller saw (40 hex characters, lower case). */
   head: string;
 }
+
+/** A GitHub fact in a profile, with the settings of its type. */
+export interface GitHubFactSpec extends FactSpec {
+  /** For `github_paths`: the files that count (globs). */
+  paths?: string[];
+  /** For `github_paths`: files that never count, even when they match `paths`. */
+  except?: string[];
+  /** For `github_property`: the name of a repository custom property. */
+  property?: string;
+  /** For `github_workflows`: entries added to the defaults (settings.ts, docs/profile-format.md#github-workflows). */
+  privileged_triggers?: string[];
+  inert_actions?: string[];
+  safe_contexts?: string[];
+  base_refs?: string[];
+  git_actions?: string[];
+  pin_exempt?: string[];
+}
+
+const gh = (spec: FactSpec) => spec as GitHubFactSpec;
 
 export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows';
 
@@ -82,7 +99,7 @@ const github_pr: FactTypeDef = {
     open: { kind: 'boolean' }, merged: { kind: 'boolean' }, draft: { kind: 'boolean' }, wip_title: { kind: 'boolean' },
     files: { kind: 'number' }, changed_lines: { kind: 'number' }, base_is_default: { kind: 'boolean' },
     author_member: { kind: 'boolean' }, author_dependabot: { kind: 'boolean' }, fork: { kind: 'boolean' }, all_commits_verified: { kind: 'boolean' },
-    // "yes", "no" or "unavailable": who pushed the commits (src/facts-github.ts).
+    // "yes", "no" or "unavailable": who pushed the commits (provider.ts).
     pushed_by_author: { kind: 'string' }, author_sole_code_owner: { kind: 'boolean' },
   },
   input: pullRequest,
@@ -151,7 +168,7 @@ const github_paths: FactTypeDef = {
     },
   },
   required: ['paths'],
-  query: (spec, pr): GitHubFactQuery => ({
+  query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({
     ...base(spec, pr),
     ...(spec.paths !== undefined && { paths: spec.paths }),
     ...(spec.except !== undefined && { except: spec.except }),
@@ -160,7 +177,7 @@ const github_paths: FactTypeDef = {
   mock: { any: true, all: true, count: 1 },
   words: {
     en: {
-      describe: (f, s) => `${f}: which changed files of the pull request (${s.at}) match ${(s.paths ?? []).join(', ')}${s.except?.length ? `, except ${s.except.join(', ')}` : ''}.`,
+      describe: (f, s) => `${f}: which changed files of the pull request (${s.at}) match ${(gh(s).paths ?? []).join(', ')}${gh(s).except?.length ? `, except ${gh(s).except!.join(', ')}` : ''}.`,
       fields: {
         any: ['a changed file matches %', 'no changed file matches %'],
         all: ['every changed file matches %', 'not every changed file matches %'],
@@ -168,7 +185,7 @@ const github_paths: FactTypeDef = {
       },
     },
     ja: {
-      describe: (f, s) => `${f}：プルリクエスト（${s.at}）の変更ファイルのうち ${(s.paths ?? []).join('、')} に合うもの${s.except?.length ? `（${s.except.join('、')} を除く）` : ''}。`,
+      describe: (f, s) => `${f}：プルリクエスト（${s.at}）の変更ファイルのうち ${(gh(s).paths ?? []).join('、')} に合うもの${gh(s).except?.length ? `（${gh(s).except!.join('、')} を除く）` : ''}。`,
       fields: {
         any: ['%に合う変更ファイルがある', '%に合う変更ファイルがない'],
         all: ['すべての変更ファイルが%に合う', '%に合わない変更ファイルがある'],
@@ -225,18 +242,18 @@ const github_property: FactTypeDef = {
     },
   },
   required: ['property'],
-  query: (spec, pr): GitHubFactQuery => ({ ...base(spec, pr), ...(spec.property !== undefined && { property: spec.property }) }),
+  query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({ ...base(spec, pr), ...(spec.property !== undefined && { property: spec.property }) }),
   timeoutMs: GITHUB_TIMEOUT_MS,
   mock: { value: 'unset' },
   words: {
     en: {
-      describe: (f, s) => `${f}: the custom property "${s.property ?? ''}" of the pull request's repository (${s.at}); "unset" when it has no value.`,
+      describe: (f, s) => `${f}: the custom property "${gh(s).property ?? ''}" of the pull request's repository (${s.at}); "unset" when it has no value.`,
       fields: {
         value: 'the value of %',
       },
     },
     ja: {
-      describe: (f, s) => `${f}：プルリクエストのリポジトリ（${s.at}）のカスタムプロパティ「${s.property ?? ''}」。値がないときは "unset"。`,
+      describe: (f, s) => `${f}：プルリクエストのリポジトリ（${s.at}）のカスタムプロパティ「${gh(s).property ?? ''}」。値がないときは "unset"。`,
       fields: {
         value: '%の値',
       },
@@ -246,7 +263,7 @@ const github_property: FactTypeDef = {
 };
 
 /** The `github_workflows` settings a fact gives. */
-function workflowSettingsOf(spec: FactSpec): Partial<WorkflowSettings> {
+function workflowSettingsOf(spec: GitHubFactSpec): Partial<WorkflowSettings> {
   const out: Partial<WorkflowSettings> = {};
   for (const key of Object.keys(WORKFLOW_DEFAULTS) as (keyof WorkflowSettings)[]) {
     const v = spec[key];
@@ -256,7 +273,7 @@ function workflowSettingsOf(spec: FactSpec): Partial<WorkflowSettings> {
 }
 
 /**
- * The GitHub Actions files a pull request changes (src/workflows.ts): counts
+ * The GitHub Actions files a pull request changes (workflows.ts): counts
  * over every file. detail lists the first findings, for people and the log.
  */
 const github_workflows: FactTypeDef = {
@@ -335,7 +352,8 @@ const STALE: Bilingual = { en: 'the pull request has a newer commit', ja: 'プ�
 
 export const definition: FactModule = {
   name: '@pointsman/facts-github',
-  version: ENGINE_VERSION,
+  // As in package.json (a test checks); released with the engine for now.
+  version: '0.4.0',
   roles: ['facts'],
   types: [github_pr, github_paths, github_checks, github_property, github_workflows],
   reasons: { stale: STALE },

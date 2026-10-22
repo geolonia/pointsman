@@ -197,6 +197,18 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
+      '@pointsman/facts-github':
+        specifier: workspace:*
+        version: link:packages/facts-github
+      '@pointsman/facts-gsi':
+        specifier: workspace:*
+        version: link:packages/facts-gsi
+      '@pointsman/facts-valhalla':
+        specifier: workspace:*
+        version: link:packages/facts-valhalla
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:packages/module-api
       hono:
         specifier: ^4.13.13
         version: 4.13.13
@@ -225,6 +237,29 @@ importers:
       wrangler:
         specifier: ^4.150.0
         version: 4.150.0
+
+  packages/facts-github:
+    dependencies:
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+
+  packages/facts-gsi:
+    dependencies:
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+
+  packages/facts-valhalla:
+    dependencies:
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+
+  packages/module-api: {}
 
 packages:
 

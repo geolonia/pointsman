@@ -3,7 +3,7 @@
 import type { Fetch } from '../../src/callbacks';
 import type { DecisionLog } from '../../src/log';
 import type { FactProvider, ModuleRouter } from '../../src/facts';
-import type { FactQueryBase } from '../../src/modules/api';
+import type { FactQueryBase } from '@pointsman/module-api';
 
 /** A decision log that stores nothing; override the methods a test needs. */
 export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {

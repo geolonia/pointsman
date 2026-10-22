@@ -13,7 +13,7 @@
 import { compilePolicy, peopleAnswers, profileActions } from './policy.ts';
 import type { RequiredProfiles } from './policy.ts';
 import { factRegistry } from './modules/registry.ts';
-import type { FactTypeDef } from './modules/api.ts';
+import type { FactTypeDef } from '@pointsman/module-api';
 import type { Answer, Fact, Profile, Question, RequiredDecisionInput } from './types.ts';
 
 export interface TestCase {
@@ -166,7 +166,7 @@ function factsOf(profile: Pick<Profile, 'facts'>, given: unknown, where: string)
 /**
  * A fact's values as the engine's providers give them, so a case cannot
  * pass on values the engine never produces (the fact type's `cases` rules,
- * src/modules/api.ts). For capabilities the first field says whether
+ * packages/module-api/src/api.ts). For capabilities the first field says whether
  * something was found, and decides the others: not inside: rank 0, class "";
  * not found, or no way around: no values; otherwise every field is needed,
  * except a name and a route. Other types need every field, null only where

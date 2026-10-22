@@ -1,12 +1,11 @@
 // Capabilities: shared fact types with fixed fields, defined by the engine
-// (decided on #145: a new capability is a pull request to this file,
+// repository (decided on #145: a new capability is a pull request to this file,
 // reviewed like code). A profile asks for `detour` and gets `extra_m`,
 // whatever module answers it; the deployment chooses the module.
 //
-// Node-safe, like src/modules/api.ts.
+// Node-safe, like api.ts.
 
-import type { FactInput, FactTypeDef } from './api.ts';
-import type { DetourMode, FactSpec } from '../types.ts';
+import type { DetourMode, FactInput, FactSpec, FactTypeDef } from './api.ts';
 
 export type Position = [number, number];
 export type Geometry = { type: 'Point'; coordinates: Position } | { type: 'LineString'; coordinates: Position[] };
