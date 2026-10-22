@@ -178,16 +178,20 @@ const SHAPES: Partial<Record<FactType, { key: string; absent: Record<string, str
  * where the engine can give no value (author_member, all_commits_verified).
  */
 const GITHUB_NULLABLE = ['author_member', 'all_commits_verified'];
+/** Fields a case may leave out, with the value they get: text for people, not for rules. */
+const GITHUB_OPTIONAL: Record<string, string> = { detail: '' };
 
 function shaped(type: FactType, values: Record<string, string | number | boolean | null>, where: string): Record<string, string | number | boolean | null> {
   const shape = SHAPES[type];
   if (!shape) {
+    const out = { ...values };
     for (const field of Object.keys(FACT_FIELDS[type])) {
-      if (values[field] === undefined || (values[field] === null && !GITHUB_NULLABLE.includes(field))) {
+      if (out[field] === undefined && Object.hasOwn(GITHUB_OPTIONAL, field)) out[field] = GITHUB_OPTIONAL[field]!;
+      if (out[field] === undefined || (out[field] === null && !GITHUB_NULLABLE.includes(field))) {
         throw new CaseError(`${where}.${field}: needed`);
       }
     }
-    return { ...values };
+    return out;
   }
   const { key, absent, optional } = shape;
   if (typeof values[key] !== 'boolean') throw new CaseError(`${where}.${key}: give true or false`);

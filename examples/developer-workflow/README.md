@@ -14,6 +14,7 @@ and cannot claim "docs only" or "checks passed".
 |---|---|---|
 | [`issue-triage`](../profiles/issue-triage.yaml) | Which team should handle the issue, does it block work today, how much work does it look like? | `auto`, `review` |
 | [`pr-docs-check`](../profiles/pr-docs-check.yaml) | Does a pull request change only documentation, so that a light review is enough? Reads the pull request from GitHub ([GitHub facts](../../docs/profile-format.md#github-pull-requests)). | `light`, `review`, `wait`, `retry`, `done` |
+| [`workflow-check`](../profiles/workflow-check.yaml) | Are the GitHub Actions files a pull request changes safe to merge? Pointsman reads and parses them itself ([GitHub workflows](../../docs/profile-format.md#github-workflows)). | `pass`, `fix-…`, `review`, `retry` |
 
 The profile is visible through MCP, so agents can ask it too
 ([docs/mcp.md](../../docs/mcp.md)).

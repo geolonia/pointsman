@@ -176,6 +176,14 @@ describe('explainProfile: the profile', () => {
     expect(explainProfile(byId('pr-docs-check'), 'ja', required).facts[2]).toBe('「ci」：プルリクエスト（$.pull_request）の head コミットでの必須チェックの結果。');
   });
 
+  it('explains the workflow example: counts in words, EN and JA', () => {
+    const en = explainProfile(byId('workflow-check'), 'en', required);
+    expect(en.facts[0]).toBe('"wf": the GitHub Actions files the pull request ($.pull_request) changes (workflows, local actions, scanner settings), read from GitHub and parsed, never run: counts of known unsafe patterns.');
+    expect(en.rules[3]!.text).toBe('If the number of privileged jobs in "wf" that may run the checked-out code is more than 0, the action is fix-pwn-request.');
+    const ja = explainProfile(byId('workflow-check'), 'ja', required);
+    expect(ja.rules[3]!.text).toBe('「wf」でチェックアウトしたコードを実行しうる特権ジョブの数が 0 を超えるなら、アクションは fix-pwn-request です。');
+  });
+
   it('is plain Markdown, numbered like the rules', () => {
     const text = explanationText(explainProfile(byId('road-restriction-check'), 'ja', required));
     expect(text).toMatch(/^# 通行規制の確認（road-restriction-check、v\d+）\n\n/);

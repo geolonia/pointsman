@@ -4,6 +4,7 @@
 //   github_paths     changed files that match the fact's path list
 //   github_checks    required checks of the base branch on the head commit
 //   github_property  a repository custom property
+//   github_workflows the GitHub Actions files it changes (src/workflows.ts)
 //
 // Read-only: this file only sends GET requests to the GitHub API (and, for a
 // GitHub App, the one POST that creates an installation token). All GitHub
@@ -18,6 +19,10 @@ import {
 } from './facts';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
+import {
+  actionFolderOf, actionFolders, countWorkflows, kindOf, MAX_FILE_BYTES, MAX_PARSED_FILES, workflowSettings,
+  type WorkflowFile, type WorkflowSettings,
+} from './workflows';
 
 const API = 'https://api.github.com';
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
@@ -223,6 +228,8 @@ interface PullRequest {
   headRepo: string | null;
   fork: boolean;
   base: string;
+  /** The base branch's commit as GitHub shows it with the pull request; null when not given. */
+  baseSha: string | null;
   defaultBranch: string;
   repoId: number;
   ownerIsOrg: boolean;
@@ -251,6 +258,7 @@ function pullRequest(v: unknown): PullRequest {
     // A fork that was deleted has no head repository: treat it as a fork.
     fork: !isObject(headRepo) || headRepo.id !== baseRepo.id,
     base: base.ref,
+    baseSha: typeof base.sha === 'string' && /^[0-9a-f]{40}$/i.test(base.sha) ? base.sha.toLowerCase() : null,
     defaultBranch: baseRepo.default_branch,
     ownerIsOrg: (baseRepo.owner as Record<string, unknown>).type === 'Organization',
     author: user.login,
@@ -265,7 +273,7 @@ function pullRequest(v: unknown): PullRequest {
     || pr.additions === null || pr.deletions === null || pr.files === null || pr.commits === null || typeof baseRepo.id !== 'number') throw bad();
   return {
     open: pr.open, merged: pr.merged, draft: pr.draft, title: pr.title, head: pr.head, headRef: pr.headRef, headRepo: pr.headRepo, fork: pr.fork,
-    base: pr.base, defaultBranch: pr.defaultBranch, repoId: baseRepo.id as number, ownerIsOrg: pr.ownerIsOrg, author: pr.author, authorIsBot: pr.authorIsBot,
+    base: pr.base, baseSha: pr.baseSha, defaultBranch: pr.defaultBranch, repoId: baseRepo.id as number, ownerIsOrg: pr.ownerIsOrg, author: pr.author, authorIsBot: pr.authorIsBot,
     changedLines: pr.additions + pr.deletions, files: pr.files, commits: pr.commits,
   };
 }
@@ -284,13 +292,34 @@ function commits(v: unknown): Commit[] {
   });
 }
 
-/** Changed paths of one page; a renamed file counts with both names. */
-function filePaths(v: unknown): string[][] {
+/** A changed file: its name, then its earlier name when it was renamed. */
+interface Change { names: string[]; removed: boolean }
+
+/** Changed files of one page; a renamed file counts with both names. */
+function changedFiles(v: unknown): Change[] {
   if (!Array.isArray(v)) throw new FactError('GitHub files: unexpected answer');
   return v.map((f) => {
     if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub files: unexpected answer');
-    return typeof f.previous_filename === 'string' ? [f.filename, f.previous_filename] : [f.filename];
+    const names = typeof f.previous_filename === 'string' ? [f.filename, f.previous_filename] : [f.filename];
+    return { names, removed: f.status === 'removed' };
   });
+}
+
+/** A file of a commit's tree. */
+interface TreeFile { sha: string; size: number }
+
+/** The files of a recursive tree, by path. A tree GitHub cut short fails the fact. */
+function treeFiles(v: unknown): Map<string, TreeFile> {
+  if (!isObject(v) || !Array.isArray(v.tree) || typeof v.truncated !== 'boolean') throw new FactError('GitHub tree: unexpected answer');
+  if (v.truncated) throw new FactError('the repository tree is too large to read');
+  const out = new Map<string, TreeFile>();
+  for (const e of v.tree) {
+    if (!isObject(e) || typeof e.path !== 'string' || typeof e.type !== 'string') throw new FactError('GitHub tree: unexpected answer');
+    if (e.type !== 'blob') continue;
+    if (typeof e.sha !== 'string' || typeof e.size !== 'number') throw new FactError('GitHub tree: unexpected answer');
+    out.set(e.path, { sha: e.sha, size: e.size });
+  }
+  return out;
 }
 
 /** A required check: its name, and the app that must report it (null: any). */
@@ -523,12 +552,17 @@ class Snapshot {
   }
 
   /** The changed paths, one entry per file (a renamed file has both names). */
-  files(): Promise<string[][]> {
+  async files(): Promise<string[][]> {
+    return (await this.changes()).map((c) => c.names);
+  }
+
+  /** The changed files, with their names and whether they were removed. */
+  private changes(): Promise<Change[]> {
     return this.part('files', async () => {
       const { pr } = await this.base;
       if (pr.files > MAX_FILES) throw new FactError(`the pull request changes more than ${MAX_FILES} files`);
       const all = (await Promise.all(pages(Math.ceil(pr.files / PER_PAGE)).map(async (p) =>
-        filePaths(await this.json(`${this.repoPath}/pulls/${this.ref.number}/files?per_page=${PER_PAGE}&page=${p}`, 'files'))))).flat();
+        changedFiles(await this.json(`${this.repoPath}/pulls/${this.ref.number}/files?per_page=${PER_PAGE}&page=${p}`, 'files'))))).flat();
       if (all.length !== pr.files) throw new FactError('GitHub files: the list does not match the pull request');
       // The file list is the pull request's current one, not the one at a commit:
       // read the head once more, so a push in between makes the facts stale.
@@ -733,6 +767,65 @@ class Snapshot {
   properties(): Promise<unknown> {
     return this.part('properties', () => this.json(`${this.repoPath}/properties/values`, 'custom properties'));
   }
+
+  /** The files of a commit, by path. */
+  private tree(sha: string): Promise<Map<string, TreeFile>> {
+    return this.part(`tree:${sha}`, async () => treeFiles(await this.json(`${this.repoPath}/git/trees/${sha}?recursive=1`, 'tree')));
+  }
+
+  /** A file's text; null when it is not UTF-8 text. */
+  private blob(sha: string): Promise<string | null> {
+    return this.part(`blob:${sha}`, async () => {
+      const v = await this.json(`${this.repoPath}/git/blobs/${sha}`, 'file');
+      if (!isObject(v) || v.encoding !== 'base64' || typeof v.content !== 'string') throw new FactError('GitHub file: unexpected answer');
+      try {
+        return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(base64Bytes(v.content));
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  /**
+   * The changed files in the `github_workflows` scope, read at the head
+   * commit and at the base tip: workflows, every file of a local action
+   * (a folder with an `action.yml` at head or at base), and scanner
+   * settings. Workflows and `action.yml` files are read as text, at most 50
+   * of them and 256 KB each; the others only count.
+   */
+  workflowFiles(): Promise<WorkflowFile[]> {
+    return this.part('workflows', async () => {
+      const { pr } = await this.base;
+      if (!pr.baseSha) throw new FactError('GitHub pull request: no base commit');
+      const changes = await this.changes();
+      if (changes.length === 0) return [];
+      const [head, base] = await Promise.all([this.tree(this.ref.head), this.tree(pr.baseSha)]);
+      const folders = actionFolders([...head.keys(), ...base.keys()]);
+      let parsed = 0;
+      const files = changes.map(async (c): Promise<WorkflowFile | null> => {
+        const [name, previous = name] = c.names as [string, string?];
+        const kind = kindOf(name, folders);
+        // A file moved out of the scope is gone from it.
+        const removed = c.removed || kind === null;
+        const k = kind ?? kindOf(previous, folders);
+        if (k === null) return null;
+        const folder = k === 'action' || k === 'action_file' ? actionFolderOf(kind ? name : previous, folders) ?? undefined : undefined;
+        const at = removed ? undefined : head.get(name);
+        const file: WorkflowFile = { path: kind ? name : previous, kind: k, ...(folder !== undefined && { folder }), removed, bytes: at?.size ?? 0, head: null, base: null };
+        if (removed || (k !== 'workflow' && k !== 'action')) return file;
+        // Not in the head tree (a submodule, a link GitHub does not list): it cannot be read.
+        if (!at || at.size > MAX_FILE_BYTES || ++parsed > MAX_PARSED_FILES) return { ...file, unreadable: true };
+        // A file renamed into the scope is new there: its earlier version was not a workflow or action.
+        const before = kindOf(previous, folders) === k ? base.get(previous) : undefined;
+        const [h, b] = await Promise.all([
+          this.blob(at.sha),
+          before && before.size <= MAX_FILE_BYTES ? this.blob(before.sha) : Promise.resolve(null),
+        ]);
+        return h === null ? { ...file, unreadable: true } : { ...file, head: h, base: b };
+      });
+      return (await Promise.all(files)).filter((f): f is WorkflowFile => f !== null);
+    });
+  }
 }
 
 export interface GitHubOptions {
@@ -804,6 +897,10 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       case 'github_property': {
         if (!query.property) throw new FactError('no property name');
         return { values: { value: propertyValue(await s.properties(), query.property) }, source };
+      }
+      case 'github_workflows': {
+        const settings: WorkflowSettings = workflowSettings(query.workflows);
+        return { values: { ...countWorkflows(await s.workflowFiles(), `${query.pr.owner}/${query.pr.repo}`, settings) }, source };
       }
     }
   }

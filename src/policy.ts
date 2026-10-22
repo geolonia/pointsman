@@ -147,10 +147,19 @@ export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
   github_checks: { required: 'number', green: 'boolean', pending: 'boolean', failed: 'boolean' },
   // A repository custom property; "unset" when it has no value.
   github_property: { value: 'string' },
+  // The GitHub Actions files a pull request changes (src/workflows.ts): counts
+  // over every file. detail lists the first findings, for people and the log.
+  github_workflows: {
+    changed: 'number', removed: 'number', unparsed: 'number', bytes: 'number',
+    privileged: 'number', privileged_new: 'number', head_checkout: 'number', pwn_request: 'number',
+    artifact_in_privileged: 'number', remote_reusable: 'number', secrets_new: 'number', injection: 'number',
+    permissions_missing: 'number', write_all: 'number', write_new: 'number', persisted: 'number',
+    unpinned: 'number', suppressions_new: 'number', local_unresolved: 'number', detail: 'string',
+  },
 };
 
 /** Fields for people and maps, not for rules: a rule cannot refer to them. */
-const DISPLAY_FIELDS: Partial<Record<FactType, string[]>> = { detour: ['route'] };
+const DISPLAY_FIELDS: Partial<Record<FactType, string[]>> = { detour: ['route'], github_workflows: ['detail'] };
 
 /** Reserved prefix of fact references; no question name may start with it. */
 export const FACTS_PREFIX = 'facts.';

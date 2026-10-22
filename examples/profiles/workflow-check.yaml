@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# Example profile: are the GitHub Actions files a pull request changes safe
+# to merge? The fact comes from GitHub (FACTS_GITHUB): Pointsman reads and
+# parses the files itself, the client sends only { repo, number, head }, plus
+# the title and description for the AI. Neutral example content.
+#
+# Safety: a missing fact never passes; the pass rule names every condition
+# as a known value; the AI can only send a change to a person, never pass it.
+# A fix- action names the pattern to change; the fact's detail field lists
+# the files and lines for people (rules cannot read it).
+id: workflow-check
+version: 1
+title:
+  en: "Pull request: are the workflow changes safe?"
+  ja: プルリクエスト：ワークフローの変更は安全？
+description:
+  en: Decide whether the GitHub Actions files a pull request changes are safe to merge, need a fix, or need a person to check them.
+  ja: プルリクエストが変える GitHub Actions のファイルが、マージしてよいか、直す必要があるか、人の確認が要るかを決める。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: title, path: $.pull_request.title }
+  - { name: description, path: $.pull_request.body }
+questions:
+  # The AI sees only what the client sends, so it can only make the result stricter.
+  - name: touches_secrets
+    type: noul
+    instructions: Does the title or description say that the change gives a workflow new secrets, tokens or permissions, or runs code from a fork with them?
+    criteria:
+      true: The change gives a workflow more access, or runs outside code with it.
+      false: The change says nothing about more access.
+facts:
+  - name: wf
+    type: github_workflows
+    at: $.pull_request
+    # Added to the defaults: this organization's own actions use major tags.
+    pin_exempt: ["example-org/*"]
+policy:
+  people_check: [review]
+  people_answers: [pass, fix-other]
+  rules:
+    # A missing fact never passes: ask again later.
+    - when: "facts.wf.missing == true"
+      action: retry
+    - when: "facts.wf.changed == 0 and facts.wf.removed == 0"
+      action: pass
+    # A file that cannot be read safely, or too much to check: a person checks.
+    - when: "facts.wf.unparsed > 0 or facts.wf.bytes > 200000"
+      action: review
+    # Known unsafe patterns, the worst first.
+    - when: "facts.wf.pwn_request > 0"
+      action: fix-pwn-request
+    - when: "facts.wf.injection > 0"
+      action: fix-untrusted-input
+    - when: "facts.wf.write_all > 0 or facts.wf.permissions_missing > 0"
+      action: fix-permissions
+    - when: "facts.wf.unpinned > 0"
+      action: fix-unpinned-action
+    - when: "facts.wf.persisted > 0"
+      action: fix-persist-credentials
+    # Not wrong by itself, but a person should look. Every changed privileged
+    # workflow too: a script can fetch other code in ways no parser sees.
+    - when: >-
+        facts.wf.removed > 0 or facts.wf.privileged > 0 or facts.wf.privileged_new > 0 or facts.wf.head_checkout > 0
+        or facts.wf.artifact_in_privileged > 0 or facts.wf.remote_reusable > 0 or facts.wf.secrets_new > 0
+        or facts.wf.write_new > 0 or facts.wf.suppressions_new > 0 or facts.wf.local_unresolved > 0
+      action: review
+    - when: "touches_secrets.yes >= 0.3"
+      action: review
+    # Every condition is a known value.
+    - when: >-
+        facts.wf.unparsed == 0 and facts.wf.bytes <= 200000 and facts.wf.removed == 0
+        and facts.wf.privileged == 0 and facts.wf.privileged_new == 0 and facts.wf.head_checkout == 0 and facts.wf.pwn_request == 0
+        and facts.wf.artifact_in_privileged == 0 and facts.wf.remote_reusable == 0 and facts.wf.secrets_new == 0
+        and facts.wf.injection == 0 and facts.wf.permissions_missing == 0 and facts.wf.write_all == 0
+        and facts.wf.write_new == 0 and facts.wf.persisted == 0 and facts.wf.unpinned == 0
+        and facts.wf.suppressions_new == 0 and facts.wf.local_unresolved == 0 and touches_secrets.yes < 0.3
+      action: pass
+  default: review

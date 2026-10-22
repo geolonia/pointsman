@@ -69,6 +69,8 @@ const W = {
       `${f}: which changed files of the pull request (${at}) match ${paths.join(', ')}${except.length ? `, except ${except.join(', ')}` : ''}.`,
     githubChecks: (f: string, at: string) => `${f}: the results of the required checks of the pull request (${at}) on its head commit.`,
     githubProperty: (f: string, at: string, p: string) => `${f}: the custom property "${p}" of the pull request's repository (${at}); "unset" when it has no value.`,
+    githubWorkflows: (f: string, at: string) =>
+      `${f}: the GitHub Actions files the pull request (${at}) changes (workflows, local actions, scanner settings), read from GitHub and parsed, never run: counts of known unsafe patterns.`,
     byCar: 'by car',
     onFoot: 'on foot',
     factsHidden: 'The AI does not see facts; only the rules use them.',
@@ -136,6 +138,25 @@ const W = {
       'github_checks.failed': ['a required check (%) failed', 'no required check (%) failed'],
       'github_checks.required': 'the number of required checks (%)',
       'github_property.value': 'the value of %',
+      'github_workflows.changed': 'the number of changed files in % (workflows, local actions, scanner settings)',
+      'github_workflows.removed': 'the number of removed files in % (workflows, local actions, scanner settings)',
+      'github_workflows.unparsed': 'the number of workflow and action.yml files in % that cannot be read safely',
+      'github_workflows.bytes': 'the size in bytes of the changed files in %',
+      'github_workflows.privileged': "the number of changed workflows in % that run with the base repository's token",
+      'github_workflows.privileged_new': 'the number of such triggers that % adds',
+      'github_workflows.head_checkout': 'the number of privileged jobs in % that may check out other code',
+      'github_workflows.pwn_request': 'the number of privileged jobs in % that may run the checked-out code',
+      'github_workflows.artifact_in_privileged': 'the number of privileged jobs in % that download an artifact of another run',
+      'github_workflows.remote_reusable': 'the number of jobs in % that call a reusable workflow of another repository from a privileged workflow, or pass every secret',
+      'github_workflows.secrets_new': 'the number of secrets that jobs in % newly read',
+      'github_workflows.injection': 'the number of untrusted expressions in scripts in %',
+      'github_workflows.permissions_missing': 'the number of jobs in % without permissions',
+      'github_workflows.write_all': 'the number of broad write permissions in %',
+      'github_workflows.write_new': 'the number of write permissions that % adds',
+      'github_workflows.persisted': 'the number of checkouts in % that keep the token on disk',
+      'github_workflows.unpinned': 'the number of actions and images in % not pinned to a commit or digest',
+      'github_workflows.suppressions_new': 'the number of scanner exceptions that % adds',
+      'github_workflows.local_unresolved': 'the number of local actions and reusable workflows in % that a person must read',
     } as Record<string, string | [string, string]>,
     extra: (f: string) => `the extra distance of the way around (${f})`,
     decMissing: (d: string, missing: boolean) => (missing ? `the earlier decision ${d} is missing` : `the earlier decision ${d} exists`),
@@ -174,6 +195,8 @@ const W = {
       `${f}：プルリクエスト（${at}）の変更ファイルのうち ${paths.join('、')} に合うもの${except.length ? `（${except.join('、')} を除く）` : ''}。`,
     githubChecks: (f: string, at: string) => `${f}：プルリクエスト（${at}）の head コミットでの必須チェックの結果。`,
     githubProperty: (f: string, at: string, p: string) => `${f}：プルリクエストのリポジトリ（${at}）のカスタムプロパティ「${p}」。値がないときは "unset"。`,
+    githubWorkflows: (f: string, at: string) =>
+      `${f}：プルリクエスト（${at}）が変える GitHub Actions のファイル（ワークフロー、ローカルアクション、スキャナーの設定）。GitHub から読んで解析するだけで、実行しない。既知の危ないパターンの数。`,
     byCar: '車で',
     onFoot: '歩いて',
     factsHidden: 'AI は事実を見ません。事実を使うのはルールだけです。',
@@ -239,6 +262,25 @@ const W = {
       'github_checks.failed': ['必須チェック（%）に失敗したものがある', '必須チェック（%）に失敗したものがない'],
       'github_checks.required': '必須チェック（%）の数',
       'github_property.value': '%の値',
+      'github_workflows.changed': '%で変わったファイル（ワークフロー、ローカルアクション、スキャナーの設定）の数',
+      'github_workflows.removed': '%で消えたファイル（ワークフロー、ローカルアクション、スキャナーの設定）の数',
+      'github_workflows.unparsed': '%で安全に読めないワークフローと action.yml の数',
+      'github_workflows.bytes': '%で変わったファイルの大きさ（バイト）',
+      'github_workflows.privileged': '%で変わった、ベースリポジトリのトークンで動くワークフローの数',
+      'github_workflows.privileged_new': '%が加えるそのようなトリガーの数',
+      'github_workflows.head_checkout': '%で別のコードをチェックアウトしうる特権ジョブの数',
+      'github_workflows.pwn_request': '%でチェックアウトしたコードを実行しうる特権ジョブの数',
+      'github_workflows.artifact_in_privileged': '%で別の実行のアーティファクトを取り込む特権ジョブの数',
+      'github_workflows.remote_reusable': '%で特権ワークフローから別リポジトリの再利用ワークフローを呼ぶか、すべてのシークレットを渡すジョブの数',
+      'github_workflows.secrets_new': '%でジョブが新しく読むシークレットの数',
+      'github_workflows.injection': '%のスクリプト内の信頼できない式の数',
+      'github_workflows.permissions_missing': '%で permissions のないジョブの数',
+      'github_workflows.write_all': '%の広い書き込み権限の数',
+      'github_workflows.write_new': '%が加える書き込み権限の数',
+      'github_workflows.persisted': '%でトークンをディスクに残すチェックアウトの数',
+      'github_workflows.unpinned': '%でコミットやダイジェストに固定されていないアクションとイメージの数',
+      'github_workflows.suppressions_new': '%が加えるスキャナーの例外の数',
+      'github_workflows.local_unresolved': '%で人が読む必要のあるローカルアクションと再利用ワークフローの数',
     } as Record<string, string | [string, string]>,
     extra: (f: string) => `迂回路（${f}）で遠回りになる距離`,
     decMissing: (d: string, missing: boolean) => (missing ? `前の判定${d}がない` : `前の判定${d}がある`),
@@ -451,6 +493,8 @@ function factText(f: FactSpec, w: Words): string {
       return w.githubChecks(name, f.at);
     case 'github_property':
       return w.githubProperty(name, f.at, f.property ?? '');
+    case 'github_workflows':
+      return w.githubWorkflows(name, f.at);
   }
 }
 

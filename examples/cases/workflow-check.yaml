@@ -1,0 +1,159 @@
+# Test cases for workflow-check: each rule, and each fact missing.
+profile: workflow-check
+cases:
+  - name: a clean workflow change passes
+    expect: pass
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: no workflow files changed passes
+    expect: pass
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 0, removed: 0, unparsed: 0, bytes: 0, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a pull request that only removes a workflow goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 0, removed: 1, unparsed: 0, bytes: 0, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a file that cannot be read safely goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 1, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: too much to check goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 200001, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a pwn request must be fixed
+    expect: fix-pwn-request
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 1, head_checkout: 1, pwn_request: 1, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 1, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: an untrusted expression in a script must be fixed
+    expect: fix-untrusted-input
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 2, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a job without permissions must be fixed
+    expect: fix-permissions
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 1, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: write-all must be fixed
+    expect: fix-permissions
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 1, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: an unpinned action must be fixed
+    expect: fix-unpinned-action
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 1, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a checkout that keeps the token must be fixed
+    expect: fix-persist-credentials
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 1, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a new privileged trigger goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 1, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a privileged job that checks out other code, without running it, goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 0, head_checkout: 1, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: an artifact of another run in a privileged job goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 1, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a reusable workflow of another repository goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 1, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a new secret in a privileged job goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 1, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a new write permission goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 1, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a new zizmor exception goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 1, local_unresolved: 0 }
+
+  - name: a changed local action goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 1 }
+
+  - name: a changed privileged workflow with no findings goes to a person
+    expect: review
+    answers: { touches_secrets: 0.05 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 1, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: the AI sees more access, so a person checks
+    expect: review
+    answers: { touches_secrets: 0.4 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 0, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: the AI alone never fixes or passes a finding
+    expect: fix-unpinned-action
+    answers: { touches_secrets: 0.01 }
+    facts:
+      wf: { changed: 1, removed: 0, unparsed: 0, bytes: 1200, privileged: 0, privileged_new: 0, head_checkout: 0, pwn_request: 0, artifact_in_privileged: 0, remote_reusable: 0, secrets_new: 0, injection: 0, permissions_missing: 0, write_all: 0, write_new: 0, persisted: 0, unpinned: 1, suppressions_new: 0, local_unresolved: 0 }
+
+  - name: a missing fact (stale) means retry, never pass
+    expect: retry
+    answers: { touches_secrets: 0.01 }
+    facts: { wf: { missing: stale } }
+
+  - name: a missing fact (error) means retry, never pass
+    expect: retry
+    answers: { touches_secrets: 0.01 }
+    facts: { wf: { missing: error } }
+
+  - name: a missing fact (timeout) means retry, never pass
+    expect: retry
+    answers: { touches_secrets: 0.01 }
+    facts: { wf: { missing: timeout } }
+
+  - name: a missing fact (unavailable) means retry, never pass
+    expect: retry
+    answers: { touches_secrets: 0.01 }
+    facts: { wf: { missing: unavailable } }
+
+  - name: a missing fact (no_pr) means retry, never pass
+    expect: retry
+    answers: { touches_secrets: 0.01 }
+    facts: { wf: { missing: no_pr } }
