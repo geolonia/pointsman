@@ -10,9 +10,11 @@
 // Like src/policy.ts, this file is imported by a script under Node.js, so it
 // uses only TypeScript syntax that Node can strip.
 
-import { compilePolicy, FACT_FIELDS, peopleAnswers, profileActions } from './policy.ts';
+import { compilePolicy, peopleAnswers, profileActions } from './policy.ts';
 import type { RequiredProfiles } from './policy.ts';
-import type { Answer, Fact, FactMissingReason, FactType, Profile, Question, RequiredDecisionInput } from './types.ts';
+import { factRegistry } from './modules/registry.ts';
+import type { FactTypeDef } from './modules/api.ts';
+import type { Answer, Fact, Profile, Question, RequiredDecisionInput } from './types.ts';
 
 export interface TestCase {
   name: string;
@@ -45,8 +47,6 @@ export interface CaseResult {
   /** Why a case was skipped or could not run. */
   message?: string;
 }
-
-const MISSING_REASONS: FactMissingReason[] = ['no_location', 'no_pr', 'stale', 'unavailable', 'timeout', 'error'];
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const isProbability = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 1;
@@ -139,55 +139,46 @@ function factsOf(profile: Pick<Profile, 'facts'>, given: unknown, where: string)
       continue;
     }
     if (!isObject(value)) throw new CaseError(`${at}: give the fact's fields, or "missing"`);
+    const registry = factRegistry();
     if (Object.hasOwn(value, 'missing')) {
       const reason = value.missing === true ? 'unavailable' : value.missing;
-      if (Object.keys(value).length !== 1 || !MISSING_REASONS.includes(reason as FactMissingReason)) {
-        throw new CaseError(`${at}: missing must be true or a reason (${MISSING_REASONS.join(', ')}), and alone`);
+      const reasons = [...registry.reasons.keys()];
+      if (Object.keys(value).length !== 1 || typeof reason !== 'string' || !reasons.includes(reason)) {
+        throw new CaseError(`${at}: missing must be true or a reason (${reasons.join(', ')}), and alone`);
       }
-      out[name] = { missing: true, reason: reason as FactMissingReason };
+      out[name] = { missing: true, reason };
       continue;
     }
-    const fields = FACT_FIELDS[spec.type];
+    const def = registry.type(spec.type);
+    if (!def) throw new CaseError(`${at}: no chosen module answers ${spec.type} facts`);
     const values: Record<string, string | number | boolean | null> = {};
     for (const [field, v] of Object.entries(value)) {
-      const kind = Object.hasOwn(fields, field) ? fields[field] : undefined;
-      if (!kind) throw new CaseError(`${at}: ${spec.type} facts have ${Object.keys(fields).join(', ')}`);
+      const kind = Object.hasOwn(def.fields, field) ? def.fields[field]!.kind : undefined;
+      if (!kind) throw new CaseError(`${at}: ${spec.type} facts have ${Object.keys(def.fields).join(', ')}`);
       if (v !== null && typeof v !== kind) throw new CaseError(`${at}.${field}: must be a ${kind} (or null for no value)`);
       values[field] = v as string | number | boolean | null;
     }
-    out[name] = { missing: false, values: shaped(spec.type, values, at), source: 'test case' };
+    out[name] = { missing: false, values: shaped(def, values, at), source: 'test case' };
   }
   return out;
 }
 
 /**
- * A fact's values as the engine's providers give them (src/facts-gsi.ts,
- * src/facts-routing.ts), so a case cannot pass on values the engine never
- * produces: the first field says whether something was found, and decides
- * the others. Not inside: rank 0, class "". Not found, or no way around: no
- * values. Otherwise every field is needed, except a name and a route.
+ * A fact's values as the engine's providers give them, so a case cannot
+ * pass on values the engine never produces (the fact type's `cases` rules,
+ * src/modules/api.ts). For capabilities the first field says whether
+ * something was found, and decides the others: not inside: rank 0, class "";
+ * not found, or no way around: no values; otherwise every field is needed,
+ * except a name and a route. Other types need every field, null only where
+ * the engine can give no value.
  */
-const SHAPES: Partial<Record<FactType, { key: string; absent: Record<string, string | number | null>; optional: string[] }>> = {
-  inside: { key: 'inside', absent: { rank: 0, class: '' }, optional: [] },
-  nearest: { key: 'found', absent: { distance_m: null, name: null }, optional: ['name'] },
-  detour: { key: 'possible', absent: { extra_m: null, route: null }, optional: ['route'] },
-};
-
-/**
- * GitHub facts have no such field: a case gives every field, and null only
- * where the engine can give no value (author_member, all_commits_verified).
- */
-const GITHUB_NULLABLE = ['author_member', 'all_commits_verified'];
-/** Fields a case may leave out, with the value they get: text for people, not for rules. */
-const GITHUB_OPTIONAL: Record<string, string> = { detail: '' };
-
-function shaped(type: FactType, values: Record<string, string | number | boolean | null>, where: string): Record<string, string | number | boolean | null> {
-  const shape = SHAPES[type];
-  if (!shape) {
+function shaped(def: FactTypeDef, values: Record<string, string | number | boolean | null>, where: string): Record<string, string | number | boolean | null> {
+  const shape = def.cases;
+  if (!('key' in shape)) {
     const out = { ...values };
-    for (const field of Object.keys(FACT_FIELDS[type])) {
-      if (out[field] === undefined && Object.hasOwn(GITHUB_OPTIONAL, field)) out[field] = GITHUB_OPTIONAL[field]!;
-      if (out[field] === undefined || (out[field] === null && !GITHUB_NULLABLE.includes(field))) {
+    for (const field of Object.keys(def.fields)) {
+      if (out[field] === undefined && Object.hasOwn(shape.defaults, field)) out[field] = shape.defaults[field]!;
+      if (out[field] === undefined || (out[field] === null && !shape.nullable.includes(field))) {
         throw new CaseError(`${where}.${field}: needed`);
       }
     }
@@ -329,7 +320,8 @@ export function factsFit(profile: Profile, facts: Record<string, Fact>): string 
   for (const f of profile.facts ?? []) {
     const got = Object.hasOwn(facts, f.name) ? facts[f.name] : undefined;
     if (!got) return `the deployed profile has no fact "${f.name}"`;
-    if (!got.missing && Object.keys(FACT_FIELDS[f.type]).some((field) => !Object.hasOwn(got.values, field))) {
+    const fields = Object.keys(factRegistry().type(f.type)?.fields ?? {});
+    if (!got.missing && fields.some((field) => !Object.hasOwn(got.values, field))) {
       return `the deployed fact "${f.name}" is not a ${f.type} fact`;
     }
   }

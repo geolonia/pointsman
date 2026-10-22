@@ -2,7 +2,7 @@
 // feedback (corrections) people send for it. See docs/decision-log.md. The
 // interface is here; the D1 store is in src/log-d1.ts.
 
-import type { Answer, Fact } from './types';
+import type { Answer, DecisionVersions, Fact } from './types';
 
 export interface DecisionRecord {
   decision_id: string;
@@ -36,6 +36,8 @@ export interface DecisionRecord {
   discarded_at?: string;
   /** Set when the decision has a callback_url and a callback was due. */
   callback?: CallbackState;
+  /** The engine and fact modules that made it; missing for decisions from before 0.5.0. */
+  versions?: DecisionVersions;
 }
 
 export interface FinalAnswer {

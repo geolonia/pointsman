@@ -32,6 +32,10 @@ The engine core uses no Cloudflare-specific API: code that needs one is an
 adapter, listed in [docs/adapters.md](docs/adapters.md). `pnpm typecheck`
 checks this (`pnpm check:core`).
 
+A new source of facts is a fact module, not a change to the engine: see
+[docs/modules.md](docs/modules.md). A new shared fact type (a capability) is
+a change to `src/modules/capabilities.ts`.
+
 A new example profile goes in `examples/profiles/` and is linked from one
 use-case topic, `examples/<topic>/README.md` (see
 [examples/README.md](examples/README.md)). A test checks this.

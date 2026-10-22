@@ -9,7 +9,7 @@
 //   reference  := <question name> "." field | "facts." <fact name> "." fact field
 //               | "decisions." <name> "." decision field
 //   field      := value | p | yes | score | probabilities.<option or level>
-//   fact field := missing, or a field of the fact's type (FACT_FIELDS)
+//   fact field := missing, reason, or a field of the fact's type (its module's definition)
 //   decision field := missing | action | outcome | reviewed
 //               | "answers." <question of that profile> "." field
 //               | "facts." <fact of that profile> "." fact field
@@ -38,17 +38,14 @@
 //
 // This file is also imported by the profile validator under Node.js, so it
 // uses only TypeScript syntax that Node can strip (no enums, no parameter
-// properties) and imports types only.
+// properties) and imports other files with their extension.
 
-import type { Answer, Fact, FactMissingReason, FactSpec, FactType, Profile, Question, RequiredDecisionInput } from './types';
+import type { Answer, Fact, FactSpec, Profile, Question, RequiredDecisionInput } from './types';
+import type { Kind } from './modules/api.ts';
+// Fact types, their fields and the missing reasons come from the chosen modules.
+import { factRegistry } from './modules/registry.ts';
 
-export type Kind = 'number' | 'string' | 'boolean';
-
-/** Why a fact can be missing, for facts.<fact>.reason: every FactMissingReason (tsc checks both ways). */
-const REASONS = ['no_location', 'no_pr', 'stale', 'unavailable', 'timeout', 'error'] as const satisfies readonly FactMissingReason[];
-const ALL_REASONS: Exclude<FactMissingReason, (typeof REASONS)[number]> extends never ? true : never = true;
-void ALL_REASONS;
-const MISSING_REASONS: string[] = [...REASONS];
+export type { Kind };
 export type Value = number | string | boolean;
 export type Op = '==' | '!=' | '>=' | '>' | '<=' | '<';
 
@@ -116,51 +113,6 @@ const FIELDS: Record<Question['type'], Record<string, Kind>> = {
   score: { value: 'number', p: 'number', score: 'number' },
 };
 
-/**
- * Fields of each fact type, for rules. Every fact also has `missing`. The
- * lookup result is checked against this table (src/facts.ts).
- */
-export const FACT_FIELDS: Record<FactType, Record<string, Kind>> = {
-  // Inside an area of a layer; rank and class describe it (for example a
-  // flood depth class). Not inside: rank 0, class "".
-  inside: { inside: 'boolean', rank: 'number', class: 'string' },
-  // The nearest feature of a layer. Not found: found false, no distance or name.
-  nearest: { found: 'boolean', distance_m: 'number', name: 'string' },
-  // Extra metres around a closed section. No way around: possible false, no
-  // extra_m. route: the way around (encoded polyline, precision 6), for
-  // people and maps; null when not known.
-  detour: { possible: 'boolean', extra_m: 'number', route: 'string' },
-  // A pull request, read from GitHub (src/facts-github.ts). all_commits_verified
-  // and author_member have no value when GitHub cannot tell.
-  github_pr: {
-    open: 'boolean', merged: 'boolean', draft: 'boolean', wip_title: 'boolean',
-    files: 'number', changed_lines: 'number', base_is_default: 'boolean',
-    author_member: 'boolean', author_dependabot: 'boolean', fork: 'boolean', all_commits_verified: 'boolean',
-    // "yes", "no" or "unavailable": who pushed the commits (src/facts-github.ts).
-    pushed_by_author: 'string', author_sole_code_owner: 'boolean',
-  },
-  // Changed files that match the fact's paths and none of its except list.
-  // all is false when no file changed.
-  github_paths: { any: 'boolean', all: 'boolean', count: 'number' },
-  // Required checks of the base branch on the head commit. green is false
-  // when there are no required checks.
-  github_checks: { required: 'number', green: 'boolean', pending: 'boolean', failed: 'boolean' },
-  // A repository custom property; "unset" when it has no value.
-  github_property: { value: 'string' },
-  // The GitHub Actions files a pull request changes (src/workflows.ts): counts
-  // over every file. detail lists the first findings, for people and the log.
-  github_workflows: {
-    changed: 'number', removed: 'number', unparsed: 'number', bytes: 'number',
-    privileged: 'number', privileged_new: 'number', head_checkout: 'number', pwn_request: 'number',
-    artifact_in_privileged: 'number', remote_reusable: 'number', secrets_new: 'number', injection: 'number',
-    permissions_missing: 'number', write_all: 'number', write_new: 'number', persisted: 'number',
-    unpinned: 'number', suppressions_new: 'number', local_unresolved: 'number', detail: 'string',
-  },
-};
-
-/** Fields for people and maps, not for rules: a rule cannot refer to them. */
-const DISPLAY_FIELDS: Partial<Record<FactType, string[]>> = { detour: ['route'], github_workflows: ['detail'] };
-
 /** Reserved prefix of fact references; no question name may start with it. */
 export const FACTS_PREFIX = 'facts.';
 /** Reserved prefix of references to required decisions; no question name may start with it. */
@@ -227,9 +179,11 @@ function resolveFact(word: string, facts: FactSpec[]): Operand {
   // never looked up). Checked before the type's fields: no fact type may
   // have a field named reason.
   if (field === 'reason') return { kind: 'string', fact: f.name, field };
-  const display = DISPLAY_FIELDS[f.type] ?? [];
-  const kind = Object.hasOwn(FACT_FIELDS[f.type], field) && !display.includes(field) ? FACT_FIELDS[f.type][field] : undefined;
-  const fields = Object.keys(FACT_FIELDS[f.type]).filter((x) => !display.includes(x));
+  const def = factRegistry().type(f.type);
+  if (!def) throw new PolicyError(`"${word}": no chosen module answers ${f.type} facts`);
+  // Fields for people and maps (display) are not for rules.
+  const fields = Object.keys(def.fields).filter((x) => !def.fields[x]!.display);
+  const kind = fields.includes(field) ? def.fields[field]!.kind : undefined;
   if (!kind) throw new PolicyError(`"${word}": ${f.type} facts have missing, reason, ${fields.join(', ')}`);
   return { kind, fact: f.name, field };
 }
@@ -360,8 +314,9 @@ class Parser {
         }
       }
       const reason = 'fact' in ref ? ref.field === 'reason' : 'inner' in ref && 'fact' in ref.inner && ref.inner.field === 'reason';
-      if (reason && !MISSING_REASONS.includes(lit.literal as string)) {
-        throw new PolicyError(`"${String(lit.literal)}" is not a reason a fact can be missing (${MISSING_REASONS.join(', ')})`);
+      const reasons = [...factRegistry().reasons.keys()];
+      if (reason && !reasons.includes(lit.literal as string)) {
+        throw new PolicyError(`"${String(lit.literal)}" is not a reason a fact can be missing (${reasons.join(', ')})`);
       }
       if ('decision' in ref && 'allowed' in ref && ref.allowed && !ref.allowed.includes(lit.literal as string)) {
         throw new PolicyError(`"${String(lit.literal)}" is not an ${ref.field} of decisions.${ref.decision} (${ref.allowed.join(', ')})`);

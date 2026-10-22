@@ -10,6 +10,8 @@
 import { compileCondition, peopleAnswers, peopleCheck, PolicyError, profileActions } from './policy.ts';
 import type { DecisionOperand, FactOperand, Node, Op, Operand, QuestionOperand, RequiredProfiles, Value } from './policy.ts';
 import type { FactSpec, Profile, Question } from './types.ts';
+// Sentences for facts come from their modules' definitions.
+import { factRegistry } from './modules/registry.ts';
 
 export type Lang = 'en' | 'ja';
 
@@ -45,6 +47,7 @@ function jaSpace(word: string, before: boolean): string {
 
 const W = {
   en: {
+    lang: 'en' as Lang,
     model: (m: string, f: string[]) => `The AI model ${m} answers the questions${f.length ? ` (if it fails: ${f.join(', then ')})` : ''}.`,
     noModel: 'No AI is asked: this profile decides with rules only.',
     input: (parts: string[]) => `The AI sees these parts of the request: ${parts.join(', ')}.`,
@@ -60,19 +63,6 @@ const W = {
     options: (o: string[]) => `Options: ${o.join('; ')}.`,
     score: (q: string, max: number, i: string) => `${q} (a level from 0 to ${max}): ${i}`,
     levels: (l: string[]) => `Levels: ${l.join('; ')}.`,
-    inside: (f: string, layer: string, at: string) => `${f}: whether the place (${at}) is inside an area of the layer "${layer}", with the area's rank and class.`,
-    nearest: (f: string, layer: string, at: string) => `${f}: the nearest feature of the layer "${layer}" to the place (${at}), with its distance and name.`,
-    detour: (f: string, mode: string, at: string, route: boolean) =>
-      `${f}: how much longer the way around the closed section (${at}) is ${mode}${route ? '; the way itself is kept for people and maps' : ''}.`,
-    githubPr: (f: string, at: string) => `${f}: the pull request (${at}), read from GitHub: open, merged or draft, its title, size, author, base branch, fork, commit signatures, who pushed the commits, and whether the author is the only code owner.`,
-    githubPaths: (f: string, at: string, paths: string[], except: string[]) =>
-      `${f}: which changed files of the pull request (${at}) match ${paths.join(', ')}${except.length ? `, except ${except.join(', ')}` : ''}.`,
-    githubChecks: (f: string, at: string) => `${f}: the results of the required checks of the pull request (${at}) on its head commit.`,
-    githubProperty: (f: string, at: string, p: string) => `${f}: the custom property "${p}" of the pull request's repository (${at}); "unset" when it has no value.`,
-    githubWorkflows: (f: string, at: string) =>
-      `${f}: the GitHub Actions files the pull request (${at}) changes (workflows, local actions, scanner settings), read from GitHub and parsed, never run: counts of known unsafe patterns.`,
-    byCar: 'by car',
-    onFoot: 'on foot',
     factsHidden: 'The AI does not see facts; only the rules use them.',
     requires: (n: string, p: string | undefined, optional: boolean) =>
       `${n}: an earlier decision ${p === undefined ? 'of another profile' : `of the profile "${p}"`} about the same thing${optional ? ' (may be missing)' : ''}.`,
@@ -107,58 +97,6 @@ const W = {
     below: (v: string) => `below ${v}`,
     factMissing: (f: string, missing: boolean) => (missing ? `the fact ${f} is missing` : `the fact ${f} was found`),
     factReason: (f: string) => `the reason the fact ${f} is missing`,
-    reasons: { no_location: 'no location in the request', no_pr: 'no pull request in the request', stale: 'the pull request has a newer commit', unavailable: 'the data is not available', timeout: 'the lookup took too long', error: 'an error' } as Record<string, string>,
-    inArea: (f: string, yes: boolean) => (yes ? `the place is inside ${f}` : `the place is not inside ${f}`),
-    rank: (f: string) => `the rank of ${f}`,
-    class: (f: string) => `the class of ${f}`,
-    found: (f: string, yes: boolean) => (yes ? `a nearest ${f} was found` : `no nearest ${f} was found`),
-    distance: (f: string) => `the distance to the nearest ${f}`,
-    name: (f: string) => `the name of the nearest ${f}`,
-    possible: (f: string, yes: boolean) => (yes ? `there is a way around (${f})` : `there is no way around (${f})`),
-    // GitHub facts: [true, false] sentences for yes-or-no fields, a subject for the others. % is the fact.
-    github: {
-      'github_pr.open': ['the pull request % is open', 'the pull request % is not open'],
-      'github_pr.merged': ['the pull request % is merged', 'the pull request % is not merged'],
-      'github_pr.draft': ['the pull request % is a draft', 'the pull request % is not a draft'],
-      'github_pr.wip_title': ['the title of % says WIP', 'the title of % does not say WIP'],
-      'github_pr.base_is_default': ['% targets the default branch', '% does not target the default branch'],
-      'github_pr.author_member': ['the author of % is a member of the owner', 'the author of % is not a member of the owner'],
-      'github_pr.author_dependabot': ['% is by Dependabot', '% is not by Dependabot'],
-      'github_pr.fork': ['% comes from a fork', '% does not come from a fork'],
-      'github_pr.all_commits_verified': ['every commit of % has a verified signature', 'not every commit of % has a verified signature'],
-      'github_pr.pushed_by_author': 'the answer to "did the author of % push every commit"',
-      'github_pr.author_sole_code_owner': ['the author of % is the only code owner of every changed file', 'the author of % is not the only code owner of every changed file'],
-      'github_pr.files': 'the number of changed files of %',
-      'github_pr.changed_lines': 'the number of changed lines of %',
-      'github_paths.any': ['a changed file matches %', 'no changed file matches %'],
-      'github_paths.all': ['every changed file matches %', 'not every changed file matches %'],
-      'github_paths.count': 'the number of changed files that match %',
-      'github_checks.green': ['every required check (%) passed', 'not every required check (%) passed'],
-      'github_checks.pending': ['a required check (%) has not finished', 'no required check (%) is waiting'],
-      'github_checks.failed': ['a required check (%) failed', 'no required check (%) failed'],
-      'github_checks.required': 'the number of required checks (%)',
-      'github_property.value': 'the value of %',
-      'github_workflows.changed': 'the number of changed files in % (workflows, local actions, scanner settings)',
-      'github_workflows.removed': 'the number of removed files in % (workflows, local actions, scanner settings)',
-      'github_workflows.unparsed': 'the number of workflow and action.yml files in % that cannot be read safely',
-      'github_workflows.bytes': 'the size in bytes of the changed files in %',
-      'github_workflows.privileged': "the number of changed workflows in % that run with the base repository's token",
-      'github_workflows.privileged_new': 'the number of such triggers that % adds',
-      'github_workflows.head_checkout': 'the number of privileged jobs in % that may check out other code',
-      'github_workflows.pwn_request': 'the number of privileged jobs in % that may run the checked-out code',
-      'github_workflows.artifact_in_privileged': 'the number of privileged jobs in % that download an artifact of another run',
-      'github_workflows.remote_reusable': 'the number of jobs in % that call a reusable workflow of another repository from a privileged workflow, or pass every secret',
-      'github_workflows.secrets_new': 'the number of secrets that jobs in % newly read',
-      'github_workflows.injection': 'the number of untrusted expressions in scripts in %',
-      'github_workflows.permissions_missing': 'the number of jobs in % without permissions',
-      'github_workflows.write_all': 'the number of broad write permissions in %',
-      'github_workflows.write_new': 'the number of write permissions that % adds',
-      'github_workflows.persisted': 'the number of checkouts in % that keep the token on disk',
-      'github_workflows.unpinned': 'the number of actions and images in % not pinned to a commit or digest',
-      'github_workflows.suppressions_new': 'the number of scanner exceptions that % adds',
-      'github_workflows.local_unresolved': 'the number of local actions and reusable workflows in % that a person must read',
-    } as Record<string, string | [string, string]>,
-    extra: (f: string) => `the extra distance of the way around (${f})`,
     decMissing: (d: string, missing: boolean) => (missing ? `the earlier decision ${d} is missing` : `the earlier decision ${d} exists`),
     decAction: (d: string) => `the action of the earlier decision ${d}`,
     decOutcome: (d: string) => `the outcome of the earlier decision ${d}`,
@@ -171,6 +109,7 @@ const W = {
     gloss: (v: string, g: string) => `${v} (${g})`,
   },
   ja: {
+    lang: 'ja' as Lang,
     model: (m: string, f: string[]) => `質問には AI モデル ${m} が答えます${f.length ? `（失敗したときは ${f.join('、次に ')}）` : ''}。`,
     noModel: 'AI は使いません。このプロファイルはルールだけで決めます。',
     input: (parts: string[]) => `AI が見るのは、リクエストの次の部分です：${parts.join('、')}。`,
@@ -186,19 +125,6 @@ const W = {
     options: (o: string[]) => `選択肢：${o.join('、')}。`,
     score: (q: string, max: number, i: string) => `${q}（レベル 0〜${max}）：${i}`,
     levels: (l: string[]) => `レベル：${l.join('、')}。`,
-    inside: (f: string, layer: string, at: string) => `${f}：場所（${at}）がレイヤー「${layer}」の範囲内かどうかと、その範囲のランクと区分。`,
-    nearest: (f: string, layer: string, at: string) => `${f}：場所（${at}）から最も近い、レイヤー「${layer}」の地物と、その距離と名前。`,
-    detour: (f: string, mode: string, at: string, route: boolean) =>
-      `${f}：通れない区間（${at}）を${mode}避けると、どれだけ遠回りになるか${route ? '。迂回路そのものも、人と地図のために残します' : ''}。`,
-    githubPr: (f: string, at: string) => `${f}：GitHub から読むプルリクエスト（${at}）の状態（オープン、マージ済み、ドラフト）、タイトル、大きさ、作成者、ベースブランチ、フォーク、コミットの署名、コミットを push した人、作成者が唯一のコードオーナーか。`,
-    githubPaths: (f: string, at: string, paths: string[], except: string[]) =>
-      `${f}：プルリクエスト（${at}）の変更ファイルのうち ${paths.join('、')} に合うもの${except.length ? `（${except.join('、')} を除く）` : ''}。`,
-    githubChecks: (f: string, at: string) => `${f}：プルリクエスト（${at}）の head コミットでの必須チェックの結果。`,
-    githubProperty: (f: string, at: string, p: string) => `${f}：プルリクエストのリポジトリ（${at}）のカスタムプロパティ「${p}」。値がないときは "unset"。`,
-    githubWorkflows: (f: string, at: string) =>
-      `${f}：プルリクエスト（${at}）が変える GitHub Actions のファイル（ワークフロー、ローカルアクション、スキャナーの設定）。GitHub から読んで解析するだけで、実行しない。既知の危ないパターンの数。`,
-    byCar: '車で',
-    onFoot: '歩いて',
     factsHidden: 'AI は事実を見ません。事実を使うのはルールだけです。',
     requires: (n: string, p: string | undefined, optional: boolean) =>
       `${n}：同じものについての、${p === undefined ? '別のプロファイル' : `プロファイル「${p}」`}の前の判定${optional ? '（なくてもかまいません）' : ''}。`,
@@ -232,57 +158,6 @@ const W = {
     below: (v: string) => `${v}${jaSpace(v, false)}未満`,
     factMissing: (f: string, missing: boolean) => (missing ? `事実${f}が得られない` : `事実${f}が得られた`),
     factReason: (f: string) => `事実${f}が得られない理由`,
-    reasons: { no_location: 'リクエストに位置がない', no_pr: 'リクエストにプルリクエストがない', stale: 'プルリクエストに新しいコミットがある', unavailable: 'データが使えない', timeout: '調べるのに時間がかかりすぎた', error: 'エラー' } as Record<string, string>,
-    inArea: (f: string, yes: boolean) => (yes ? `場所が${f}の範囲内` : `場所が${f}の範囲外`),
-    rank: (f: string) => `${f}のランク`,
-    class: (f: string) => `${f}の区分`,
-    found: (f: string, yes: boolean) => (yes ? `最寄りの${f}が見つかった` : `最寄りの${f}が見つからない`),
-    distance: (f: string) => `最寄りの${f}までの距離`,
-    name: (f: string) => `最寄りの${f}の名前`,
-    possible: (f: string, yes: boolean) => (yes ? `迂回路（${f}）がある` : `迂回路（${f}）がない`),
-    github: {
-      'github_pr.open': ['プルリクエスト%がオープン', 'プルリクエスト%がオープンでない'],
-      'github_pr.merged': ['プルリクエスト%がマージ済み', 'プルリクエスト%がマージされていない'],
-      'github_pr.draft': ['プルリクエスト%がドラフト', 'プルリクエスト%がドラフトでない'],
-      'github_pr.wip_title': ['%のタイトルに WIP とある', '%のタイトルに WIP とない'],
-      'github_pr.base_is_default': ['%がデフォルトブランチ向け', '%がデフォルトブランチ向けでない'],
-      'github_pr.author_member': ['%の作成者がオーナーのメンバー', '%の作成者がオーナーのメンバーでない'],
-      'github_pr.author_dependabot': ['%が Dependabot によるもの', '%が Dependabot によるものでない'],
-      'github_pr.fork': ['%がフォークから', '%がフォークからでない'],
-      'github_pr.all_commits_verified': ['%のすべてのコミットに検証済みの署名がある', '%に検証済みの署名がないコミットがある'],
-      'github_pr.pushed_by_author': '「%のすべてのコミットを作成者が push したか」の答え',
-      'github_pr.author_sole_code_owner': ['%の作成者が変更ファイルすべての唯一のコードオーナー', '%の作成者が変更ファイルすべての唯一のコードオーナーではない'],
-      'github_pr.files': '%の変更ファイル数',
-      'github_pr.changed_lines': '%の変更行数',
-      'github_paths.any': ['%に合う変更ファイルがある', '%に合う変更ファイルがない'],
-      'github_paths.all': ['すべての変更ファイルが%に合う', '%に合わない変更ファイルがある'],
-      'github_paths.count': '%に合う変更ファイルの数',
-      'github_checks.green': ['必須チェック（%）がすべて通った', '必須チェック（%）がすべては通っていない'],
-      'github_checks.pending': ['必須チェック（%）に終わっていないものがある', '必須チェック（%）に待っているものがない'],
-      'github_checks.failed': ['必須チェック（%）に失敗したものがある', '必須チェック（%）に失敗したものがない'],
-      'github_checks.required': '必須チェック（%）の数',
-      'github_property.value': '%の値',
-      'github_workflows.changed': '%で変わったファイル（ワークフロー、ローカルアクション、スキャナーの設定）の数',
-      'github_workflows.removed': '%で消えたファイル（ワークフロー、ローカルアクション、スキャナーの設定）の数',
-      'github_workflows.unparsed': '%で安全に読めないワークフローと action.yml の数',
-      'github_workflows.bytes': '%で変わったファイルの大きさ（バイト）',
-      'github_workflows.privileged': '%で変わった、ベースリポジトリのトークンで動くワークフローの数',
-      'github_workflows.privileged_new': '%が加えるそのようなトリガーの数',
-      'github_workflows.head_checkout': '%で別のコードをチェックアウトしうる特権ジョブの数',
-      'github_workflows.pwn_request': '%でチェックアウトしたコードを実行しうる特権ジョブの数',
-      'github_workflows.artifact_in_privileged': '%で別の実行のアーティファクトを取り込む特権ジョブの数',
-      'github_workflows.remote_reusable': '%で特権ワークフローから別リポジトリの再利用ワークフローを呼ぶか、すべてのシークレットを渡すジョブの数',
-      'github_workflows.secrets_new': '%でジョブが新しく読むシークレットの数',
-      'github_workflows.injection': '%のスクリプト内の信頼できない式の数',
-      'github_workflows.permissions_missing': '%で permissions のないジョブの数',
-      'github_workflows.write_all': '%の広い書き込み権限の数',
-      'github_workflows.write_new': '%が加える書き込み権限の数',
-      'github_workflows.persisted': '%でトークンをディスクに残すチェックアウトの数',
-      'github_workflows.unpinned': '%でコミットやダイジェストに固定されていないアクションとイメージの数',
-      'github_workflows.suppressions_new': '%が加えるスキャナーの例外の数',
-      'github_workflows.local_unresolved': '%で人が読む必要のあるローカルアクションと再利用ワークフローの数',
-    } as Record<string, string | [string, string]>,
-    extra: (f: string) => `迂回路（${f}）で遠回りになる距離`,
     decMissing: (d: string, missing: boolean) => (missing ? `前の判定${d}がない` : `前の判定${d}がある`),
     decAction: (d: string) => `前の判定${d}のアクション`,
     decOutcome: (d: string) => `前の判定${d}の結果`,
@@ -383,35 +258,17 @@ function factSentence(ref: FactOperand, op: Op, lit: Value, ctx: Ctx): string {
   const spec = ctx.facts.find((f) => f.name === ref.fact);
   if (ref.field === 'missing') return w.factMissing(name, truth(op, lit));
   if (ref.field === 'reason') {
-    const gloss = Object.hasOwn(w.reasons, String(lit)) ? w.reasons[String(lit)] : undefined;
+    const gloss = factRegistry().reasons.get(String(lit))?.[w.lang];
     return (op === '==' ? w.is : w.isNot)(w.factReason(name), gloss ? w.gloss(String(lit), gloss) : String(lit));
   }
-  switch (spec?.type) {
-    case 'inside':
-      if (ref.field === 'inside') return w.inArea(name, truth(op, lit));
-      if (ref.field === 'rank') return numeric(w.rank(name), op, num(lit as number), w);
-      if (ref.field === 'class') return (op === '==' ? w.is : w.isNot)(w.class(name), quoted(lit, w));
-      break;
-    case 'nearest':
-      if (ref.field === 'found') return w.found(name, truth(op, lit));
-      if (ref.field === 'distance_m') return numeric(w.distance(name), op, `${num(lit as number)} m`, w);
-      if (ref.field === 'name') return (op === '==' ? w.is : w.isNot)(w.name(name), quoted(lit, w));
-      break;
-    case 'detour':
-      if (ref.field === 'possible') return w.possible(name, truth(op, lit));
-      if (ref.field === 'extra_m') return numeric(w.extra(name), op, `${num(lit as number)} m`, w);
-      break;
-    default: {
-      if (!spec) break;
-      const key = `${spec.type}.${ref.field}`;
-      const words = Object.hasOwn(w.github, key) ? w.github[key] : undefined;
-      if (Array.isArray(words)) return words[truth(op, lit) ? 0 : 1]!.replace('%', name);
-      if (typeof words === 'string') {
-        const subject = words.replace('%', name);
-        return typeof lit === 'string' ? (op === '==' ? w.is : w.isNot)(subject, quoted(lit, w)) : numeric(subject, op, num(lit as number), w);
-      }
-    }
+  const words = spec && factRegistry().type(spec.type)?.words[w.lang].fields;
+  const part = words && Object.hasOwn(words, ref.field) ? words[ref.field] : undefined;
+  if (Array.isArray(part)) return part[truth(op, lit) ? 0 : 1].replace('%', name);
+  if (typeof part === 'string') {
+    const subject = part.replace('%', name);
+    return typeof lit === 'string' ? (op === '==' ? w.is : w.isNot)(subject, quoted(lit, w)) : numeric(subject, op, num(lit as number), w);
   }
+  if (part) return numeric(part.subject.replace('%', name), op, `${num(lit as number)} ${part.unit}`, w);
   return numeric(`${name}.${ref.field}`, op, String(lit), w);
 }
 
@@ -478,24 +335,8 @@ function questionText(q: Question, w: Words): string {
 
 function factText(f: FactSpec, w: Words): string {
   const name = w.q(f.name);
-  switch (f.type) {
-    case 'inside':
-      return w.inside(name, f.layer ?? '', f.at);
-    case 'nearest':
-      return w.nearest(name, f.layer ?? '', f.at);
-    case 'detour':
-      return w.detour(name, f.mode === 'walk' ? w.onFoot : w.byCar, f.at, f.route === true);
-    case 'github_pr':
-      return w.githubPr(name, f.at);
-    case 'github_paths':
-      return w.githubPaths(name, f.at, f.paths ?? [], f.except ?? []);
-    case 'github_checks':
-      return w.githubChecks(name, f.at);
-    case 'github_property':
-      return w.githubProperty(name, f.at, f.property ?? '');
-    case 'github_workflows':
-      return w.githubWorkflows(name, f.at);
-  }
+  const def = factRegistry().type(f.type);
+  return def ? def.words[w.lang].describe(name, f) : `${name}: ${f.type}`;
 }
 
 /**

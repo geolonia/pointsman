@@ -195,10 +195,7 @@
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
         },
-        "mode": {
-          "description": "For detour: by car (drive, the default) or on foot (walk).",
-          "enum": ["drive", "walk"]
-        },
+        "mode": { "description": "For detour: by car (drive, the default) or on foot (walk).", "enum": ["drive", "walk"] },
         "route": {
           "description": "For detour: also return the way around (route, an encoded polyline). Default false: the route starts and ends at the section, so it is stored with each decision.",
           "type": "boolean"
@@ -209,14 +206,22 @@
           "minItems": 1,
           "maxItems": 100,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/glob" }
+          "items": {
+            "description": "A path glob: * (any characters but /), ** (any folders), ? (one character). Not starting with /, without .. parts, without [ ] { } ! or backslashes.",
+            "type": "string",
+            "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\s\\[\\]{}!\\\\]{1,200}$"
+          }
         },
         "except": {
           "description": "For github_paths: files that never count, even when they match paths.",
           "type": "array",
           "maxItems": 100,
           "uniqueItems": true,
-          "items": { "$ref": "#/$defs/glob" }
+          "items": {
+            "description": "A path glob: * (any characters but /), ** (any folders), ? (one character). Not starting with /, without .. parts, without [ ] { } ! or backslashes.",
+            "type": "string",
+            "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\s\\[\\]{}!\\\\]{1,200}$"
+          }
         },
         "property": {
           "description": "For github_property: the name of a repository custom property.",
@@ -225,105 +230,121 @@
         },
         "privileged_triggers": {
           "description": "For github_workflows: more triggers that run in the base repository's context, added to the defaults.",
-          "type": "array", "maxItems": 100, "uniqueItems": true,
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
           "items": { "type": "string", "pattern": "^[a-z_]{1,50}$" }
         },
         "inert_actions": {
           "description": "For github_workflows: more actions (owner/repo or owner/*) known not to run workspace content, added to the defaults (actions/checkout, actions/upload-artifact).",
-          "type": "array", "maxItems": 100, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/actionName" }
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "description": "An action as owner/repo, or owner/* for every repository of the owner.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?:\\*|(?!\\.\\.?$)[A-Za-z0-9._-]{1,100})$"
+          }
         },
         "safe_contexts": {
           "description": "For github_workflows: more github.* paths that are safe in a script (numbers, ids, commit ids), added to the defaults. Exact paths in lower case.",
-          "type": "array", "maxItems": 100, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/githubContext" }
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "description": "A github.* path in lower case, for example github.event.pull_request.number.",
+            "type": "string",
+            "pattern": "^github(?:\\.[a-z0-9_-]{1,100}){1,10}$"
+          }
         },
         "base_refs": {
           "description": "For github_workflows: more expressions that name the base in a checkout's ref, added to the defaults (github.sha, github.ref).",
-          "type": "array", "maxItems": 100, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/githubContext" }
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "description": "A github.* path in lower case, for example github.event.pull_request.number.",
+            "type": "string",
+            "pattern": "^github(?:\\.[a-z0-9_-]{1,100}){1,10}$"
+          }
         },
         "git_actions": {
           "description": "For github_workflows: actions (owner/repo or owner/*) that need the git credentials of a checkout.",
-          "type": "array", "maxItems": 100, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/actionName" }
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "description": "An action as owner/repo, or owner/* for every repository of the owner.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?:\\*|(?!\\.\\.?$)[A-Za-z0-9._-]{1,100})$"
+          }
         },
         "pin_exempt": {
           "description": "For github_workflows: actions (owner/repo or owner/*) that need not be pinned to a commit.",
-          "type": "array", "maxItems": 100, "uniqueItems": true,
-          "items": { "$ref": "#/$defs/actionName" }
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "description": "An action as owner/repo, or owner/* for every repository of the owner.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?:\\*|(?!\\.\\.?$)[A-Za-z0-9._-]{1,100})$"
+          }
         }
       },
       "allOf": [
         {
-          "if": { "properties": { "type": { "enum": ["inside", "nearest"] } }, "required": ["type"] },
-          "then": { "properties": { "layer": true }, "required": ["layer"] }
-        },
-        {
-          "if": { "properties": { "type": { "const": "detour" } }, "required": ["type"] },
-          "then": { "not": { "properties": { "layer": true }, "required": ["layer"] } }
-        },
-        {
-          "if": { "properties": { "type": { "enum": ["inside", "nearest"] } }, "required": ["type"] },
-          "then": { "not": { "properties": { "mode": true }, "required": ["mode"] } }
-        },
-        {
-          "if": { "properties": { "type": { "enum": ["inside", "nearest"] } }, "required": ["type"] },
-          "then": { "not": { "properties": { "route": true }, "required": ["route"] } }
-        },
-        {
-          "if": { "properties": { "type": { "enum": ["github_pr", "github_paths", "github_checks", "github_property", "github_workflows"] } }, "required": ["type"] },
+          "if": { "properties": { "type": { "const": "inside" } }, "required": ["type"] },
           "then": {
-            "not": {
-              "anyOf": [
-                { "properties": { "layer": true }, "required": ["layer"] },
-                { "properties": { "mode": true }, "required": ["mode"] },
-                { "properties": { "route": true }, "required": ["route"] }
-              ]
-            }
+            "properties": { "layer": true },
+            "required": ["layer"],
+            "propertyNames": { "enum": ["name", "type", "at", "layer"] }
           }
         },
         {
+          "if": { "properties": { "type": { "const": "nearest" } }, "required": ["type"] },
+          "then": {
+            "properties": { "layer": true },
+            "required": ["layer"],
+            "propertyNames": { "enum": ["name", "type", "at", "layer"] }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "detour" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at", "mode", "route"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "github_pr" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
+        },
+        {
           "if": { "properties": { "type": { "const": "github_paths" } }, "required": ["type"] },
-          "then": { "properties": { "paths": true }, "required": ["paths"] },
-          "else": { "not": { "anyOf": [{ "properties": { "paths": true }, "required": ["paths"] }, { "properties": { "except": true }, "required": ["except"] }] } }
+          "then": {
+            "properties": { "paths": true },
+            "required": ["paths"],
+            "propertyNames": { "enum": ["name", "type", "at", "paths", "except"] }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "github_checks" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
         },
         {
           "if": { "properties": { "type": { "const": "github_property" } }, "required": ["type"] },
-          "then": { "properties": { "property": true }, "required": ["property"] },
-          "else": { "not": { "properties": { "property": true }, "required": ["property"] } }
+          "then": {
+            "properties": { "property": true },
+            "required": ["property"],
+            "propertyNames": { "enum": ["name", "type", "at", "property"] }
+          }
         },
         {
           "if": { "properties": { "type": { "const": "github_workflows" } }, "required": ["type"] },
-          "else": {
-            "not": {
-              "anyOf": [
-                { "properties": { "privileged_triggers": true }, "required": ["privileged_triggers"] },
-                { "properties": { "inert_actions": true }, "required": ["inert_actions"] },
-                { "properties": { "safe_contexts": true }, "required": ["safe_contexts"] },
-                { "properties": { "base_refs": true }, "required": ["base_refs"] },
-                { "properties": { "git_actions": true }, "required": ["git_actions"] },
-                { "properties": { "pin_exempt": true }, "required": ["pin_exempt"] }
-              ]
+          "then": {
+            "propertyNames": {
+              "enum": ["name", "type", "at", "privileged_triggers", "inert_actions", "safe_contexts", "base_refs", "git_actions", "pin_exempt"]
             }
           }
         }
       ]
-    },
-    "actionName": {
-      "description": "An action as owner/repo, or owner/* for every repository of the owner.",
-      "type": "string",
-      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?:\\*|(?!\\.\\.?$)[A-Za-z0-9._-]{1,100})$"
-    },
-    "githubContext": {
-      "description": "A github.* path in lower case, for example github.event.pull_request.number.",
-      "type": "string",
-      "pattern": "^github(?:\\.[a-z0-9_-]{1,100}){1,10}$"
-    },
-    "glob": {
-      "description": "A path glob: * (any characters but /), ** (any folders), ? (one character). Not starting with /, without .. parts, without [ ] { } ! or backslashes.",
-      "type": "string",
-      "pattern": "^(?!/)(?!(?:.*/)?\\.\\.(?:/|$))[^\\s\\[\\]{}!\\\\]{1,200}$"
     },
     "question": {
       "type": "object",

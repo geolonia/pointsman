@@ -15,6 +15,7 @@ import type { RequiredSnapshot } from './log';
 import { parseFeedback } from './feedback';
 import type { Caller } from './auth';
 import type { Profile } from './types';
+import { ENGINE_VERSION } from './version';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -63,7 +64,7 @@ function describe(p: Profile, seen: Set<string>) {
 
 function server(deps: McpDeps, caller: Caller): McpServer {
   const client = clientOf(caller);
-  const mcp = new McpServer({ name: 'pointsman', version: '0.4.0' });
+  const mcp = new McpServer({ name: 'pointsman', version: ENGINE_VERSION });
 
   /** The profiles of these ids the caller may see through MCP. */
   const seenProfiles = async (ids: string[]) => {

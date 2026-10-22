@@ -4,10 +4,10 @@
 
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { noCallbacks } from './helpers';
+import { answersMock, noCallbacks, providerOf } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
-import { FactError, FactRouter, lookupFacts, MockFactProvider, resultError, toPullRequest, type FactProvider } from '../../src/facts';
+import { FactError, lookupFacts, MockFactProvider, ModuleRouter, resultError, toPullRequest, type FactProvider } from '../../src/facts';
 import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '../../src/facts-github';
 import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '../../src/codeowners';
 import { matchGlob } from '../../src/glob';
@@ -660,7 +660,7 @@ describe('missing facts', () => {
 
   it('no provider, or only a spatial one: unavailable', async () => {
     expect(Object.values(await lookupFacts(specs, state, undefined))).toEqual(specs.map(() => ({ missing: true, reason: 'unavailable' })));
-    const spatialOnly = new FactRouter({ spatial: new MockFactProvider() });
+    const spatialOnly = new ModuleRouter(new Map([['@pointsman/facts-gsi', new MockFactProvider()]]));
     expect(Object.values(await lookupFacts(specs, state, spatialOnly))).toEqual(specs.map(() => ({ missing: true, reason: 'unavailable' })));
   });
 
@@ -777,7 +777,7 @@ describe('GitHub App', () => {
 
 describe('FACTS_GITHUB', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
-  const githubOf = (deps: Deps) => (deps.facts as FactRouter | undefined)?.providers.github;
+  const githubOf = (deps: Deps) => providerOf(deps, '@pointsman/facts-github');
 
   it('is off unless set: GitHub facts are unavailable, also with FACTS_MODE mock', async () => {
     expect(depsFor(base).facts).toBeUndefined();
@@ -787,7 +787,7 @@ describe('FACTS_GITHUB', () => {
   });
 
   it('mock, token and app', async () => {
-    expect(githubOf(depsFor({ ...base, FACTS_GITHUB: 'mock' }))).toBeInstanceOf(MockFactProvider);
+    expect(await answersMock(githubOf(depsFor({ ...base, FACTS_GITHUB: 'mock' })), { type: 'github_pr' })).toBe(true);
     expect(githubOf(depsFor({ ...base, FACTS_GITHUB: 'token', FACTS_GITHUB_TOKEN: TOKEN, FACTS_GITHUB_IGNORE_CHECK: 'pointsman' }))).toBeInstanceOf(GitHubFactProvider);
     const { pkcs1 } = await appKeys();
     expect(githubOf(depsFor({ ...base, FACTS_GITHUB: 'app', FACTS_GITHUB_APP_ID: '123', FACTS_GITHUB_APP_PRIVATE_KEY: pkcs1 }))).toBeInstanceOf(GitHubFactProvider);
@@ -843,13 +843,13 @@ describe('a decision with GitHub facts', () => {
   }
 
   it('uses the facts in rules and returns them', async () => {
-    const d = await decide(new FactRouter({ github: provider(fakeGitHub()) }));
+    const d = await decide(new ModuleRouter(new Map([['@pointsman/facts-github', provider(fakeGitHub())]])));
     expect(d).toMatchObject({ action: 'light', rule: 1 });
     expect(d.facts.level).toEqual({ missing: false, values: { value: 'high' }, source: `GitHub octo-org/demo#7 at ${HEAD.slice(0, 7)}` });
   });
 
   it('a stale snapshot goes to the retry rule', async () => {
-    const d = await decide(new FactRouter({ github: provider(fakeGitHub(routes({ [`${PR}/commits`]: () => [commit(OTHER)] }))) }));
+    const d = await decide(new ModuleRouter(new Map([['@pointsman/facts-github', provider(fakeGitHub(routes({ [`${PR}/commits`]: () => [commit(OTHER)] })))]])));
     expect(d).toMatchObject({ action: 'retry', rule: 0, facts: { pr: { missing: true, reason: 'stale' } } });
   });
 });

@@ -1,4 +1,4 @@
-# expect: /facts/0: must NOT be valid
+# expect: /facts/0: "mode" is not a setting of this fact type
 id: facts-mode-not-detour
 version: 1
 title: { en: Test, ja: テスト }

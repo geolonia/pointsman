@@ -1,4 +1,4 @@
-# expect: /facts/0: must NOT be valid
+# expect: /facts/0: "except" is not a setting of this fact type
 id: facts-github-paths-not-paths-fact
 version: 1
 title: { en: Test, ja: テスト }

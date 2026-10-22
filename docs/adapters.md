@@ -79,7 +79,7 @@ An adapter must:
 
 ### Cache
 
-No interface of its own: a fact provider takes an optional cache (today the GSI provider takes the Workers cache, `caches.default`, from `src/index.ts`).
+A fact module gets the runtime's shared cache, if it has one, in `create(env, runtime)` ([modules.md](modules.md)); today the Workers cache (`caches.default`, from `src/index.ts`), used by the GSI module.
 
 An adapter must:
 
@@ -97,4 +97,4 @@ An adapter must:
 
 ## Not yet
 
-There is no adapter for another runtime yet. A Node.js adapter comes when a deployment or the tests need it (decided 2026-10-22, #146). Fact providers and connectors are modules, not adapters (#145).
+There is no adapter for another runtime yet. A Node.js adapter comes when a deployment or the tests need it (decided 2026-10-22, #146). Fact providers and connectors are modules, not adapters ([modules.md](modules.md), #145).
