@@ -103,8 +103,9 @@ Anyone can write a comment, and a login can look like a service's. A fact
 read from reviews, comments or commit statuses accepts only the real
 author: the service's bot account, by login and account id (GraphQL
 leaves out the `[bot]` of the login; both forms are the same account).
-Text that counts "for the head commit" (a price, a review started) counts
-only when it was written after that commit was pushed. `@pointsman/github`
+Text about one head commit counts only when it is tied to that commit: a
+comment that names the commit, or one written after the commit was pushed.
+Reviews and commit statuses belong to a commit already. `@pointsman/github`
 reads reviews, comments, the head's status history, review threads and
 review requests into the decision's snapshot; another module can read the
 same snapshot (`snapshotOf`, with the GitHub module's settings from

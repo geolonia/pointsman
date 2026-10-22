@@ -912,10 +912,14 @@ export class Snapshot {
     });
   }
 
-  /** Who last edited each comment and review (GraphQL), checked against the head. */
+  /**
+   * Who last edited each comment and review (GraphQL), checked against the
+   * head. Read after the comments and reviews themselves, so an edit made
+   * while they were read shows here.
+   */
   editors(): Promise<Editors> {
     return this.part('editors', async () => {
-      await this.base;
+      await Promise.all([this.comments(), this.reviews()]);
       const data = await graphql(this.fetchFn, EDITORS_QUERY, { owner: this.ref.owner, name: this.ref.repo, number: this.ref.number }, await this.token, this.signal, 'editors');
       const { head, ...found } = editors(data);
       if (head !== this.ref.head) throw new FactStaleError('the pull request changed while its comments were read');

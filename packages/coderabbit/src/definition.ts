@@ -38,8 +38,10 @@ const cr = (spec: FactSpec) => spec as CodeRabbitFactSpec;
 
 /**
  * CodeRabbit's state on the pull request (provider.ts). Only CodeRabbit's
- * own account counts (its bot's login and id, and its app), and text about
- * the head only when written after the head was pushed.
+ * own account counts (its bot's login and id, and its app). Reviews and
+ * statuses belong to a commit already; a billable count counts for the head
+ * only when its comment names the head (and, when the push time is known,
+ * was edited after the push).
  */
 const coderabbit: FactTypeDef = {
   type: 'coderabbit',

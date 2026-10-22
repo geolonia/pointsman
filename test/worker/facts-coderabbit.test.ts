@@ -89,10 +89,10 @@ function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
 }
 
 function fakeGitHub(table: Record<string, Handler>) {
-  const calls: { method: string; path: string }[] = [];
+  const calls: { method: string; path: string; body: string }[] = [];
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
-    calls.push({ method: init.method ?? 'GET', path: url.pathname });
+    calls.push({ method: init.method ?? 'GET', path: url.pathname, body: typeof init.body === 'string' ? init.body : '' });
     const handler = table[url.pathname];
     if (!handler) return new Response('{"message":"Not Found"}', { status: 404 });
     const body = await handler(url, init, table);
@@ -201,6 +201,8 @@ describe('CodeRabbit (coderabbit)', () => {
     // About another head: CodeRabbit edits its summary in place, so the edit time does not tell; the commit it names does.
     expect(await values(routes({ [COMMENTS]: () => [comment(notice(5, OLD), AFTER)] }))).toMatchObject({ billable_files: 2, price_stated: false });
     expect(await values(routes({ [COMMENTS]: () => [comment(notice(5).replace(/Reviewing files[^\n]*/, ''), AFTER)] }))).toMatchObject({ price_stated: false });
+    // Naming the head but edited before it was pushed: not about this push.
+    expect(await values(routes({ [COMMENTS]: () => [comment(notice(5), BEFORE)] }))).toMatchObject({ billable_files: 2, price_stated: false });
     // The newest notice about the head wins.
     expect(await values(routes({ [COMMENTS]: () => [comment(notice(3), PUSHED), comment(notice(1), AFTER)] }))).toMatchObject({ billable_files: 1, price_stated: true });
     expect(await values(routes({ [COMMENTS]: () => [comment(notice(3))] }), [{ name: 'cr', type: 'coderabbit', at: '$.pull_request' }])).toMatchObject({ billable_files: 3 });
@@ -276,6 +278,11 @@ describe('CodeRabbit (coderabbit)', () => {
     for (const path of [`${PR}/reviews`, `${PR}/files`, COMMENTS]) expect(server.calls.filter((c) => c.path === path).length, path).toBe(1);
     // Two GraphQL queries, each once: review state, and the editors of comments and reviews.
     expect(server.calls.filter((c) => c.path === '/graphql')).toHaveLength(2);
+    // The editors are read after the comments and reviews, so an edit in between shows.
+    const order = server.calls.map((c) => c.path);
+    const editorsAt = server.calls.findIndex((c) => c.path === '/graphql' && c.body.includes('editor'));
+    expect(editorsAt).toBeGreaterThan(order.lastIndexOf(COMMENTS));
+    expect(editorsAt).toBeGreaterThan(order.lastIndexOf(`${PR}/reviews`));
     // The pull request: once at the start, and once more after each list that
     // describes it now (files, reviews, comments), so a push in between makes the facts stale.
     expect(server.calls.filter((c) => c.path === PR)).toHaveLength(4);

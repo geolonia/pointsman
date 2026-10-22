@@ -74,12 +74,16 @@ export function commentHead(body: string): string | null {
  * CodeRabbit's newest stated billable count for the head: from its comments
  * that name the head as the commit they are about. CodeRabbit edits its
  * summary in place, so the time of an edit does not tell which head a count
- * is for; the commit it names does.
+ * is for; the commit it names does (and an edit before the push, when that
+ * time is known, is not about this push).
  */
-export function statedBillable(list: Comment[], head: string): number | null {
+export function statedBillable(list: Comment[], head: string, pushedAt: string | null = null): number | null {
+  const pushed = pushedAt === null ? NaN : Date.parse(pushedAt);
   const newest = list
     .filter(commentByCodeRabbit)
     .filter((c) => commentHead(c.body) === head)
+    // When the push time is known, also edited after it.
+    .filter((c) => !Number.isFinite(pushed) || Date.parse(c.updated) >= pushed)
     .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated));
   for (const c of newest) {
     const n = billableIn(c.body);
