@@ -325,7 +325,7 @@ export class PullRequestWork {
 
   /** Asks Pointsman; null when it refused (a setting to fix, logged). */
   async #decide(profile: string, state: Record<string, unknown>, extra: unknown[]): Promise<Decision | null> {
-    // The same run asks with the same key: a retry gets the decision already logged.
+    // The key holds the run's attempt count: every run, a retry too, gets a new decision.
     const key = await sha256(JSON.stringify([profile, state, ...extra]));
     let res: Response;
     try {
@@ -393,7 +393,7 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** The check run for a decision, in shadow mode: neutral, so it never blocks a merge. */
+/** The check run for a decision: neutral, so it never blocks a merge; it says which action was done or why not. */
 function describe(spec: ActionSpec): string {
   switch (spec.do) {
     case 'comment': return 'comment written';

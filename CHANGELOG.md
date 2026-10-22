@@ -12,14 +12,25 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
-## Unreleased
+## 0.7.0 (2026-10-22)
 
-GitHub connector actions (#147), off unless a deployment switches them on ([docs/github-connector.md](docs/github-connector.md#actions)):
+The GitHub connector can act on decisions (#147, from #162): a comment,
+labels, a review request or an approval, each only where a deployment maps a
+profile's decision action to it. Without that mapping the connector stays in
+shadow mode and writes only its neutral check runs.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.7.0` as usual. A module pinned with a version (`…@0.6.0`) must be pinned to `0.7.0`, or the build stops.
+- The connector now asks Pointsman anew on every run, also when a run is tried again after an error (before, a retry got the decision already logged). In shadow mode too: a few more decisions in the log when GitHub or Pointsman was busy.
+- Nothing else is required. To switch actions on: an `"actions"` map in `GITHUB_CONNECTOR`, the connector app's permission Pull requests: Read and write, and for `approve` a ruleset that dismisses stale approvals ([docs/github-connector.md](docs/github-connector.md#actions)).
+- No database migration.
+
+What changed (#162, [docs/github-connector.md](docs/github-connector.md#actions)):
 
 - `GITHUB_CONNECTOR` takes an optional `"actions"` map: per profile, a decision action to one of `comment`, `label`, `request_reviewer`, `approve`. Without it nothing changes (shadow mode).
 - Each action at most once per head commit, with a record written before it and a trace check after a stop; nothing while a person checks the decision; refused actions are shown on the check run and not repeated for that commit.
 - `approve` only on the decided commit (read again right before), never for drafts or forks; the connector dismisses its own approvals of older commits after a push, and withdraws one when a later decision on the same commit no longer approves. The ruleset must dismiss stale approvals.
-- Every run asks Pointsman anew, also a retry (before, a retry of the same event got the logged decision).
 - With actions on, the connector's token asks for pull requests: write (the app must have it).
 
 ## 0.6.0 (2026-10-22)
