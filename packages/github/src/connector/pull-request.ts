@@ -134,7 +134,11 @@ export class PullRequestWork {
       try {
         if (target) await this.#once(target, attempt);
       } catch (err) {
-        if (err instanceof RetryError) throw err;
+        if (err instanceof RetryError) {
+          // The retried alarm must find the recheck still due.
+          if (recheck && !(await this.#storage.get<number>('recheckAt'))) await this.#storage.put({ recheckAt: recheckAt });
+          throw err;
+        }
         // Needs a person (a permission, a setting); the next event tries again.
         console.error(`github connector: ${target?.repo}#${target?.number}: ${err instanceof Error ? err.message : String(err)}`);
       }

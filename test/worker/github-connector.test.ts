@@ -565,4 +565,23 @@ describe('actions (switched on per profile action)', () => {
     await work.run();
     expect(pm.calls[0]!.key).not.toBe(pm.calls[1]!.key);
   });
+
+  it('keeps a due recheck when that run is to be tried again', async () => {
+    const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'comment', text: 'Docs only.' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    let t = 2_000_000;
+    work.now = () => t;
+    await work.run(); // the event: comment written
+    // An unclear comment on this head, due for its recheck now.
+    mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:comment': { decision: 'd', state: 'pending', at: t - UNCLEAR_MS } } });
+    mem.data.set('recheckAt', t);
+    gh.github.comments.length = 0;
+    const findComment = gh.github.findComment;
+    gh.github.findComment = async () => { throw new GitHubError('GitHub comments: 502', true, 502); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(mem.data.get('recheckAt')).toBe(t);
+    // The retried alarm: the recheck runs, no trace, the comment is written again once.
+    gh.github.findComment = findComment;
+    await work.run();
+    expect(gh.github.comments).toHaveLength(1);
+  });
 });
