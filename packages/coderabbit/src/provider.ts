@@ -13,13 +13,13 @@ import {
   byCodeRabbit, commentByCodeRabbit, editedByOthers, headSince, ignoredBy, installedFrom, isCodeRabbitThread, reviewValues, statedBillable, statusByCodeRabbit,
 } from './coderabbit.ts';
 import {
-  budgetAt, lastAsked, observationsHere, observationsLogged, paidCommands, paidForHead, payments, queueAhead, queueWait, spendAfter, statedPriceForHead, takenByOther,
+  budgetAt, lastAsked, observationsHere, observationsLogged, paidCommands, paidForHead, payments, queueAhead, queueWait, spendAfter, statedPriceForHead, takenSince,
 } from './budget.ts';
 
 /** Other pull requests whose head statuses tell whether CodeRabbit runs in a repository. */
 export const RECENT_PULL_REQUESTS = 5;
-/** How far back the budget, queue and spend read the client's decisions. */
-export const LOG_HOURS = 48;
+/** How far back the budget and the queue read the client's decisions. */
+export const LOG_HOURS = 24;
 
 export interface CodeRabbitOptions {
   auth: GitHubAuth;
@@ -112,7 +112,7 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     const { observedAt, ...values } = budget;
     return {
       ...values,
-      taken_by_other_pr: values.known && takenByOther(rows, query.name, pr.author, id, observedAt, query.review_actions ?? ['review']),
+      taken_by_other_pr: values.known && takenSince(rows, query.name, pr.author, observedAt, query.review_actions ?? ['review']) > 0,
       author: pr.author,
       pull_request: id,
     };
@@ -123,19 +123,25 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     const maxAge = (query.max_age_minutes ?? 120) * 60_000;
     const recent = rows.filter((r) => now - Date.parse(r.created_at) <= maxAge);
     const ahead = queueAhead(recent, query.name, pr.author, id, query.waiting ?? [], now);
-    return { ahead, wait_minutes: queueWait(budget, ahead), author: pr.author, pull_request: id };
+    // Free reviews other decisions took since the reading are gone (found by the budget fact's review actions).
+    const taken = budget.known ? takenSince(rows, query.name, pr.author, budget.observedAt, query.review_actions ?? ['review']) : 0;
+    return { ahead, wait_minutes: queueWait({ ...budget, available: Math.max(0, budget.available - taken) }, ahead), author: pr.author, pull_request: id };
   }
 
   private async spend(s: Snapshot, query: CodeRabbitFactQuery, ctx: DecisionContext, scope: FactScope | undefined) {
     if (query.usd_per_file === undefined || !query.pay_actions?.length) throw new FactError('coderabbit_spend needs pay_actions and usd_per_file');
     const { pr } = await s.base;
     const head = query.pr.head;
-    const [{ reviews, comments }, statuses, pushedAt, rows] = await Promise.all([this.text(s), s.headStatuses(), s.headPushedAt(), readLog(ctx, scope)]);
+    const prHours = query.pr_hours ?? 48;
+    const [{ reviews, comments }, statuses, pushedAt, rows] = await Promise.all([this.text(s), s.headStatuses(), s.headPushedAt(), readLog(ctx, scope, Math.max(prHours, query.window_hours ?? 5))]);
     const apps = query.payer_apps ?? [];
     const billable = statedBillable(comments, head, pushedAt) ?? ownBillable(await s.files(), query.not_reviewed ?? []);
     const price = Math.round((statedPriceForHead(comments, head) ?? billable * query.usd_per_file) * 100) / 100;
     const id = pullRequestId(query);
-    const after = spendAfter(payments(rows, query.name, query.pay_actions), id, head, price, paidCommands(comments, pr.author, apps), Date.parse(ctx.now), query.window_hours ?? 5);
+    const now = Date.parse(ctx.now);
+    // Per pull request: the payments of the last pr_hours.
+    const recentPays = payments(rows, query.name, query.pay_actions).filter((p) => p.pullRequest !== id || now - p.at < prHours * 3_600_000);
+    const after = spendAfter(recentPays, id, head, price, paidCommands(comments, pr.author, apps), now, query.window_hours ?? 5);
     return {
       price_usd: price,
       ...after,
@@ -158,14 +164,14 @@ function needLog(context: DecisionContext | undefined): DecisionContext {
   return context;
 }
 
-/** The client's decisions of this profile in the last LOG_HOURS, read once per decision. A full page: there may be more, so the facts are missing. */
-function readLog(ctx: DecisionContext, scope: FactScope | undefined): Promise<LoggedDecision[]> {
-  const key = `coderabbit-log:${ctx.client}:${ctx.profile}`;
+/** The client's decisions of this profile in the last `hours`, read once per decision and span. A full page: there may be more, so the facts are missing. */
+function readLog(ctx: DecisionContext, scope: FactScope | undefined, hours = LOG_HOURS): Promise<LoggedDecision[]> {
+  const key = `coderabbit-log:${ctx.client}:${ctx.profile}:${hours}`;
   let p = scope?.get(key) as Promise<LoggedDecision[]> | undefined;
   if (!p) {
-    const since = new Date(Date.parse(ctx.now) - LOG_HOURS * 3_600_000).toISOString();
+    const since = new Date(Date.parse(ctx.now) - hours * 3_600_000).toISOString();
     p = ctx.log.recent({ profiles: [ctx.profile], since, limit: MAX_LOG_READ }).then((rows) => {
-      if (rows.length >= MAX_LOG_READ) throw new FactError(`more than ${MAX_LOG_READ - 1} decisions in ${LOG_HOURS} hours: cannot count them all`);
+      if (rows.length >= MAX_LOG_READ) throw new FactError(`more than ${MAX_LOG_READ - 1} decisions in ${hours} hours: cannot count them all`);
       return rows;
     });
     p.catch(() => undefined);

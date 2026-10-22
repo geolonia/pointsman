@@ -50,6 +50,14 @@ describe('the log for facts', () => {
     expect(await factLogFor(log, token()).recent({ profiles: ['next-step'], since: '2026-10-01T00:00:00.000Z', limit: 1 })).toHaveLength(1);
   });
 
+  it('reads a since in another time zone as the same moment', async () => {
+    const log = new D1DecisionLog(DB);
+    const r = record({ client: 'tz-client', created_at: '2026-10-22T10:00:00.000Z' });
+    await log.insert(r);
+    const rows = await factLogFor(log, token({ client: 'tz-client' })).recent({ profiles: ['next-step'], since: '2026-10-22T18:30:00+09:00', limit: 10 });
+    expect(rows.map((x) => x.id)).toEqual([r.decision_id]);
+  });
+
   it('refuses a since that is not a time', async () => {
     await expect(factLogFor(fakeLog(), token()).recent({ profiles: ['next-step'], since: 'yesterday', limit: 1 })).rejects.toThrow();
   });

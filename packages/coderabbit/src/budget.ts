@@ -73,10 +73,10 @@ const sameLogin = (a: string, b: string) => a !== '' && a.toLowerCase() === b.to
 
 /**
  * CodeRabbit's comments that tell the pull request author's budget: its
- * notices (written for the author's capacity), and its replies to a
- * command the author posted (the newest command before the reply, at most
- * REPLY_WITHIN_MINUTES old). A reply to anyone else's command, an app's
- * included, is about their budget and does not count.
+ * notices (written for the author's capacity), and its replies when every
+ * command in the REPLY_WITHIN_MINUTES before the reply was the author's. A
+ * reply that may answer anyone else's command, an app's included, is about
+ * their budget and does not count.
  */
 export function authorBudgetComments(list: Comment[], author: string): Comment[] {
   const sorted = [...list].sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
@@ -84,9 +84,11 @@ export function authorBudgetComments(list: Comment[], author: string): Comment[]
     if (!commentByCodeRabbit(c)) return false;
     if (!c.body.includes(REPLY)) return true;
     const at = Date.parse(c.created);
-    const command = sorted.slice(0, i).reverse().find((x) => !commentByCodeRabbit(x) && COMMAND.test(x.body) && Date.parse(x.created) <= at);
-    if (!command || at - Date.parse(command.created) > REPLY_WITHIN_MINUTES * MINUTE) return false;
-    return sameLogin(command.by.login, author);
+    // The commands it may answer: every command in the minutes before it. Only when the
+    // author posted all of them is the reply surely about the author.
+    const commands = sorted.slice(0, i).filter((x) => !commentByCodeRabbit(x) && COMMAND.test(x.body)
+      && Date.parse(x.created) <= at && at - Date.parse(x.created) <= REPLY_WITHIN_MINUTES * MINUTE);
+    return commands.length > 0 && commands.every((x) => sameLogin(x.by.login, author));
   });
 }
 
@@ -177,14 +179,18 @@ export function budgetAt(obs: Observation[], now: number, asked: number | null):
   };
 }
 
-/** Another pull request of the author got a decision with one of `actions` after the reading: it took a free review. */
-export function takenByOther(rows: LoggedDecision[], name: string, author: string, pullRequest: string, since: number | null, actions: string[]): boolean {
-  if (since === null) return false;
-  return rows.some((r) => {
+/**
+ * The free reviews taken since the reading: decisions with one of `actions`
+ * made after it, for a pull request of the author (another one, or this one
+ * at an earlier head).
+ */
+export function takenSince(rows: LoggedDecision[], name: string, author: string, since: number | null, actions: string[]): number {
+  if (since === null) return 0;
+  return rows.filter((r) => {
     const v = r.facts[name]?.values;
     return actions.includes(r.action) && Date.parse(r.created_at) > since && !!v
-      && sameLogin(text(v.author) ?? '', author) && typeof v.pull_request === 'string' && v.pull_request !== pullRequest;
-  });
+      && sameLogin(text(v.author) ?? '', author) && typeof v.pull_request === 'string';
+  }).length;
 }
 
 // ---- the queue ----
@@ -199,7 +205,8 @@ export function queueAhead(rows: LoggedDecision[], name: string, author: string,
   const latest = new Map<string, LoggedDecision>();
   const since = new Map<string, number>();
   // Oldest first, so the latest decision of each pull request wins.
-  for (const r of [...rows].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))) {
+  // The log lists newest first: reversed, decisions of the same moment keep their order (the sort is stable).
+  for (const r of [...rows].reverse().sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))) {
     const v = r.facts[name]?.values;
     const pr = v ? text(v.pull_request) : null;
     if (!v || !pr || !sameLogin(text(v.author) ?? '', author)) continue;
@@ -311,6 +318,8 @@ const cents = (usd: number) => Math.round(usd * 100) / 100;
  */
 export function spendAfter(list: Payment[], pullRequest: string, head: string, price: number, paid: number[], now: number, windowHours: number): { per_pr_usd_after: number; per_window_usd_after: number } {
   const others = list.filter((p) => !(p.pullRequest === pullRequest && p.head === head));
+  // This head once, at the higher of its earlier price and now.
+  price = Math.max(price, ...list.filter((p) => p.pullRequest === pullRequest && p.head === head).map((p) => p.usd));
   const perPr = others
     .filter((p) => p.pullRequest === pullRequest)
     .filter((p) => now - p.at < RESERVATION_HOURS * 3_600_000 || paid.some((t) => t >= p.at))

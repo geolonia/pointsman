@@ -172,10 +172,26 @@ describe('the budget (coderabbit_budget), by the pull request\'s author', () => 
     expect(await values({ ...budget, review_actions: ['request-review'] }, here, context(took(5, 'alice', 'request-review')))).toMatchObject({ taken_by_other_pr: true });
   });
 
-  it('reads only this profile\'s decisions of the last 48 hours', async () => {
+  it('reads only this profile\'s decisions: 24 hours for the budget, pr_hours or the window for the spend', async () => {
     const ctx = context();
     await values(budget, routes(), ctx);
-    expect(ctx.asked).toEqual([{ profiles: ['next-step'], since: at(48 * 60), limit: MAX_LOG_READ }]);
+    expect(ctx.asked).toEqual([{ profiles: ['next-step'], since: at(24 * 60), limit: MAX_LOG_READ }]);
+    const spendCtx = context();
+    await values({ ...spend, pr_hours: 72 }, routes(), spendCtx);
+    expect(spendCtx.asked).toEqual([{ profiles: ['next-step'], since: at(72 * 60), limit: MAX_LOG_READ }]);
+  });
+
+  it('a reply that may answer someone else\'s command does not count, even after the author asked too', async () => {
+    const race = routes({ [COMMENTS]: () => [ask(6, actions), ask(5), reply('Reviews are available now.', 4)] });
+    expect(await values(budget, race)).toMatchObject({ known: false });
+    // Two asks by the author: still the author's.
+    expect(await values(budget, routes({ [COMMENTS]: () => [ask(6), ask(5), reply('Reviews are available now.', 4)] }))).toMatchObject({ known: true });
+  });
+
+  it('a review decision of this pull request at an earlier head also took the free review', async () => {
+    const here = routes({ [COMMENTS]: () => [ask(10), reply('Reviews are available now.', 9)] });
+    const mine = [decision(5, 'review', { budget: budgetFact({ pull_request: ME, observed_minutes_ago: null, known: false }) })];
+    expect(await values(budget, here, context(mine))).toMatchObject({ taken_by_other_pr: true });
   });
 
   it('missing without a log, when the log fails, or when it is full', async () => {
@@ -223,6 +239,14 @@ describe('the queue (coderabbit_queue)', () => {
     expect(queueWait({ ...b, wait_minutes: null }, 0)).toBeNull();
   });
 
+  it('free reviews taken since the reading are gone', async () => {
+    const here = routes({ [COMMENTS]: () => [ask(10), reply('2 reviews are currently available. Allowance at 2 reviews per hour.', 9)] });
+    const rows = [decision(50, 'wait', q('octo-org/demo#1'))];
+    expect(await values(queue, here, context(rows))).toMatchObject({ ahead: 1, wait_minutes: 0 });
+    const took = [...rows, decision(5, 'review', q('octo-org/demo#2'))];
+    expect(await values(queue, here, context(took))).toMatchObject({ ahead: 1, wait_minutes: 30 });
+  });
+
   it('with a known budget', async () => {
     const here = routes({ [COMMENTS]: () => [ask(10), reply('rate limited. Your next review will be available in 20 minutes. Allowance at 2 reviews per hour.', 10)] });
     expect(await values(queue, here, context([decision(50, 'wait', q('octo-org/demo#1'))]))).toMatchObject({ ahead: 1, wait_minutes: 40 });
@@ -258,6 +282,18 @@ describe('the spend (coderabbit_spend)', () => {
     ];
     expect(await values(spend, routes(), context(rows))).toMatchObject({ price_usd: 0.5, per_pr_usd_after: 1.25, per_window_usd_after: 2.25 });
     expect(await values({ ...spend, window_hours: 12 }, routes(), context(rows))).toMatchObject({ per_window_usd_after: 4.25 });
+  });
+
+  it('per pull request: payments of the last pr_hours (default 48)', async () => {
+    const rows = [decision(50 * 60, 'pay', paid(ME, OLD, 1))];
+    const posted = routes({ [COMMENTS]: () => [comment('@coderabbitai review --use-credits', 49 * 60, alice)] });
+    expect(await values(spend, posted, context(rows))).toMatchObject({ per_pr_usd_after: 0.5 });
+    expect(await values({ ...spend, pr_hours: 72 }, posted, context(rows))).toMatchObject({ per_pr_usd_after: 1.5 });
+  });
+
+  it('this head counts once, at the higher of its earlier price and now', async () => {
+    const rows = [decision(10, 'pay', paid(ME, HEAD, 2))];
+    expect(await values(spend, routes(), context(rows))).toMatchObject({ per_pr_usd_after: 2, per_window_usd_after: 2 });
   });
 
   it('a reservation stops counting for the pull request after 24 hours, unless a paid comment came after it', async () => {

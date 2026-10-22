@@ -23,6 +23,8 @@ export interface CodeRabbitFactSpec extends FactSpec {
   usd_per_file?: number;
   /** For `coderabbit_spend`: the time window of per_window_usd_after. */
   window_hours?: number;
+  /** For `coderabbit_spend`: how far back per_pr_usd_after counts payments. */
+  pr_hours?: number;
   /** For `coderabbit_spend`: GitHub Apps (by id) whose paid review comments count for paid_for_head. */
   payer_apps?: number[];
 }
@@ -41,6 +43,7 @@ export interface CodeRabbitFactQuery {
   pay_actions?: string[];
   usd_per_file?: number;
   window_hours?: number;
+  pr_hours?: number;
   payer_apps?: number[];
 }
 
@@ -48,7 +51,7 @@ export interface CodeRabbitFactQuery {
 function queryOf(spec: FactSpec, pr: unknown): CodeRabbitFactQuery {
   const s = spec as CodeRabbitFactSpec;
   const out: CodeRabbitFactQuery = { type: spec.type as CodeRabbitFactType, pr: pr as PullRequestRef, name: spec.name };
-  for (const k of ['not_reviewed', 'review_actions', 'waiting', 'max_age_minutes', 'pay_actions', 'usd_per_file', 'window_hours', 'payer_apps'] as const) {
+  for (const k of ['not_reviewed', 'review_actions', 'waiting', 'max_age_minutes', 'pay_actions', 'usd_per_file', 'window_hours', 'pr_hours', 'payer_apps'] as const) {
     if (s[k] !== undefined) (out as unknown as Record<string, unknown>)[k] = s[k];
   }
   return out;
@@ -163,7 +166,7 @@ const coderabbit_budget: FactTypeDef = {
     observed_minutes_ago: { kind: 'number' }, taken_by_other_pr: { kind: 'boolean' }, ...WHO,
   },
   input: pullRequest,
-  settings: { review_actions: ACTIONS('For coderabbit_budget: decision actions that use a free review (default: review). A later such decision on another pull request of the author makes taken_by_other_pr true.') },
+  settings: { review_actions: ACTIONS('For coderabbit_budget and coderabbit_queue: decision actions that use a free review (default: review).') },
   query: queryOf,
   timeoutMs: GITHUB_TIMEOUT_MS,
   mock: {
@@ -213,6 +216,7 @@ const coderabbit_queue: FactTypeDef = {
   input: pullRequest,
   settings: {
     waiting: ACTIONS("For coderabbit_queue: decision actions that mean a pull request waits for a free review (for example wait, queue). A pull request whose latest decision of this profile has one of them waits."),
+    review_actions: ACTIONS('For coderabbit_budget and coderabbit_queue: decision actions that use a free review (default: review).'),
     max_age_minutes: { description: 'For coderabbit_queue: a waiting decision older than this many minutes no longer counts (default 120, at most 1440).', type: 'integer', minimum: 1, maximum: 1440 },
   },
   required: ['waiting'],
@@ -259,6 +263,7 @@ const coderabbit_spend: FactTypeDef = {
     pay_actions: ACTIONS('For coderabbit_spend: decision actions that pay for a review (for example pay). Every logged decision with one of them counts at its price, once per head, until shown otherwise.'),
     usd_per_file: { description: 'For coderabbit_spend: the price per billable file, in US dollars, when CodeRabbit stated no price for the head.', type: 'number', exclusiveMinimum: 0, maximum: 100 },
     window_hours: { description: 'For coderabbit_spend: the time window of per_window_usd_after, in hours (default 5, at most 24).', type: 'integer', minimum: 1, maximum: 24 },
+    pr_hours: { description: 'For coderabbit_spend: how far back per_pr_usd_after counts payments of the pull request, in hours (default 48, at most 168).', type: 'integer', minimum: 1, maximum: 168 },
     payer_apps: { description: 'For coderabbit_spend: GitHub Apps, by id, whose paid review comments count for paid_for_head (besides the author and organization owners and members).', type: 'array', maxItems: 20, uniqueItems: true, items: { type: 'integer', minimum: 1 } },
     not_reviewed: NOT_REVIEWED,
   },
