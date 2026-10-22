@@ -31,7 +31,7 @@ A deployment lists its modules in `engine.json`, next to the engine version:
   "repository": "geolonia/pointsman",
   "ref": "<engine commit>",
   "modules": {
-    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github@0.4.0"]
+    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github@0.5.0"]
   }
 }
 ```
@@ -92,7 +92,7 @@ A field can hold a probability or a confidence, for example a geocoder's confide
 Each decision records the engine version and the modules that answered its facts, with their versions:
 
 ```json
-"versions": { "engine": "0.4.0", "modules": { "@pointsman/facts-github": "0.4.0" } }
+"versions": { "engine": "0.5.0", "modules": { "@pointsman/facts-github": "0.5.0" } }
 ```
 
 Decisions made before modules have no `versions`.
