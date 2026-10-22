@@ -5,9 +5,9 @@
 
 import { MAX_LOG_READ, type DecisionContext, type FactLog, type LoggedDecision } from '@pointsman/module-api';
 import { canUse, type TokenRecord } from './auth';
-import type { DecisionLog, DecisionRecord } from './log';
+import type { DecisionLog, FactLogRecord } from './log';
 
-function logged(r: DecisionRecord): LoggedDecision {
+function logged(r: FactLogRecord): LoggedDecision {
   const facts: LoggedDecision['facts'] = {};
   for (const [name, f] of Object.entries(r.facts ?? {})) facts[name] = f.missing ? { missing: true } : { missing: false, values: { ...f.values } };
   return { id: r.decision_id, created_at: r.created_at, profile: r.profile, ...(r.ref !== undefined && { ref: r.ref }), action: r.action, facts };

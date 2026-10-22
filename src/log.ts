@@ -4,6 +4,9 @@
 
 import type { Answer, DecisionVersions, Fact } from './types';
 
+/** What facts read of a decision (DecisionLog.recentFor): no answers, no state. */
+export type FactLogRecord = Pick<DecisionRecord, 'decision_id' | 'created_at' | 'profile' | 'ref' | 'action' | 'facts'>;
+
 export interface DecisionRecord {
   decision_id: string;
   created_at: string;
@@ -131,7 +134,7 @@ export interface DecisionLog {
    * and these profiles since a time, newest first, at most `limit`, without
    * discarded ones.
    */
-  recentFor(client: string, profiles: string[], since: string, limit: number): Promise<DecisionRecord[]>;
+  recentFor(client: string, profiles: string[], since: string, limit: number): Promise<FactLogRecord[]>;
   /**
    * Mark the open reviews of the decisions that `decision` replaces (same
    * profile, ref and client, made at or before it) as superseded. Returns their ids.

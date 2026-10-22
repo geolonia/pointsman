@@ -304,7 +304,8 @@ export function payments(rows: LoggedDecision[], name: string, actions: string[]
     if (!pr || !head || usd === null || !Number.isFinite(at)) continue;
     const key = `${pr}@${head}`;
     const known = byHead.get(key);
-    if (!known || usd > known.usd) byHead.set(key, { pullRequest: pr, head, at: known ? Math.min(known.at, at) : at, usd });
+    // The earliest time and the highest price, whatever order the decisions come in.
+    byHead.set(key, { pullRequest: pr, head, at: known ? Math.min(known.at, at) : at, usd: known ? Math.max(known.usd, usd) : usd });
   }
   return [...byHead.values()];
 }

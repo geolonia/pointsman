@@ -291,6 +291,14 @@ describe('the spend (coderabbit_spend)', () => {
     expect(await values({ ...spend, pr_hours: 72 }, posted, context(rows))).toMatchObject({ per_pr_usd_after: 1.5 });
   });
 
+  it('a head paid twice keeps its earliest time and highest price, in any order', async () => {
+    // Newest first, as the log lists them: the earlier decision has the lower price.
+    const rows = [decision(25 * 60, 'pay', paid(ME, OLD, 1)), decision(30 * 60, 'pay', paid(ME, OLD, 0.5))];
+    const posted = routes({ [COMMENTS]: () => [comment('@coderabbitai review --use-credits', 29 * 60, alice)] });
+    // The paid comment came after the first decision, so the payment still counts after 24 hours, at 1.
+    expect(await values(spend, posted, context(rows))).toMatchObject({ per_pr_usd_after: 1.5 });
+  });
+
   it('this head counts once, at the higher of its earlier price and now', async () => {
     const rows = [decision(10, 'pay', paid(ME, HEAD, 2))];
     expect(await values(spend, routes(), context(rows))).toMatchObject({ per_pr_usd_after: 2, per_window_usd_after: 2 });

@@ -28,7 +28,7 @@ const token = (over: Partial<TokenRecord> = {}): TokenRecord => ({ client: 'exec
 describe('the log for facts', () => {
   it('only the client\'s decisions, only of profiles its token may use, never discarded ones', async () => {
     const log = new D1DecisionLog(DB);
-    const mine = record({ created_at: '2026-10-22T10:00:00.000Z' });
+    const mine = record({ created_at: '2026-10-22T10:00:00.000Z', state: { secret: 'never read by facts' } });
     const newer = record({ created_at: '2026-10-22T11:00:00.000Z', action: 'review' });
     const old = record({ created_at: '2026-10-20T10:00:00.000Z' });
     const other = record({ client: 'someone-else' });

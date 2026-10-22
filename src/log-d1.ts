@@ -1,7 +1,7 @@
 // The decision log (src/log.ts) in Cloudflare D1. The schema is in
 // migrations/. A Cloudflare adapter (docs/adapters.md).
 
-import type { CallbackState, DecisionLog, DecisionRecord, FeedbackRecord, FinalAnswer, ProfileStats, RequiredSnapshot, Resolution, Review } from './log';
+import type { CallbackState, DecisionLog, DecisionRecord, FactLogRecord, FeedbackRecord, FinalAnswer, ProfileStats, RequiredSnapshot, Resolution, Review } from './log';
 import type { Answer, DecisionVersions, Fact } from './types';
 
 interface DecisionRow {
@@ -133,16 +133,24 @@ export class D1DecisionLog implements DecisionLog {
     return row ? fromRow(row) : null;
   }
 
-  async recentFor(client: string, profiles: string[], since: string, limit: number): Promise<DecisionRecord[]> {
+  async recentFor(client: string, profiles: string[], since: string, limit: number): Promise<FactLogRecord[]> {
     if (profiles.length === 0 || limit < 1) return [];
+    // Only the columns facts use: a decision's state can be large, and facts never see it.
     const { results } = await this.db
       .prepare(
-        `SELECT * FROM decisions WHERE client = ? AND profile_id IN (${profiles.map(() => '?').join(', ')}) AND created_at >= ? AND discarded_at IS NULL
+        `SELECT id, created_at, ref, profile_id, action, facts FROM decisions WHERE client = ? AND profile_id IN (${profiles.map(() => '?').join(', ')}) AND created_at >= ? AND discarded_at IS NULL
          ORDER BY created_at DESC, rowid DESC LIMIT ?`,
       )
       .bind(client, ...profiles, since, limit)
-      .all<DecisionRow>();
-    return results.map(fromRow);
+      .all<Pick<DecisionRow, 'id' | 'created_at' | 'ref' | 'profile_id' | 'action' | 'facts'>>();
+    return results.map((row) => ({
+      decision_id: row.id,
+      created_at: row.created_at,
+      ...(row.ref !== null && { ref: row.ref }),
+      profile: row.profile_id,
+      action: row.action,
+      ...(row.facts !== null && { facts: JSON.parse(row.facts) as Record<string, Fact> }),
+    }));
   }
 
   async supersede(d: Pick<DecisionRecord, 'decision_id' | 'profile' | 'ref' | 'client' | 'created_at'>): Promise<string[]> {

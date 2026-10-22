@@ -132,9 +132,10 @@ else a client sees:
 
 A test token's decisions are not logged, and it reads none: its lookups
 get no context, and such facts are missing (`@pointsman/coderabbit` gives
-`no_log`). A fact reads the log as it was when the decision started: the
-decision itself is not in it yet, and two decisions made at the same time
-do not see each other.
+`no_log`). A fact reads the log as it is at the moment of the read, not as
+a snapshot from the start of the decision: the decision itself is not in
+it yet; another decision logged in between may or may not be seen; and two
+decisions made at the same time can both miss each other.
 
 What earlier decisions are found by is up to the module. The CodeRabbit
 facts write the pull request and its author into their own values (display
