@@ -28,7 +28,7 @@ export interface ConnectorSettings {
 export type ActionSpec =
   /** A comment with this fixed text (never text from the pull request). */
   | { do: 'comment'; text: string }
-  /** Add these labels (they must exist in the repository). */
+  /** Add these labels (GitHub creates one that does not exist yet). */
   | { do: 'label'; labels: string[] }
   /** Ask these people for a review. */
   | { do: 'request_reviewer'; reviewers: string[] }

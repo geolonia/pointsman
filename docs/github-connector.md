@@ -20,7 +20,7 @@ What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token, and
 }
 ```
 
-Title and body are cut to 300 and 8,000 characters. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's events, so a retry of the same run gets the decision already logged, and each new event (for example finished CI) a new decision.
+Title and body are cut to 300 and 8,000 characters. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's runs, so every run asks anew (a retry too): an action never rests on an older answer, and each new event (for example finished CI) gets a new decision.
 
 ### Safety
 
@@ -52,7 +52,7 @@ The connector carries out an action only where the deployment maps a profile's d
 | `do` | Settings | What it does |
 | --- | --- | --- |
 | `comment` | `text` (1 to 1,000 characters, fixed) | Writes the text as a comment, with the decision id. Never text from the pull request. |
-| `label` | `labels` (1 to 10, existing in the repository) | Adds the labels. |
+| `label` | `labels` (1 to 10) | Adds the labels. GitHub creates a label that does not exist yet, so check the names. |
 | `request_reviewer` | `reviewers` (1 to 10 GitHub logins) | Asks them for a review. |
 | `approve` | none | Approves the head commit the decision was made on. |
 
@@ -61,15 +61,19 @@ This is the whole list: a deployment can switch actions on, never add one. A dec
 Rules for every action:
 
 - **At most once per head commit**, per profile and kind. The record is written before the action and closed after it. A new commit starts again.
-- **A stop in between:** a record left open is settled by its trace on GitHub (the comment or approval with its marker, the labels, the requested reviewers). Without a trace, the action may be done again only after 10 minutes.
+- **A stop in between:** a record left open is settled by its trace on GitHub (the comment or approval with its marker, the labels, the requested reviewers). Without a trace, the action may be done again only after 10 minutes; the connector looks again then, also without a new event.
 - **A person first:** while a person still checks the decision (the profile's `people_check`, `review: pending`), nothing is done.
-- **Refused by GitHub** (a missing label, no permission, a reviewer who cannot be asked): shown on the check run and logged, and not tried again for that commit. Busy or down: tried again later.
+- **Refused by GitHub** (no permission, a reviewer who cannot be asked): shown on the check run and logged, and not tried again for that commit. Busy or down: tried again later.
+- **One record per profile and kind:** two decision actions of one profile mapped to the same kind (for example two `label` actions) are done only once per commit, whichever comes first.
 
 For `approve` also:
 
 - Only on the commit that was decided on: the pull request is read again right before, and nothing is done if its head changed, it is a draft or it was closed. The approval names that commit (`commit_id`).
 - Never for a pull request from a fork.
-- After a push, the connector dismisses its own approvals of older commits, on every run. Rulesets should also dismiss stale approvals.
+- After a push, the connector dismisses its own approvals of older commits, on every run. It dismisses only approvals it recorded giving, never someone else's review.
+- When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again.
+- If an old approval cannot be dismissed, it approves nothing in that run.
+- **Required:** the branch's ruleset (or branch protection) must have "Dismiss stale pull request approvals when new commits are pushed" on. Otherwise an approval of an older commit counts for merging until the connector's next run dismisses it.
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run).
 

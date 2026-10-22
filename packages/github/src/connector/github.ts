@@ -71,6 +71,8 @@ export interface PullRequestInfo {
 export interface OwnApproval {
   id: number;
   commit: string;
+  /** The first line of its body (the connector's marker). */
+  marker?: string;
 }
 
 export interface CheckRunOutput {
@@ -92,7 +94,7 @@ export interface ConnectorGitHub {
   createComment(repo: string, number: number, body: string): Promise<void>;
   addLabels(repo: string, number: number, labels: string[]): Promise<void>;
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
-  /** The app's approvals still standing (not dismissed), found by the marker every one of them carries. */
+  /** Bot approvals still standing (not dismissed) that carry the marker; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
   approve(repo: string, number: number, head: string, body: string): Promise<number>;
   dismissReview(repo: string, number: number, id: number, message: string): Promise<void>;
@@ -213,7 +215,7 @@ export class AppGitHub implements ConnectorGitHub {
     return reviews
       .filter((r) => r.state === 'APPROVED' && typeof r.body === 'string' && r.body.startsWith(MARKER)
         && isObject(r.user) && r.user.type === 'Bot' && typeof r.id === 'number' && typeof r.commit_id === 'string')
-      .map((r) => ({ id: r.id as number, commit: r.commit_id as string }));
+      .map((r) => ({ id: r.id as number, commit: r.commit_id as string, marker: (r.body as string).split('\n', 1)[0]! }));
   }
 
   async approve(repo: string, number: number, head: string, body: string): Promise<number> {

@@ -18,7 +18,8 @@ GitHub connector actions (#147), off unless a deployment switches them on ([docs
 
 - `GITHUB_CONNECTOR` takes an optional `"actions"` map: per profile, a decision action to one of `comment`, `label`, `request_reviewer`, `approve`. Without it nothing changes (shadow mode).
 - Each action at most once per head commit, with a record written before it and a trace check after a stop; nothing while a person checks the decision; refused actions are shown on the check run and not repeated for that commit.
-- `approve` only on the decided commit (read again right before), never for drafts or forks; the connector dismisses its own approvals of older commits after a push.
+- `approve` only on the decided commit (read again right before), never for drafts or forks; the connector dismisses its own approvals of older commits after a push, and withdraws one when a later decision on the same commit no longer approves. The ruleset must dismiss stale approvals.
+- Every run asks Pointsman anew, also a retry (before, a retry of the same event got the logged decision).
 - With actions on, the connector's token asks for pull requests: write (the app must have it).
 
 ## 0.6.0 (2026-10-22)

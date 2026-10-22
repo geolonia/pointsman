@@ -5,15 +5,16 @@
 // (connectors/github/src/index.ts); here it needs only a small storage.
 //
 // A run reads the pull request again, asks Pointsman with each profile,
-// and shows each decision as a check run. In shadow mode (all of it, for
-// now) the check run is "neutral" and nothing else is done on GitHub.
+// and shows each decision as a check run ("neutral"). Where the deployment
+// maps a decision to an action (settings.ts), it carries that out too, at
+// most once per head commit; otherwise nothing else is done on GitHub.
 // The record of a check run is written before the check run is created, so a
 // run that stops in between does not create a second one: the next run looks
 // for the check run first.
 
 import type { EngineApi } from '@pointsman/module-api';
 import { checkName, type ActionSpec, type ConnectorSettings } from './settings.ts';
-import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type PullRequestInfo } from './github.ts';
+import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
 
 /** What a run needs of the object's storage (a Durable Object's storage has it). */
@@ -53,6 +54,11 @@ export const UNCLEAR_MS = 10 * 60_000;
 interface Acts {
   head: string;
   done: Record<string, { decision: string; state: 'pending' | 'done' | 'failed'; at: number }>;
+}
+
+/** The approvals the connector gave and that may still stand: only these are ever dismissed. */
+interface Given extends OwnApproval {
+  profile: string;
 }
 
 /** What happened to a decision's action, for its check run. */
@@ -117,10 +123,16 @@ export class PullRequestWork {
   async run(): Promise<void> {
     for (let rounds = 0; rounds < 5; rounds++) {
       const generation = (await this.#storage.get<number>('generation')) ?? 0;
-      if (generation === ((await this.#storage.get<number>('done')) ?? 0)) return;
+      const recheckAt = await this.#storage.get<number>('recheckAt');
+      const recheck = recheckAt !== undefined && recheckAt > 0 && this.now() >= recheckAt;
+      // Nothing new, and no unclear action due to be looked at again.
+      if (generation === ((await this.#storage.get<number>('done')) ?? 0) && !recheck) return;
+      // Each run asks Pointsman anew (a retry too): an action never rests on an older answer.
+      const attempt = ((await this.#storage.get<number>('attempt')) ?? 0) + 1;
+      await this.#storage.put({ attempt, ...(recheck && { recheckAt: 0 }) });
       const target = await this.#storage.get<PullRequestTarget>('target');
       try {
-        if (target) await this.#once(target, generation);
+        if (target) await this.#once(target, attempt);
       } catch (err) {
         if (err instanceof RetryError) throw err;
         // Needs a person (a permission, a setting); the next event tries again.
@@ -130,15 +142,16 @@ export class PullRequestWork {
     }
   }
 
-  async #once(target: PullRequestTarget, generation: number): Promise<void> {
+  async #once(target: PullRequestTarget, attempt: number): Promise<void> {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (!pr.open) return;
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: pr.body.slice(0, MAX_BODY) };
-    if (this.#approves()) await this.#dismissStale(target, pr.head);
+    // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
+    const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
     for (const profile of this.#settings.profiles) {
-      const decision = await this.#decide(profile, state, [pr.draft, pr.base, generation]);
+      const decision = await this.#decide(profile, state, [pr.draft, pr.base, attempt]);
       if (!decision) continue;
-      const outcome = await this.#act(target, pr, profile, decision);
+      const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
     }
   }
@@ -147,11 +160,52 @@ export class PullRequestWork {
     return Object.values(this.#settings.actions).some((byAction) => Object.values(byAction).some((a) => a.do === 'approve'));
   }
 
-  /** Its own approvals stand only for the commit they were given on: after a push they are dismissed. */
-  async #dismissStale(target: PullRequestTarget, head: string): Promise<void> {
-    const stale = (await retrying(() => this.#github.ownApprovals(target.repo, target.number))).filter((a) => a.commit !== head);
-    for (const a of stale) {
-      await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has newer commits.`));
+  /**
+   * Its own approvals stand only for the commit they were given on: after a
+   * push they are dismissed. Only approvals it recorded giving are touched.
+   * Returns false when one could not be dismissed (logged).
+   */
+  async #dismissStale(target: PullRequestTarget, head: string): Promise<boolean> {
+    return this.#dismiss(target, (a) => a.commit !== head, (a) => `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has newer commits.`);
+  }
+
+  /** Dismisses the given approvals that `which` selects and that still stand; false when one could not be (logged). */
+  async #dismiss(target: PullRequestTarget, which: (a: Given) => boolean, message: (a: Given) => string): Promise<boolean> {
+    const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
+    if (!given.some(which)) return true;
+    let standing: OwnApproval[];
+    try {
+      standing = await retrying(() => this.#github.ownApprovals(target.repo, target.number));
+    } catch (err) {
+      if (err instanceof RetryError) throw err;
+      console.error(`github connector: ${target.repo}#${target.number} reading reviews: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+    let ok = true;
+    const kept: Given[] = [];
+    for (const a of given) {
+      if (!standing.some((s) => s.id === a.id)) continue; // dismissed or gone already
+      if (!which(a)) { kept.push(a); continue; }
+      try {
+        await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, message(a)));
+      } catch (err) {
+        if (err instanceof RetryError) throw err;
+        console.error(`github connector: ${target.repo}#${target.number} dismissing review ${a.id}: ${err instanceof Error ? err.message : String(err)}`);
+        ok = false;
+        kept.push(a);
+      }
+    }
+    await this.#storage.put({ approvals: kept });
+    return ok;
+  }
+
+  /** The decision for this head no longer approves: its approval of this head is withdrawn, and may be given again later. */
+  async #withdraw(target: PullRequestTarget, head: string, profile: string, acts: Acts): Promise<void> {
+    const key = `${profile}:approve`;
+    if (!acts.done[key]) return;
+    if (await this.#dismiss(target, (a) => a.commit === head && a.profile === profile, () => 'Pointsman no longer approves this commit: a newer decision differs.')) {
+      delete acts.done[key];
+      await this.#storage.put({ acts });
     }
   }
 
@@ -161,15 +215,22 @@ export class PullRequestWork {
    * record left `pending` (the run stopped) is settled by its trace on
    * GitHub, or after UNCLEAR_MS the action may be done again.
    */
-  async #act(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision): Promise<ActOutcome> {
-    const spec = this.#settings.actions[profile]?.[decision.action];
-    if (!spec) return { kind: 'none' };
-    if (decision.review?.status === 'pending') return { kind: 'skipped', text: `${spec.do}: not done, a person checks this decision first` };
-    if (spec.do === 'approve' && (pr.draft || pr.fork)) return { kind: 'skipped', text: 'approve: not done for a draft or a pull request from a fork' };
-
-    const key = `${profile}:${spec.do}`;
+  async #act(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision, approveBlocked = false): Promise<ActOutcome> {
+    const byAction = this.#settings.actions[profile];
+    const spec = byAction && Object.hasOwn(byAction, decision.action) ? byAction[decision.action] : undefined;
     let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
     if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
+    const pending = decision.review?.status === 'pending';
+    // This profile can approve, but this decision does not (now): an approval of this head is withdrawn.
+    if (byAction && Object.values(byAction).some((a) => a.do === 'approve') && (spec?.do !== 'approve' || pending)) {
+      await this.#withdraw(target, pr.head, profile, acts);
+    }
+    if (!spec) return { kind: 'none' };
+    if (pending) return { kind: 'skipped', text: `${spec.do}: not done, a person checks this decision first` };
+    if (spec.do === 'approve' && (pr.draft || pr.fork)) return { kind: 'skipped', text: 'approve: not done for a draft or a pull request from a fork' };
+    if (spec.do === 'approve' && approveBlocked) return { kind: 'skipped', text: 'approve: not done, an older approval could not be dismissed' };
+
+    const key = `${profile}:${spec.do}`;
     const record = acts.done[key];
     if (record?.state === 'done') return { kind: 'done', text: `${describe(spec)} (already done for this commit)` };
     if (record?.state === 'failed') return { kind: 'skipped', text: `${spec.do}: failed earlier; not tried again for this commit` };
@@ -181,8 +242,13 @@ export class PullRequestWork {
       }
       const age = this.now() - record.at;
       if (age < UNCLEAR_MS) {
-        // Look again once the time is up.
-        await this.#storage.setAlarm(record.at + UNCLEAR_MS);
+        // Look again once the time is up, also without a new event.
+        const at = record.at + UNCLEAR_MS;
+        const due = await this.#storage.get<number>('recheckAt');
+        if (!due || at < due) {
+          await this.#storage.put({ recheckAt: at });
+          await this.#storage.setAlarm(at);
+        }
         return { kind: 'skipped', text: `${spec.do}: result unclear, checked again later` };
       }
     }
@@ -217,9 +283,11 @@ export class PullRequestWork {
         return this.#github.addLabels(repo, number, spec.labels);
       case 'request_reviewer':
         return this.#github.requestReviewers(repo, number, spec.reviewers);
-      case 'approve':
-        await this.#github.approve(repo, number, pr.head, `${markerOf(pr.head, profile, 'approve')}\nPointsman approved ${pr.head.slice(0, 7)} (decision \`${decision.decision_id}\`, profile \`${profile}\`).`);
+      case 'approve': {
+        const id = await this.#github.approve(repo, number, pr.head, `${markerOf(pr.head, profile, 'approve')}\nPointsman approved ${pr.head.slice(0, 7)} (decision \`${decision.decision_id}\`, profile \`${profile}\`).`);
+        await this.#remember({ id, commit: pr.head, profile });
         return;
+      }
     }
   }
 
@@ -237,9 +305,18 @@ export class PullRequestWork {
         const now = await this.#github.pullRequest(repo, number);
         return spec.reviewers.every((r) => now.requestedReviewers.some((x) => x.toLowerCase() === r.toLowerCase()));
       }
-      case 'approve':
-        return (await this.#github.ownApprovals(repo, number)).some((a) => a.commit === pr.head);
+      case 'approve': {
+        const marker = markerOf(pr.head, profile, 'approve');
+        const found = (await this.#github.ownApprovals(repo, number)).find((a) => a.commit === pr.head && a.marker === marker);
+        if (found) await this.#remember({ id: found.id, commit: found.commit, profile });
+        return found !== undefined;
+      }
     }
+  }
+
+  async #remember(a: Given): Promise<void> {
+    const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
+    if (!given.some((g) => g.id === a.id)) await this.#storage.put({ approvals: [...given, { id: a.id, commit: a.commit, profile: a.profile }] });
   }
 
   /** Asks Pointsman; null when it refused (a setting to fix, logged). */

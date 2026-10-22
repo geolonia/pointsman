@@ -61,7 +61,7 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
-    approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head }); return nextId++; },
+    approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head, marker: body.split('\n')[0]! }); return nextId++; },
     dismissReview: async (_r, _n, id) => {
       calls.push({ op: 'dismiss', id });
       approvals.splice(approvals.findIndex((a) => a.id === id), 1);
@@ -247,7 +247,7 @@ describe('the work of one pull request', () => {
     expect(gh.calls.filter((c) => c.op !== 'get').map((c) => [c.op, c.id ?? c.name])).toEqual([['find', 'Pointsman: pr-docs-check'], ['update', 555]]);
   });
 
-  it('is tried again when Pointsman is down, with the same idempotency key', async () => {
+  it('is tried again when Pointsman is down', async () => {
     const mem = memoryStorage();
     const gh = fakeGitHub();
     let down = true;
@@ -258,7 +258,6 @@ describe('the work of one pull request', () => {
     down = false;
     await work.run();
     expect(pm.calls).toHaveLength(2);
-    expect(pm.calls[0]!.key).toBe(pm.calls[1]!.key);
     expect(gh.calls.filter((c) => c.op === 'create')).toHaveLength(1);
   });
 
@@ -429,9 +428,11 @@ describe('actions (switched on per profile action)', () => {
     await work.run();
     expect(gh.github.comments).toEqual([]);
     expect(mem.alarms.at(-1)).toBe(t + UNCLEAR_MS);
-    // Later, still no trace: done again, once.
+    // Before the time: the alarm finds nothing to do.
+    await work.run();
+    expect(gh.github.comments).toEqual([]);
+    // At the time, without a new event (the alarm alone): still no trace, so done again, once.
     t += UNCLEAR_MS;
-    await event();
     await work.run();
     expect(gh.github.comments).toHaveLength(1);
     expect(gh.github.comments[0]).toContain('Docs only.');
@@ -461,7 +462,7 @@ describe('actions (switched on per profile action)', () => {
     const { work, gh, event } = await acting(APPROVE, light);
     await work.run();
     expect(gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD]);
-    expect(gh.github.approvals).toEqual([{ id: expect.any(Number), commit: HEAD }]);
+    expect(gh.github.approvals).toEqual([{ id: expect.any(Number), commit: HEAD, marker: expect.stringContaining(HEAD) }]);
 
     // A push: the old approval is dismissed, and the new head is approved on its own decision.
     gh.github.state.head = HEAD2;
@@ -514,5 +515,54 @@ describe('actions (switched on per profile action)', () => {
     expect(connectorScope({ metadata: 'read', pull_requests: 'write', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
     // An app without write on pull requests: the token reads them; the actions then fail (403) and show on the check run.
     expect(actingScope({ metadata: 'read', pull_requests: 'read', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+  });
+
+  it('withdraws its approval when a later decision on the same commit no longer approves', async () => {
+    let action = 'light';
+    const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(1);
+    action = 'review'; // CI failed, say: same commit, another decision
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(0);
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss']);
+    // Approving again later is possible.
+    action = 'light';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+  });
+
+  it('dismisses only approvals it recorded giving, and approves nothing while an old one cannot be dismissed', async () => {
+    const light = (p: string) => Response.json(decision(p, { action: 'light' }));
+    const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, light);
+    // Another bot's review with the marker: never touched.
+    gh.github.approvals.push({ id: 999, commit: 'c'.repeat(40), marker: '<!-- pointsman approve pr-docs-check ' + 'c'.repeat(40) + ' -->' });
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'dismiss')).toEqual([]);
+    // A push; dismissing its own old approval fails: no new approval, the run still shows its checks.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismissal: 422', false, 422); };
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD]);
+    const last = gh.calls.filter((c) => c.output).at(-1)!.output!;
+    expect(last.summary).toContain('an older approval could not be dismissed');
+    errors.mockRestore();
+  });
+
+  it('asks Pointsman anew on every run, also on a retry', async () => {
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    let down = true;
+    const pm = fakeEngine((p) => (down ? new Response(null, { status: 503 }) : Response.json(decision(p))));
+    const work = pullRequestWork(settings({ profiles: ['pr-docs-check'] }), mem.storage, pm.engine, gh.github);
+    await work.accept({ target: { repo: REPO, number: 7 }, delivery: 'd1', digest: 'x1' }, Date.now());
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    down = false;
+    await work.run();
+    expect(pm.calls[0]!.key).not.toBe(pm.calls[1]!.key);
   });
 });
