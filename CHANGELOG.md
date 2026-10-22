@@ -10,6 +10,59 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.4.0 (2026-10-22)
+
+Facts from GitHub (#135, #141): Pointsman reads a pull request itself, so
+rules can use its state (draft, changed files, required checks, signed
+commits, who pushed, code owners, repository properties, changed GitHub
+Actions files). The client names only the pull request, `{ repo, number,
+head }`; it cannot claim "docs only" or "the checks passed". Off unless a
+deployment turns it on.
+
+### Added
+
+- GitHub fact types `github_pr`, `github_paths`, `github_checks` and
+  `github_property` (#135): see
+  [GitHub pull requests](docs/profile-format.md#github-pull-requests). All
+  facts of a decision come from one read of the pull request; when its head
+  commit is not the `head` the client sent, every GitHub fact is missing.
+- `github_pr` fields `pushed_by_author` (who pushed the commits, from the
+  repository's activity list, up to 500 entries, #142) and
+  `author_sole_code_owner` (by the base branch's `CODEOWNERS`, with bounded
+  work, #143).
+- GitHub fact type `github_workflows` (#141): reads and parses the GitHub
+  Actions files a pull request changes and counts known unsafe patterns
+  (pwn requests, untrusted input in scripts, write permissions, unpinned
+  actions, persisted credentials and more): see
+  [GitHub workflows](docs/profile-format.md#github-workflows).
+- Settings `FACTS_GITHUB` (`off`, `mock`, `token`, `app`),
+  `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`,
+  `FACTS_GITHUB_APP_PRIVATE_KEY` and `FACTS_GITHUB_IGNORE_CHECK`. Read
+  permissions only; the token and the key are never logged.
+- Example profiles `pr-docs-check` (is a light review enough?, #135, #140)
+  and `workflow-check` (are the workflow changes safe?, #141), with test
+  cases.
+- Explanations (`explain_profile`) and test cases cover GitHub facts.
+- Threat model: GitHub as a fact source (#138, #144).
+
+### Changed
+
+- Facts can be missing for two more reasons: `no_pr` (no pull request at
+  the fact's path) and `stale` (GitHub has another head commit). Rules
+  that test `facts.<name>.reason` may want to handle them.
+- `FACTS_MODE` and `FACTS_GITHUB` are separate: `FACTS_MODE: mock` does
+  not answer GitHub facts, and `FACTS_GITHUB: mock` does not answer
+  spatial ones.
+- Config repository template: AGENTS.md says how to make and revoke a
+  short-lived replay token; `actions/setup-node` 7.1.0 (#136).
+
+### For existing deployments
+
+Nothing changes until `FACTS_GITHUB` is set. To turn GitHub facts on, set
+the secret first, then the setting: with `FACTS_GITHUB: "token"` and no
+`FACTS_GITHUB_TOKEN`, the engine refuses every request (a config error).
+See [docs/deployment.md](docs/deployment.md), step 7.
+
 ## 0.3.0 (2026-10-21)
 
 Tools for writing and changing profiles, with an AI assistant or by hand
