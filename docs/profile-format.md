@@ -693,10 +693,13 @@ Permissions (all read) for a fine-grained token or an app:
 | Pull requests | `github_pr`, `github_paths`, `github_workflows` |
 | Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS`, the files `github_workflows` reads |
 | Metadata | always (every app has it) |
-| Checks, Commit statuses | `github_checks` |
+| Checks (apps only), Commit statuses | `github_checks` |
 | Actions | `github_checks`, when a ruleset requires workflows |
 | Custom properties | `github_property` |
 | Organization: Members | `author_member` for members who hide their membership; the members of a team in `CODEOWNERS` |
+
+Fine-grained tokens have no Checks permission: only apps have it. Leave it
+out for a token.
 
 The required checks come from the branch's rules and its protection, as
 GitHub shows them to anyone who can read the repository: no administration
