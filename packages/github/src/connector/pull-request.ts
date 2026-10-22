@@ -12,8 +12,8 @@
 // for the check run first.
 
 import type { EngineApi } from '@pointsman/module-api';
-import { checkName, type ConnectorSettings } from './settings.ts';
-import { type CheckRunOutput, type ConnectorGitHub, GitHubError } from './github.ts';
+import { checkName, type ActionSpec, type ConnectorSettings } from './settings.ts';
+import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
 
 /** What a run needs of the object's storage (a Durable Object's storage has it). */
@@ -43,6 +43,24 @@ export const SETTLE_MS = 20_000;
 const SEEN_MS = 7 * 24 * 3600_000;
 const SEEN_MAX = 500;
 
+/** An unclear action (its run stopped after the record) is left alone this long before it may be done again (design: 10 minutes). */
+export const UNCLEAR_MS = 10 * 60_000;
+
+/**
+ * The actions done on one head, by profile and kind: written as `pending`
+ * before the action, `done` after it. A new head starts with none.
+ */
+interface Acts {
+  head: string;
+  done: Record<string, { decision: string; state: 'pending' | 'done' | 'failed'; at: number }>;
+}
+
+/** What happened to a decision's action, for its check run. */
+export type ActOutcome =
+  | { kind: 'none' }
+  | { kind: 'done'; text: string }
+  | { kind: 'skipped'; text: string };
+
 /** The check runs of one head, by profile: `id` once created; without it, a create may have happened. */
 interface Checks {
   head: string;
@@ -69,6 +87,8 @@ export class PullRequestWork {
   readonly #settings: ConnectorSettings;
   readonly #github: ConnectorGitHub;
   readonly #engine: EngineApi;
+  /** The clock (tests set it). */
+  now: () => number = () => Date.now();
 
   constructor(storage: ObjectStorage, settings: ConnectorSettings, github: ConnectorGitHub, engine: EngineApi) {
     this.#storage = storage;
@@ -114,10 +134,111 @@ export class PullRequestWork {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (!pr.open) return;
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: pr.body.slice(0, MAX_BODY) };
+    if (this.#approves()) await this.#dismissStale(target, pr.head);
     for (const profile of this.#settings.profiles) {
       const decision = await this.#decide(profile, state, [pr.draft, pr.base, generation]);
       if (!decision) continue;
-      await this.#showCheck(target.repo, pr.head, profile, decision);
+      const outcome = await this.#act(target, pr, profile, decision);
+      await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
+    }
+  }
+
+  #approves(): boolean {
+    return Object.values(this.#settings.actions).some((byAction) => Object.values(byAction).some((a) => a.do === 'approve'));
+  }
+
+  /** Its own approvals stand only for the commit they were given on: after a push they are dismissed. */
+  async #dismissStale(target: PullRequestTarget, head: string): Promise<void> {
+    const stale = (await retrying(() => this.#github.ownApprovals(target.repo, target.number))).filter((a) => a.commit !== head);
+    for (const a of stale) {
+      await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has newer commits.`));
+    }
+  }
+
+  /**
+   * Carries out the action the deployment set for this decision, at most once
+   * per head, profile and kind. The record is written before the action; a
+   * record left `pending` (the run stopped) is settled by its trace on
+   * GitHub, or after UNCLEAR_MS the action may be done again.
+   */
+  async #act(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision): Promise<ActOutcome> {
+    const spec = this.#settings.actions[profile]?.[decision.action];
+    if (!spec) return { kind: 'none' };
+    if (decision.review?.status === 'pending') return { kind: 'skipped', text: `${spec.do}: not done, a person checks this decision first` };
+    if (spec.do === 'approve' && (pr.draft || pr.fork)) return { kind: 'skipped', text: 'approve: not done for a draft or a pull request from a fork' };
+
+    const key = `${profile}:${spec.do}`;
+    let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
+    if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
+    const record = acts.done[key];
+    if (record?.state === 'done') return { kind: 'done', text: `${describe(spec)} (already done for this commit)` };
+    if (record?.state === 'failed') return { kind: 'skipped', text: `${spec.do}: failed earlier; not tried again for this commit` };
+    if (record?.state === 'pending') {
+      if (await retrying(() => this.#traced(target, pr, profile, spec))) {
+        acts.done[key] = { ...record, state: 'done' };
+        await this.#storage.put({ acts });
+        return { kind: 'done', text: `${describe(spec)} (found done)` };
+      }
+      const age = this.now() - record.at;
+      if (age < UNCLEAR_MS) {
+        // Look again once the time is up.
+        await this.#storage.setAlarm(record.at + UNCLEAR_MS);
+        return { kind: 'skipped', text: `${spec.do}: result unclear, checked again later` };
+      }
+    }
+    if (spec.do === 'approve') {
+      // Only the commit that was decided on: read the pull request again right before.
+      const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
+      if (!now.open || now.draft || now.head !== pr.head) return { kind: 'skipped', text: 'approve: not done, the pull request changed' };
+    }
+    acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now() };
+    await this.#storage.put({ acts });
+    try {
+      await retrying(() => this.#perform(target, pr, profile, decision, spec));
+    } catch (err) {
+      if (err instanceof RetryError) throw err;
+      // Not better on a retry (a missing label, no permission): shown on the check run, not done again for this commit.
+      acts.done[key] = { decision: decision.decision_id, state: 'failed', at: this.now() };
+      await this.#storage.put({ acts });
+      console.error(`github connector: ${target.repo}#${target.number} ${profile} ${spec.do}: ${err instanceof Error ? err.message : String(err)}`);
+      return { kind: 'skipped', text: `${spec.do}: failed (${err instanceof GitHubError && err.status ? err.status : 'error'}); not tried again for this commit` };
+    }
+    acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now() };
+    await this.#storage.put({ acts });
+    return { kind: 'done', text: describe(spec) };
+  }
+
+  async #perform(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision, spec: ActionSpec): Promise<void> {
+    const { repo, number } = target;
+    switch (spec.do) {
+      case 'comment':
+        return this.#github.createComment(repo, number, `${markerOf(pr.head, profile, 'comment')}\n${spec.text}\n\n<sub>Pointsman, decision \`${decision.decision_id}\` on ${pr.head.slice(0, 7)}</sub>`);
+      case 'label':
+        return this.#github.addLabels(repo, number, spec.labels);
+      case 'request_reviewer':
+        return this.#github.requestReviewers(repo, number, spec.reviewers);
+      case 'approve':
+        await this.#github.approve(repo, number, pr.head, `${markerOf(pr.head, profile, 'approve')}\nPointsman approved ${pr.head.slice(0, 7)} (decision \`${decision.decision_id}\`, profile \`${profile}\`).`);
+        return;
+    }
+  }
+
+  /** Whether the action shows on GitHub already (a run stopped after doing it). */
+  async #traced(target: PullRequestTarget, pr: PullRequestInfo, profile: string, spec: ActionSpec): Promise<boolean> {
+    const { repo, number } = target;
+    switch (spec.do) {
+      case 'comment':
+        return this.#github.findComment(repo, number, markerOf(pr.head, profile, 'comment'));
+      case 'label': {
+        const now = await this.#github.pullRequest(repo, number);
+        return spec.labels.every((l) => now.labels.includes(l));
+      }
+      case 'request_reviewer': {
+        const now = await this.#github.pullRequest(repo, number);
+        return spec.reviewers.every((r) => now.requestedReviewers.some((x) => x.toLowerCase() === r.toLowerCase()));
+      }
+      case 'approve':
+        return (await this.#github.ownApprovals(repo, number)).some((a) => a.commit === pr.head);
     }
   }
 
@@ -145,8 +266,8 @@ export class PullRequestWork {
     return null;
   }
 
-  async #showCheck(repo: string, head: string, profile: string, decision: Decision): Promise<void> {
-    const output = checkOutput(decision);
+  async #showCheck(repo: string, head: string, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<void> {
+    const output = checkOutput(decision, outcome);
     const name = checkName(profile);
     let checks = (await this.#storage.get<Checks>('checks')) ?? { head, runs: {} };
     if (checks.head !== head) checks = { head, runs: {} };
@@ -192,16 +313,27 @@ async function sha256(text: string): Promise<string> {
 }
 
 /** The check run for a decision, in shadow mode: neutral, so it never blocks a merge. */
-export function checkOutput(d: Decision): CheckRunOutput {
+function describe(spec: ActionSpec): string {
+  switch (spec.do) {
+    case 'comment': return 'comment written';
+    case 'label': return `labels added: ${spec.labels.join(', ')}`;
+    case 'request_reviewer': return `review requested from ${spec.reviewers.join(', ')}`;
+    case 'approve': return 'approved this commit';
+  }
+}
+
+export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }): CheckRunOutput {
   const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name}\` (${f.reason ?? 'missing'})`);
   const lines = [
     `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
     '',
-    'Shadow mode: this check shows the decision and never blocks; Pointsman acts on nothing.',
+    outcome.kind === 'none'
+      ? 'Shadow mode: this check shows the decision and never blocks; Pointsman acts on nothing for it.'
+      : `${outcome.kind === 'done' ? 'Done' : 'Not done'}: ${outcome.text}. This check never blocks.`,
     ...(missing.length > 0 ? ['', `Missing facts: ${missing.join(', ')}.`] : []),
     ...(d.review?.status === 'pending' ? ['', 'A person checks this decision before it counts.'] : []),
     '',
     `Decision \`${d.decision_id}\``,
   ];
-  return { externalId: d.decision_id, conclusion: 'neutral', title: `${d.action} (shadow)`, summary: lines.join('\n') };
+  return { externalId: d.decision_id, conclusion: 'neutral', title: outcome.kind === 'none' ? `${d.action} (shadow)` : d.action, summary: lines.join('\n') };
 }
