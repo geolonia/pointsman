@@ -5,7 +5,8 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { noCallbacks } from './helpers';
-import { createApp, type Deps } from '../../src/app';
+import { ConfigError, createApp, type Deps } from '../../src/app';
+import { depsFor } from '../../src/index';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { factModules, lookupFacts, MockFactProvider, ModuleRouter, resultError, type FactProvider } from '../../src/facts';
 import { D1DecisionLog } from '../../src/log-d1';
@@ -22,6 +23,7 @@ import * as contract from '../../generated/openapi-validators.mjs';
 const point = { type: 'Point', coordinates: [139.753, 35.6855] };
 const HEAD = 'a'.repeat(40);
 const state = { location: point, pr: { repo: 'octo/repo', number: 1, head: HEAD } };
+const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
 const answer = (values: Record<string, unknown>): FactProvider => ({ lookup: async () => ({ values: values as never, source: 'test' }) });
 
 // A made-up module: a second answer for `inside` (its own layer), and a type of its own with a probability.
@@ -69,9 +71,44 @@ describe('ModuleRouter', () => {
     expect(facts.d).toEqual({ missing: true, reason: 'no_location' });
   });
 
+  it('a layer no module names goes to the only module of its type, which answers or refuses it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const deps = depsFor({ ...base, FACTS_MODE: 'mock' });
+    const mock = await lookupFacts([{ name: 'f', type: 'inside', layer: 'flood', at: '$.location' }], state, deps.facts);
+    expect(mock.f).toMatchObject({ missing: false, source: 'mock' });
+    const gsi = depsFor({ ...base, FACTS_MODE: 'gsi' });
+    const facts = await lookupFacts([
+      { name: 'unknown', type: 'inside', layer: 'flood', at: '$.location' },
+      { name: 'mismatch', type: 'nearest', layer: 'gsi-flood-max', at: '$.location' },
+    ], state, gsi.facts);
+    expect(facts.unknown).toEqual({ missing: true, reason: 'unavailable' });
+    expect(facts.mismatch).toEqual({ missing: true, reason: 'error' });
+  });
+
   it('a module that is off makes its facts unavailable', async () => {
     const router = new ModuleRouter(new Map([['@pointsman/facts-github', undefined]]));
     expect((await lookupFacts([{ name: 'pr', type: 'github_pr', at: '$.pr' }], state, router)).pr).toEqual({ missing: true, reason: 'unavailable' });
+  });
+});
+
+describe('settings', () => {
+  it('each module sees only its own settings', () => {
+    const seen: Record<string, unknown>[] = [];
+    const spy: FactModuleEntry = { ...floods, name: '@example/spy', settings: ['FACTS_SPY'], create: (e) => (seen.push(e), undefined) };
+    useFactModules([spy]);
+    const all = [...modules];
+    modules.splice(0, modules.length, spy);
+    try {
+      depsFor({ ...base, FACTS_SPY: 'on' } as never);
+    } finally {
+      modules.splice(0, modules.length, ...all);
+    }
+    expect(seen).toEqual([{ FACTS_SPY: 'on' }]);
+  });
+
+  it('a fact setting no chosen module reads is refused', () => {
+    expect(() => depsFor({ ...base, FACTS_OSM: 'on' } as never)).toThrow(ConfigError);
+    expect(() => depsFor({ ...base, FACTS_OSM: 'off' } as never)).not.toThrow();
   });
 });
 
@@ -99,6 +136,28 @@ describe('what a module may answer', () => {
   });
 });
 
+describe('a published profile whose module is no longer chosen', () => {
+  it('fails before the model is asked', async () => {
+    const TOKEN = newToken();
+    const tokens = new MemoryTokenStore();
+    tokens.records.set(await hashToken(TOKEN), { client: 'test', profiles: ['*'], created_at: '' });
+    const profile: Profile = {
+      id: 'pr-check', version: 3, title: { en: 'PR', ja: 'PR' }, description: { en: 'PR.', ja: 'PR。' }, model: 'mock',
+      questions: [{ name: 'ok', type: 'noul', instructions: 'Fine?' }],
+      facts: [{ name: 'pr', type: 'github_pr', at: '$.pr' }],
+      policy: { rules: [{ when: 'facts.pr.open == true', action: 'auto' }], default: 'review' },
+    };
+    const model = new MockAdapter();
+    const decide = vi.spyOn(model, 'decide');
+    useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-github'));
+    const deps: Deps = { callbacks: noCallbacks, store: new MemoryProfileStore([profile]), tokens, log: new D1DecisionLog(env.DB), adapterFor: () => model };
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = await createApp(() => deps).request('/v1/decide/pr-check', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ state }) }, env);
+    expect(res.status).toBe(500);
+    expect(decide).not.toHaveBeenCalled();
+  });
+});
+
 describe('versions', () => {
   const profile: Profile = {
     id: 'versions-check',
@@ -116,7 +175,10 @@ describe('versions', () => {
 
   it('lists the modules that answer a profile\'s facts', () => {
     expect(factModules(profile.facts!)).toEqual({ '@pointsman/facts-gsi': ENGINE_VERSION, '@pointsman/facts-github': ENGINE_VERSION });
-    expect(factModules([{ name: 'x', type: 'inside', layer: 'unknown', at: '$.x' }])).toEqual({});
+    // A layer no module names goes to the type's only module.
+    expect(factModules([{ name: 'x', type: 'inside', layer: 'unknown', at: '$.x' }])).toEqual({ '@pointsman/facts-gsi': ENGINE_VERSION });
+    useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-github'));
+    expect(factModules([{ name: 'pr', type: 'github_pr', at: '$.pr' }])).toEqual({});
   });
 
   it('are returned and logged with every decision', async () => {

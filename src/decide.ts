@@ -15,6 +15,7 @@ import { compilePolicy, peopleCheck, PolicyError, type RequiredProfiles } from '
 import { compileDraft, policyShapeError, replay, REPLAY_LIMIT, unchangedPartError, type ReplayResult } from './replay';
 import type { OAuthConfig } from './auth';
 import { ConfigError } from './modules/api';
+import { factRegistry } from './modules/registry';
 import type { ProfileStore } from './profiles/store';
 import type { Decision, Profile } from './types';
 import { ENGINE_VERSION } from './version';
@@ -209,6 +210,15 @@ export async function makeDecision(
       : 'no field of the profile input mapping was found in "state"');
   }
 
+  // Before the model call, so a broken profile costs no model call.
+  // Profiles are validated before they reach a store, so an error here means
+  // the deployment changed under a published profile (a fact module left out
+  // of engine.json) or a store holds an unvalidated profile: a 500, like
+  // other config errors.
+  const missing = (profile.facts ?? []).find((f) => !factRegistry().type(f.type));
+  if (missing) throw new ConfigError(`profile ${profile.id} v${profile.version}: no chosen fact module answers ${missing.type} facts`);
+  const policy = compilePolicy(profile, required?.ok ? required.profiles : {});
+
   // Facts read the client's data (the `at` paths), not the mapped state.
   // Looked up while the model answers; lookupFacts never throws.
   const factsLookup = profile.facts?.length ? lookupFacts(profile.facts, body.state, factProvider) : undefined;
@@ -241,9 +251,6 @@ export async function makeDecision(
   const facts = factsLookup ? await factsLookup : undefined;
   if (!answers || !model) return fail(502, 'model_error', 'the model did not return a usable answer');
 
-  // Profiles are validated before they reach a store, so a PolicyError here
-  // means a store holds an unvalidated profile: a 500, like other config errors.
-  const policy = compilePolicy(profile, required?.ok ? required.profiles : {});
   const { action, rule } = policy.decide(answers, facts, required?.ok ? required.inputs : {});
   const opensReview = peopleCheck(profile).includes(action);
 

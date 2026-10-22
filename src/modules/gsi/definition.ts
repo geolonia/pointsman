@@ -13,9 +13,9 @@ export const definition: FactModule = {
   name: '@pointsman/facts-gsi',
   version: ENGINE_VERSION,
   roles: ['facts'],
-  capabilities: [
-    { type: 'inside', layers: ['gsi-flood-max'] },
-    { type: 'nearest', layers: ['gsi-shelters-flood'] },
-  ],
+  capabilities: (['inside', 'nearest'] as const).map((type) => ({
+    type,
+    layers: Object.entries(GSI_LAYERS).filter(([, t]) => t === type).map(([layer]) => layer),
+  })),
   settings: ['FACTS_MODE'],
 };

@@ -31,15 +31,17 @@ A deployment lists its modules in `engine.json`, next to the engine version:
   "repository": "geolonia/pointsman",
   "ref": "<engine commit>",
   "modules": {
-    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github@0.4.0"]
+    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github@0.5.0"]
   }
 }
 ```
 
 - A version after `@` is checked against the module in the engine; a different one fails the build and the validation.
 - Without `modules`, every module in this repository is chosen (as before modules existed). An empty list chooses none: then profiles cannot have facts.
-- `pnpm build` writes `generated/modules.ts` from the list, so the Worker bundles only these modules.
+- `pnpm build` writes `generated/modules.ts` from the list, so the Worker bundles only these modules' providers. The bundled example profiles (`PROFILE_SOURCE: bundled`) are those the chosen modules can answer.
 - The profile validator, the test cases and `explain-profile` use the same list. A profile is valid only together with the modules it uses: a fact type or setting no chosen module answers is an error.
+- Each module reads only the settings it lists; a `FACTS_*` setting that no chosen module reads stops the Worker (a config error), so a module left out of the list is noticed.
+- Removing a module: published profile versions keep working only with their modules. A decision with a profile version whose facts no chosen module answers fails (a config error, before the model is asked), so publish new versions without those facts first.
 
 The scripts read `engine.json` from the current directory, else from where pnpm was started, so in a config repository `node engine/scripts/validate-profiles.mjs profiles` and `pnpm --dir engine build`, both run from its root, use its `engine.json`. `POINTSMAN_ENGINE_JSON` names another file.
 
@@ -49,7 +51,7 @@ Fact types come in two kinds.
 
 **Capabilities** are a small set of shared types with fixed fields, defined by the engine in `src/modules/capabilities.ts`: `inside`, `nearest` and `detour`. A profile asks for `detour` and gets `extra_m`, whatever module answers. The deployment chooses the module, as it chooses layers. A new capability is a pull request to this repository, reviewed like code (decided 2026-10-22, #145).
 
-- Each capability is answered by one chosen module. `inside` and `nearest` can be shared by layers: each module names its layers, and each layer is answered by one module.
+- Each capability is answered by one chosen module. `inside` and `nearest` can be shared by layers: each module names its layers, and each layer is answered by one module. A layer that no module names goes to the type's only module, if there is just one (its mock answers any layer; its real provider refuses an unknown one as `unavailable`).
 - A module that implements a capability is named after its service, for example `facts-valhalla`; another routing service would be another module.
 
 **Module types** are the module's own. They are named after their source (`github_pr`), or get the publisher's namespace (`<publisher>/<type>`, for example `example/confidence`), so no module takes a generic name by accident. Two chosen modules cannot define the same type.

@@ -320,8 +320,9 @@ export function factsFit(profile: Profile, facts: Record<string, Fact>): string 
   for (const f of profile.facts ?? []) {
     const got = Object.hasOwn(facts, f.name) ? facts[f.name] : undefined;
     if (!got) return `the deployed profile has no fact "${f.name}"`;
-    const fields = Object.keys(factRegistry().type(f.type)?.fields ?? {});
-    if (!got.missing && fields.some((field) => !Object.hasOwn(got.values, field))) {
+    const def = factRegistry().type(f.type);
+    if (!def) return `no chosen fact module answers ${f.type} facts (fact "${f.name}")`;
+    if (!got.missing && Object.keys(def.fields).some((field) => !Object.hasOwn(got.values, field))) {
       return `the deployed fact "${f.name}" is not a ${f.type} fact`;
     }
   }

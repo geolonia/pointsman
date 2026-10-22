@@ -17,7 +17,6 @@ export {
   type FactProvider, type FactResult, type FactScope,
 } from './modules/api';
 export { toGeometry, type Geometry, type Position, type SpatialFactQuery } from './modules/capabilities';
-export { GITHUB_TIMEOUT_MS, toPullRequest, type GitHubFactQuery, type PullRequestRef } from './modules/github/definition';
 
 const MAX_SOURCE_LENGTH = 200;
 
@@ -51,7 +50,7 @@ export class MockFactProvider implements FactProvider {
   }
 }
 
-/** The modules that answer a profile's facts, with their versions, for the decision log. */
+/** The chosen modules that answer a profile's fact types, with their versions, for the decision log. */
 export function factModules(specs: FactSpec[]): Record<string, string> {
   const registry = factRegistry();
   const out: Record<string, string> = {};
@@ -100,7 +99,12 @@ export async function lookupFacts(
     const def = registry.type(spec.type);
     // A profile is validated against the chosen modules, so this is a profile from elsewhere.
     if (!def) return [spec.name, { missing: true, reason: 'unavailable' }];
-    const input = def.input.read(resolvePath(state, spec.at), spec);
+    let input: unknown;
+    try {
+      input = def.input.read(resolvePath(state, spec.at), spec);
+    } catch {
+      input = null; // a module's reader must not break the decision
+    }
     if (input === null) return [spec.name, { missing: true, reason: def.input.missing }];
     if (!provider) return [spec.name, { missing: true, reason: 'unavailable' }];
 

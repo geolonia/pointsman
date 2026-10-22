@@ -13,6 +13,10 @@
 import { FactError, FactUnavailableError, type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery } from './facts';
 import { along, distanceTo, offset, tileOf } from './geo';
 import type { ValhallaRouter } from './facts-routing';
+// The layers and the capability each answers: one table, in the module's definition.
+import { GSI_LAYERS } from './modules/gsi/definition';
+
+export { GSI_LAYERS };
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 const TILE_TTL_S = 86_400;
@@ -49,7 +53,6 @@ const SHELTERS = {
   source: (date: string) => `国土地理院 指定緊急避難場所データ（洪水）を加工して作成（${date}）`,
 };
 
-export const GSI_LAYERS = { 'gsi-flood-max': 'inside', 'gsi-shelters-flood': 'nearest' } as const;
 
 type Pixels = (x: number, y: number) => [number, number, number, number];
 type Shelter = { at: Position; name: string };

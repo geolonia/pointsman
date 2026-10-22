@@ -180,3 +180,36 @@ test('the build bundles only the chosen modules', (t) => {
   assert.match(r.stdout, /src\/modules\/github\/index/);
   assert.doesNotMatch(r.stdout, /gsi|valhalla/);
 });
+
+test('the build bundles the examples the chosen modules answer, with the profiles they require', (t) => {
+  const { file, dir } = engineJson(t, { facts: ['@pointsman/facts-github'] });
+  const out = join(dir, 'profiles.json');
+  const r = spawnSync(process.execPath, [join(root, 'scripts/build-profiles.mjs'), out, join(root, 'examples/profiles')], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, POINTSMAN_ENGINE_JSON: file },
+  });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const ids = JSON.parse(readFileSync(out, 'utf8')).map((p) => p.id).sort();
+  assert.deepEqual(ids, [...NO_FACTS, ...PR].sort());
+  assert.match(r.stdout, /Left out road-closure-final/);
+});
+
+test('the scripts stop with one line on a broken engine.json', (t) => {
+  for (const [text, message] of [
+    ['{ bad', /fact modules: .*engine.json: .*JSON/],
+    [JSON.stringify({ modules: { facts: ['@pointsman/facts-osm'] } }), /fact modules: .*unknown module @pointsman\/facts-osm/],
+  ]) {
+    const { dir, file } = engineJson(t);
+    writeFileSync(file, text);
+    const r = run(dir, 'validate-profiles.mjs', [join(root, 'examples/profiles')]);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, message);
+    assert.doesNotMatch(r.stderr, /    at /, 'no stack trace');
+  }
+});
+
+test('with no module chosen, a profile with facts says so', (t) => {
+  const dir = useCase(t, [], ['pr-docs-check']);
+  const r = run(dir, 'validate-profiles.mjs', ['profiles']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /no fact module is chosen/);
+});

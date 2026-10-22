@@ -87,10 +87,16 @@ export class FactRegistry {
     return this.types.get(type);
   }
 
-  /** The module that answers a fact (by type, and layer for layer types). */
+  /**
+   * The module that answers a fact (by type, and layer for layer types). A
+   * layer no module names goes to the type's only module, if there is just
+   * one: it answers for its layers, mock answers for any, and an unknown
+   * layer is its to refuse (as before modules). With several, nobody.
+   */
   moduleFor(type: string, layer?: string): FactModule | undefined {
     const answerers = this.#answerers.get(type) ?? [];
-    return answerers.find((a) => !a.layers || (layer !== undefined && a.layers.includes(layer)))?.module;
+    const named = answerers.find((a) => !a.layers || (layer !== undefined && a.layers.includes(layer)));
+    return named?.module ?? (answerers.length === 1 ? answerers[0]!.module : undefined);
   }
 }
 

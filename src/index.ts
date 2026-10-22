@@ -4,6 +4,7 @@
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth-kv';
 import { ModuleRouter, type FactProvider } from './facts';
+import type { FactModuleEntry } from './modules/api';
 import { useFactModules } from './modules/registry';
 import { D1DecisionLog } from './log-d1';
 import { purgeExpired, type OAuthConfig } from './oauth';
@@ -156,7 +157,17 @@ useFactModules(factModules);
 /** One provider per chosen module (undefined when it is off); undefined when every module is off. */
 function factsFor(env: PointsmanEnv): FactProvider | undefined {
   const runtime = { cache: typeof caches === 'undefined' ? undefined : caches.default };
-  const providers = new Map(factModules.map((m) => [m.name, m.create(env as unknown as Record<string, unknown>, runtime)]));
+  const all = env as unknown as Record<string, unknown>;
+  // A fact setting no chosen module reads is a mistake (a module left out of engine.json).
+  const read = new Set(factModules.flatMap((m) => m.settings));
+  for (const [name, value] of Object.entries(all)) {
+    if (name.startsWith('FACTS_') && !read.has(name) && value !== undefined && value !== '' && value !== 'off') {
+      throw new ConfigError(`${name} is set, but no chosen fact module reads it (engine.json "modules")`);
+    }
+  }
+  // Each module sees only its own settings, not the other bindings and secrets.
+  const own = (m: FactModuleEntry) => Object.fromEntries(m.settings.map((s) => [s, all[s]]));
+  const providers = new Map(factModules.map((m) => [m.name, m.create(own(m), runtime)]));
   if ([...providers.values()].every((p) => p === undefined)) return undefined;
   return new ModuleRouter(providers);
 }

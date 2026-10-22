@@ -14,7 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -44,8 +44,13 @@ export function engineJsonPath() {
 /** The chosen module names (and pinned versions), in order, from an engine.json. */
 export function chosenModules(file = engineJsonPath()) {
   if (!file) return allModules();
-  const engine = JSON.parse(readFileSync(file, 'utf8'));
-  if (engine.modules === undefined) return allModules();
+  let engine;
+  try {
+    engine = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    throw new Error(`${file}: ${err.message}`);
+  }
+  if (engine?.modules === undefined) return allModules();
   const facts = engine.modules?.facts;
   if (!Array.isArray(facts)) throw new Error(`${file}: "modules.facts" must be a list of module names`);
   const seen = new Set();
@@ -65,7 +70,7 @@ export const allModules = () => Object.keys(CATALOG).map((name) => ({ name, vers
 export async function loadDefinitions(modules = chosenModules()) {
   const out = [];
   for (const { name, version } of modules) {
-    const { definition } = await import(join(root, CATALOG[name].definition));
+    const { definition } = await import(pathToFileURL(join(root, CATALOG[name].definition)).href);
     if (version !== undefined && version !== definition.version) {
       throw new Error(`module ${name}: engine.json pins ${version}, the engine has ${definition.version}`);
     }
@@ -76,7 +81,7 @@ export async function loadDefinitions(modules = chosenModules()) {
 
 /** Choose the modules for this script (src/modules/registry.ts); default: the chosen ones. */
 export async function useChosenModules(modules = chosenModules()) {
-  const { useFactModules } = await import(join(root, 'src/modules/registry.ts'));
+  const { useFactModules } = await import(pathToFileURL(join(root, 'src/modules/registry.ts')).href);
   return useFactModules(await loadDefinitions(modules));
 }
 
