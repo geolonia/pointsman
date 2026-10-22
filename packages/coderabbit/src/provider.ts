@@ -136,7 +136,7 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     const [{ reviews, comments }, statuses, pushedAt, rows] = await Promise.all([this.text(s), s.headStatuses(), s.headPushedAt(), readLog(ctx, scope, Math.max(prHours, query.window_hours ?? 5))]);
     const apps = query.payer_apps ?? [];
     const billable = statedBillable(comments, head, pushedAt) ?? ownBillable(await s.files(), query.not_reviewed ?? []);
-    const price = Math.round((statedPriceForHead(comments, head) ?? billable * query.usd_per_file) * 100) / 100;
+    const price = Math.round((statedPriceForHead(comments, head, pushedAt) ?? billable * query.usd_per_file) * 100) / 100;
     const id = pullRequestId(query);
     const now = Date.parse(ctx.now);
     // Per pull request: the payments of the last pr_hours.

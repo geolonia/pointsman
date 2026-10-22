@@ -272,8 +272,10 @@ export function paidCommands(list: Comment[], author: string, apps: number[]): n
 }
 
 /** CodeRabbit's newest stated price for the head (from its comments that name the head, as for billable files); null when none. */
-export function statedPriceForHead(list: Comment[], head: string): number | null {
+export function statedPriceForHead(list: Comment[], head: string, pushedAt: string | null = null): number | null {
+  const pushed = pushedAt === null ? NaN : Date.parse(pushedAt);
   const newest = list.filter(commentByCodeRabbit).filter((c) => commentHead(c.body) === head)
+    .filter((c) => !Number.isFinite(pushed) || Date.parse(c.updated) >= pushed)
     .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated));
   for (const c of newest) {
     const p = statedPrice(c.body);
