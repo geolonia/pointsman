@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:005af2a3fe10fd3978d24da2b6f73b47644ed2b3fdcae7f31273ce14d337b116"
+prose_version: "threat-model.md@sha256:d298feed4f8c60b12b728ba920841a684df19f7166c6c5946f36ffff6ff8b084"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 300, maintainer: 70, inferred: 0, assumption: 0}
@@ -1245,7 +1245,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable; the model never sees facts"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; the model never sees facts"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
