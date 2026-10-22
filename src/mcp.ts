@@ -7,13 +7,13 @@
 
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { makeDecision, makeReplay, type Deps } from './app';
+import { makeDecision, makeReplay, type Deps } from './decide';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
 import { explainProfile, explanationText } from './explain';
 import type { RequiredSnapshot } from './log';
 import { parseFeedback } from './feedback';
-import type { Caller } from './oauth';
+import type { Caller } from './auth';
 import type { Profile } from './types';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

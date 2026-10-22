@@ -208,7 +208,8 @@ everywhere.
 
 ## Development
 
-Requires Node.js 24 and pnpm 12. The Worker runs on Cloudflare Workers.
+Requires Node.js 24 and pnpm 12. The Worker runs on Cloudflare Workers; the
+engine core does not depend on Cloudflare (see [docs/adapters.md](docs/adapters.md)).
 
 ```sh
 pnpm install

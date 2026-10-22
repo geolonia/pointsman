@@ -28,6 +28,10 @@ account IDs, real profiles or internal URLs. `pnpm check:public` looks for
 common cases. Real deployments keep their configuration in a private
 repository (see [docs/deployment.md](docs/deployment.md)).
 
+The engine core uses no Cloudflare-specific API: code that needs one is an
+adapter, listed in [docs/adapters.md](docs/adapters.md). `pnpm typecheck`
+checks this (`pnpm check:core`).
+
 A new example profile goes in `examples/profiles/` and is linked from one
 use-case topic, `examples/<topic>/README.md` (see
 [examples/README.md](examples/README.md)). A test checks this.

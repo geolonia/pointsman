@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, deliver, retryDueCallbacks, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { MAX_ATTEMPTS, sign, type Fetch } from '../../src/callbacks';
-import { D1DecisionLog } from '../../src/log';
+import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { Profile } from '../../src/types';

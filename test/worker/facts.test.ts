@@ -9,7 +9,7 @@ import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { lookupFacts, MockFactProvider, resultError, toGeometry, type FactProvider } from '../../src/facts';
 import type { FactRouter } from '../../src/facts';
 import { depsFor } from '../../src/index';
-import { D1DecisionLog } from '../../src/log';
+import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { FactSpec, Profile } from '../../src/types';

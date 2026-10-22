@@ -3,7 +3,7 @@
 //
 //   node scripts/publish-profiles.mjs --dir <profiles> (--local|--remote) [--config <file>] [--env <name>] [--dry-run]
 //
-// KV keys (read by KvProfileStore, src/profiles/store.ts):
+// KV keys (read by KvProfileStore, src/profiles/store-kv.ts):
 //   profile:<id>:<version>  the profile JSON
 //   index                   one summary per profile id, with all versions
 //

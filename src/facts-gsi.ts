@@ -180,7 +180,8 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
         tile: { data: format === 'png' ? await decodePng(bytes) : shelterList(bytes), date: Number.isNaN(modified) ? '' : new Date(modified).toISOString().slice(0, 10) },
       };
     };
-    const cached = this.cache ? await this.cache.match(url) : undefined;
+    // A cache that fails is a miss, never an error.
+    const cached = this.cache ? await this.cache.match(url).catch(() => undefined) : undefined;
     if (cached) {
       try {
         return (await decode(cached)).tile;
@@ -223,7 +224,7 @@ function shelterList(bytes: Uint8Array): Shelter[] {
   return out;
 }
 
-async function inflate(data: Uint8Array): Promise<Uint8Array> {
+async function inflate(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   // "deflate" is the zlib format, as in PNG.
   const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate'));
   return new Uint8Array(await new Response(stream).arrayBuffer());

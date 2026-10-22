@@ -2,18 +2,19 @@
 // environment (see wrangler.jsonc) and serves the API.
 
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
-import { KvTokenStore } from './auth';
+import { KvTokenStore } from './auth-kv';
 import { FactRouter, MockFactProvider, type FactProvider } from './facts';
 import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth } from './facts-github';
 import { GsiFactProvider } from './facts-gsi';
 import { ValhallaRouter } from './facts-routing';
-import { D1DecisionLog } from './log';
+import { D1DecisionLog } from './log-d1';
 import { purgeExpired, type OAuthConfig } from './oauth';
 import type { ModelAdapter } from './models/adapter';
 import { checkServerUrl, DEFAULT_TIMEOUT_MS, ModelServerAdapter, parseModelList } from './models/http';
 import { MockAdapter } from './models/mock';
 import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
-import { KvProfileStore, MemoryProfileStore, type ProfileStore } from './profiles/store';
+import { MemoryProfileStore, type ProfileStore } from './profiles/store';
+import { KvProfileStore } from './profiles/store-kv';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
 import bundledProfiles from '../generated/profiles.json';

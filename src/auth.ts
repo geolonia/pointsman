@@ -10,6 +10,8 @@
 // This file is also imported by scripts/tokens.mjs under Node.js, so it uses
 // only TypeScript syntax that Node can strip.
 
+import type { Fetch } from './callbacks';
+
 export interface TokenRecord {
   /** Client name, for example "github-triage". Recorded with decisions. */
   client: string;
@@ -52,23 +54,6 @@ export async function hashToken(token: string): Promise<string> {
 /** KV key for a token hash. */
 export const tokenKey = (hash: string) => `token:${hash}`;
 
-/**
- * Tokens in a KV namespace, keyed `token:<sha256 hex>`. KV is eventually
- * consistent: a revoked token can keep working for up to about 60 seconds in
- * other locations.
- */
-export class KvTokenStore implements TokenStore {
-  kv: KVNamespace;
-
-  constructor(kv: KVNamespace) {
-    this.kv = kv;
-  }
-
-  get(hash: string): Promise<TokenRecord | null> {
-    return this.kv.get<TokenRecord>(tokenKey(hash), 'json');
-  }
-}
-
 export class MemoryTokenStore implements TokenStore {
   records: Map<string, TokenRecord>;
 
@@ -110,3 +95,21 @@ export async function authenticate(header: string | undefined, store: TokenStore
 export function canUse(record: TokenRecord, profileId: string): boolean {
   return record.profiles.includes('*') || record.profiles.includes(profileId);
 }
+
+/** GitHub login for /mcp (src/oauth.ts, docs/mcp.md). */
+export interface OAuthConfig {
+  /** Public origin of the Worker, for example https://pointsman.example.workers.dev. */
+  issuer: string;
+  github: {
+    clientId: string;
+    clientSecret: string;
+    /** GitHub organizations whose members may log in (any one is enough). */
+    orgs: string[];
+    fetch: Fetch;
+  };
+}
+
+/** Who is calling /mcp: an API token, or a person logged in through OAuth. */
+export type Caller =
+  | { kind: 'token'; record: TokenRecord }
+  | { kind: 'person'; login: string };
