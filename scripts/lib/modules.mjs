@@ -2,7 +2,7 @@
 //
 // A config repository lists them in engine.json:
 //
-//   "modules": { "facts": ["@pointsman/facts-gsi", "@pointsman/facts-github@0.4.0"] }
+//   "modules": { "facts": ["@pointsman/facts-gsi", "@pointsman/facts-github@0.5.0"] }
 //
 // The scripts read engine.json from the current directory, else from where
 // pnpm was started (INIT_CWD). So in a config repository,

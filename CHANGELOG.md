@@ -3,12 +3,69 @@
 Pointsman follows [semantic versioning](https://semver.org/). Before 1.0, a
 minor release (0.x) may change the API, the profile format or the decision
 log; the notes say how. Each release is a tag on `main`; its version is in
-`package.json`, `openapi.yaml` (`info.version`) and `src/mcp.ts` (the MCP
-server's version). A deployment pins
+`package.json`, `openapi.yaml` (`info.version`) and `src/version.ts` (also
+the MCP server's version), and, while the fact modules are released with
+the engine, in each `packages/*/package.json` and module definition (a test
+checks they agree). A deployment pins
 the engine by commit in its config repository: to use a release, set
 `ref` in `engine.json` to the commit of its tag
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
+
+## 0.5.0 (2026-10-22)
+
+Fact modules (#145) and a core without Cloudflare (#153): the engine no
+longer has its fact providers built in. GSI, Valhalla and GitHub are
+modules (packages in this repository), and each deployment chooses the
+modules it uses. Profiles, fact names and settings stay the same;
+decisions gain a `versions` field.
+
+### Added
+
+- Fact modules (#154, #155): see [docs/modules.md](docs/modules.md). The
+  packages `@pointsman/module-api` (the interface and the capabilities
+  `inside`, `nearest`, `detour`), `@pointsman/facts-gsi`,
+  `@pointsman/facts-valhalla` and `@pointsman/facts-github`.
+- `engine.json` `"modules": { "facts": [...] }` chooses the modules, with
+  an optional `@version` that must match. The build bundles only those;
+  the profile validator, test cases and explanations use the same list.
+  Without `modules`, every module is chosen (as before).
+- Each decision records `versions`: the engine version and the modules
+  that answer its facts (migration `0007_versions.sql`, `Versions` in
+  `openapi.yaml`). Decisions made before have none.
+- A fact field can be declared a probability (0 to 1); the engine refuses
+  values outside.
+- `pnpm check:core` (part of `pnpm typecheck`): the core compiles without
+  Cloudflare's types (#153). The adapter boundaries and what each adapter
+  must guarantee: [docs/adapters.md](docs/adapters.md).
+
+### Changed
+
+- The fact part of `schema/profile-v1.schema.json` is generated from the
+  modules. A setting of another fact type now says so (`"layer" is not a
+  setting of this fact type`) instead of `must NOT be valid`.
+- A `FACTS_*` setting that no chosen module reads is a config error. Each
+  module sees only its own settings.
+- A profile version whose facts no chosen module answers fails before the
+  model is asked (a config error), instead of after it.
+- Detours are answered by `@pointsman/facts-valhalla`; the GSI provider no
+  longer forwards them. With `FACTS_MODE: gsi` and no
+  `FACTS_ROUTING_URL`, detours are unavailable, as before.
+- The decision logic moved from `src/app.ts` to `src/decide.ts`, and the
+  Cloudflare stores to their own files (`log-d1.ts`, `auth-kv.ts`,
+  `profiles/store-kv.ts`) (#153).
+
+### For deployments
+
+- Move `ref` in `engine.json` to the commit of `v0.5.0` as usual. Without
+  `"modules"`, nothing else changes.
+- Optional: add `"modules"` to `engine.json` to bundle only what your
+  profiles need. Then also remove the `FACTS_*` settings and secrets of the
+  modules you leave out, or the engine refuses every request (a config
+  error). The scripts read `engine.json` from the config repository's
+  root, so the workflows need no change. The config repository template
+  lists all three modules.
+- The deploy applies migration `0007_versions.sql` as usual.
 
 ## 0.4.0 (2026-10-22)
 
