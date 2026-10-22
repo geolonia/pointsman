@@ -11,8 +11,12 @@
 // - its entry (FactModuleEntry): the definition plus `create`, which builds
 //   the provider from the deployment's settings. Only the Worker loads it.
 //
+// Connectors, the other role a module can have, are in connector.ts.
+//
 // The engine core uses no runtime-specific API (docs/adapters.md); neither
 // do modules. Like the engine, this package is not published to npm yet.
+
+import type { ConnectorDef } from './connector.ts';
 
 /** By car (`drive`, the default) or on foot (`walk`). */
 export type DetourMode = 'drive' | 'walk';
@@ -125,20 +129,25 @@ export interface CapabilityClaim {
   layers?: string[];
 }
 
+/** A module's roles (docs/modules.md, docs/connectors.md). */
+export type Role = 'facts' | 'connector';
+
 export interface FactModule {
   /** The package name, for example "@pointsman/facts-github". */
   name: string;
   version: string;
-  /** What the module does. Only "facts" so far; connectors come later (#147). */
-  roles: 'facts'[];
+  /** What the module does: looks up facts, connects a system (connector.ts), or both. */
+  roles: Role[];
   /** Fact types of its own. A type that is not a capability is named after its source (github_pr) or `<publisher>/<type>`. */
   types?: FactTypeDef[];
   /** Capabilities (capabilities.ts) it answers. */
   capabilities?: CapabilityClaim[];
   /** Missing reasons its provider can give (with FactMissingError), with what they mean. */
   reasons?: Record<string, Bilingual>;
-  /** The deployment settings (environment variables) it reads, for docs and checks. */
+  /** The deployment settings (environment variables) its facts role reads, for docs and checks. */
   settings: string[];
+  /** The connector role, for modules with the role "connector" (connector.ts). */
+  connector?: ConnectorDef;
 }
 
 export interface FactResult {

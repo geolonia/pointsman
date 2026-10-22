@@ -206,6 +206,9 @@ importers:
       '@pointsman/facts-valhalla':
         specifier: workspace:*
         version: link:packages/facts-valhalla
+      '@pointsman/fiware':
+        specifier: workspace:*
+        version: link:packages/fiware
       '@pointsman/module-api':
         specifier: workspace:*
         version: link:packages/module-api
@@ -254,6 +257,12 @@ importers:
         version: link:../module-api
 
   packages/facts-valhalla:
+    dependencies:
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+
+  packages/fiware:
     dependencies:
       '@pointsman/module-api':
         specifier: workspace:*

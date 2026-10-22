@@ -8,9 +8,9 @@ Three roles (#145):
 | --- | --- | --- |
 | Engine | Takes a case, asks the model, applies the rules, logs the decision | `src/decide.ts`, `src/policy.ts`, the decision log |
 | Fact module | Looks something up during a decision, inside the engine | GSI flood zones and shelters, Valhalla detours, GitHub pull requests |
-| Connector | Brings cases in and carries results out, through the public API | the FIWARE bridge (`bridge/`), `actions/triage` |
+| Connector | Brings cases in and carries results out, through the public API | the FIWARE bridge (`@pointsman/fiware`), `actions/triage` |
 
-Connectors use the public API and need no interface of their own yet; a module will be able to have both roles later (#147).
+Connectors are described in [connectors.md](connectors.md). A module can have both roles. This page is about fact modules.
 
 ## Modules in this repository
 
@@ -99,4 +99,4 @@ Decisions made before modules have no `versions`.
 
 ## Trust
 
-A fact module runs inside the Worker, next to its secrets: a module from someone else needs a review before a deployment chooses it. Connectors run outside the engine and only use the public API, so they are safer to accept.
+A fact module runs inside the Worker, next to its secrets: a module from someone else needs a review before a deployment chooses it. A connector uses only the public API; in its own Worker it is safer to accept, inside the engine Worker it needs the same review ([connectors.md](connectors.md#trust)).

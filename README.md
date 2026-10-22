@@ -153,6 +153,8 @@ what the examples say.
   Pointsman itself knows nothing about FIWARE; the bridge subscribes to
   entities, asks Pointsman, and writes the decisions back to the broker as
   data. [Why a bridge](bridge/README.md#why-a-bridge) explains the role.
+  It is a connector module: it runs inside the Pointsman Worker or in its
+  own ([docs/connectors.md](docs/connectors.md)).
 
 ## API tokens
 
