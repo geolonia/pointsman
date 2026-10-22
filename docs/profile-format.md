@@ -680,7 +680,11 @@ without regular expressions, so a long pattern cannot slow a decision down.
 - With `app`, Pointsman finds the app's installation for the repository and
   makes an installation token. The token is kept until 5 minutes before it
   expires (after one hour). Making the token is the only request that is
-  not a read. Give the app read permissions only.
+  not a read. The token is down-scoped: it gets every permission of the
+  installation, as read only. Still give the app read permissions only, and
+  use another app for anything that writes ([github-connector.md](github-connector.md#the-two-github-apps)).
+  An app can read the checks of private repositories; a fine-grained token
+  cannot.
 - `FACTS_GITHUB_IGNORE_CHECK`: the name of the check run that your own
   Pointsman client adds to pull requests. It never counts as a required
   check, so Pointsman never waits for itself. It is a deployment setting,

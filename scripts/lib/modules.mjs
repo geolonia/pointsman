@@ -3,7 +3,7 @@
 // A config repository lists them in engine.json, per role:
 //
 //   "modules": {
-//     "facts": ["@pointsman/facts-gsi", "@pointsman/facts-github@0.5.0"],
+//     "facts": ["@pointsman/facts-gsi", "@pointsman/github@0.5.0"],
 //     "connectors": ["@pointsman/fiware"]
 //   }
 //
@@ -26,9 +26,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const CATALOG = {
   '@pointsman/facts-gsi': { definition: '@pointsman/facts-gsi/definition', entry: '@pointsman/facts-gsi', roles: ['facts'] },
   '@pointsman/facts-valhalla': { definition: '@pointsman/facts-valhalla/definition', entry: '@pointsman/facts-valhalla', roles: ['facts'] },
-  '@pointsman/facts-github': { definition: '@pointsman/facts-github/definition', entry: '@pointsman/facts-github', roles: ['facts'] },
+  '@pointsman/github': { definition: '@pointsman/github/definition', entry: '@pointsman/github', roles: ['facts', 'connector'] },
   '@pointsman/fiware': { definition: '@pointsman/fiware/definition', entry: '@pointsman/fiware', roles: ['connector'] },
 };
+
+/** Earlier names of modules, still accepted in engine.json. */
+const ALIASES = { '@pointsman/facts-github': '@pointsman/github' };
 
 /** The engine.json key for each role. */
 const ROLE_KEYS = { facts: 'facts', connector: 'connectors' };
@@ -37,7 +40,7 @@ const ROLE_KEYS = { facts: 'facts', connector: 'connectors' };
 function parseEntry(entry, where) {
   const m = typeof entry === 'string' ? /^(@?[a-z0-9][a-z0-9._/-]*?)(?:@([0-9][0-9A-Za-z.+-]*))?$/.exec(entry) : null;
   if (!m) throw new Error(`${where}: "${entry}" must be a module name, optionally with @version`);
-  return { name: m[1], version: m[2] };
+  return { name: Object.hasOwn(ALIASES, m[1]) ? ALIASES[m[1]] : m[1], version: m[2] };
 }
 
 /** The engine.json the scripts read, or undefined when there is none. */

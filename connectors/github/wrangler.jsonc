@@ -1,0 +1,22 @@
+// The GitHub connector as its own Worker (docs/github-connector.md). Values
+// here are examples; a deployment keeps its own copy of this file. Secrets
+// (GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, POINTSMAN_TOKEN) are set with
+// `wrangler secret put <NAME> --config connectors/github/wrangler.jsonc`.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "pointsman-github",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // It only calls GitHub and Pointsman on public addresses.
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "observability": { "enabled": true },
+  "vars": {
+    "GITHUB_APP_ID": "123456",
+    "GITHUB_CONNECTOR": "{\"repos\":[\"example/repo\"],\"profiles\":[\"pr-docs-check\"]}",
+    "POINTSMAN_URL": "https://pointsman.example.org"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "PULL_REQUESTS", "class_name": "PullRequest" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PullRequest"] }]
+}

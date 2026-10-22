@@ -133,7 +133,7 @@ export interface CapabilityClaim {
 export type Role = 'facts' | 'connector';
 
 export interface FactModule {
-  /** The package name, for example "@pointsman/facts-github". */
+  /** The package name, for example "@pointsman/github". */
   name: string;
   version: string;
   /** What the module does: looks up facts, connects a system (connector.ts), or both. */

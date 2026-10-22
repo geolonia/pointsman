@@ -5,6 +5,7 @@ A **connector** connects Pointsman to another system. It brings cases in (webhoo
 | Module | Role | What it does |
 | --- | --- | --- |
 | `@pointsman/fiware` | connector | The [FIWARE bridge](../bridge/README.md): NGSI-LD notifications in, the result back on the entity |
+| `@pointsman/github` | facts and connector | [GitHub connector](github-connector.md): pull-request webhooks in, a check run with the decision out (shadow mode); in its own Worker |
 
 `actions/triage` and `actions/deploy-watch` are connectors too, as GitHub Actions; they are not modules yet.
 
@@ -21,7 +22,7 @@ A connector runs in one of two places; its code is the same in both.
 - **Inside the engine Worker** (placement `engine`). The Worker serves it under `/connectors/<id>/`, for example `/connectors/fiware/notify`. It reaches the engine in process: a request to the engine's own routes, with its token, without the network. One Worker to deploy.
 - **Next to the engine** (placement `own`): its own Worker or process, which calls the engine at its URL. Use this when the connector holds secrets the engine should not have (for example a key that can write to another system), or when it needs to scale or fail on its own.
 
-Each connector says where it can run (`placements`). The FIWARE bridge can run in both.
+Each connector says where it can run (`placements`). The FIWARE bridge can run in both. The GitHub connector runs only in its own Worker ([connectors/github](../connectors/github)), because it holds a key that can write to GitHub and the engine must not.
 
 Inside the engine Worker:
 

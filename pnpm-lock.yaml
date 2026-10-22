@@ -197,9 +197,6 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
-      '@pointsman/facts-github':
-        specifier: workspace:*
-        version: link:packages/facts-github
       '@pointsman/facts-gsi':
         specifier: workspace:*
         version: link:packages/facts-gsi
@@ -209,6 +206,9 @@ importers:
       '@pointsman/fiware':
         specifier: workspace:*
         version: link:packages/fiware
+      '@pointsman/github':
+        specifier: workspace:*
+        version: link:packages/github
       '@pointsman/module-api':
         specifier: workspace:*
         version: link:packages/module-api
@@ -241,15 +241,6 @@ importers:
         specifier: ^4.150.0
         version: 4.150.0
 
-  packages/facts-github:
-    dependencies:
-      '@pointsman/module-api':
-        specifier: workspace:*
-        version: link:../module-api
-      yaml:
-        specifier: ^2.9.1
-        version: 2.9.1
-
   packages/facts-gsi:
     dependencies:
       '@pointsman/module-api':
@@ -267,6 +258,15 @@ importers:
       '@pointsman/module-api':
         specifier: workspace:*
         version: link:../module-api
+
+  packages/github:
+    dependencies:
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   packages/module-api: {}
 
