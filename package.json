@@ -40,6 +40,7 @@
     "@pointsman/facts-github": "workspace:*",
     "@pointsman/facts-gsi": "workspace:*",
     "@pointsman/facts-valhalla": "workspace:*",
+    "@pointsman/fiware": "workspace:*",
     "@pointsman/module-api": "workspace:*",
     "hono": "^4.13.13",
     "yaml": "^2.9.1",

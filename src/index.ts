@@ -4,7 +4,7 @@
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth-kv';
 import { ModuleRouter, type FactProvider } from './facts';
-import type { FactModuleEntry } from '@pointsman/module-api';
+import type { Connector, ConnectorEntry, ConnectorMessage, FactModuleEntry } from '@pointsman/module-api';
 import { useFactModules } from './modules/registry';
 import { D1DecisionLog } from './log-d1';
 import { purgeExpired, type OAuthConfig } from './oauth';
@@ -17,7 +17,7 @@ import { KvProfileStore } from './profiles/store-kv';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
 import bundledProfiles from '../generated/profiles.json';
-import factModules from '../generated/modules';
+import factModules, { connectors as connectorModules } from '../generated/modules';
 
 // Every binding may be missing in a misconfigured deployment.
 interface PointsmanEnv {
@@ -188,8 +188,101 @@ export function depsFor(env: PointsmanEnv): Deps {
 
 const app = createApp((env) => depsFor(env as PointsmanEnv));
 
+// Connectors inside this Worker (docs/connectors.md): each chosen connector
+// that can run here serves /connectors/<id>/…. It reaches the engine through
+// the same routes as any client, in process and with its own token, so its
+// decisions pass the same authentication, policy and decision log.
+const CONNECTORS = '/connectors/';
+/** Never reached over the network: requests to it go to this Worker's routes in process. */
+const IN_PROCESS = 'https://engine.invalid';
+
+/**
+ * The connectors switched on by their settings, by id (only `id` when given).
+ * Throws ConfigError on broken settings; with `errors`, collects them there instead.
+ */
+export function connectorsFor(env: Env, ctx: ExecutionContext, entries: readonly ConnectorEntry[] = connectorModules, id?: string, errors?: ConfigError[]): Map<string, Connector> {
+  const all = env as unknown as Record<string, unknown>;
+  const engine = {
+    url: IN_PROCESS,
+    // Only the API (/v1/), with the connector's token, like any client.
+    fetch: async (url: string, init: RequestInit) => {
+      // Checked after the URL is normalized: "/v1/../mcp" is "/mcp".
+      const request = new Request(url, init);
+      const { origin, pathname } = new URL(request.url);
+      if (origin !== IN_PROCESS || !pathname.startsWith('/v1/')) throw new Error('the engine in process takes only its own /v1/ URLs');
+      return app.fetch(request, env, ctx);
+    },
+  };
+  const out = new Map<string, Connector>();
+  for (const m of entries) {
+    if (!m.connector.placements.includes('engine') || (id !== undefined && m.connector.id !== id)) continue;
+    // Each connector gets only the settings it lists (reviewed with the module), not the engine's.
+    const own = Object.fromEntries(m.connector.settings.map((s) => [s, all[s]]));
+    let c: Connector | undefined;
+    try {
+      c = m.connect(own, { engine }, 'engine');
+    } catch (err) {
+      if (!errors || !(err instanceof ConfigError)) throw err;
+      errors.push(err);
+      continue;
+    }
+    if (c) out.set(m.connector.id, c);
+  }
+  return out;
+}
+
+/** A request to a connector, with the path it serves ("/notify"); null for other paths. */
+async function toConnector(request: Request, env: Env, ctx: ExecutionContext, entries?: readonly ConnectorEntry[]): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith(CONNECTORS)) return null;
+  const rest = url.pathname.slice(CONNECTORS.length);
+  const slash = rest.indexOf('/');
+  const id = slash < 0 ? rest : rest.slice(0, slash);
+  let connectors: Map<string, Connector>;
+  try {
+    // Only this one: another connector's broken settings do not stop it.
+    connectors = connectorsFor(env, ctx, entries, id);
+  } catch (err) {
+    if (!(err instanceof ConfigError)) throw err;
+    // The operator's to fix; the message names the setting, never its value.
+    console.error(`connector configuration: ${err.message}`);
+    return Response.json({ error: { code: 'not_configured', message: 'the connector is not configured' } }, { status: 500 });
+  }
+  const connector = connectors.get(id);
+  if (!connector) return Response.json({ error: { code: 'not_found', message: 'not found' } }, { status: 404 });
+  url.pathname = slash < 0 ? '/' : rest.slice(slash);
+  return connector.fetch(new Request(url, request));
+}
+
+/** The Worker, with these connectors (tests choose their own). */
+export function worker(entries?: readonly ConnectorEntry[]) {
+  return {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+      return (await toConnector(request, env, ctx, entries)) ?? app.fetch(request, env, ctx);
+    },
+    // The queue consumer: the Worker's queue belongs to its only connector with
+    // a queue set up. A second one would need the queue's name to tell them apart.
+    async queue(batch: MessageBatch<unknown>, env: Env, ctx: ExecutionContext): Promise<void> {
+      // Another connector's broken settings do not stop the queue's own connector.
+      const errors: ConfigError[] = [];
+      const consumers = [...connectorsFor(env, ctx, entries, undefined, errors).values()].filter((c) => c.queue);
+      for (const err of errors) console.error(`connector configuration: ${err.message}`);
+      if (consumers.length !== 1) {
+        // Nothing can be handled: retry the whole batch once the configuration is fixed.
+        console.error(`connector configuration: a queue needs exactly one connector with a queue set up, found ${consumers.length}`);
+        batch.retryAll({ delaySeconds: 300 });
+        return;
+      }
+      await consumers[0]!.queue!(batch as { messages: readonly ConnectorMessage[] });
+    },
+  };
+}
+
+const served = worker();
+
 export default {
-  fetch: app.fetch,
+  fetch: served.fetch,
+  queue: served.queue,
   // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are
   // due, and remove expired OAuth records. A broken config (for example half
   // of the OAuth settings) fails here as it does for requests.
@@ -200,4 +293,4 @@ export default {
     }));
     if (deps.oauth) ctx.waitUntil(purgeExpired(env as unknown as { OAUTH_KV: KVNamespace }, deps.oauth));
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env, unknown>;

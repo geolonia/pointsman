@@ -12,7 +12,7 @@ The core is all of `src/` except these Cloudflare adapters, the only files that 
 
 | File | Adapter for |
 | --- | --- |
-| `src/index.ts` | Runtime entry: reads the Worker's settings and bindings, builds the adapters, runs the cron trigger |
+| `src/index.ts` | Runtime entry: reads the Worker's settings and bindings, builds the adapters, mounts the connectors, runs the cron trigger and the queue consumer |
 | `src/app.ts` | HTTP routes on the Worker (Hono), including the OAuth routes |
 | `src/oauth.ts` | GitHub login for `/mcp` (`@cloudflare/workers-oauth-provider`, grants in KV) |
 | `src/log-d1.ts` | Decision log in D1 |
@@ -97,4 +97,4 @@ An adapter must:
 
 ## Not yet
 
-There is no adapter for another runtime yet. A Node.js adapter comes when a deployment or the tests need it (decided 2026-10-22, #146). Fact providers and connectors are modules, not adapters ([modules.md](modules.md), #145).
+There is no adapter for another runtime yet. A Node.js adapter comes when a deployment or the tests need it (decided 2026-10-22, #146). Fact providers and connectors are modules, not adapters ([modules.md](modules.md), [connectors.md](connectors.md), #145). A connector inside the Worker reaches the engine through its routes in process (`src/index.ts`); `bridge/src/index.ts` is the Worker entry of the FIWARE bridge in its own Worker.

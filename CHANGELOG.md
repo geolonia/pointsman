@@ -12,6 +12,15 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## Unreleased
+
+Connectors as modules (#149, #118):
+
+- A module can have the role "connector" besides "facts" ([docs/connectors.md](docs/connectors.md)). A connector brings cases in and carries results out, only through the public API with its own token, and lists the actions it can carry out. The interface is in `@pointsman/module-api` (`connector.ts`).
+- The FIWARE bridge is the module `@pointsman/fiware` (`packages/fiware`). It runs inside the Pointsman Worker (`/connectors/fiware/notify` and `/reviews`, when listed in `engine.json` `"modules": { "connectors": [...] }`) or in its own Worker (`bridge/`, as before). Behaviour and settings are unchanged; inside the Pointsman Worker it needs no `POINTSMAN_URL`. `bridge/src/bridge.ts` still exports the bridge for Workers that build it from that path.
+- The bridge compares its secret without `crypto.subtle.timingSafeEqual` (Cloudflare only); still in constant time.
+- `engine.json` with `"modules"` but without `"connectors"` chooses no connector; config repositories need no change.
+
 ## 0.5.0 (2026-10-22)
 
 Fact modules (#145) and a core without Cloudflare (#153): the engine no

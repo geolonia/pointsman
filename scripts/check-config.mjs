@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
-import { chosenModules, loadDefinitions } from './lib/modules.mjs';
+import { chosenConnectors, chosenModules, loadDefinitions } from './lib/modules.mjs';
 
 const problems = [];
 for (const file of ['wrangler.jsonc', 'engine.json']) {
@@ -24,9 +24,10 @@ try {
   if (typeof engine !== 'object' || engine === null) throw new Error('not an object');
   if (!/^[0-9a-f]{40}$/.test(engine.ref ?? '')) problems.push('engine.json: "ref" must be a 40-character commit SHA');
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(engine.repository ?? '')) problems.push('engine.json: "repository" must be owner/name');
-  // The fact modules it chooses (docs/modules.md): known names, pinned versions that match.
+  // The modules it chooses (docs/modules.md): known names, pinned versions that match.
   try {
     await loadDefinitions(chosenModules('engine.json'));
+    await loadDefinitions(chosenConnectors('engine.json'));
   } catch (err) {
     problems.push(err.message.replace(/^.*engine\.json: /, 'engine.json: '));
   }

@@ -1,7 +1,7 @@
-// The FIWARE bridge (bridge/src) against a fake broker and a fake Pointsman.
+// The FIWARE bridge (packages/fiware, bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../bridge/src/bridge';
+import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../packages/fiware/src/bridge.ts';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 

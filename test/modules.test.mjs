@@ -16,8 +16,9 @@ import { inside } from '@pointsman/module-api';
 import { definition as github } from '@pointsman/facts-github/definition';
 import { definition as gsi } from '@pointsman/facts-gsi/definition';
 import { definition as valhalla } from '@pointsman/facts-valhalla/definition';
+import { definition as fiware } from '@pointsman/fiware/definition';
 import { ENGINE_VERSION } from '../src/version.ts';
-import { allModules, chosenModules, loadDefinitions } from '../scripts/lib/modules.mjs';
+import { allModules, chosenConnectors, chosenModules, loadDefinitions } from '../scripts/lib/modules.mjs';
 import { schemaWithFacts } from '../scripts/lib/schema.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -87,14 +88,14 @@ test('the engine version agrees in package.json, openapi.yaml and src/version.ts
 });
 
 test('each module has the version of its package', () => {
-  for (const [definition, dir] of [[gsi, 'facts-gsi'], [valhalla, 'facts-valhalla'], [github, 'facts-github']]) {
+  for (const [definition, dir] of [[gsi, 'facts-gsi'], [valhalla, 'facts-valhalla'], [github, 'facts-github'], [fiware, 'fiware']]) {
     const pkg = JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8'));
     assert.equal(definition.name, pkg.name);
     assert.equal(definition.version, pkg.version);
   }
   // Released together with the engine for now (docs/modules.md).
   const engine = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-  for (const dir of ['module-api', 'facts-gsi', 'facts-valhalla', 'facts-github']) {
+  for (const dir of ['module-api', 'facts-gsi', 'facts-valhalla', 'facts-github', 'fiware']) {
     assert.equal(JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8')).version, engine, dir);
   }
 });
@@ -128,6 +129,16 @@ test('engine.json: unknown, repeated, malformed or wrongly pinned modules are re
   assert.throws(() => chosenModules(engineJson(t, { facts: [42] }).file), /must be a module name/);
   assert.throws(() => chosenModules(engineJson(t, { facts: '@pointsman/facts-gsi' }).file), /must be a list/);
   await assert.rejects(loadDefinitions(chosenModules(engineJson(t, { facts: ['@pointsman/facts-gsi@0.0.1'] }).file)), /pins 0.0.1, the engine has/);
+});
+
+test('engine.json chooses connectors per role: all without "modules", none without "connectors"', (t) => {
+  assert.deepEqual(chosenConnectors(engineJson(t).file), [{ name: '@pointsman/fiware', version: undefined }]);
+  assert.deepEqual(chosenConnectors(engineJson(t, { facts: [] }).file), []);
+  assert.deepEqual(chosenConnectors(engineJson(t, { facts: [], connectors: ['@pointsman/fiware'] }).file), [{ name: '@pointsman/fiware', version: undefined }]);
+  assert.throws(() => chosenConnectors(engineJson(t, { facts: [], connectors: ['@pointsman/facts-gsi'] }).file), /has no connector role/);
+  assert.throws(() => chosenModules(engineJson(t, { facts: ['@pointsman/fiware'] }).file), /has no facts role/);
+  assert.throws(() => chosenConnectors(engineJson(t, { facts: [], connectors: '@pointsman/fiware' }).file), /"modules.connectors" must be a list/);
+  assert.ok(!allModules().some((m) => m.name === '@pointsman/fiware'));
 });
 
 test('check-config refuses an engine.json with unknown modules', (t) => {
@@ -186,12 +197,13 @@ test('a profile is invalid when no chosen module answers its facts', (t) => {
 test('the build bundles only the chosen modules', (t) => {
   const { file } = engineJson(t, { facts: ['@pointsman/facts-github'] });
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    import { modulesSource, chosenModules } from ${JSON.stringify(join(root, 'scripts/lib/modules.mjs'))};
-    process.stdout.write(await modulesSource(chosenModules(${JSON.stringify(file)})));
+    import { modulesSource, chosenConnectors, chosenModules } from ${JSON.stringify(join(root, 'scripts/lib/modules.mjs'))};
+    process.stdout.write(await modulesSource(chosenModules(${JSON.stringify(file)}), chosenConnectors(${JSON.stringify(file)})));
   `], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /from '@pointsman\/facts-github'/);
-  assert.doesNotMatch(r.stdout, /gsi|valhalla/);
+  assert.doesNotMatch(r.stdout, /gsi|valhalla|fiware/);
+  assert.match(r.stdout, /export const connectors: ConnectorEntry\[\] = \[\];/);
 });
 
 test('the build bundles the examples the chosen modules answer, with the profiles they require', (t) => {

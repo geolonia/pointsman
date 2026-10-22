@@ -407,7 +407,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 | Name | Meaning |
 |---|---|
 | `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first; default: as Pointsman answers, from the profile's `people_check`), `name`, `informedBy` and `requires` (for chains, above), `task` (also create Task entities, above) |
-| `POINTSMAN_URL` | Pointsman's base URL |
+| `POINTSMAN_URL` | Pointsman's base URL (in its own Worker only; leave it out inside the Pointsman Worker) |
 | `BRIDGE_WORK_ORDERS` | Optional JSON object: a completed work order's `statusLabel` to the final action, for example `{"Published": "publish"}` (see "Work orders from other apps") |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
 | `BROKER_TENANT` | Optional: sent as `NGSILD-Tenant`. One bridge serves one tenant. |
@@ -518,6 +518,21 @@ Worker's `queue` handler.
 
 ## Run it
 
+The bridge is the connector of the module `@pointsman/fiware`
+([packages/fiware](../packages/fiware), [docs/connectors.md](../docs/connectors.md)).
+It runs in one of two places, with the same settings:
+
+- **Inside the Pointsman Worker.** List it in the deployment's `engine.json`
+  (`"modules": { "connectors": ["@pointsman/fiware"] }`) and set its settings
+  on the Pointsman Worker, without `POINTSMAN_URL`. It serves
+  `/connectors/fiware/notify` and `/connectors/fiware/reviews`, so the
+  subscription's endpoint is `https://<pointsman>/connectors/fiware/notify`.
+  It still calls Pointsman's API with its own `POINTSMAN_TOKEN`, in process:
+  the same routes, checks and decision log as from outside. For the queue,
+  add the queue bindings to the Pointsman Worker; its queue consumer hands
+  the messages to the bridge.
+- **In its own Worker**, next to Pointsman (this folder):
+
 ```sh
 pnpm install
 cd bridge
@@ -526,7 +541,10 @@ cd bridge
 ```
 
 Another Worker can mount the bridge instead of running it on its own:
-`handleRequest(request, config)` from [src/bridge.ts](src/bridge.ts).
+`handleRequest(request, config)` from
+[packages/fiware/src/bridge.ts](../packages/fiware/src/bridge.ts) (also
+still at `bridge/src/bridge.ts`), with `configFrom` from
+[packages/fiware/src/config.ts](../packages/fiware/src/config.ts).
 
 Tests: `pnpm test:worker` (in `test/bridge/`, with a fake broker and
-Pointsman).
+Pointsman, and inside the Pointsman Worker).

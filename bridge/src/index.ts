@@ -1,22 +1,13 @@
-// The bridge as its own Worker. Another Worker (for example the demo, #48) can
-// import handleRequest from ./bridge.ts and mount it instead.
+// The bridge as its own Worker: the connector of the module @pointsman/fiware
+// (packages/fiware), placed next to Pointsman, which it calls at
+// POINTSMAN_URL. It can also run inside the Pointsman Worker
+// (docs/connectors.md). Another Worker (for example the demo, #48) can import
+// handleRequest from ../../packages/fiware/src/bridge.ts and mount it instead.
 
-import { type BridgeConfig, type BridgeMessage, handleQueueBatch, handleRequest, parseRoutes, parseWorkOrders } from './bridge';
+import { type BridgeConfig, type BridgeMessage, handleQueueBatch, handleRequest } from '../../packages/fiware/src/bridge.ts';
+import { configFrom as fiwareConfig, type Env as FiwareEnv } from '../../packages/fiware/src/config.ts';
 
-export interface Env {
-  /** JSON list of routes, see bridge/README.md. */
-  BRIDGE_ROUTES: string;
-  /** Optional JSON object: work-order status label to final action, see bridge/README.md. */
-  BRIDGE_WORK_ORDERS?: string;
-  POINTSMAN_URL: string;
-  BROKER_URL: string;
-  BROKER_TENANT?: string;
-  BROKER_CONTEXT?: string;
-  /** Secrets */
-  NOTIFY_SECRET: string;
-  POINTSMAN_TOKEN: string;
-  BROKER_TOKEN?: string;
-  BROKER_API_KEY?: string;
+export interface Env extends Omit<FiwareEnv, 'BRIDGE_QUEUE' | 'BRIDGE_DEAD_LETTER'> {
   /** Optional queue (producer and consumer), see bridge/README.md "Reliable delivery". */
   BRIDGE_QUEUE?: Queue<BridgeMessage>;
   /** Optional producer for the dead-letter queue, see bridge/README.md "Reliable delivery". */
@@ -25,37 +16,7 @@ export interface Env {
 
 /** Reads the configuration; throws naming the first missing or invalid setting. */
 export function configFrom(env: Env): BridgeConfig {
-  for (const name of ['BRIDGE_ROUTES', 'POINTSMAN_URL', 'BROKER_URL', 'NOTIFY_SECRET', 'POINTSMAN_TOKEN'] as const) {
-    if (!env[name]) throw new Error(`${name} is not set`);
-  }
-  for (const name of ['POINTSMAN_URL', 'BROKER_URL'] as const) {
-    const u = URL.parse(env[name]);
-    if (!u || (u.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(u.hostname))) {
-      throw new Error(`${name} must be an https URL (http only for localhost)`);
-    }
-  }
-  // GeonicDB prefers the Bearer token when both are sent; refuse instead of guessing.
-  if (env.BROKER_TOKEN && env.BROKER_API_KEY) throw new Error('set BROKER_TOKEN or BROKER_API_KEY, not both');
-  const trim = (u: string) => u.replace(/\/+$/, '');
-  const routes = parseRoutes(env.BRIDGE_ROUTES);
-  // Decision chains run one message at a time from the queue (docs/decision-chains.md).
-  const chained = routes.find((r) => r.requires);
-  if (chained && !env.BRIDGE_QUEUE) throw new Error(`route ${chained.name ?? chained.type} has requires: set up BRIDGE_QUEUE`);
-  return {
-    routes,
-    ...(env.BRIDGE_QUEUE && { queue: env.BRIDGE_QUEUE }),
-    ...(env.BRIDGE_DEAD_LETTER && { deadLetter: env.BRIDGE_DEAD_LETTER }),
-    ...(env.BRIDGE_WORK_ORDERS && { workOrders: parseWorkOrders(env.BRIDGE_WORK_ORDERS) }),
-    notifySecret: env.NOTIFY_SECRET,
-    pointsman: { url: trim(env.POINTSMAN_URL), token: env.POINTSMAN_TOKEN },
-    broker: {
-      url: trim(env.BROKER_URL),
-      ...(env.BROKER_TOKEN && { token: env.BROKER_TOKEN }),
-      ...(env.BROKER_API_KEY && { apiKey: env.BROKER_API_KEY }),
-      ...(env.BROKER_TENANT && { tenant: env.BROKER_TENANT }),
-      ...(env.BROKER_CONTEXT && { context: env.BROKER_CONTEXT }),
-    },
-  };
+  return fiwareConfig(env);
 }
 
 export default {
