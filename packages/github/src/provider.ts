@@ -108,9 +108,15 @@ const WRITE_ONLY = new Set(['workflows']);
 /** The permissions of a token, from those the installation has. */
 export type Scope = (granted: Record<string, string>) => Record<string, string>;
 
-/** Every permission the installation has, as "read" only: the facts' scope. */
+/**
+ * What the facts read (docs/github-connector.md): pull requests, files,
+ * checks, statuses, workflow runs, custom properties, organization members.
+ */
+export const FACTS_PERMISSIONS = ['metadata', 'contents', 'pull_requests', 'checks', 'statuses', 'actions', 'repository_custom_properties', 'members'];
+
+/** The facts' scope: of the permissions the facts use, those the installation has, as "read" only. */
 export const readOnly: Scope = (granted) =>
-  Object.fromEntries(Object.keys(granted).filter((p) => !WRITE_ONLY.has(p)).map((p) => [p, 'read']));
+  Object.fromEntries(FACTS_PERMISSIONS.filter((p) => granted[p] !== undefined && !WRITE_ONLY.has(p)).map((p) => [p, 'read']));
 
 /**
  * A GitHub App (FACTS_GITHUB "app"): signs a JWT with the app's private key,

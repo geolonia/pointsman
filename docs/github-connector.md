@@ -43,7 +43,7 @@ The part that reads pull-request text (the engine, with its AI questions) never 
 
 Notes:
 
-- The facts' tokens are down-scoped too: the engine asks GitHub for a token with every permission the installation has, but only as `read`. So even a facts app with write permissions gives the engine a token that only reads.
+- The facts' tokens are down-scoped too: the engine asks GitHub for a token with only the permissions the facts use (those above), and only as `read`. So even a facts app with more or write permissions gives the engine a token that only reads what it needs.
 - A GitHub App can read the checks of private repositories. A fine-grained personal access token cannot (it has no Checks permission), so with a token the fact `github_checks` is `unavailable` on private repositories.
 - Members (organization) is needed only to count teams in CODEOWNERS (`author_sole_code_owner`); Custom properties only for `github_property`; Actions only for `github_checks` (required workflows).
 - Install both apps only on the repositories the connector handles.

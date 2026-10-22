@@ -740,7 +740,7 @@ describe('GitHub App', () => {
     };
     const server = fakeGitHub(routes({
       // The app may write; the facts' token may not.
-      [`${REPO}/installation`]: async (_url, init) => (await verifyJwt(init), { id: 9, permissions: { metadata: 'read', contents: 'write', checks: 'write', pull_requests: 'read', workflows: 'write' } }),
+      [`${REPO}/installation`]: async (_url, init) => (await verifyJwt(init), { id: 9, permissions: { metadata: 'read', contents: 'write', checks: 'write', pull_requests: 'read', workflows: 'write', administration: 'write' } }),
       '/app/installations/9/access_tokens': async (_url, init) => {
         expect(init.method).toBe('POST');
         expect(JSON.parse(String(init.body))).toEqual({ permissions: { metadata: 'read', contents: 'read', checks: 'read', pull_requests: 'read' } });

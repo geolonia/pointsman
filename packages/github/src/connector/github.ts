@@ -143,10 +143,15 @@ export class AppGitHub implements ConnectorGitHub {
   }
 
   async findCheckRun(repo: string, head: string, name: string): Promise<number | undefined> {
-    const data = await this.#call(repo, 'GET', `/commits/${head}/check-runs?check_name=${encodeURIComponent(name)}&app_id=${this.#appId}&filter=latest`, 'check runs');
-    const runs = isObject(data) && Array.isArray(data.check_runs) ? data.check_runs : [];
-    const run = runs.find((r) => isObject(r) && r.name === name && isObject(r.app) && r.app.id === this.#appId);
-    return isObject(run) && typeof run.id === 'number' ? run.id : undefined;
+    // Filtered by name and app, so one page is the rule; at most 10 are read.
+    for (let page = 1; page <= 10; page++) {
+      const data = await this.#call(repo, 'GET', `/commits/${head}/check-runs?check_name=${encodeURIComponent(name)}&app_id=${this.#appId}&filter=latest&per_page=100&page=${page}`, 'check runs');
+      const runs = isObject(data) && Array.isArray(data.check_runs) ? data.check_runs : [];
+      const run = runs.find((r) => isObject(r) && r.name === name && isObject(r.app) && r.app.id === this.#appId);
+      if (isObject(run) && typeof run.id === 'number') return run.id;
+      if (runs.length < 100) return undefined;
+    }
+    return undefined;
   }
 
   async createCheckRun(repo: string, head: string, name: string, output: CheckRunOutput): Promise<number> {
