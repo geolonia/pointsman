@@ -24,6 +24,10 @@ import {
   actionFolderOf, actionFolders, countWorkflows, kindOf, MAX_FILE_BYTES, MAX_PARSED_FILES, workflowSettings,
   type WorkflowFile, type WorkflowSettings,
 } from './workflows';
+import {
+  comments, copilotFacts, REVIEW_STATE_QUERY, reviews, reviewState, statusHistory,
+  type Comment, type Review, type ReviewState, type Status,
+} from './reviews';
 
 const API = 'https://api.github.com';
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
@@ -36,6 +40,10 @@ export const MAX_PUSH_PAGES = 5;
 const MAX_COMMITS = 250;
 /** Check runs and statuses on the head: more fail `github_checks` (`error`). */
 const MAX_CHECKS = 300;
+/** Pages of reviews and of comments (100 each) read; a pull request with more fails the facts that need them (`error`). */
+export const MAX_REVIEW_PAGES = 5;
+/** Pages of the head commit's status history (100 each); more fail the facts that need it. */
+export const MAX_STATUS_PAGES = 3;
 const DEPENDABOT = 'dependabot[bot]';
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const PASSED = new Set(['success', 'neutral', 'skipped']);
@@ -235,7 +243,7 @@ async function readJson(res: Response, what: string): Promise<unknown> {
   throw new FactError(`GitHub ${what}: ${res.status}`);
 }
 
-/** The only way this file reads GitHub: a GET. */
+/** The way this file reads GitHub's REST API: a GET. */
 function get(fetchFn: typeof fetch, path: string, token: string, signal: AbortSignal): Promise<Response> {
   return fetchFn(`${API}${path}`, { method: 'GET', headers: headers(token), redirect: 'manual', signal });
 }
@@ -244,11 +252,26 @@ async function getJson(fetchFn: typeof fetch, path: string, token: string, signa
   return readJson(await get(fetchFn, path, token, signal), what);
 }
 
+/**
+ * A GraphQL query (GitHub's GraphQL API takes a POST). Only queries this
+ * file defines, never a mutation; their `data`, or a FactError when GitHub
+ * answers with errors.
+ */
+async function graphql(fetchFn: typeof fetch, query: string, variables: Record<string, unknown>, token: string, signal: AbortSignal, what: string): Promise<unknown> {
+  if (!/^query\b/.test(query)) throw new FactError('only GraphQL queries are sent');
+  const res = await fetchFn(`${API}/graphql`, {
+    method: 'POST', headers: { ...headers(token), 'content-type': 'application/json' }, body: JSON.stringify({ query, variables }), redirect: 'manual', signal,
+  });
+  const body = await readJson(res, what);
+  if (!isObject(body) || (body.errors !== undefined && body.errors !== null) || !isObject(body.data)) throw new FactError(`GitHub ${what}: unexpected answer`);
+  return body.data;
+}
+
 // ---- answers ----
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-interface PullRequest {
+export interface PullRequest {
   open: boolean;
   merged: boolean;
   draft: boolean;
@@ -518,7 +541,12 @@ const base64Bytes = (b64: string): Uint8Array => Uint8Array.from(atob(b64.replac
 /** Pages 1..n of a list, read at the same time. */
 const pages = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
 
-class Snapshot {
+/**
+ * One decision's reads of one pull request at one head commit. Shared by
+ * every GitHub-based fact of the decision, also those of other modules
+ * (snapshotOf), so they describe the same moment and read GitHub once.
+ */
+export class Snapshot {
   private readonly parts = new Map<string, Promise<unknown>>();
   /** The pull request and its commits, checked against the requested head. */
   readonly base: Promise<{ pr: PullRequest; commits: Commit[] | null }>;
@@ -795,6 +823,63 @@ class Snapshot {
     });
   }
 
+  /** Pages of a list until one is not full; more than `max` pages fail. */
+  private async list<T>(path: string, what: string, max: number, parse: (v: unknown) => T[]): Promise<T[]> {
+    const out: T[] = [];
+    for (let p = 1; p <= max; p++) {
+      const page = parse(await this.json(`${path}${path.includes('?') ? '&' : '?'}per_page=${PER_PAGE}&page=${p}`, what));
+      out.push(...page);
+      if (page.length < PER_PAGE) return out;
+    }
+    throw new FactError(`GitHub ${what}: more than ${max * PER_PAGE}`);
+  }
+
+  /** The pull request's reviews, oldest first. */
+  reviews(): Promise<Review[]> {
+    return this.part('reviews', async () => {
+      await this.base;
+      return this.list(`${this.repoPath}/pulls/${this.ref.number}/reviews`, 'reviews', MAX_REVIEW_PAGES, reviews);
+    });
+  }
+
+  /** The comments of the pull request's conversation, oldest first. */
+  comments(): Promise<Comment[]> {
+    return this.part('comments', async () => {
+      await this.base;
+      return this.list(`${this.repoPath}/issues/${this.ref.number}/comments`, 'comments', MAX_REVIEW_PAGES, comments);
+    });
+  }
+
+  /** Every status the head commit got, newest first (GitHub's order). */
+  headStatuses(): Promise<Status[]> {
+    return this.part('statuses', async () => {
+      await this.base;
+      return this.list(`${this.repoPath}/commits/${this.ref.head}/statuses`, 'statuses', MAX_STATUS_PAGES, statusHistory);
+    });
+  }
+
+  /** Review requests and review threads (GraphQL), checked against the head. */
+  reviewState(): Promise<ReviewState> {
+    return this.part('reviewState', async () => {
+      await this.base;
+      const data = await graphql(this.fetchFn, REVIEW_STATE_QUERY, { owner: this.ref.owner, name: this.ref.repo, number: this.ref.number }, await this.token, this.signal, 'review threads');
+      const { head, ...state } = reviewState(data);
+      if (head !== this.ref.head) throw new FactStaleError('the pull request changed while its reviews were read');
+      return state;
+    });
+  }
+
+  /**
+   * When the head commit was pushed: the newest push to the head branch that
+   * ended at it; null when not known (no push in the activity list, a fork
+   * GitHub does not show, a head that was pushed before the pages read).
+   */
+  async headPushedAt(): Promise<string | null> {
+    const list = await this.pushes();
+    const push = list?.find((p) => p.after === this.ref.head && Number.isFinite(Date.parse(p.at)));
+    return push?.at ?? null;
+  }
+
   properties(): Promise<unknown> {
     return this.part('properties', () => this.json(`${this.repoPath}/properties/values`, 'custom properties'));
   }
@@ -859,6 +944,22 @@ class Snapshot {
   }
 }
 
+/**
+ * The decision's snapshot of a pull request: made by the first fact that
+ * asks, by any module, and shared through the decision's scope. A module
+ * that reads GitHub this way uses the GitHub module's settings (index.ts,
+ * githubAuthFrom), so it reads with the same token.
+ */
+export function snapshotOf(pr: PullRequestRef, scope: FactScope | undefined, fetchFn: typeof fetch, auth: GitHubAuth): Snapshot {
+  const key = `github:${pr.owner}/${pr.repo}#${pr.number}@${pr.head}`.toLowerCase();
+  let s = scope?.get(key) as Snapshot | undefined;
+  if (!(s instanceof Snapshot)) {
+    s = new Snapshot(pr, fetchFn, auth);
+    scope?.set(key, s);
+  }
+  return s;
+}
+
 export interface GitHubOptions {
   auth: GitHubAuth;
   fetch?: typeof fetch;
@@ -879,14 +980,8 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
   }
 
   /** The decision's snapshot of this pull request: made by the first fact, shared by the others. */
-  private snapshot(pr: PullRequestRef, scope: FactScope | undefined): Snapshot {
-    const key = `github:${pr.owner}/${pr.repo}#${pr.number}@${pr.head}`.toLowerCase();
-    let s = scope?.get(key) as Snapshot | undefined;
-    if (!s) {
-      s = new Snapshot(pr, this.fetchFn, this.auth);
-      scope?.set(key, s);
-    }
-    return s;
+  snapshot(pr: PullRequestRef, scope: FactScope | undefined): Snapshot {
+    return snapshotOf(pr, scope, this.fetchFn, this.auth);
   }
 
   async lookup(query: GitHubFactQuery, signal: AbortSignal, scope?: FactScope): Promise<FactResult> {
@@ -932,6 +1027,10 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       case 'github_workflows': {
         const settings: WorkflowSettings = workflowSettings(query.workflows);
         return { values: { ...countWorkflows(await s.workflowFiles(), `${query.pr.owner}/${query.pr.repo}`, settings) }, source };
+      }
+      case 'github_copilot': {
+        const [all, state] = await Promise.all([s.reviews(), s.reviewState()]);
+        return { values: copilotFacts(all, state, query.pr.head), source };
       }
     }
   }

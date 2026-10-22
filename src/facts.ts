@@ -7,7 +7,7 @@
 import { resolvePath } from './input';
 import {
   FactError, FactMissingError, FactUnavailableError, mockProvider,
-  type FactModule, type FactProvider, type FactQueryBase, type FactResult, type FactScope, type Scalar,
+  type FactModule, type FactProvider, type FactQueryBase, type FactResult, type FactScope, type FactTypeDef, type Scalar,
 } from '@pointsman/module-api';
 import { factRegistry, type FactRegistry } from './modules/registry';
 import type { Fact, FactSpec } from './types';
@@ -62,6 +62,19 @@ export function factModules(specs: FactSpec[]): Record<string, string> {
 }
 
 /** Null when the result fits the fact type, otherwise what is wrong. */
+/**
+ * Whether a field may be null, by the type's case rules (FactTypeDef.cases):
+ * a `nullable` field; or, for types whose first field says whether
+ * something was found, an `optional` field, or a field whose `absent`
+ * value is null when nothing was found.
+ */
+export function mayBeNull(def: FactTypeDef, field: string, values: Record<string, unknown>): boolean {
+  const rules = def.cases;
+  if ('nullable' in rules) return rules.nullable.includes(field);
+  if (rules.optional.includes(field)) return true;
+  return values[rules.key] === false && Object.hasOwn(rules.absent, field) && rules.absent[field] === null;
+}
+
 export function resultError(type: string, result: unknown): string | null {
   if (result === null || typeof result !== 'object') return 'not an object';
   const { values, source } = result as Partial<FactResult>;
@@ -73,6 +86,9 @@ export function resultError(type: string, result: unknown): string | null {
   for (const [field, { kind, probability }] of Object.entries(def.fields)) {
     if (!Object.hasOwn(values, field)) return `missing field "${field}"`;
     const v = values[field];
+    // A field has a value unless its type says it may have none: a blocking
+    // rule must never silently not match because a module gave null.
+    if (v === null && !mayBeNull(def, field, values as Record<string, unknown>)) return `"${field}" must have a value`;
     if (v !== null && typeof v !== kind) return `"${field}" must be a ${kind} or null`;
     if (typeof v === 'number' && !Number.isFinite(v)) return `"${field}" must be a finite number`;
     if (probability && typeof v === 'number' && (v < 0 || v > 1)) return `"${field}" must be from 0 to 1`;

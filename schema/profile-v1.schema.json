@@ -182,8 +182,8 @@
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "type": {
-          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes.",
-          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows"]
+          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes. github_copilot: Copilot code review on the pull request.",
+          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows", "github_copilot"]
         },
         "at": {
           "description": "JSONPath into the request state: a GeoJSON Point or LineString (WGS 84) for spatial facts, for example $.location.value; a pull request { repo, number, head } for GitHub facts.",
@@ -343,6 +343,10 @@
               "enum": ["name", "type", "at", "privileged_triggers", "inert_actions", "safe_contexts", "base_refs", "git_actions", "pin_exempt"]
             }
           }
+        },
+        {
+          "if": { "properties": { "type": { "const": "github_copilot" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
         }
       ]
     },

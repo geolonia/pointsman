@@ -45,6 +45,8 @@ describe('results', () => {
   it('fit the fact type', () => {
     expect(resultError('inside', { values: { inside: true, rank: 4, class: '1 to 3 m' }, source: 'gsi' })).toBeNull();
     expect(resultError('nearest', { values: { found: false, distance_m: null, name: null }, source: 'gsi' })).toBeNull();
+    // An optional field may be null also when something was found.
+    expect(resultError('detour', { values: { possible: true, extra_m: 40, route: null }, source: 's' })).toBeNull();
   });
 
   it.each([
@@ -53,6 +55,9 @@ describe('results', () => {
     ['a missing field', 'detour', { values: { possible: true }, source: 's' }, 'missing field "extra_m"'],
     ['a wrong type', 'nearest', { values: { found: 'yes', distance_m: 1, name: 'a' }, source: 's' }, '"found" must be a boolean'],
     ['an infinite number', 'detour', { values: { possible: true, extra_m: Infinity }, source: 's' }, 'finite'],
+    // null only where the type's case rules allow it: a blocking rule must never silently not match.
+    ['null where something was found', 'detour', { values: { possible: true, extra_m: null, route: null }, source: 's' }, '"extra_m" must have a value'],
+    ['null in a field that always has a value', 'inside', { values: { inside: false, rank: null, class: '' }, source: 's' }, '"rank" must have a value'],
   ] as const)('refuse %s', (_, type, result, message) => {
     expect(resultError(type, result)).toContain(message);
   });
