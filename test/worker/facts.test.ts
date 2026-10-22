@@ -3,11 +3,10 @@
 
 import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
-import { noCallbacks } from './helpers';
+import { answersMock, noCallbacks, providerOf } from './helpers';
 import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { lookupFacts, MockFactProvider, resultError, toGeometry, type FactProvider } from '../../src/facts';
-import type { FactRouter } from '../../src/facts';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';
@@ -16,7 +15,6 @@ import type { FactSpec, Profile } from '../../src/types';
 import * as contract from '../../generated/openapi-validators.mjs';
 
 /** The spatial provider behind the deployment's fact router. */
-const spatialOf = (deps: { facts?: unknown }) => (deps.facts as FactRouter | undefined)?.providers.spatial;
 
 const line = { type: 'LineString', coordinates: [[139.7505, 35.695], [139.752, 35.6956]] };
 const point = { type: 'Point', coordinates: [139.753, 35.6855] };
@@ -217,10 +215,12 @@ describe('decisions with facts', () => {
 describe('FACTS_MODE', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
 
-  it('is off unless set, and refuses unknown modes', () => {
+  it('is off unless set, and refuses unknown modes', async () => {
     expect(depsFor(base).facts).toBeUndefined();
     expect(depsFor({ ...base, FACTS_MODE: 'off' }).facts).toBeUndefined();
-    expect(spatialOf(depsFor({ ...base, FACTS_MODE: 'mock' }))).toBeInstanceOf(MockFactProvider);
+    const deps = depsFor({ ...base, FACTS_MODE: 'mock' });
+    expect(await answersMock(providerOf(deps, '@pointsman/facts-gsi'), { type: 'inside', layer: 'x', geometry: { type: 'Point', coordinates: [139, 35] } })).toBe(true);
+    expect(await answersMock(providerOf(deps, '@pointsman/facts-valhalla'), { type: 'detour', geometry: { type: 'Point', coordinates: [139, 35] } })).toBe(true);
     expect(() => depsFor({ ...base, FACTS_MODE: 'osm' })).toThrow(ConfigError);
   });
 });

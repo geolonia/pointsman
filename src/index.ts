@@ -3,10 +3,9 @@
 
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import { KvTokenStore } from './auth-kv';
-import { FactRouter, MockFactProvider, type FactProvider } from './facts';
-import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth } from './facts-github';
-import { GsiFactProvider } from './facts-gsi';
-import { ValhallaRouter } from './facts-routing';
+import { ModuleRouter, type FactProvider } from './facts';
+import type { FactModuleEntry } from './modules/api';
+import { useFactModules } from './modules/registry';
 import { D1DecisionLog } from './log-d1';
 import { purgeExpired, type OAuthConfig } from './oauth';
 import type { ModelAdapter } from './models/adapter';
@@ -18,26 +17,23 @@ import { KvProfileStore } from './profiles/store-kv';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
 import bundledProfiles from '../generated/profiles.json';
+import factModules from '../generated/modules';
 
 // Every binding may be missing in a misconfigured deployment.
 interface PointsmanEnv {
   PROFILE_SOURCE?: string | undefined;
   MODEL_MODE?: string | undefined;
-  /** "gsi" for GSI data (Japan), "mock" for fixed answers; "off" or unset: no provider, facts are missing. */
+  // Settings of the fact modules, read by each module (src/modules/*/index.ts).
   FACTS_MODE?: string | undefined;
-  /** With FACTS_MODE "gsi": a Valhalla server for detour facts (https). */
   FACTS_ROUTING_URL?: string | undefined;
-  /** Worker secret: sent as `x-api-key` to the routing server. */
+  /** Worker secret. */
   FACTS_ROUTING_API_KEY?: string | undefined;
-  /** GitHub pull-request facts: "token", "app", "mock"; "off" or unset: they are missing. */
   FACTS_GITHUB?: string | undefined;
-  /** Worker secret, with FACTS_GITHUB "token": a token that can read the repositories. */
+  /** Worker secret. */
   FACTS_GITHUB_TOKEN?: string | undefined;
-  /** With FACTS_GITHUB "app": the GitHub App's id. */
   FACTS_GITHUB_APP_ID?: string | undefined;
-  /** Worker secret, with FACTS_GITHUB "app": the app's private key (PEM). */
+  /** Worker secret. */
   FACTS_GITHUB_APP_PRIVATE_KEY?: string | undefined;
-  /** The name of Pointsman's own check run, never counted as a required check. */
   FACTS_GITHUB_IGNORE_CHECK?: string | undefined;
   PROFILES?: KVNamespace | undefined;
   TOKENS?: KVNamespace | undefined;
@@ -154,85 +150,26 @@ function adaptersByMode(env: PointsmanEnv): (model: string) => ModelAdapter | nu
   }
 }
 
-const mockFacts = new MockFactProvider();
-// One per isolate (and routing server), so its memory cache of tiles is shared between requests.
-const gsiFacts = new Map<string, GsiFactProvider>();
+// The fact modules this deployment chose (engine.json "modules"; written by
+// scripts/build-modules.mjs). Their settings are in the env.
+useFactModules(factModules);
 
-// One per isolate and settings, so a GitHub App's installation tokens are reused between requests.
-const githubFacts = new Map<string, GitHubFactProvider>();
-
-function githubFor(env: PointsmanEnv): FactProvider | undefined {
-  const mode = env.FACTS_GITHUB || 'off';
-  const token = env.FACTS_GITHUB_TOKEN || undefined;
-  const appId = env.FACTS_GITHUB_APP_ID || undefined;
-  const key = env.FACTS_GITHUB_APP_PRIVATE_KEY || undefined;
-  const ignoreCheck = env.FACTS_GITHUB_IGNORE_CHECK || undefined;
-  if (token && mode !== 'token') throw new ConfigError('FACTS_GITHUB_TOKEN needs FACTS_GITHUB "token"');
-  if ((appId || key) && mode !== 'app') throw new ConfigError('FACTS_GITHUB_APP_ID and FACTS_GITHUB_APP_PRIVATE_KEY need FACTS_GITHUB "app"');
-  if (ignoreCheck && (mode === 'off' || mode === 'mock')) throw new ConfigError('FACTS_GITHUB_IGNORE_CHECK needs FACTS_GITHUB "token" or "app"');
-  switch (mode) {
-    case 'off':
-      return undefined;
-    case 'mock':
-      return mockFacts;
-    case 'token':
-    case 'app': {
-      if (mode === 'token' && !token) throw new ConfigError('FACTS_GITHUB "token" needs the secret FACTS_GITHUB_TOKEN');
-      if (mode === 'app' && (!appId || !/^[0-9]+$/.test(appId))) throw new ConfigError('FACTS_GITHUB "app" needs FACTS_GITHUB_APP_ID (a number)');
-      if (mode === 'app' && (!key || !privateKeyDer(key))) throw new ConfigError('FACTS_GITHUB "app" needs the secret FACTS_GITHUB_APP_PRIVATE_KEY (a PEM private key)');
-      // Keyed by every setting, so a new token or key never reuses the old one.
-      const id = JSON.stringify([mode, token ?? '', appId ?? '', key ?? '', ignoreCheck ?? '']);
-      let p = githubFacts.get(id);
-      if (!p) {
-        p = new GitHubFactProvider({ auth: mode === 'token' ? new TokenAuth(token!) : new GitHubAppAuth(appId!, key!), ignoreCheck });
-        githubFacts.set(id, p);
-      }
-      return p;
-    }
-    default:
-      throw new ConfigError('FACTS_GITHUB must be "off", "mock", "token" or "app"');
-  }
-}
-
-/** Spatial facts (FACTS_MODE) and GitHub facts (FACTS_GITHUB); undefined when there are none. */
+/** One provider per chosen module (undefined when it is off); undefined when every module is off. */
 function factsFor(env: PointsmanEnv): FactProvider | undefined {
-  const spatial = spatialFor(env);
-  const github = githubFor(env);
-  if (!spatial && !github) return undefined;
-  // Always routed: FACTS_MODE "mock" must not answer GitHub facts, nor FACTS_GITHUB "mock" spatial ones.
-  return new FactRouter({ spatial, github });
-}
-
-function spatialFor(env: PointsmanEnv): FactProvider | undefined {
-  const routingUrl = env.FACTS_ROUTING_URL || undefined;
-  if (routingUrl && env.FACTS_MODE !== 'gsi') throw new ConfigError('FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
-  const routing = routingUrl ? checkServerUrl(routingUrl) : undefined;
-  if (routing && !routing.ok) throw new ConfigError(`FACTS_ROUTING_URL ${routing.error}`);
-  const routingKey = env.FACTS_ROUTING_API_KEY || undefined;
-  if (routingKey && !routingUrl) throw new ConfigError('FACTS_ROUTING_API_KEY needs FACTS_ROUTING_URL');
-  switch (env.FACTS_MODE ?? 'off') {
-    case 'off':
-    case '':
-      return undefined;
-    case 'mock':
-      return mockFacts;
-    case 'gsi':
-    {
-      // Keyed by URL and key, so a new key never reuses a router with the old one.
-      const id = JSON.stringify([routingUrl ?? '', routingKey ?? '']);
-      let p = gsiFacts.get(id);
-      if (!p) {
-        p = new GsiFactProvider({
-          cache: typeof caches === 'undefined' ? undefined : caches.default,
-          ...(routing?.ok && { routing: new ValhallaRouter(routing.value, undefined, routingKey) }),
-        });
-        gsiFacts.set(id, p);
-      }
-      return p;
+  const runtime = { cache: typeof caches === 'undefined' ? undefined : caches.default };
+  const all = env as unknown as Record<string, unknown>;
+  // A fact setting no chosen module reads is a mistake (a module left out of engine.json).
+  const read = new Set(factModules.flatMap((m) => m.settings));
+  for (const [name, value] of Object.entries(all)) {
+    if (name.startsWith('FACTS_') && !read.has(name) && value !== undefined && value !== '' && value !== 'off') {
+      throw new ConfigError(`${name} is set, but no chosen fact module reads it (engine.json "modules")`);
     }
-    default:
-      throw new ConfigError('FACTS_MODE must be "off", "mock" or "gsi"');
   }
+  // Each module sees only its own settings, not the other bindings and secrets.
+  const own = (m: FactModuleEntry) => Object.fromEntries(m.settings.map((s) => [s, all[s]]));
+  const providers = new Map(factModules.map((m) => [m.name, m.create(own(m), runtime)]));
+  if ([...providers.values()].every((p) => p === undefined)) return undefined;
+  return new ModuleRouter(providers);
 }
 
 export function depsFor(env: PointsmanEnv): Deps {

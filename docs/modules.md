@@ -1,0 +1,102 @@
+# Fact modules
+
+Facts are looked up by **fact modules**, not by the engine itself. The engine knows only the module interface and a few shared fact types; each deployment chooses the modules it needs. This keeps the engine small and lets another deployment use other data sources, without changing the engine.
+
+Three roles (#145):
+
+| Role | What it does | Examples |
+| --- | --- | --- |
+| Engine | Takes a case, asks the model, applies the rules, logs the decision | `src/decide.ts`, `src/policy.ts`, the decision log |
+| Fact module | Looks something up during a decision, inside the engine | GSI flood zones and shelters, Valhalla detours, GitHub pull requests |
+| Connector | Brings cases in and carries results out, through the public API | the FIWARE bridge (`bridge/`), `actions/triage` |
+
+Connectors use the public API and need no interface of their own yet; a module will be able to have both roles later (#147).
+
+## Modules in this repository
+
+| Module | Answers | Settings |
+| --- | --- | --- |
+| `@pointsman/facts-gsi` | `inside` and `nearest` for the layers `gsi-flood-max` and `gsi-shelters-flood` (Japan) | `FACTS_MODE` |
+| `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
+| `@pointsman/facts-github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows` | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |
+
+The settings and the facts are described in [profile-format.md](profile-format.md#facts). The code is in `src/modules/` (definitions and entries) and in `src/facts-*.ts` (the providers).
+
+## Choosing modules
+
+A deployment lists its modules in `engine.json`, next to the engine version:
+
+```json
+{
+  "repository": "geolonia/pointsman",
+  "ref": "<engine commit>",
+  "modules": {
+    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github@0.4.0"]
+  }
+}
+```
+
+- A version after `@` is checked against the module in the engine; a different one fails the build and the validation.
+- Without `modules`, every module in this repository is chosen (as before modules existed). An empty list chooses none: then profiles cannot have facts.
+- `pnpm build` writes `generated/modules.ts` from the list, so the Worker bundles only these modules' providers. The bundled example profiles (`PROFILE_SOURCE: bundled`) are those the chosen modules can answer.
+- The profile validator, the test cases and `explain-profile` use the same list. A profile is valid only together with the modules it uses: a fact type or setting no chosen module answers is an error.
+- Each module reads only the settings it lists; a `FACTS_*` setting that no chosen module reads stops the Worker (a config error), so a module left out of the list is noticed.
+- Removing a module: published profile versions keep working only with their modules. A decision with a profile version whose facts no chosen module answers fails (a config error, before the model is asked), so publish new versions without those facts first.
+
+The scripts read `engine.json` from the current directory, else from where pnpm was started, so in a config repository `node engine/scripts/validate-profiles.mjs profiles` and `pnpm --dir engine build`, both run from its root, use its `engine.json`. `POINTSMAN_ENGINE_JSON` names another file.
+
+## Capabilities and module types
+
+Fact types come in two kinds.
+
+**Capabilities** are a small set of shared types with fixed fields, defined by the engine in `src/modules/capabilities.ts`: `inside`, `nearest` and `detour`. A profile asks for `detour` and gets `extra_m`, whatever module answers. The deployment chooses the module, as it chooses layers. A new capability is a pull request to this repository, reviewed like code (decided 2026-10-22, #145).
+
+- Each capability is answered by one chosen module. `inside` and `nearest` can be shared by layers: each module names its layers, and each layer is answered by one module. A layer that no module names goes to the type's only module, if there is just one (its mock answers any layer; its real provider refuses an unknown one as `unavailable`).
+- A module that implements a capability is named after its service, for example `facts-valhalla`; another routing service would be another module.
+
+**Module types** are the module's own. They are named after their source (`github_pr`), or get the publisher's namespace (`<publisher>/<type>`, for example `example/confidence`), so no module takes a generic name by accident. Two chosen modules cannot define the same type.
+
+## The module interface
+
+A module has two parts (`src/modules/api.ts`):
+
+- **Its definition** (`FactModule`): name, version, roles, the capabilities it answers, its own fact types, the missing reasons it can give, and the settings it reads. The definition is data and small pure functions, readable under Node.js (the validator reads it), so it uses only TypeScript syntax Node can strip.
+- **Its entry** (`FactModuleEntry`): the definition plus `create(env, runtime)`, which reads the module's settings and returns a provider, `undefined` when the module is off, or throws `ConfigError` for settings that do not fit together. `runtime` gives a shared cache when the runtime has one ([adapters.md](adapters.md#cache)).
+
+A fact type (`FactTypeDef`) declares:
+
+| Part | What it is |
+| --- | --- |
+| `fields` | Each field's kind (`number`, `string`, `boolean`). `display: true` for text for people and maps, which rules cannot use. `probability: true` for a number from 0 to 1. |
+| `input` | How `at` is read from the request state (for example a GeoJSON geometry, or a pull request), and the missing reason when it is not there (`no_location`, `no_pr`). |
+| `settings`, `required` | The fact's own keys in a profile, as JSON Schema, and the ones it needs. The profile schema is built from them. |
+| `query` | The query the provider gets. |
+| `timeoutMs` | How long a lookup may take. |
+| `mock` | The values of the mock provider (`FACTS_MODE: mock`, `FACTS_GITHUB: mock`). |
+| `words` | Sentences in English and Japanese for [explanations](profile-format.md#explain). |
+| `cases` | What a [test case](profile-format.md#test-cases) may give for the fact. |
+
+The provider has one function, `lookup(query, signal, scope)`. It returns field values and a source, or throws. A value that could not be read makes the whole fact missing, never a guess: throw `FactUnavailableError`, or `FactMissingError` with a reason the module declares (for example `stale`); any other error is recorded as `error`.
+
+### Facts with a probability
+
+A field can hold a probability or a confidence, for example a geocoder's confidence or a classifier's score. Declare it with `probability: true`; the engine then refuses a value outside 0 to 1, and rules test it like any number (`facts.place.confidence >= 0.9`). The line between facts and AI questions is not "certain or probable": it is who computes the value (code or a chosen service, or a language model) and who controls its input.
+
+### Not yet
+
+- Showing a fact to the model (`show_model` per fact, #145): the model does not see facts ([profile-format.md](profile-format.md#facts)).
+- Modules from outside this repository. A module from npm would have to ship JavaScript (Node does not strip types inside `node_modules`). Until someone outside contributes one, modules live in this repository.
+
+## Versions in the decision log
+
+Each decision records the engine version and the modules that answered its facts, with their versions:
+
+```json
+"versions": { "engine": "0.4.0", "modules": { "@pointsman/facts-github": "0.4.0" } }
+```
+
+Decisions made before modules have no `versions`.
+
+## Trust
+
+A fact module runs inside the Worker, next to its secrets: a module from someone else needs a review before a deployment chooses it. Connectors run outside the engine and only use the public API, so they are safer to accept.

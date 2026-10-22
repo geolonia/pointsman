@@ -673,6 +673,20 @@ components:
           required: [status]
           properties:
             status: { type: string, const: pending }
+        versions: { $ref: '#/components/schemas/Versions' }
+    Versions:
+      description: >-
+        The engine version and the fact modules that answered the decision's facts, with their
+        versions (docs/modules.md). Missing for decisions made before fact modules.
+      type: object
+      additionalProperties: false
+      required: [engine, modules]
+      properties:
+        engine: { type: string }
+        modules:
+          type: object
+          description: Module name to version, for example "@pointsman/facts-github".
+          additionalProperties: { type: string }
     ProfileStats:
       type: object
       additionalProperties: false
@@ -745,6 +759,7 @@ components:
               - { $ref: '#/components/schemas/HiddenRequired' }
         idempotency_key: { type: string, description: The Idempotency-Key the decision was made with. }
         replaces: { type: string, format: uuid, description: The earlier decision of the same profile, ref and client that this one replaced. }
+        versions: { $ref: '#/components/schemas/Versions' }
         discarded_at:
           type: string
           format: date-time
@@ -848,7 +863,7 @@ components:
           properties:
             missing: { const: false }
             values:
-              description: Field values of the fact type (inside, nearest, detour, github_pr, github_paths, github_checks, github_property, github_workflows); null when a field has no value.
+              description: Field values of the fact type (a capability such as inside, nearest, detour, or a type of a fact module such as github_pr); null when a field has no value.
               type: object
               additionalProperties: { type: [string, number, boolean, 'null'] }
             source: { type: string, description: Where the value came from. }
@@ -859,11 +874,12 @@ components:
             missing: { const: true }
             reason:
               description: >-
-                no_location (no Point or LineString at the fact's path), no_pr (no pull
-                request at the fact's path), stale (the pull request has another head commit
-                than the request names), unavailable (no fact provider configured, or no
-                access), timeout, or error.
-              enum: [no_location, no_pr, stale, unavailable, timeout, error]
+                unavailable (no fact provider configured, or no access), timeout, or error;
+                or a reason of the fact's module: no_location (no Point or LineString at the
+                fact's path), no_pr (no pull request at the fact's path), stale (the pull
+                request has another head commit than the request names).
+              type: string
+              pattern: '^[a-z][a-z0-9_]{0,62}$'
     Answer:
       oneOf:
         - $ref: '#/components/schemas/NoulAnswer'

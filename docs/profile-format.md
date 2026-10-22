@@ -430,7 +430,7 @@ policy:
 | Field | Meaning |
 |---|---|
 | `name` | Used in rules as `facts.<name>.<field>`. Same characters as question names. No question may be named `facts` or start with `facts.`. |
-| `type` | `inside`, `nearest` or `detour` (below), or a [GitHub fact](#github-pull-requests). |
+| `type` | `inside`, `nearest` or `detour` (below), or a [GitHub fact](#github-pull-requests). Fact types come from the [fact modules](modules.md) the deployment chooses: a profile can use only the types of those modules. |
 | `at` | JSONPath to a GeoJSON `Point` or `LineString` (WGS 84) in the request state, for example `$.location.value` for an NGSI-LD `GeoProperty`. Read from what the client sends, before the `input` mapping. Through MCP, clients send the input fields themselves, so there `at` reads those (for example `$.location`). |
 | `layer` | For `inside` and `nearest`: the layer to look in. Layers are set up per deployment (source, licence, attribution), not in the profile. |
 | `mode` | For `detour`: `drive` (default) or `walk`, the way around by car or on foot. |
@@ -480,8 +480,10 @@ raised `danger` even where they were reassuring.
 
 ### Fact providers
 
-`FACTS_MODE` in the wrangler config sets the provider of spatial facts
-(GitHub facts have their own setting, [`FACTS_GITHUB`](#settings)):
+Spatial facts come from the [fact modules](modules.md) `@pointsman/facts-gsi`
+(`inside`, `nearest`) and `@pointsman/facts-valhalla` (`detour`).
+`FACTS_MODE` in the wrangler config switches both (GitHub facts have their
+own setting, [`FACTS_GITHUB`](#settings)):
 
 | `FACTS_MODE` | Facts |
 |---|---|

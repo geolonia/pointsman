@@ -2,7 +2,7 @@
 // migrations/. A Cloudflare adapter (docs/adapters.md).
 
 import type { CallbackState, DecisionLog, DecisionRecord, FeedbackRecord, FinalAnswer, ProfileStats, RequiredSnapshot, Resolution, Review } from './log';
-import type { Answer, Fact } from './types';
+import type { Answer, DecisionVersions, Fact } from './types';
 
 interface DecisionRow {
   id: string;
@@ -33,6 +33,7 @@ interface DecisionRow {
   request_digest: string | null;
   replaces: string | null;
   discarded_at: string | null;
+  versions: string | null;
 }
 
 function fromRow(row: DecisionRow): DecisionRecord {
@@ -65,6 +66,7 @@ function fromRow(row: DecisionRow): DecisionRecord {
     ...(row.request_digest !== null && { request_digest: row.request_digest }),
     ...(row.replaces !== null && { replaces: row.replaces }),
     ...(row.discarded_at !== null && { discarded_at: row.discarded_at }),
+    ...(row.versions !== null && { versions: JSON.parse(row.versions) as DecisionVersions }),
     ...(row.callback_status !== null && {
       callback: {
         status: row.callback_status as CallbackState['status'],
@@ -99,8 +101,8 @@ export class D1DecisionLog implements DecisionLog {
     await this.db
       .prepare(
         `INSERT INTO decisions (id, created_at, client, ref, profile_id, profile_version, model, action,
-           rule, answers, facts, state_hash, state, callback_url, review_status, requires, idempotency_key, request_digest, replaces)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           rule, answers, facts, state_hash, state, callback_url, review_status, requires, idempotency_key, request_digest, replaces, versions)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         r.decision_id, r.created_at, r.client, r.ref ?? null, r.profile, r.profile_version, r.model,
@@ -110,6 +112,7 @@ export class D1DecisionLog implements DecisionLog {
         r.review?.status === 'pending' ? 'pending' : null,
         r.requires === undefined ? null : JSON.stringify(r.requires), r.idempotency_key ?? null, r.request_digest ?? null,
         r.replaces ?? null,
+        r.versions === undefined ? null : JSON.stringify(r.versions),
       )
       .run();
   }
@@ -222,7 +225,7 @@ export class D1DecisionLog implements DecisionLog {
       .prepare(`SELECT id, created_at, client, ref, profile_id, profile_version, model, action, rule, answers, facts, state_hash,
                        NULL AS state, NULL AS callback_url, review_status, resolved_at, resolved_by, final_action, NULL AS final_answers,
                        NULL AS callback_status, 0 AS callback_attempts, NULL AS callback_last_error, NULL AS callback_next_at,
-                       requires, NULL AS idempotency_key, NULL AS request_digest, replaces, discarded_at
+                       requires, NULL AS idempotency_key, NULL AS request_digest, replaces, discarded_at, versions
                   FROM decisions WHERE profile_id = ? AND profile_version = ? AND discarded_at IS NULL
                  ORDER BY created_at DESC, rowid DESC LIMIT ?`)
       .bind(profile, version, limit)

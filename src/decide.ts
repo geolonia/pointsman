@@ -5,7 +5,7 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord, type TokenStore } from './auth';
 import { attempt, type Fetch } from './callbacks';
-import { lookupFacts, type FactProvider } from './facts';
+import { factModules, lookupFacts, type FactProvider } from './facts';
 import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
@@ -14,8 +14,11 @@ import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './cha
 import { compilePolicy, peopleCheck, PolicyError, type RequiredProfiles } from './policy';
 import { compileDraft, policyShapeError, replay, REPLAY_LIMIT, unchangedPartError, type ReplayResult } from './replay';
 import type { OAuthConfig } from './auth';
+import { ConfigError } from './modules/api';
+import { factRegistry } from './modules/registry';
 import type { ProfileStore } from './profiles/store';
 import type { Decision, Profile } from './types';
+import { ENGINE_VERSION } from './version';
 
 const MAX_REF_LENGTH = 200;
 
@@ -59,15 +62,14 @@ export interface Deps {
   callbacks: { secret: string | undefined; fetch: Fetch };
   /** Adapter for a model id, or null when no adapter serves it. */
   adapterFor(model: string): ModelAdapter | null;
-  /** Answers spatial facts (FACTS_MODE); without it, every fact is missing ("unavailable"). */
+  /** Answers facts (the chosen fact modules, src/facts.ts ModuleRouter); without it, every fact is missing ("unavailable"). */
   facts?: FactProvider | undefined;
   /** GitHub login for /mcp (src/oauth.ts); without it /mcp takes API tokens only. */
   oauth?: OAuthConfig | undefined;
 }
 
-export class ConfigError extends Error {
-  override name = 'ConfigError';
-}
+/** A broken deployment configuration (shared with the fact modules). */
+export { ConfigError };
 
 export type DecisionResult =
   | { ok: true; decision: Decision }
@@ -208,6 +210,15 @@ export async function makeDecision(
       : 'no field of the profile input mapping was found in "state"');
   }
 
+  // Before the model call, so a broken profile costs no model call.
+  // Profiles are validated before they reach a store, so an error here means
+  // the deployment changed under a published profile (a fact module left out
+  // of engine.json) or a store holds an unvalidated profile: a 500, like
+  // other config errors.
+  const missing = (profile.facts ?? []).find((f) => !factRegistry().type(f.type));
+  if (missing) throw new ConfigError(`profile ${profile.id} v${profile.version}: no chosen fact module answers ${missing.type} facts`);
+  const policy = compilePolicy(profile, required?.ok ? required.profiles : {});
+
   // Facts read the client's data (the `at` paths), not the mapped state.
   // Looked up while the model answers; lookupFacts never throws.
   const factsLookup = profile.facts?.length ? lookupFacts(profile.facts, body.state, factProvider) : undefined;
@@ -240,9 +251,6 @@ export async function makeDecision(
   const facts = factsLookup ? await factsLookup : undefined;
   if (!answers || !model) return fail(502, 'model_error', 'the model did not return a usable answer');
 
-  // Profiles are validated before they reach a store, so a PolicyError here
-  // means a store holds an unvalidated profile: a 500, like other config errors.
-  const policy = compilePolicy(profile, required?.ok ? required.profiles : {});
   const { action, rule } = policy.decide(answers, facts, required?.ok ? required.inputs : {});
   const opensReview = peopleCheck(profile).includes(action);
 
@@ -260,6 +268,7 @@ export async function makeDecision(
     ...(required?.ok && { requires: snapshotOf(required, policy) }),
     ...(earlierFinal && { replaces: earlierFinal.decision_id }),
     ...(opensReview && !client.test && { review: { status: 'pending' as const } }),
+    versions: { engine: ENGINE_VERSION, modules: factModules(profile.facts ?? []) },
   };
   // A test token's decisions are not logged (and marked as such): they
   // check profiles and examples, nobody acts on them.
@@ -369,6 +378,7 @@ function decisionOf(r: DecisionRecord): Decision {
     ...(r.requires && { requires: r.requires }),
     ...(r.replaces !== undefined && { replaces: r.replaces }),
     ...(r.review?.status === 'pending' && { review: { status: 'pending' as const } }),
+    ...(r.versions && { versions: r.versions }),
   };
 }
 

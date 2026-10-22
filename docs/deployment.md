@@ -34,7 +34,10 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 
 3. **Fill in the placeholders** in `wrangler.jsonc` (the ids from step 1, a
    worker name) and pin the engine in `engine.json` to a commit SHA of this
-   repository. The workflows refuse to run while a `<placeholder>` is left
+   repository. List the [fact modules](modules.md) your profiles need in
+   `modules.facts` (`[]` for none); the build bundles only those. Without
+   `modules`, every module is chosen. The workflows refuse to run while a
+   `<placeholder>` is left, or a module is unknown
    (`engine/scripts/check-config.mjs`).
 
 4. **Add your profiles** to `profiles/` (`<id>.yaml`, see
@@ -108,8 +111,8 @@ removes it from the index (it can no longer be called), but keeps its versions.
 ## Updating the engine
 
 Change `ref` in `engine.json` to a newer commit and open a pull request: the
-validate workflow checks your profiles against that engine version before
-anything is deployed.
+validate workflow checks your profiles against that engine version, and the
+fact modules in `modules`, before anything is deployed.
 
 The engine repository itself is fixed in the workflows (`ENGINE_REPOSITORY`),
 not taken from `engine.json`: the workflows run the engine's code, the deploy

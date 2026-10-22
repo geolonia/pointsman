@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
 import { answerOf, caseFileErrors, runCases } from '../src/cases.ts';
+import { useChosenModules } from '../scripts/lib/modules.mjs';
+
+// Every module in this repository, as for the examples.
+await useChosenModules();
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const examples = join(root, 'examples');

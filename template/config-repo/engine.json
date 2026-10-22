@@ -1,4 +1,7 @@
 {
   "repository": "geolonia/pointsman",
-  "ref": "<engine commit SHA (40 characters)>"
+  "ref": "<engine commit SHA (40 characters)>",
+  "modules": {
+    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/facts-github"]
+  }
 }

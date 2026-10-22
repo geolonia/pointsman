@@ -29,12 +29,12 @@ export interface ScoreQuestion {
 
 export type Question = NoulQuestion | ChoiceQuestion | ScoreQuestion;
 
-/** Kinds of spatial fact. */
+/** Kinds of spatial fact (capabilities, src/modules/capabilities.ts). */
 export type SpatialFactType = 'inside' | 'nearest' | 'detour';
 /** Kinds of GitHub pull-request fact (docs/profile-format.md#github-pull-requests). */
 export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows';
-/** Kinds of fact; their fields are in FACT_FIELDS (src/policy.ts). */
-export type FactType = SpatialFactType | GitHubFactType;
+/** A kind of fact: a capability, or a type of a chosen module (src/modules/registry.ts). */
+export type FactType = string;
 
 /** A fact a profile asks for (docs/profile-format.md#facts). */
 export interface FactSpec {
@@ -70,6 +70,8 @@ export interface FactSpec {
   base_refs?: string[];
   git_actions?: string[];
   pin_exempt?: string[];
+  /** Settings of fact types from other modules (src/modules/api.ts). */
+  [setting: string]: unknown;
 }
 
 export type DetourMode = 'drive' | 'walk';
@@ -85,11 +87,12 @@ export type Fact =
     }
   | {
       missing: true;
-      /** no_location, no_pr, stale, unavailable, timeout or error. */
+      /** unavailable, timeout or error, or a reason of the fact's module (no_location, no_pr, stale). */
       reason: FactMissingReason;
     };
 
-export type FactMissingReason = 'no_location' | 'no_pr' | 'stale' | 'unavailable' | 'timeout' | 'error';
+/** Why a fact is missing: the chosen modules decide which reasons exist (src/modules/registry.ts). */
+export type FactMissingReason = string;
 
 export interface Profile {
   id: string;
@@ -163,4 +166,12 @@ export interface Decision {
   replaces?: string;
   /** A person checks it before it counts (the profile's people_check). */
   review?: { status: 'pending' };
+  /** The engine and the fact modules that answered its facts. Missing for decisions made before fact modules. */
+  versions?: DecisionVersions;
+}
+
+/** The engine version, and each fact module (by name) that answered a decision's facts, with its version. */
+export interface DecisionVersions {
+  engine: string;
+  modules: Record<string, string>;
 }

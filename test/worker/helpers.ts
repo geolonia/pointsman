@@ -2,6 +2,8 @@
 
 import type { Fetch } from '../../src/callbacks';
 import type { DecisionLog } from '../../src/log';
+import type { FactProvider, ModuleRouter } from '../../src/facts';
+import type { FactQueryBase } from '../../src/modules/api';
 
 /** A decision log that stores nothing; override the methods a test needs. */
 export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
@@ -31,3 +33,13 @@ export const noCallbacks: { secret: string | undefined; fetch: Fetch } = {
     throw new Error('no callbacks in this test');
   },
 };
+
+/** The provider a deployment built for one fact module (src/facts.ts ModuleRouter). */
+export const providerOf = (deps: { facts?: unknown }, module: string): FactProvider | undefined =>
+  (deps.facts as ModuleRouter | undefined)?.providers.get(module);
+
+/** Whether a provider gives the mock answers (for this fact type). */
+export async function answersMock(p: FactProvider | undefined, query: FactQueryBase & Record<string, unknown>): Promise<boolean> {
+  if (!p) return false;
+  return (await p.lookup(query, new AbortController().signal)).source === 'mock';
+}

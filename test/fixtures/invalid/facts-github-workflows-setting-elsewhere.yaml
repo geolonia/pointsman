@@ -1,4 +1,4 @@
-# expect: /facts/0: must NOT be valid
+# expect: /facts/0: "pin_exempt" is not a setting of this fact type
 id: facts-github-workflows-setting-elsewhere
 version: 1
 title: { en: Test, ja: テスト }

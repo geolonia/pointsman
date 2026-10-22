@@ -14,9 +14,10 @@
 // fact of the decision is missing ("stale"). Nothing is guessed.
 
 import {
-  FactError, FactStaleError, FactUnavailableError, GITHUB_TIMEOUT_MS,
-  type FactProvider, type FactResult, type FactScope, type GitHubFactQuery, type PullRequestRef,
+  FactError, FactStaleError, FactUnavailableError,
+  type FactProvider, type FactResult, type FactScope,
 } from './facts';
+import { GITHUB_TIMEOUT_MS, type GitHubFactQuery, type PullRequestRef } from './modules/github/definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 import {

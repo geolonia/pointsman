@@ -12,12 +12,34 @@ import { parse as parseYaml } from 'yaml';
 // The same condition parser the Worker uses (Node.js strips the types).
 import { DECISIONS_PREFIX, FACTS_PREFIX, policyErrors, profileActions } from '../../src/policy.ts';
 
+import { chosenModules, useChosenModules } from './modules.mjs';
+import { profileSchemaFor } from './schema.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 export const schemaPath = join(here, '..', '..', 'schema', 'profile-v1.schema.json');
-const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+const baseSchema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
-const ajv = new Ajv2020({ allErrors: true, strict: true });
-const validateSchema = ajv.compile(schema);
+let registry;
+let validateSchema;
+
+/**
+ * Validate with these fact modules (default: the ones engine.json chooses,
+ * scripts/lib/modules.mjs): the schema's fact types and settings, and the
+ * fields and reasons rules may use, come from them.
+ */
+export async function useModules(modules = chosenModules()) {
+  registry = await useChosenModules(modules);
+  validateSchema = new Ajv2020({ allErrors: true, strict: true }).compile(profileSchemaFor(baseSchema, registry.modules));
+  return registry;
+}
+
+// A broken engine.json stops every script with one line, not a stack trace.
+try {
+  await useModules();
+} catch (err) {
+  console.error(`fact modules: ${err.message}`);
+  process.exit(2);
+}
 
 export const PROFILE_EXTENSIONS = ['.yaml', '.yml', '.json'];
 
@@ -32,10 +54,15 @@ export function parseProfile(text, fileName) {
 
 function schemaErrors() {
   return (validateSchema.errors ?? [])
-    // if/then failures repeat the real error found inside "then".
-    .filter((e) => e.keyword !== 'if')
+    // if/then failures repeat the real error found inside "then", and
+    // propertyNames the one about the name.
+    .filter((e) => e.keyword !== 'if' && e.keyword !== 'propertyNames')
     .map((e) => {
       const where = e.instancePath || '(root)';
+      // A fact setting of another type (src/modules/schema.ts).
+      if (e.keyword === 'enum' && e.propertyName !== undefined) {
+        return `${where}: "${e.propertyName}" is not a setting of this fact type (${e.params.allowedValues.join(', ')})`;
+      }
       const extra = e.keyword === 'additionalProperties'
         ? ` "${e.params.additionalProperty}"`
         : e.keyword === 'enum' ? ` (${e.params.allowedValues.join(', ')})` : '';
@@ -57,6 +84,9 @@ function duplicates(values) {
  * be in it (docs/decision-chains.md "Checked both ways").
  */
 export function validateProfile(profile, { fileName, profiles = new Map() } = {}) {
+  if (Array.isArray(profile?.facts) && profile.facts.length > 0 && registry.types.size === 0) {
+    return ['/facts: no fact module is chosen (engine.json "modules"), so a profile cannot have facts'];
+  }
   if (!validateSchema(profile)) return schemaErrors();
 
   const errors = [];

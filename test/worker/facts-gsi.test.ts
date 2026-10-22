@@ -1,14 +1,13 @@
 // The GSI fact provider (src/facts-gsi.ts) with made-up tiles: no network.
 
+import { providerOf } from './helpers';
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { FactError, FactUnavailableError, lookupFacts, type Geometry } from '../../src/facts';
-import type { FactRouter } from '../../src/facts';
 import { decodePng, GsiFactProvider } from '../../src/facts-gsi';
 import { depsFor } from '../../src/index';
 
 /** The spatial provider behind the deployment's fact router. */
-const spatialOf = (deps: { facts?: unknown }) => (deps.facts as FactRouter | undefined)?.providers.spatial;
 
 /** A 256 × 256 PNG: colour type 6 (RGBA) or 3 (palette), each row with the given filter. */
 async function png(pixel: (x: number, y: number) => [number, number, number, number], { type = 6, filter = 0 } = {}): Promise<Uint8Array> {
@@ -280,6 +279,6 @@ describe('what the provider cannot answer', () => {
   });
 
   it('is selected with FACTS_MODE "gsi"', () => {
-    expect(spatialOf(depsFor({ PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', FACTS_MODE: 'gsi', TOKENS: env.TOKENS, DB: env.DB }))).toBeInstanceOf(GsiFactProvider);
+    expect(providerOf(depsFor({ PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', FACTS_MODE: 'gsi', TOKENS: env.TOKENS, DB: env.DB }), '@pointsman/facts-gsi')).toBeInstanceOf(GsiFactProvider);
   });
 });
