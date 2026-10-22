@@ -2,9 +2,9 @@
 // built from the fact types of the chosen modules: each type allows its own
 // settings and requires the ones it needs. `pnpm build` writes it for every
 // module in this repository; the profile validator builds it for the
-// modules a deployment chose. Node-safe, like src/modules/api.ts.
+// modules a deployment chose. Node-safe, like packages/module-api/src/api.ts.
 
-import type { FactTypeDef, JsonSchema } from './api.ts';
+import type { FactTypeDef, JsonSchema } from '@pointsman/module-api';
 import { settingsSchemas } from './registry.ts';
 
 export function factSchema(types: FactTypeDef[]): JsonSchema {

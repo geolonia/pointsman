@@ -1,0 +1,15 @@
+{
+  "name": "@pointsman/facts-valhalla",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Pointsman fact module: detour from a Valhalla routing server.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./definition": "./src/definition.ts"
+  },
+  "dependencies": {
+    "@pointsman/module-api": "workspace:*"
+  }
+}

@@ -738,7 +738,7 @@ export class Redirected extends Error {
  * credentials (broker token or API key, Pointsman token) and the entity to
  * another URL, one the operator never set: it is not followed, and a 3xx is
  * an error, checked before the body is read. Like the engine's own outbound
- * calls (src/facts-routing.ts). The message has the status only: the
+ * calls (packages/facts-valhalla/src/router.ts). The message has the status only: the
  * Location header is not logged.
  */
 async function send(config: BridgeConfig, to: 'broker' | 'pointsman', url: string, init: RequestInit): Promise<Response> {

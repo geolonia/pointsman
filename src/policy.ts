@@ -41,7 +41,7 @@
 // properties) and imports other files with their extension.
 
 import type { Answer, Fact, FactSpec, Profile, Question, RequiredDecisionInput } from './types';
-import type { Kind } from './modules/api.ts';
+import type { Kind } from '@pointsman/module-api';
 // Fact types, their fields and the missing reasons come from the chosen modules.
 import { factRegistry } from './modules/registry.ts';
 

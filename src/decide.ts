@@ -14,7 +14,7 @@ import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './cha
 import { compilePolicy, peopleCheck, PolicyError, type RequiredProfiles } from './policy';
 import { compileDraft, policyShapeError, replay, REPLAY_LIMIT, unchangedPartError, type ReplayResult } from './replay';
 import type { OAuthConfig } from './auth';
-import { ConfigError } from './modules/api';
+import { ConfigError } from '@pointsman/module-api';
 import { factRegistry } from './modules/registry';
 import type { ProfileStore } from './profiles/store';
 import type { Decision, Profile } from './types';

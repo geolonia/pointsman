@@ -1,8 +1,8 @@
-// Small geometry helpers for spatial facts (src/facts.ts): distances on the
+// Small geometry helpers for spatial facts: distances on the
 // sphere, points along a line, and web map tile numbers. Good to a few
 // metres at city scale, which is all the facts need.
 
-import type { Geometry, Position } from './facts';
+import type { Geometry, Position } from './capabilities.ts';
 
 const R = 6371008.8; // mean Earth radius, metres
 const rad = (d: number) => (d * Math.PI) / 180;

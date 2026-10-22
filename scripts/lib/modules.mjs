@@ -18,11 +18,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/** The modules in this repository: definition (Node-safe) and entry (the Worker's). */
+/** The modules in this repository (packages/*): definition (Node-safe) and entry (the Worker's). */
 export const CATALOG = {
-  '@pointsman/facts-gsi': { definition: 'src/modules/gsi/definition.ts', entry: 'src/modules/gsi/index.ts' },
-  '@pointsman/facts-valhalla': { definition: 'src/modules/valhalla/definition.ts', entry: 'src/modules/valhalla/index.ts' },
-  '@pointsman/facts-github': { definition: 'src/modules/github/definition.ts', entry: 'src/modules/github/index.ts' },
+  '@pointsman/facts-gsi': { definition: '@pointsman/facts-gsi/definition', entry: '@pointsman/facts-gsi' },
+  '@pointsman/facts-valhalla': { definition: '@pointsman/facts-valhalla/definition', entry: '@pointsman/facts-valhalla' },
+  '@pointsman/facts-github': { definition: '@pointsman/facts-github/definition', entry: '@pointsman/facts-github' },
 };
 
 /** "name" or "name@version" → { name, version }. */
@@ -70,7 +70,7 @@ export const allModules = () => Object.keys(CATALOG).map((name) => ({ name, vers
 export async function loadDefinitions(modules = chosenModules()) {
   const out = [];
   for (const { name, version } of modules) {
-    const { definition } = await import(pathToFileURL(join(root, CATALOG[name].definition)).href);
+    const { definition } = await import(CATALOG[name].definition);
     if (version !== undefined && version !== definition.version) {
       throw new Error(`module ${name}: engine.json pins ${version}, the engine has ${definition.version}`);
     }
@@ -88,10 +88,10 @@ export async function useChosenModules(modules = chosenModules()) {
 /** The source of generated/modules.ts: the entries of the chosen modules, for the Worker. */
 export async function modulesSource(modules = chosenModules()) {
   await loadDefinitions(modules); // checks pinned versions
-  const imports = modules.map(({ name }, i) => `import m${i} from '../${CATALOG[name].entry.replace(/\.ts$/, '')}';`);
+  const imports = modules.map(({ name }, i) => `import m${i} from '${CATALOG[name].entry}';`);
   return [
     '// Written by scripts/build-modules.mjs from engine.json "modules" (docs/modules.md). Do not edit.',
-    "import type { FactModuleEntry } from '../src/modules/api';",
+    "import type { FactModuleEntry } from '@pointsman/module-api';",
     ...imports,
     '',
     `const modules: FactModuleEntry[] = [${modules.map((_, i) => `m${i}`).join(', ')}];`,

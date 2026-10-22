@@ -1,10 +1,11 @@
 {
-  // The engine core, compiled without Cloudflare's types (docs/adapters.md):
+  // The engine core and the fact modules (packages/), compiled without
+  // Cloudflare's types (docs/adapters.md):
   // a core file that uses a Cloudflare API, or imports a file that does, fails
   // here. The files left out are the Cloudflare adapters.
   "extends": "./tsconfig.json",
   "compilerOptions": { "lib": ["es2024", "webworker"], "types": [] },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "packages/*/src/**/*.ts"],
   "exclude": [
     "src/index.ts",
     "src/app.ts",

@@ -1,13 +1,13 @@
-// Detour facts from Valhalla (src/facts-routing.ts) with a fake server.
+// Detour facts from Valhalla (packages/facts-valhalla/src/router.ts) with a fake server.
 
 import { providerOf } from './helpers';
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { ConfigError } from '../../src/app';
 import { FactError, lookupFacts, type Geometry } from '../../src/facts';
-import { GsiFactProvider } from '../../src/facts-gsi';
-import { inside, ValhallaRouter } from '../../src/facts-routing';
-import { distance } from '../../src/geo';
+import { GsiFactProvider } from '@pointsman/facts-gsi';
+import { inside, ValhallaFactProvider, ValhallaRouter } from '@pointsman/facts-valhalla';
+import { distance } from '@pointsman/module-api';
 import { depsFor } from '../../src/index';
 
 /** The spatial provider behind the deployment's fact router. */
@@ -200,7 +200,7 @@ describe('detours', () => {
 
   it('start no retry once the time for the lookup is up', async () => {
     const { bodies, router } = server(() => ok(0.24), () => new Response('', { status: 502 }), () => ok(0.85));
-    const facts = await lookupFacts([{ name: 'detour', type: 'detour', at: '$.g' }], { g: section }, new GsiFactProvider({ routing: router }), 100);
+    const facts = await lookupFacts([{ name: 'detour', type: 'detour', at: '$.g' }], { g: section }, new ValhallaFactProvider(router), 100);
     expect(facts.detour).toEqual({ missing: true, reason: 'timeout' });
     await new Promise((r) => setTimeout(r, 400));
     expect(bodies).toHaveLength(2);
@@ -308,7 +308,7 @@ describe('detours', () => {
     expect(bodies.map((b) => b.costing)).toEqual(['pedestrian', 'pedestrian']);
     // Through the provider, from the profile's mode.
     const p = server(() => ok(0.24), () => ok(0.3));
-    const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g' }], { g: section }, new GsiFactProvider({ routing: p.router }));
+    const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g' }], { g: section }, new ValhallaFactProvider(p.router));
     expect(facts.walk).toMatchObject({ missing: false, values: { extra_m: 60 } });
     expect(p.bodies.map((b) => b.costing)).toEqual(['pedestrian', 'pedestrian']);
   });
@@ -317,7 +317,7 @@ describe('detours', () => {
     const shaped = () => Response.json({ trip: { summary: { length: 0.3 }, legs: [{ shape: 'kz}fbAo~upiG??' }] } });
     const ask = async (route?: boolean) => {
       const { router } = server(() => ok(0.24), shaped);
-      const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g', ...(route !== undefined && { route }) }], { g: section }, new GsiFactProvider({ routing: router }));
+      const facts = await lookupFacts([{ name: 'walk', type: 'detour', mode: 'walk', at: '$.g', ...(route !== undefined && { route }) }], { g: section }, new ValhallaFactProvider(router));
       const walk = facts.walk;
       return walk && !walk.missing ? walk.values.route : 'missing';
     };
@@ -331,9 +331,9 @@ describe('detours', () => {
     await expect(router.detour({ type: 'Point', coordinates: [139.75, 35.70] })).rejects.toThrow(FactError);
   });
 
-  it('come through the GSI provider when routing is configured', async () => {
+  it('come through the Valhalla module when routing is configured', async () => {
     const { router } = server(() => ok(0.24), () => ok(0.3));
-    const facts = await lookupFacts([{ name: 'detour', type: 'detour', at: '$.g' }], { g: section }, new GsiFactProvider({ routing: router }));
+    const facts = await lookupFacts([{ name: 'detour', type: 'detour', at: '$.g' }], { g: section }, new ValhallaFactProvider(router));
     expect(facts.detour).toMatchObject({ missing: false, values: { possible: true, extra_m: 60 } });
     expect((await lookupFacts([{ name: 'detour', type: 'detour', at: '$.g' }], { g: section }, new GsiFactProvider())).detour).toEqual({ missing: true, reason: 'unavailable' });
   });

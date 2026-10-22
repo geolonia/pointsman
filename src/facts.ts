@@ -8,15 +8,15 @@ import { resolvePath } from './input';
 import {
   FactError, FactMissingError, FactUnavailableError, mockProvider,
   type FactModule, type FactProvider, type FactQueryBase, type FactResult, type FactScope, type Scalar,
-} from './modules/api';
+} from '@pointsman/module-api';
 import { factRegistry, type FactRegistry } from './modules/registry';
 import type { Fact, FactSpec } from './types';
 
 export {
   FactError, FactMissingError, FactStaleError, FactUnavailableError,
   type FactProvider, type FactResult, type FactScope,
-} from './modules/api';
-export { toGeometry, type Geometry, type Position, type SpatialFactQuery } from './modules/capabilities';
+} from '@pointsman/module-api';
+export { toGeometry, type Geometry, type Position, type SpatialFactQuery } from '@pointsman/module-api';
 
 const MAX_SOURCE_LENGTH = 200;
 

@@ -3,10 +3,8 @@
 // answers), FACTS_ROUTING_URL (a Valhalla server, https) and the secret
 // FACTS_ROUTING_API_KEY (sent as x-api-key).
 
-import { ConfigError, mockProvider, type FactModuleEntry, type FactProvider } from '../api';
-import { detour, type SpatialFactQuery } from '../capabilities';
-import { ValhallaRouter } from '../../facts-routing';
-import { checkServerUrl } from '../../models/http';
+import { checkServerUrl, ConfigError, detour, mockProvider, type FactModuleEntry, type FactProvider, type SpatialFactQuery } from '@pointsman/module-api';
+import { ValhallaFactProvider, ValhallaRouter } from './router';
 import { definition } from './definition';
 
 const mock = mockProvider([detour]);
@@ -35,9 +33,7 @@ export const valhallaModule: FactModuleEntry = {
         const id = JSON.stringify([checked.value, key ?? '']);
         let p = routers.get(id);
         if (!p) {
-          const router = new ValhallaRouter(checked.value, undefined, key);
-          // Routing requests are not shared, so the lookup's time limit stops them.
-          p = { lookup: (q, signal) => router.detour(q.geometry, signal, q.mode, q.route === true) };
+          p = new ValhallaFactProvider(new ValhallaRouter(checked.value, undefined, key));
           routers.set(id, p);
         }
         return p as FactProvider;
@@ -47,5 +43,9 @@ export const valhallaModule: FactModuleEntry = {
     }
   },
 };
+
+// The provider's parts, for tests and other modules.
+export * from './router';
+export * from './definition';
 
 export default valhallaModule;

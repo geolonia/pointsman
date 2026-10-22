@@ -1,10 +1,10 @@
-// The GSI fact provider (src/facts-gsi.ts) with made-up tiles: no network.
+// The GSI fact provider (packages/facts-gsi/src/provider.ts) with made-up tiles: no network.
 
 import { providerOf } from './helpers';
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { FactError, FactUnavailableError, lookupFacts, type Geometry } from '../../src/facts';
-import { decodePng, GsiFactProvider } from '../../src/facts-gsi';
+import { decodePng, GsiFactProvider } from '@pointsman/facts-gsi';
 import { depsFor } from '../../src/index';
 
 /** The spatial provider behind the deployment's fact router. */

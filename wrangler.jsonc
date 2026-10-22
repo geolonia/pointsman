@@ -19,7 +19,7 @@
     "PROFILE_SOURCE": "bundled",
     // "mock": every model id is answered by the mock adapter.
     "MODEL_MODE": "mock",
-    // "mock": fixed spatial facts (src/facts.ts). "gsi": GSI data (src/facts-gsi.ts).
+    // "mock": fixed spatial facts (src/facts.ts). "gsi": GSI data (packages/facts-gsi/src/provider.ts).
     // "off": facts are missing.
     "FACTS_MODE": "mock",
     // GitHub pull-request facts: "mock" (fixed answers), "token" (secret

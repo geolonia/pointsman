@@ -10,11 +10,12 @@
 // is in each fact's `source`. Background: docs/spikes/spatial-facts.md.
 // Tiles are cached for a day: in memory and in the Workers cache.
 
-import { FactError, FactUnavailableError, type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery } from './facts';
-import { along, distanceTo, offset, tileOf } from './geo';
-import type { ValhallaRouter } from './facts-routing';
+import {
+  along, distanceTo, FactError, FactUnavailableError, offset, tileOf,
+  type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery,
+} from '@pointsman/module-api';
 // The layers and the capability each answers: one table, in the module's definition.
-import { GSI_LAYERS } from './modules/gsi/definition';
+import { GSI_LAYERS } from './definition';
 
 export { GSI_LAYERS };
 
@@ -64,8 +65,6 @@ export interface GsiOptions {
   cache?: Cache | undefined;
   /** For tests: the clock for the memory cache. */
   now?: () => number;
-  /** Answers `detour` facts (FACTS_ROUTING_URL); without it they are unavailable. */
-  routing?: ValhallaRouter | undefined;
 }
 
 export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
@@ -73,22 +72,17 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
   private readonly cache: Cache | undefined;
   private readonly memory = new Map<string, { tile: Promise<Tile<unknown>>; until: number }>();
   private readonly now: () => number;
-  private readonly routing: ValhallaRouter | undefined;
 
-  constructor({ fetch: fetchFn, cache, now, routing }: GsiOptions = {}) {
+  constructor({ fetch: fetchFn, cache, now }: GsiOptions = {}) {
     // A wrapper, not fetch itself: Workers refuse an unbound global fetch.
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
     this.cache = cache;
     this.now = now ?? Date.now;
-    this.routing = routing;
   }
 
   async lookup(query: SpatialFactQuery, signal: AbortSignal): Promise<FactResult> {
-    if (query.type === 'detour') {
-      if (!this.routing) throw new FactUnavailableError('no routing provider');
-      // Routing requests are not shared, so the lookup's time limit stops them.
-      return this.routing.detour(query.geometry, signal, query.mode, query.route === true);
-    }
+    // Detours are answered by @pointsman/facts-valhalla.
+    if (query.type === 'detour') throw new FactUnavailableError('GSI has no detours');
     const kind = query.layer !== undefined && Object.hasOwn(GSI_LAYERS, query.layer) ? GSI_LAYERS[query.layer as keyof typeof GSI_LAYERS] : undefined;
     if (!kind) throw new FactUnavailableError(`unknown layer "${query.layer}"`);
     if (kind !== query.type) throw new FactError(`layer "${query.layer}" answers ${kind}, not ${query.type}`);

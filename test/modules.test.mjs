@@ -12,10 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
 import { FactRegistry, ModuleError } from '../src/modules/registry.ts';
-import { inside } from '../src/modules/capabilities.ts';
-import { definition as github } from '../src/modules/github/definition.ts';
-import { definition as gsi } from '../src/modules/gsi/definition.ts';
-import { definition as valhalla } from '../src/modules/valhalla/definition.ts';
+import { inside } from '@pointsman/module-api';
+import { definition as github } from '@pointsman/facts-github/definition';
+import { definition as gsi } from '@pointsman/facts-gsi/definition';
+import { definition as valhalla } from '@pointsman/facts-valhalla/definition';
 import { ENGINE_VERSION } from '../src/version.ts';
 import { allModules, chosenModules, loadDefinitions } from '../scripts/lib/modules.mjs';
 import { schemaWithFacts } from '../scripts/lib/schema.mjs';
@@ -86,6 +86,19 @@ test('the engine version agrees in package.json, openapi.yaml and src/version.ts
   assert.equal(api.info.version, pkg.version);
 });
 
+test('each module has the version of its package', () => {
+  for (const [definition, dir] of [[gsi, 'facts-gsi'], [valhalla, 'facts-valhalla'], [github, 'facts-github']]) {
+    const pkg = JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8'));
+    assert.equal(definition.name, pkg.name);
+    assert.equal(definition.version, pkg.version);
+  }
+  // Released together with the engine for now (docs/modules.md).
+  const engine = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+  for (const dir of ['module-api', 'facts-gsi', 'facts-valhalla', 'facts-github']) {
+    assert.equal(JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8')).version, engine, dir);
+  }
+});
+
 test('schema/profile-v1.schema.json has the fact types of every module (pnpm build)', async () => {
   const file = join(root, 'schema/profile-v1.schema.json');
   const text = readFileSync(file, 'utf8');
@@ -104,8 +117,8 @@ function engineJson(t, modules) {
 
 test('engine.json chooses modules; without "modules", all are chosen', async (t) => {
   assert.deepEqual(chosenModules(engineJson(t).file), allModules());
-  const { file } = engineJson(t, { facts: ['@pointsman/facts-github', `@pointsman/facts-gsi@${ENGINE_VERSION}`] });
-  assert.deepEqual(chosenModules(file), [{ name: '@pointsman/facts-github', version: undefined }, { name: '@pointsman/facts-gsi', version: ENGINE_VERSION }]);
+  const { file } = engineJson(t, { facts: ['@pointsman/facts-github', `@pointsman/facts-gsi@${gsi.version}`] });
+  assert.deepEqual(chosenModules(file), [{ name: '@pointsman/facts-github', version: undefined }, { name: '@pointsman/facts-gsi', version: gsi.version }]);
   assert.equal((await loadDefinitions(chosenModules(file))).length, 2);
 });
 
@@ -177,7 +190,7 @@ test('the build bundles only the chosen modules', (t) => {
     process.stdout.write(await modulesSource(chosenModules(${JSON.stringify(file)})));
   `], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /src\/modules\/github\/index/);
+  assert.match(r.stdout, /from '@pointsman\/facts-github'/);
   assert.doesNotMatch(r.stdout, /gsi|valhalla/);
 });
 

@@ -4,10 +4,9 @@
 //
 // Every entry point chooses once, before anything reads facts: the Worker
 // (src/index.ts, from generated/modules.ts), the scripts (scripts/lib/modules.mjs)
-// and the tests. Node-safe, like src/modules/api.ts.
+// and the tests. Node-safe, like packages/module-api/src/api.ts.
 
-import type { Bilingual, FactModule, FactTypeDef } from './api.ts';
-import { CAPABILITIES, LAYER_CAPABILITIES } from './capabilities.ts';
+import { CAPABILITIES, LAYER_CAPABILITIES, type Bilingual, type FactModule, type FactTypeDef } from '@pointsman/module-api';
 
 /** Reasons any fact can be missing, whatever its module. */
 export const CORE_REASONS: Record<string, Bilingual> = {

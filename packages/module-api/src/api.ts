@@ -1,5 +1,6 @@
 // Fact-provider modules (docs/modules.md): what a module tells the engine
-// about the facts it looks up, and how the engine calls it.
+// about the facts it looks up, and how the engine calls it. The package
+// @pointsman/module-api; the engine and every module depend on it.
 //
 // A module has two parts:
 //
@@ -11,9 +12,30 @@
 //   the provider from the deployment's settings. Only the Worker loads it.
 //
 // The engine core uses no runtime-specific API (docs/adapters.md); neither
-// do modules.
+// do modules. Like the engine, this package is not published to npm yet.
 
-import type { FactSpec } from '../types.ts';
+/** By car (`drive`, the default) or on foot (`walk`). */
+export type DetourMode = 'drive' | 'walk';
+
+/**
+ * A fact a profile asks for (docs/profile-format.md#facts): name, type, the
+ * JSONPath `at`, and the settings of its type. The capabilities' settings
+ * are typed here; a module types its own (for example GitHubFactSpec).
+ */
+export interface FactSpec {
+  name: string;
+  type: string;
+  /** JSONPath into the request state, read by the type's input (a GeoJSON geometry for spatial facts, a pull request for GitHub facts). */
+  at: string;
+  /** For `inside` and `nearest`: the layer, configured per deployment. */
+  layer?: string;
+  /** For `detour`: by car (`drive`, the default) or on foot (`walk`). */
+  mode?: DetourMode;
+  /** For `detour`: also return the way around (`route`). */
+  route?: boolean;
+  /** Settings of other fact types. */
+  [setting: string]: unknown;
+}
 
 export type Kind = 'number' | 'string' | 'boolean';
 export type Scalar = string | number | boolean | null;
@@ -54,7 +76,7 @@ export interface FactInput {
   gloss: Bilingual;
 }
 
-/** What case files (src/cases.ts) may give for a fact, so a case cannot pass on values the engine never produces. */
+/** What test case files (docs/profile-format.md#test-cases) may give for a fact, so a case cannot pass on values the engine never produces. */
 export type CaseRules =
   /**
    * The first field says whether something was found and decides the
@@ -111,7 +133,7 @@ export interface FactModule {
   roles: 'facts'[];
   /** Fact types of its own. A type that is not a capability is named after its source (github_pr) or `<publisher>/<type>`. */
   types?: FactTypeDef[];
-  /** Capabilities (src/modules/capabilities.ts) it answers. */
+  /** Capabilities (capabilities.ts) it answers. */
   capabilities?: CapabilityClaim[];
   /** Missing reasons its provider can give (with FactMissingError), with what they mean. */
   reasons?: Record<string, Bilingual>;
