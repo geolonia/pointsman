@@ -133,6 +133,18 @@ export class D1DecisionLog implements DecisionLog {
     return row ? fromRow(row) : null;
   }
 
+  async recentFor(client: string, profiles: string[], since: string, limit: number): Promise<DecisionRecord[]> {
+    if (profiles.length === 0 || limit < 1) return [];
+    const { results } = await this.db
+      .prepare(
+        `SELECT * FROM decisions WHERE client = ? AND profile_id IN (${profiles.map(() => '?').join(', ')}) AND created_at >= ? AND discarded_at IS NULL
+         ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      )
+      .bind(client, ...profiles, since, limit)
+      .all<DecisionRow>();
+    return results.map(fromRow);
+  }
+
   async supersede(d: Pick<DecisionRecord, 'decision_id' | 'profile' | 'ref' | 'client' | 'created_at'>): Promise<string[]> {
     if (d.ref === undefined) return [];
     const { results } = await this.db

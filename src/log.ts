@@ -127,6 +127,12 @@ export interface DecisionLog {
   /** The newest decision of a profile for a ref and client that counts (not superseded), if any. */
   latestFor(profile: string, ref: string, client: string): Promise<DecisionRecord | null>;
   /**
+   * For facts that read the log (docs/modules.md): decisions of one client
+   * and these profiles since a time, newest first, at most `limit`, without
+   * discarded ones.
+   */
+  recentFor(client: string, profiles: string[], since: string, limit: number): Promise<DecisionRecord[]>;
+  /**
    * Mark the open reviews of the decisions that `decision` replaces (same
    * profile, ref and client, made at or before it) as superseded. Returns their ids.
    */

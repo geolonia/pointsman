@@ -33,6 +33,12 @@ them, and they never reach the review queue or the accuracy numbers.
 | `versions` | The engine version and the [fact modules](modules.md) that answered the decision's facts, with their versions (JSON: `{ "engine", "modules": { name: version } }`). Empty for decisions made before modules |
 | `discarded_at` | A decision made while a person resolved the one it would replace: the client got `409 resolved_by_person`, and it never counts (not in the stats, not usable in a chain, cannot be resolved) |
 
+Facts can read earlier decisions of the same client, as they were logged
+(their profile, action and facts; [modules.md](modules.md#facts-from-the-decision-log)).
+So a fact's values in the log can feed later decisions: for example the
+CodeRabbit spend counts earlier pay decisions at the price their fact
+recorded.
+
 By default only the hash of the state is kept: the state can hold personal or
 confidential data (issue text, sensor data). The hash still shows when the
 same input was decided twice. Turn on `log.store_state` for a profile when you

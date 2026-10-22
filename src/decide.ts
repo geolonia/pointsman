@@ -2,6 +2,7 @@
 // engine core behind the HTTP API (src/app.ts) and MCP (src/mcp.ts). It uses
 // no runtime-specific API (docs/adapters.md).
 
+import { factContext } from './log-facts';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord, type TokenStore } from './auth';
 import { attempt, type Fetch } from './callbacks';
@@ -221,7 +222,9 @@ export async function makeDecision(
 
   // Facts read the client's data (the `at` paths), not the mapped state.
   // Looked up while the model answers; lookupFacts never throws.
-  const factsLookup = profile.facts?.length ? lookupFacts(profile.facts, body.state, factProvider) : undefined;
+  const factsLookup = profile.facts?.length
+    ? lookupFacts(profile.facts, body.state, factProvider, undefined, factContext(log, client, profile.id))
+    : undefined;
 
   let answers: Decision['answers'] | undefined;
   let model: string | undefined;

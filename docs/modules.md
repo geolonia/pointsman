@@ -113,6 +113,34 @@ same snapshot (`snapshotOf`, with the GitHub module's settings from
 `githubAuthFrom`), so all GitHub-based facts of a decision describe the
 same moment and read GitHub once.
 
+### Facts from the decision log
+
+A fact can also read the engine's own decision log, for example how many
+of an author's pull requests wait, or how much was spent in a time window.
+The engine gives each lookup a context (the fourth argument of `lookup`,
+`DecisionContext` in `packages/module-api/src/api.ts`): the client, the
+profile being decided, the time, and `log.recent({ profiles, since,
+limit })`. That log is read only and limited the same way as everything
+else a client sees:
+
+- only decisions of the client that asks (its token), never another
+  client's;
+- only of profiles its token may use; others are left out silently;
+- never discarded decisions;
+- at most 1,000 decisions per read (`MAX_LOG_READ`). A fact that needs all
+  of them must be missing when a read is full.
+
+A test token's decisions are not logged, and it reads none: its lookups
+get no context, and such facts are missing (`@pointsman/coderabbit` gives
+`no_log`). A fact reads the log as it was when the decision started: the
+decision itself is not in it yet, and two decisions made at the same time
+do not see each other.
+
+What earlier decisions are found by is up to the module. The CodeRabbit
+facts write the pull request and its author into their own values (display
+fields, not for rules), and read them back from decisions of the same
+profile and fact name.
+
 ### Not yet
 
 - Showing a fact to the model (`show_model` per fact, #145): the model does not see facts ([profile-format.md](profile-format.md#facts)).

@@ -756,6 +756,65 @@ The fact is missing (`error`, `stale`, `unavailable`, `timeout`) as the
 GitHub facts are, and also when the reviews, comments, the head's statuses,
 the review threads, the other pull requests or a comparison cannot be read.
 
+Three more types also read this client's earlier decisions of the same
+profile, from the last 48 hours ([modules.md](modules.md#facts-from-the-decision-log)).
+They write the pull request (`pull_request`, as `owner/repo#n`) and its
+author (`author`) into their values, as text for people (rules cannot use
+it), so later decisions can find them. More than 999 decisions in 48 hours,
+a log that cannot be read, or a test token (`no_log`) make them missing.
+
+```yaml
+facts:
+  - { name: budget, type: coderabbit_budget, at: $.pull_request }
+  - { name: queue, type: coderabbit_queue, at: $.pull_request, waiting: [wait, queue] }
+  - { name: spend, type: coderabbit_spend, at: $.pull_request, pay_actions: [pay], usd_per_file: 0.25, not_reviewed: ["**/pnpm-lock.yaml"] }
+```
+
+**`coderabbit_budget`**: the CodeRabbit review budget of the pull request's
+author. CodeRabbit's limits are per developer and follow the person who
+opened the pull request, so only answers about the author count:
+CodeRabbit's limit notices on this pull request, its replies to a command
+the author posted (the newest command before the reply, at most 10 minutes
+older), and the author's readings on other pull requests in this client's
+decisions. A reply to anyone else's command, an app's included, is about
+their budget and never counts.
+
+| Field | Meaning |
+|---|---|
+| `known` | There is a reading, its wait is not over, and free reviews in it were stated at most an hour ago. |
+| `available` | Free reviews stated; 0 when it states none, only a wait, or nothing is known. |
+| `wait_stated`, `wait_minutes` | CodeRabbit stated a wait; the minutes left (no value when not stated). |
+| `allowance_per_hour` | The reviews per hour CodeRabbit last stated (no value when never). |
+| `observed_minutes_ago` | Minutes since the reading (no value when there is none). |
+| `asked_minutes_ago` | Minutes since the author last asked `@coderabbitai rate limit` here (no value when never). |
+| `taken_by_other_pr` | After the reading, another pull request of the author got a decision with one of `review_actions` (default `review`) from this profile: that free review may be gone. |
+
+**`coderabbit_queue`**: the author's other pull requests that wait for a
+free review ahead of this one. A pull request waits when its latest
+decision of this profile has one of the actions in `waiting` (required),
+made within `max_age_minutes` (default 120). Those that started waiting
+earlier are ahead. `ahead` is their number; `wait_minutes` is CodeRabbit's
+wait plus one slot (60 ÷ reviews per hour) per pull request ahead, 0 when
+there are more free reviews than pull requests ahead, no value when it
+cannot be computed (budget not known, no allowance stated).
+
+**`coderabbit_spend`**: what paid reviews cost.
+
+| Field | Meaning |
+|---|---|
+| `price_usd` | This review's price: CodeRabbit's stated price for this head, else the billable files (as for `coderabbit`) times `usd_per_file`. |
+| `per_pr_usd_after` | Earlier payments for this pull request plus this review. |
+| `per_window_usd_after` | Earlier payments of every pull request in the last `window_hours` (default 5, at most 24) plus this review. |
+| `paid_for_head` | A paid review command (`@coderabbitai review --use-credits`) for this head: written after the head was pushed, by the author, an organization owner or member, or an app in `payer_apps` (by id), and CodeRabbit started or finished a review of the head within 10 minutes after it. |
+
+Payments come from this client's decisions of the profile with an action
+in `pay_actions`, at the `price_usd` their spend fact recorded, once per
+head (at its highest price). An earlier decision for this head is the same
+review, so it is not added twice. A pay decision is a reservation: the
+engine does not know whether it was carried out, so it counts. For the
+pull request it stops counting after 24 hours, unless a paid review command
+was written after it. This counts too much, never too little.
+
 Settings: `FACTS_CODERABBIT` `on` reads GitHub with the GitHub module's
 settings (`FACTS_GITHUB` `token` or `app`, so choose `@pointsman/github`
 too), `mock` gives fixed answers (CodeRabbit runs and has not reviewed;

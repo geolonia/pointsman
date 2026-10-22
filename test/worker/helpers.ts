@@ -20,6 +20,7 @@ export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
     recordCallback: async () => true,
     byIdempotencyKey: async () => null,
     latestFor: async () => null,
+    recentFor: async () => [],
     supersede: async () => [],
     discard: async () => {},
     ...overrides,

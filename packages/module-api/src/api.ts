@@ -162,9 +162,51 @@ export interface FactResult {
  */
 export type FactScope = Map<string, unknown>;
 
+/**
+ * An earlier decision as a fact sees it in the log (docs/modules.md, "Facts
+ * from the decision log"): when, which profile, its action, and its facts.
+ */
+export interface LoggedDecision {
+  id: string;
+  created_at: string;
+  profile: string;
+  ref?: string;
+  action: string;
+  /** Each fact by name: its values, or missing. */
+  facts: Record<string, { missing: boolean; values?: Record<string, Scalar> }>;
+}
+
+/**
+ * Read-only access to the decision log for facts. It returns only
+ * decisions of the client that asks for this decision, of profiles its
+ * token may use, never discarded ones.
+ */
+export interface FactLog {
+  /**
+   * Decisions of these profiles made since `since` (ISO 8601), newest
+   * first, at most `limit` (up to MAX_LOG_READ). A full page means there may
+   * be more: a fact that needs all of them must then be missing.
+   */
+  recent(query: { profiles: string[]; since: string; limit: number }): Promise<LoggedDecision[]>;
+}
+
+/** The most decisions one log read returns. */
+export const MAX_LOG_READ = 1000;
+
+/** What a lookup knows about the decision it is made for. Missing for a test token: its decisions are not logged, and it reads none. */
+export interface DecisionContext {
+  /** The client (token) that asks. */
+  client: string;
+  /** The profile being decided. */
+  profile: string;
+  /** The time the lookup counts from (ISO 8601). */
+  now: string;
+  log: FactLog;
+}
+
 /** Answers fact queries. Throws FactError (or anything) on failure. */
 export interface FactProvider<Q extends FactQueryBase = FactQueryBase> {
-  lookup(query: Q, signal: AbortSignal, scope?: FactScope): Promise<FactResult>;
+  lookup(query: Q, signal: AbortSignal, scope?: FactScope, context?: DecisionContext): Promise<FactResult>;
 }
 
 /** What the runtime gives a module besides its settings (docs/adapters.md, "Cache"). */

@@ -7,7 +7,7 @@
 import { resolvePath } from './input';
 import {
   FactError, FactMissingError, FactUnavailableError, mockProvider,
-  type FactModule, type FactProvider, type FactQueryBase, type FactResult, type FactScope, type FactTypeDef, type Scalar,
+  type DecisionContext, type FactModule, type FactProvider, type FactQueryBase, type FactResult, type FactScope, type FactTypeDef, type Scalar,
 } from '@pointsman/module-api';
 import { factRegistry, type FactRegistry } from './modules/registry';
 import type { Fact, FactSpec } from './types';
@@ -34,12 +34,12 @@ export class ModuleRouter implements FactProvider {
     this.#registry = registry;
   }
 
-  lookup(query: FactQueryBase, signal: AbortSignal, scope?: FactScope): Promise<FactResult> {
+  lookup(query: FactQueryBase, signal: AbortSignal, scope?: FactScope, context?: DecisionContext): Promise<FactResult> {
     const layer = (query as { layer?: unknown }).layer;
     const module = this.#registry.moduleFor(query.type, typeof layer === 'string' ? layer : undefined);
     const provider = module && this.providers.get(module.name);
     if (!provider) return Promise.reject(new FactUnavailableError(`no provider for ${query.type} facts`));
-    return provider.lookup(query, signal, scope);
+    return provider.lookup(query, signal, scope, context);
   }
 }
 
@@ -108,6 +108,8 @@ export async function lookupFacts(
   provider: FactProvider | undefined,
   /** For tests: one limit for every fact. Default: the fact type's own. */
   timeoutMs?: number,
+  /** The decision the facts are for, with read access to the client's log; none for a test token. */
+  context?: DecisionContext,
 ): Promise<Record<string, Fact>> {
   const registry = factRegistry();
   const scope: FactScope = new Map();
@@ -130,7 +132,7 @@ export async function lookupFacts(
       timer = setTimeout(() => resolve('timeout'), timeoutMs ?? def.timeoutMs);
     });
     try {
-      const result = await Promise.race([provider.lookup(def.query(spec, input), controller.signal, scope), timeout]);
+      const result = await Promise.race([provider.lookup(def.query(spec, input), controller.signal, scope, context), timeout]);
       if (result === 'timeout') {
         controller.abort();
         return [spec.name, { missing: true, reason: 'timeout' }];

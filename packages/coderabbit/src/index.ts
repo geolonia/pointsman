@@ -39,6 +39,7 @@ export const coderabbitModule: FactModuleEntry = {
 
 export * from './definition.ts';
 export * from './coderabbit.ts';
+export * from './budget.ts';
 export * from './provider.ts';
 
 export default coderabbitModule;
