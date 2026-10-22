@@ -8,7 +8,22 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fiwareModule from '@pointsman/fiware';
 import { hashToken, newToken } from '../../src/auth';
-import { worker } from '../../src/index';
+import { connectorsFor, worker } from '../../src/index';
+import { ConfigError, type ConnectorEntry, type EngineApi } from '@pointsman/module-api';
+
+/** A connector that only keeps the engine it was given, or fails to start. */
+function probe(id: string, fail = false): ConnectorEntry & { engine?: EngineApi } {
+  const entry: ConnectorEntry & { engine?: EngineApi } = {
+    name: `@test/${id}`, version: '0.0.0',
+    connector: { id, placements: ['engine'], settings: [], actions: [] },
+    connect(_env, runtime) {
+      if (fail) throw new ConfigError(`${id}: broken`);
+      entry.engine = runtime.engine;
+      return { fetch: async () => new Response('probe') };
+    },
+  };
+  return entry;
+}
 
 const SECRET = crypto.randomUUID();
 const BROKER = 'https://broker.example.org';
@@ -121,5 +136,27 @@ describe('the FIWARE bridge inside the engine Worker', () => {
     const { BRIDGE_QUEUE: _, ...noQueue } = settings;
     await worker([fiwareModule]).queue(off, { ...env, ...noQueue } as Env, createExecutionContext());
     expect(off.retryAll).toHaveBeenCalledWith({ delaySeconds: 300 });
+  });
+
+  it('reaches only the engine API, also after the URL is normalized', async () => {
+    const p = probe('probe');
+    connectorsFor(env, createExecutionContext(), [p]);
+    const engine = p.engine!;
+    await expect(engine.fetch(`${engine.url}/v1/../mcp`, { method: 'POST' })).rejects.toThrow(/only its own \/v1\//);
+    await expect(engine.fetch('https://example.org/v1/profiles', {})).rejects.toThrow(/only its own/);
+    expect((await engine.fetch(`${engine.url}/v1/profiles`, {})).status).toBe(401);
+  });
+
+  it('keeps the queue working when another connector is broken', async () => {
+    const settings = { BRIDGE_ROUTES: ROUTES, BROKER_URL: BROKER, NOTIFY_SECRET: SECRET, POINTSMAN_TOKEN: await clientToken('fiware-bridge'), BRIDGE_QUEUE: { sendBatch: async () => {} } };
+    fakeBroker();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const message = { body: { path: '/notify', entity }, attempts: 1, ack: vi.fn(), retry: vi.fn() };
+    const batch = { queue: 'q', messages: [message], retryAll: vi.fn(), ackAll: vi.fn() } as unknown as MessageBatch<unknown>;
+    await worker([probe('broken', true), fiwareModule]).queue(batch, { ...env, ...settings } as Env, createExecutionContext());
+    expect(message.ack).toHaveBeenCalled();
+    expect(batch.retryAll).not.toHaveBeenCalled();
+    expect(errors.mock.calls.flat().join(' ')).toContain('broken: broken');
+    errors.mockRestore();
   });
 });
