@@ -1,6 +1,6 @@
 {
   "name": "@pointsman/module-api",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "The interface between the Pointsman engine and its fact modules, and the shared fact types (capabilities).",
   "license": "MIT",
