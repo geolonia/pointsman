@@ -180,7 +180,8 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
         tile: { data: format === 'png' ? await decodePng(bytes) : shelterList(bytes), date: Number.isNaN(modified) ? '' : new Date(modified).toISOString().slice(0, 10) },
       };
     };
-    const cached = this.cache ? await this.cache.match(url) : undefined;
+    // A cache that fails is a miss, never an error.
+    const cached = this.cache ? await this.cache.match(url).catch(() => undefined) : undefined;
     if (cached) {
       try {
         return (await decode(cached)).tile;

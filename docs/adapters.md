@@ -6,7 +6,7 @@ Cloudflare Workers is the reference runtime. Other runtimes (a Node.js container
 
 ## The rule
 
-The core uses no Cloudflare-specific API. `pnpm typecheck` checks this with `scripts/check-core.mjs`: it compiles the core (`tsconfig.core.json`) without Cloudflare's types, so a core file that uses `KVNamespace`, `D1Database`, `ExecutionContext`, `caches.default` or a `cloudflare:` module, or imports a file that does, fails the check. It also fails when the core reaches a Cloudflare package.
+The core uses no Cloudflare-specific API. `pnpm typecheck` checks this with `scripts/check-core.mjs`: it compiles the core (`tsconfig.core.json`) without Cloudflare's types, so a core file that uses `KVNamespace`, `D1Database`, `ExecutionContext`, `caches.default` or a `cloudflare:` module, or imports a file that does, fails the check. It also fails when the core reaches a Cloudflare package or the Worker types wrangler generates. It is a check of types and imports: a cast such as `(globalThis as any).caches` gets past it, so reviews still look for that.
 
 The core is all of `src/` except these Cloudflare adapters, the only files that may use Cloudflare APIs:
 
@@ -34,7 +34,7 @@ The entry reads the deployment's settings, builds the other adapters and passes 
 
 An adapter must:
 
-- Refuse to start on a broken configuration (`ConfigError`), for example half of the OAuth settings, instead of running with a part switched off.
+- Fail on a broken configuration (`ConfigError`), for example half of the OAuth settings, instead of running with a part switched off. The Worker reads its configuration for each request and cron run, so each of them fails.
 - Never log a request's state, tokens or secrets.
 - Answer every route of `openapi.yaml` the same way, whatever the runtime.
 
@@ -44,7 +44,7 @@ Interface: `DecisionLog` in `src/log.ts`. Today: D1 (`src/log-d1.ts`, schema in 
 
 An adapter must:
 
-- Store a decision before the engine returns it. If storing fails, the call fails, so no client acts on a decision that is not logged.
+- Store a decision before the engine returns it. If storing fails, the call fails, so no client acts on a decision that is not logged. (Decisions for a test token are not logged, by design: they are marked `test`.)
 - Keep an idempotency key unique per client: of two inserts with the same key, exactly one succeeds.
 - Resolve a review only while it is pending, and claim a callback for one caller only (`resolve`, `claimCallback` are compare-and-set).
 - Keep decisions as they were written: only review, callback and discard fields change later.
@@ -55,8 +55,8 @@ Interface: `ProfileStore` in `src/profiles/store.ts`. Today: KV (`src/profiles/s
 
 An adapter must:
 
-- Return only profiles that passed validation (they are validated before they reach a store).
-- Return exactly the version asked for, or nothing. Without a version, return the newest readable one.
+- Hold only profiles that passed validation. The store does not validate: the publish step does (`scripts/publish-profiles.mjs` after `validate-profiles.mjs`, or the build for bundled profiles), and the store trusts it.
+- Return the version asked for, or nothing. Without a version, return the newest readable one.
 
 ### Tokens and login
 
@@ -93,7 +93,7 @@ Today: the Worker's cron trigger (`wrangler.jsonc` `triggers`, every 5 minutes) 
 An adapter must:
 
 - Run the jobs regularly; how often decides how late a callback retry is.
-- Be safe to run twice at the same time: callbacks are claimed before they are sent, so a second run sends nothing twice.
+- Be safe to run twice at the same time: a callback is claimed before it is sent, so no attempt is sent twice. (A receiver can still get a callback more than once, after a retry: see [reviews.md](reviews.md).)
 
 ## Not yet
 
