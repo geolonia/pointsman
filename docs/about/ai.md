@@ -21,7 +21,8 @@ is wrong, please [open an issue](https://github.com/geolonia/pointsman/issues).
 - **Start here:** [llms.txt](https://pointsman.net/llms.txt), a short index of
   every page of the documentation with one line about each, in English.
 - **Everything in one file:** [llms-full.txt](https://pointsman.net/llms-full.txt),
-  the text of every English page.
+  the text of every English page that is written. Planned pages, which only
+  say what they will cover, are left out.
 - **The API:** the [HTTP API](../reference/http-api.md) and the
   [MCP tools](../reference/mcp-tools.md), generated from the code.
 - This site's `robots.txt` permits search, AI answers and AI training.

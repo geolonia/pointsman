@@ -57,6 +57,7 @@ export function llms(pages) {
     '',
     'Pointsman is an open-source decision service (MIT License): systems send it a case, an AI model answers fixed questions, facts are looked up in data, and rules written by people turn both into an action, or a person checks the case. Every decision is logged. Source: https://github.com/geolonia/pointsman. This file lists the English documentation; Japanese pages are under /docs/ja/.',
   ];
+  if (start) lines.push('', `- [${start.data.title}](${start.url}): the start page, with links to every topic`);
   for (const g of GROUPS) {
     const group = inGroup(pages, g.dir);
     if (!group.length) continue;
@@ -67,7 +68,7 @@ export function llms(pages) {
 }
 
 export function llmsFull(pages) {
-  const parts = ['# Pointsman: every page of the documentation', '', `The text of every English page of ${SITE}${BASE}, in sidebar order. Index: ${SITE}/llms.txt`];
+  const parts = ['# Pointsman: every page of the documentation', '', `The text of every written English page of ${SITE}${BASE}, in sidebar order; planned pages, which only say what they will cover, are left out. Index: ${SITE}/llms.txt`];
   const start = pages.find((p) => p.slug === '');
   for (const p of [...(start ? [start] : []), ...GROUPS.flatMap((g) => inGroup(pages, g.dir))]) {
     if (planned(p)) continue;
