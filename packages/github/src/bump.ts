@@ -6,7 +6,7 @@
 // at the head commit, and its earlier text is the head text with the patch
 // taken back, so both sides are the pull request's own (the merge base, not
 // a newer base branch). Lockfiles are only read through their patch, for
-// changed sources. Whatever is not understood gives the stricter answer;
+// changed sources and the versions they add (lockfileChanges). Whatever is not understood gives the stricter answer;
 // what cannot be read (no patch, a patch that does not fit the file) fails
 // the fact, so it is missing rather than wrong.
 
@@ -38,6 +38,9 @@ export const NO_BUMP: BumpFacts = {
   registry_changed: true, manifest_lines: 0, release_age_days: 0,
 };
 
+/** A package bumped to a version: one registry read. */
+export interface BumpedVersion { name: string; version: string }
+
 /** A dependency whose version spec changed in one package.json. */
 export interface Bump {
   manifest: string;
@@ -49,14 +52,14 @@ export interface Bump {
 
 /** The sections of a package.json that name dependencies. */
 export const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
-/** A pull request with more bumped packages fails the fact: each is one registry read. */
-export const MAX_BUMPED_PACKAGES = 20;
+/** A pull request with more bumped versions (package.json and lockfiles) fails the fact: each is one registry read. */
+export const MAX_BUMPED_PACKAGES = 30;
 /** The registry whose lockfile URLs are no change of source. */
 export const NPM_REGISTRY = 'https://registry.npmjs.org';
 /** A package name as npm allows it (lower case, optionally scoped). */
 const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._~-]{0,100}\/)?[a-z0-9][a-z0-9._~-]{0,100}$/;
 /** A version spec this fact understands: an exact version, or one after ^ or ~. No pre-release, no range. */
-const SPEC = /^([~^]?)(\d{1,6})\.(\d{1,6})\.(\d{1,6})$/;
+const SPEC = /^([~^]?)(\d{1,10})\.(\d{1,10})\.(\d{1,10})$/;
 
 type Kind = 'manifest' | 'lockfile' | 'npmrc';
 
@@ -223,10 +226,82 @@ const SOURCE_SPEC = /[:/]/;
  */
 export function changesSource(line: string): boolean {
   const rest = line.split(`${NPM_REGISTRY}/`).join('');
-  if (/[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(rest)) return true;
+  if (/[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(rest) || /(?:^|["'\s])\/\//.test(rest)) return true;
   if (/(?:^|[\s{,"'])(?:tarball|repo|commit|directory|registry)["']?\s*:/.test(rest)) return true;
   // Also after "@", for an alias in a pnpm-lock.yaml key (name@npm:other@1.0.0).
   return /(?:^|[\s"'@])(?:git\+|git:|github:|gitlab:|bitbucket:|file:|link:|npm:|workspace:)/.test(rest);
+}
+
+/** A version as a lockfile pins it: no range, no alias. */
+const PINNED = /^\d{1,10}\.\d{1,10}\.\d{1,10}(?:-[0-9A-Za-z.-]{1,60})?$/;
+/** A pnpm-lock.yaml package key (packages, snapshots): name@version, then peers in parentheses. */
+const PNPM_KEY = /^ {2}'?((?:@[^@/'\s]+\/)?[^@/'\s]+)@([^'(:\s]+)(?:\(.*\))?'?:(?:\s*\{\})?\s*$/;
+/** A package-lock.json entry key: "node_modules/<name>", maybe nested. */
+const LOCK_KEY = /^\s*"(?:[^"]*\/)?node_modules\/((?:@[^/"]+\/)?[^/"]+)":\s*\{/;
+
+/**
+ * A lockfile's patch: whether it may change where a package comes from, and
+ * the versions it adds (each one's age counts, transitive ones too). In a
+ * pnpm-lock.yaml, a changed `version:` must be a pinned version (peers in
+ * parentheses aside), not an alias such as other@1.0.0. In a
+ * package-lock.json, a changed "resolved" must be the npm registry's
+ * tarball of the entry's own package, and a changed "link" is a change of
+ * source; an entry whose key the patch does not show cannot be checked, so
+ * it counts as a change.
+ */
+export function lockfileChanges(file: string, patch: string): { sourceChanged: boolean; versions: BumpedVersion[] } {
+  let sourceChanged = false;
+  const versions: BumpedVersion[] = [];
+  const add = (name: string, version: string) => {
+    if (NPM_NAME.test(name) && PINNED.test(version)) versions.push({ name, version });
+    else sourceChanged = true;
+  };
+  if (base(file) === 'pnpm-lock.yaml') {
+    for (const line of patch.split('\n')) {
+      const mark = line[0];
+      if (mark !== '+' && mark !== '-') continue;
+      const text = line.slice(1);
+      if (changesSource(text)) sourceChanged = true;
+      const v = /^\s+version:\s*'?([^']*)'?\s*$/.exec(text);
+      if (v) {
+        let pinned = v[1]!;
+        while (/\([^()]*\)/.test(pinned)) pinned = pinned.replace(/\([^()]*\)/g, '');
+        if (!PINNED.test(pinned)) sourceChanged = true;
+      }
+      const key = PNPM_KEY.exec(text);
+      if (key && mark === '+') add(key[1]!, key[2]!);
+    }
+    return { sourceChanged, versions };
+  }
+  // package-lock.json: the entry each line is in, on each side.
+  let before: string | null = null;
+  let after: string | null = null;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('@@')) {
+      before = after = null;
+      continue;
+    }
+    const mark = line[0];
+    const text = line.slice(1);
+    const key = LOCK_KEY.exec(text);
+    if (key) {
+      if (mark !== '+') before = key[1]!;
+      if (mark !== '-') after = key[1]!;
+    }
+    if (mark !== '+' && mark !== '-') continue;
+    if (changesSource(text) || /"link"\s*:/.test(text)) sourceChanged = true;
+    const entry = mark === '+' ? after : before;
+    const resolved = /^\s*"resolved":\s*"([^"]*)"/.exec(text);
+    if (resolved) {
+      const tarball = entry === null ? null : `${NPM_REGISTRY}/${entry}/-/${base(entry)}-`;
+      const version = tarball && resolved[1]!.startsWith(tarball) && resolved[1]!.endsWith('.tgz') ? resolved[1]!.slice(tarball.length, -4) : null;
+      if (version === null || !PINNED.test(version)) sourceChanged = true;
+      else if (mark === '+') add(entry!, version);
+    }
+    const version = /^\s*"version":\s*"([^"]*)"/.exec(text);
+    if (version && mark === '+' && entry !== null) add(entry, version[1]!);
+  }
+  return { sourceChanged, versions };
 }
 
 /** The package.json files to read; null when the pull request is not a bump this fact understands, so nothing more is read. */
@@ -242,9 +317,6 @@ export function manifestsToRead(files: BumpFile[]): string[] | null {
   return out.length > 0 ? out : null;
 }
 
-/** A package bumped to a version: one registry read. */
-export interface BumpedVersion { name: string; version: string }
-
 /**
  * The bump facts without the release age, and the versions whose age is
  * needed. `heads` has the text at the head commit of each package.json
@@ -258,6 +330,7 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
   let manifestLines = 0;
   const bumps: Bump[] = [];
   const sides: Record<string, unknown>[] = [];
+  const locked: BumpedVersion[] = [];
   for (const f of files) {
     const name = f.names[0]!;
     const kind = bumpKindOf(name)!;
@@ -269,7 +342,9 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
     }
     if (f.patch === null) throw new FactError(`GitHub files: no patch for ${kind === 'manifest' ? 'a package.json' : 'a lockfile'}`);
     if (kind === 'lockfile') {
-      if (changedLines(f.patch).some(changesSource)) registryChanged = true;
+      const lock = lockfileChanges(name, f.patch);
+      if (lock.sourceChanged) registryChanged = true;
+      locked.push(...lock.versions);
       continue;
     }
     manifestLines += changedLines(f.patch).length;
@@ -295,11 +370,15 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
     if (SOURCE_SPEC.test(b.from) || SOURCE_SPEC.test(b.to)) registryChanged = true;
     if (to) versions.set(`${b.name}@${to.version}`, { name: b.name, version: to.version });
   }
+  for (const v of locked) versions.set(`${v.name}@${v.version}`, v);
   if (versions.size > MAX_BUMPED_PACKAGES) throw new FactError(`more than ${MAX_BUMPED_PACKAGES} bumped packages`);
-  // Dev only: bumped in devDependencies, and in no other section of any changed package.json, before or after.
+  // Dev only: bumped in devDependencies, and in no other section of any changed package.json, before or after,
+  // and not bundled (a bundled package ships with the package).
   const names = new Set(bumps.map((b) => b.name));
+  const bundled = (side: Record<string, unknown>) => [side.bundleDependencies, side.bundledDependencies]
+    .some((list) => list !== undefined && (!Array.isArray(list) || list.some((n) => names.has(n as string))));
   const devOnly = bumps.every((b) => b.section === 'devDependencies')
-    && sides.every((side) => DEPENDENCY_SECTIONS.filter((s) => s !== 'devDependencies')
+    && sides.every((side) => !bundled(side) && DEPENDENCY_SECTIONS.filter((s) => s !== 'devDependencies')
       .every((s) => !isObject(side[s]) || [...names].every((n) => !Object.hasOwn(side[s] as Record<string, unknown>, n))));
   return {
     facts: {

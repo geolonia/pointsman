@@ -707,10 +707,17 @@ export class Snapshot {
       }));
       const found = bumpFacts(files, heads);
       if (!found) return NO_BUMP;
-      const signal = AbortSignal.timeout(REGISTRY_TIMEOUT_MS);
+      // One limit for every registry read; the first failure stops the others (the fact is missing anyway).
+      const stop = new AbortController();
+      const signal = AbortSignal.any([AbortSignal.timeout(REGISTRY_TIMEOUT_MS), stop.signal]);
       const byName = new Map<string, string[]>();
       for (const { name, version } of found.versions) byName.set(name, [...(byName.get(name) ?? []), version]);
-      const times = await Promise.all([...byName].map(async ([name, versions]) => [...(await publishTimes(this.fetchFn, name, versions, signal)).values()]));
+      let times: number[][];
+      try {
+        times = await Promise.all([...byName].map(async ([name, versions]) => [...(await publishTimes(this.fetchFn, name, versions, signal)).values()]));
+      } finally {
+        stop.abort();
+      }
       // The youngest release counts.
       const ages = times.flat().map((ms) => ageInDays(ms, now));
       // No version to look up (no spec understood, so semver is "none"): the strictest age.

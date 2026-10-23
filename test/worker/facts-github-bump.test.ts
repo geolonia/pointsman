@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { lookupFacts } from '../../src/facts';
 import {
-  changesSource, GitHubFactProvider, NO_BUMP, stepOf, textBefore, TimeScanner, TokenAuth,
+  changesSource, GitHubFactProvider, lockfileChanges, NO_BUMP, stepOf, textBefore, TimeScanner, TokenAuth,
 } from '@pointsman/github';
 import type { FactSpec } from '../../src/types';
 
@@ -57,23 +57,26 @@ function patchOf(before: string, after: string): string {
 }
 
 /** The pnpm-lock.yaml hunks of a bump from one version to another. */
-const lockPatch = (name: string, from: string, to: string, resolution = `{integrity: ${integrity()}}`) => [
+const lockPatch = (name: string, from: string, to: string, resolution = `{integrity: ${integrity()}}`) => {
+  const q = (k: string) => (name.startsWith('@') ? `'${k}'` : k);
+  return [
   '@@ -192,8 +192,8 @@ importers:',
   '  .:',
   '    devDependencies:',
-  `      ${name}:`,
+  `      ${q(name)}:`,
   `-        specifier: ^${from}`,
   `-        version: ${from}`,
   `+        specifier: ^${to}`,
   `+        version: ${to}`,
   '@@ -278,4 +278,4 @@ packages:',
   '',
-  `-  ${name}@${from}:`,
+  `-  ${q(`${name}@${from}`)}:`,
   `-    resolution: {integrity: ${integrity()}}`,
-  `+  ${name}@${to}:`,
+  `+  ${q(`${name}@${to}`)}:`,
   `+    resolution: ${resolution}`,
   '',
-].join('\n');
+  ].join('\n');
+};
 
 interface Change { filename: string; status?: string; patch?: string | null }
 
@@ -199,7 +202,7 @@ describe('github_bump', () => {
       files: [
         { filename: 'package.json', patch: patchOf(rootBefore, rootAfter) },
         { filename: 'packages/a/package.json', patch: patchOf(pkgBefore, pkgAfter) },
-        { filename: 'pnpm-lock.yaml', patch: lockPatch('\'@cloudflare/vitest-plugin\'', '1.4.1', '1.4.2') },
+        { filename: 'pnpm-lock.yaml', patch: lockPatch('@cloudflare/vitest-plugin', '1.4.1', '1.4.2') },
       ],
       heads: { 'package.json': rootAfter, 'packages/a/package.json': pkgAfter },
       registry: { '@cloudflare/vitest-plugin': () => document('@cloudflare/vitest-plugin', { '1.4.2': daysAgo(4) }) },
@@ -311,6 +314,45 @@ describe('github_bump', () => {
     expect(changesSource('        version: file:vendor/vitest.tgz')).toBe(true);
     expect(changesSource('  vitest@npm:other@4.1.12:')).toBe(true);
     expect(changesSource('    resolution: {tarball: x.tgz}')).toBe(true);
+  });
+
+  it('lockfiles: another package behind a name, aliases, links, and what they add', () => {
+    const entry = (key: string, resolved: string, version = '4.1.12') => [
+      '@@ -10,6 +10,6 @@',
+      `     "${key}": {`,
+      `-      "version": "4.1.11",`,
+      `-      "resolved": "${resolved.replace(/4\.1\.12/g, '4.1.11')}",`,
+      `+      "version": "${version}",`,
+      `+      "resolved": "${resolved}",`,
+      `       "dev": true,`,
+    ].join('\n');
+    expect(lockfileChanges('package-lock.json', entry('node_modules/vitest', 'https://registry.npmjs.org/vitest/-/vitest-4.1.12.tgz')))
+      .toEqual({ sourceChanged: false, versions: [{ name: 'vitest', version: '4.1.12' }, { name: 'vitest', version: '4.1.12' }] });
+    // The registry, but the tarball of another package.
+    expect(lockfileChanges('package-lock.json', entry('node_modules/vitest', 'https://registry.npmjs.org/evil/-/evil-1.0.0.tgz')).sourceChanged).toBe(true);
+    // A nested entry, a scoped one, an entry whose key the patch does not show, a local path, a protocol-relative URL.
+    expect(lockfileChanges('package-lock.json', entry('node_modules/a/node_modules/@scope/vitest', 'https://registry.npmjs.org/@scope/vitest/-/vitest-4.1.12.tgz')).sourceChanged).toBe(false);
+    expect(lockfileChanges('package-lock.json', '@@ -10,2 +10,2 @@\n-      "resolved": "https://registry.npmjs.org/vitest/-/vitest-4.1.11.tgz",\n+      "resolved": "https://registry.npmjs.org/vitest/-/vitest-4.1.12.tgz",').sourceChanged).toBe(true);
+    expect(lockfileChanges('package-lock.json', entry('node_modules/vitest', 'packages/vitest')).sourceChanged).toBe(true);
+    expect(lockfileChanges('package-lock.json', entry('node_modules/vitest', '//npm.example.org/vitest/-/vitest-4.1.12.tgz')).sourceChanged).toBe(true);
+    expect(lockfileChanges('package-lock.json', '@@ -10,2 +10,2 @@\n     "node_modules/vitest": {\n+      "link": true,').sourceChanged).toBe(true);
+    // pnpm: peers in parentheses are fine, an alias is not; added package keys are versions to look up.
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,2 +1,2 @@\n-        version: 1.4.0(vitest@4.1.11(vite@8.3.2))\n+        version: 1.4.1(vitest@4.1.11(vite@8.3.2))').sourceChanged).toBe(false);
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,2 +1,2 @@\n-        version: 4.1.11\n+        version: evil@1.0.0').sourceChanged).toBe(true);
+    expect(lockfileChanges('pnpm-lock.yaml', "@@ -1,1 +1,2 @@\n+  '@vitest/runner@4.1.12':\n+  vite@8.3.3(esbuild@0.28.2): {}").versions)
+      .toEqual([{ name: '@vitest/runner', version: '4.1.12' }, { name: 'vite', version: '8.3.3' }]);
+  });
+
+  it('a transitive version in the lockfile counts for the age; a bundled dependency is not dev only', async () => {
+    const base = vitestBump();
+    const lock = `${lockPatch('vitest', '4.1.11', '4.1.12')}\n@@ -400,1 +400,2 @@\n+  '@vitest/runner@4.1.12':`;
+    const young = { ...base, files: [base.files[0]!, { filename: 'pnpm-lock.yaml', patch: lock }],
+      registry: { ...base.registry, '@vitest/runner': () => document('@vitest/runner', { '4.1.12': daysAgo(1) }) } };
+    expect(await values(young)).toMatchObject({ semver: 'patch', release_age_days: 1 });
+    const before = manifest({ vitest: '~4.1.11' }, undefined, { bundleDependencies: ['vitest'] });
+    const after = manifest({ vitest: '~4.1.12' }, undefined, { bundleDependencies: ['vitest'] });
+    expect(await values({ ...base, files: [{ filename: 'package.json', patch: patchOf(before, after) }], heads: { 'package.json': after } }))
+      .toMatchObject({ dev_only: false });
   });
 
   it('a pull request of another ecosystem, or no bump: applies false, nothing else read', async () => {
