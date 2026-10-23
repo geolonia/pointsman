@@ -3,11 +3,10 @@ name: Pages
 # The website moved to https://pointsman.net (a Cloudflare Worker that
 # Cloudflare's GitHub app builds and deploys from main: docs-site/wrangler.jsonc).
 # GitHub Pages now only sends the old address, geolonia.github.io/pointsman/,
-# to the new one, keeping the path. Runs on main only.
+# to the new one, keeping the path. Run by hand from main, once
+# https://pointsman.net answers, so the old address never points at a site
+# that is not live yet; until then GitHub Pages keeps the last landing page.
 on:
-  push:
-    branches: [main]
-    paths: ['.github/pages-redirect/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions: {}
