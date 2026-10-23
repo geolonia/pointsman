@@ -196,6 +196,84 @@ belong in issues, not in the threat model:
    the old and the new binding (`git log <old>..<new>`), not only the pull
    requests that prompted the re-binding.
 
+## Amendment of 2026-10-23: `github_bump`, the internal call and the GitHub connector
+
+The model was amended for `github_bump` (pointsman#180, #186: v0.10.0 and
+v0.11.0, a new outbound host `registry.npmjs.org` and more GitHub reads)
+and the internal call (pointsman#188, v0.12.0: `InternalEngine`, a new
+entry point without a token), and re-bound from `v0.5.0` to `v0.12.0`. The
+GitHub connector Worker, which both changes touch, joined as the family
+`connector-github` within the same amendment: the procedure has no rule
+that a new family needs its own revision, and the connector was the only
+way to describe the internal call's caller and what `github_bump` gates
+downstream (an automatic approval).
+
+- **Time**: about 2 hours of agent time, most of it reading the connector
+  (about 1,300 lines) and re-checking every citation after the move of
+  `packages/facts-github` to `packages/github` and of the bridge to
+  `packages/fiware`.
+- **Questions**: four, Q28 to Q31, one wave, each with a proposed answer.
+  The maintainer answered all four on 2026-10-23 as proposed (Q28 to Q31
+  below), so the claims carry *(maintainer, 2026-10)* and the model is
+  *accepted* again:
+  - Q28: disclaim the connector's trust in the engine's answer
+    (`D-CONNECTOR-TRUSTS-ENGINE`); checking `test` and the decision's
+    shape is a hardening candidate.
+  - Q29: disclaim the reach of the connector app's key
+    (`D-CONNECTOR-KEY-REACH`); the key stays only in the connector Worker.
+  - Q30: disclaim trust in the npm registry (`D-NPM-REGISTRY-TRUSTED`);
+    integrators pair `github_bump` with `github_pr` and an age margin.
+  - Q31: disclaim a person's review behind an approval
+    (`D-APPROVAL-ON-FACTS`) and prompt injection through the pull request
+    for the connector; the integrator's rules are the control. From the Geolonia
+  question bank: Q46 (acting on test results, Q28), Q48 (trusted for
+  content, checked for shape, Q30), Q51 (a connector as its own family),
+  Q52 (settings outside the repository: the ruleset that dismisses stale
+  approvals, `R-CONNECTOR-APPROVE`), Q54 (a steered answer inside the
+  output set, Q31) and Q110 (binding).
+- **What the bank lacked**: a question for *a component that writes to the
+  same platform it reads from*: "We believe the connector's key is the
+  boundary: down-scoped tokens limit what the code asks for, not what a
+  leaked key can do. Proposed: disclaim; keep the key in one Worker." (Q29
+  here.) And one for *an entry point without a credential whose boundary is
+  the hosting account*: "We believe a caller that the platform
+  authenticates (a service binding, an internal network) is trusted as the
+  account is; the service names the client itself. Proposed: a property
+  for who the service says the caller is, a disclaimer for who may call."
+- **Re-binding lesson, again**: nine releases (`v0.6.0` to `v0.12.0`) landed
+  within a day. The validator caught the moved files (its citation
+  check fails on a path that no longer exists), but not a line that moved
+  inside an unmoved file; a small script compared every cited line at the
+  old binding with the new tree and found 22 to fix; the self-review found
+  four more that were cited in words ("lines 318 and 320 of `src/app.ts`"),
+  which the script did not see, and two bridge citations that were already
+  wrong before. Everything between the
+  bindings that this amendment does not cover is listed in §1.16 as a
+  `MODEL-GAP`.
+- **Length**: the model grew from about 23,700 to about 31,000 words. The
+  connector alone needed ten matrix rows, eight input rows and five
+  properties.
+
+Candidate issues kept out of the model:
+
+1. Connector: check the engine's answer (its shape, and refuse
+   `test: true`) before acting on it (Q28, recorded as a hardening
+   candidate by the maintainer on 2026-10-23).
+2. Connector: `ownApprovals` takes any bot's approving review that starts
+   with the connector's marker; only reviews whose ids the connector
+   recorded are dismissed, but while an action record is open, another
+   bot's review with the same marker would be taken as the connector's
+   trace. Match the app's own bot account as `findComment` does for
+   comments. Hardening.
+3. `packages/github/src/provider.ts` header still says the file "only
+   sends GET requests" (plus the token POST); the GraphQL queries of
+   `github_copilot` and the CodeRabbit module are a POST too
+   (docs/profile-format.md already says so). Comment fix.
+4. Amend the model for the items §1.16 lists as not covered:
+   `github_workflows`, `github_release`, `github_copilot`, the CodeRabbit
+   module, facts from the decision log, and connectors inside the engine
+   Worker.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
