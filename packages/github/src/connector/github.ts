@@ -6,6 +6,7 @@
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
+import type { ReviewRef } from './comment.ts';
 
 const API = 'https://api.github.com';
 const USER_AGENT = 'pointsman-github-connector (+https://github.com/geolonia/pointsman)';
@@ -60,6 +61,10 @@ function tokenRetry(err: unknown): boolean {
 
 export interface PullRequestInfo {
   open: boolean;
+  /** Closed by a merge. */
+  merged: boolean;
+  /** The author's login (only compared with reviewers', never shown). */
+  author: string;
   head: string;
   draft: boolean;
   base: string;
@@ -111,6 +116,8 @@ export interface ConnectorGitHub {
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
   /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
+  /** Every review of the pull request (at most 1000), without its text: where the train stands (comment.ts). */
+  reviews(repo: string, number: number): Promise<ReviewRef[]>;
   /** The unified diff, cut to `max` characters; empty and cut when GitHub does not give one (too large). */
   diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }>;
   approve(repo: string, number: number, head: string, body: string): Promise<number>;
@@ -191,6 +198,8 @@ export class AppGitHub implements ConnectorGitHub {
     }
     return {
       open: pr.state === 'open',
+      merged: pr.merged === true || (typeof pr.merged_at === 'string' && pr.merged_at !== ''),
+      author: isObject(pr.user) && typeof pr.user.login === 'string' ? pr.user.login : '',
       head: pr.head.sha,
       draft: pr.draft === true,
       base: typeof pr.base.ref === 'string' ? pr.base.ref : '',
@@ -255,6 +264,18 @@ export class AppGitHub implements ConnectorGitHub {
     } catch (err) {
       throw new GitHubError(`GitHub app token: ${err instanceof Error ? err.message : String(err)}`, tokenRetry(err));
     }
+  }
+
+  async reviews(repo: string, number: number): Promise<ReviewRef[]> {
+    const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    const bot = await this.#botLogin(repo);
+    return reviews
+      .filter((r) => typeof r.id === 'number' && typeof r.state === 'string' && typeof r.commit_id === 'string' && isObject(r.user) && typeof r.user.login === 'string')
+      .map((r) => {
+        const user = r.user as Record<string, unknown>;
+        const login = (user.login as string).toLowerCase();
+        return { id: r.id as number, state: r.state as string, commit: r.commit_id as string, login, own: user.type === 'Bot' && login === bot };
+      });
   }
 
   async ownApprovals(repo: string, number: number): Promise<OwnApproval[]> {

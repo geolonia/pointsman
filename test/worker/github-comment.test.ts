@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
-  AppGitHub, COMMENT_MARKER, actsOnGitHub, checkOutput, checkText, columns, commentBody, connectorSettings, httpEngine, lineArt, MAX_COLUMNS, STATIONS, pullRequestWork, signalOf, switchArt,
+  AppGitHub, COMMENT_MARKER, actsOnGitHub, checkOutput, checkText, columns, commentBody, connectorSettings, httpEngine, lineArt, MAX_COLUMNS, STATIONS, pullRequestWork, signalOf, switchArt, targetsOf,
   type ConnectorSettings, type Decision, type ObjectStorage,
 } from '@pointsman/github';
 import type { EngineApi } from '@pointsman/module-api';
@@ -44,11 +44,13 @@ interface Comment { id: number; body: string; user: { login: string; type: strin
 /** GitHub's REST API as far as the connector uses it here. `fail` answers a comment write with this status. */
 function fakeApi() {
   let nextId = 1000;
-  const pr = { state: 'open', draft: false, title: 'Docs', body: 'A body', head: HEAD };
+  const pr = { state: 'open', merged: false, draft: false, title: 'Docs', body: 'A body', head: HEAD, author: 'alice' };
   const comments: Comment[] = [];
   const checkRuns: { id: number; head: string; name: string; output: { title: string; summary: string; text?: string } }[] = [];
   const log: string[] = [];
-  const api = { pr, comments, checkRuns, log, fail: 0 };
+  /** The pull request's reviews, as GitHub lists them; `reviewsFail` answers their read with this status. */
+  const reviews: { id: number; state: string; commit_id: string; body: string; user: { login: string; type: string } }[] = [];
+  const api = { pr, comments, checkRuns, log, reviews, fail: 0, reviewsFail: 0 };
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const method = init.method ?? 'GET';
@@ -59,9 +61,14 @@ function fakeApi() {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     if (path === `/repos/${REPO}/pulls/7` && method === 'GET') {
       return Response.json({
-        state: pr.state, draft: pr.draft, title: pr.title, body: pr.body, labels: [], requested_reviewers: [],
+        state: pr.state, merged: pr.merged, draft: pr.draft, title: pr.title, body: pr.body, labels: [], requested_reviewers: [], user: { login: pr.author, type: 'User' },
         head: { sha: pr.head, repo: { full_name: REPO } }, base: { ref: 'main', repo: { full_name: REPO } },
       });
+    }
+    if (path === `/repos/${REPO}/pulls/7/reviews` && method === 'GET') {
+      if (api.reviewsFail) return Response.json({ message: 'no' }, { status: api.reviewsFail });
+      const page = Number(url.searchParams.get('page') ?? '1');
+      return Response.json(page === 1 ? reviews : []);
     }
     if (path.startsWith(`/repos/${REPO}/commits/`) && path.endsWith('/check-runs')) {
       const name = url.searchParams.get('check_name');
@@ -131,6 +138,7 @@ function setup(s: ConnectorSettings = settings(), mem = memoryStorage(), gh = fa
   return { work, mem, gh, api: gh.api, answers, pm, event };
 }
 const commentCalls = (log: string[]) => log.filter((l) => l.includes('comments'));
+const OWN = { at: 'approved', ownApproval: true } as const;
 
 describe('decision comment', () => {
   it('is off by default: no comment is read or written, and the token does not ask to write pull requests for it', async () => {
@@ -324,7 +332,172 @@ describe('decision comment', () => {
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
     await event();
     expect(reviews).toHaveLength(1);
-    expect(api.comments[0]!.body).toContain(lineArt('approved'));
+    expect(api.comments[0]!.body).toContain(lineArt(OWN));
+  });
+});
+
+const review = (id: number, state: string, login: string, commit = HEAD, type = 'User') => ({ id, state, commit_id: commit, body: 'Looks good @everyone <b>x</b>', user: { login, type } });
+/** The line of the comment (its first code block). */
+const lineOf = (body: string) => body.split('```text\n')[1]!.split('\n```')[0]!;
+const reviewReads = (log: string[]) => log.filter((l) => l === 'GET /pulls/7/reviews').length;
+
+describe('where the train stands', () => {
+  it('reads the reviews once per run: a bot\'s review of this head is "reviewed", with the stations before it filled', async () => {
+    const { api, event } = setup();
+    api.reviews.push(review(1, 'COMMENTED', 'coderabbitai[bot]', HEAD, 'Bot'));
+    await event();
+    expect(reviewReads(api.log)).toBe(1);
+    const line = lineOf(api.comments[0]!.body);
+    expect(line).toBe(lineArt('reviewed'));
+    expect(line.split('\n')[1]).toBe('━━━●━━━┿━━━┿━━━●━━━┿━━━┿━━━●━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━');
+    // No reviewer's name or text in the comment or the check runs.
+    for (const text of [api.comments[0]!.body, ...api.checkRuns.map((r) => `${r.output.summary}${r.output.text}`)]) {
+      for (const bad of ['coderabbit', '@everyone', '<b>', 'Looks good']) expect(text).not.toContain(bad);
+    }
+    expect(api.checkRuns[0]!.output.text).toContain(lineArt('reviewed'));
+    // Nothing changed: no write.
+    api.log.length = 0;
+    await event();
+    expect(commentCalls(api.log)).toEqual([]);
+    expect(reviewReads(api.log)).toBe(1);
+  });
+
+  it('an approval of this head by a person is "approved", without a name; the app\'s own keeps its caption', async () => {
+    const { api, event } = setup();
+    api.reviews.push(review(1, 'APPROVED', 'bob'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+    expect(api.comments[0]!.body).not.toContain('bob');
+    expect(api.comments[0]!.body).not.toContain('by Pointsman');
+    // Its own bot's approval (on GitHub, without a record of it here) is named as its own.
+    api.reviews.push(review(2, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(OWN));
+  });
+
+  it('a change request after an approval is not "approved", nor a request by another reviewer; a new approval by the same reviewer is', async () => {
+    const { api, event } = setup();
+    api.reviews.push(review(1, 'APPROVED', 'bob'), review(2, 'CHANGES_REQUESTED', 'bob'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
+    // A comment after the change request leaves it standing.
+    api.reviews.push(review(3, 'COMMENTED', 'bob'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
+    api.reviews.push(review(4, 'APPROVED', 'bob'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+    // Another reviewer asks for changes (on an older commit too: it stands until dismissed).
+    api.reviews.push(review(5, 'CHANGES_REQUESTED', 'carol', HEAD2));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
+    // Dismissed: the approval counts again.
+    api.reviews[4]!.state = 'DISMISSED';
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+  });
+
+  it('reviews of an older commit, the author\'s own and dismissed ones do not count', async () => {
+    const { api, event } = setup();
+    api.reviews.push(review(1, 'APPROVED', 'bob', HEAD2), review(2, 'COMMENTED', 'carol', HEAD2), review(3, 'COMMENTED', 'Alice'), review(4, 'DISMISSED', 'dave'), review(5, 'PENDING', 'erin'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
+  });
+
+  it('a draft stays at "draft", whatever its reviews say', async () => {
+    const { api, event } = setup();
+    api.pr.draft = true;
+    api.reviews.push(review(1, 'APPROVED', 'bob'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('draft'));
+    expect(reviewReads(api.log)).toBe(0);
+  });
+
+  it('reviews that cannot be read: the train stays where they last put it on this head, else at "ready"; the run goes on', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { api, pm, event } = setup();
+    api.reviews.push(review(1, 'APPROVED', 'bob'));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+    for (const status of [500, 403, 429]) {
+      api.reviewsFail = status;
+      api.log.length = 0;
+      const before = pm.calls();
+      await expect(event()).resolves.toBeUndefined();
+      expect(pm.calls()).toBe(before + 2);
+      expect(commentCalls(api.log)).toEqual([]);
+      expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+    }
+    expect(errors.mock.calls.join(' ')).toContain('reading reviews for the line');
+    // A new head: what the reviews said of the older one does not carry over.
+    api.pr.head = HEAD2;
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
+    // Never read: ready.
+    const fresh = setup();
+    fresh.api.reviewsFail = 500;
+    fresh.api.reviews.push(review(1, 'APPROVED', 'bob'));
+    await fresh.event();
+    expect(lineOf(fresh.api.comments[0]!.body)).toBe(lineArt('ready'));
+    errors.mockRestore();
+  });
+});
+
+describe('closed pull requests', () => {
+  it('merged: one last update with the train at "merged", Pointsman not asked, then nothing more', async () => {
+    const { api, pm, event } = setup();
+    await event();
+    const calls = pm.calls();
+    api.pr.state = 'closed';
+    api.pr.merged = true;
+    api.log.length = 0;
+    await event();
+    expect(pm.calls()).toBe(calls);
+    expect(commentCalls(api.log)).toEqual([`PATCH /issues/comments/${api.comments[0]!.id}`]);
+    expect(reviewReads(api.log)).toBe(0);
+    const body = api.comments[0]!.body;
+    expect(lineOf(body)).toBe(lineArt('merged'));
+    expect(lineOf(body).split('\n')[1]).not.toContain('○');
+    // The decisions it showed stay, of the commit they were made on.
+    expect(body).toContain('`pr-next-step`');
+    expect(body).toContain(`For commit ${HEAD.slice(0, 7)}`);
+    // Later events (a check suite after the merge): no write, no check run.
+    api.log.length = 0;
+    await event();
+    expect(api.log).toEqual(['GET /pulls/7']);
+  });
+
+  it('closed without merging: the line shows it, without a train; a reopen goes back to the usual run', async () => {
+    const { api, pm, event } = setup();
+    api.reviews.push(review(1, 'COMMENTED', 'bob'));
+    await event();
+    api.pr.state = 'closed';
+    await event();
+    const line = lineOf(api.comments[0]!.body);
+    expect(line).toBe(lineArt({ at: 'closed' }));
+    expect(line).toContain('closed without merging');
+    expect(line).not.toMatch(/[●▲]/);
+    const calls = pm.calls();
+    api.pr.state = 'open';
+    await event();
+    expect(pm.calls()).toBe(calls + 2);
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
+    expect(api.comments).toHaveLength(1);
+  });
+
+  it('closed with no comment yet: none is written', async () => {
+    const { api, pm, event } = setup();
+    api.pr.state = 'closed';
+    api.pr.merged = true;
+    await event();
+    expect(pm.calls()).toBe(0);
+    expect(api.log).toEqual(['GET /pulls/7']);
+  });
+
+  it('the webhook takes "closed" only with the decision comment on', () => {
+    const payload = { action: 'closed', repository: { full_name: REPO }, pull_request: { number: 7 } };
+    expect(targetsOf('pull_request', payload, APP_ID)).toEqual([]);
+    expect(targetsOf('pull_request', payload, APP_ID, true)).toEqual([{ repo: REPO, number: 7 }]);
   });
 });
 
@@ -368,7 +541,7 @@ describe('decision comment with nothing to show', () => {
     const { api, answers, event } = setup(s, memoryStorage(), gh);
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
     await event();
-    expect(api.comments[0]!.body).toContain(lineArt('approved'));
+    expect(api.comments[0]!.body).toContain(lineArt(OWN));
     answers['pr-next-step'] = () => ({ ...decision('pr-next-step', { action: 'approve' }), test: true });
     await event();
     expect(api.comments).toHaveLength(1);
@@ -443,7 +616,7 @@ describe('signals and the check run', () => {
 
       \`\`\`text
        draft       ready      reviewed    approved     merged
-      ━━━○━━━┿━━━┿━━━●━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━
+      ━━━●━━━┿━━━┿━━━●━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━
                      ▲ ready for review
       \`\`\`
 
@@ -514,7 +687,7 @@ describe('the art lines up', () => {
     ...(pending && { review: { status: 'pending' } }),
   })));
 
-  it('the line: station names centred over their stations, the train under its station, for every station', () => {
+  it('the line: station names centred over their stations, the train under its station and the stations before it filled, for every station', () => {
     const at = 'approved' as const;
     const [names, rail, train] = lineArt(at).split('\n') as [string, string, string];
     expect(railOf(rail)).toHaveLength([...rail].length);
@@ -535,12 +708,25 @@ describe('the art lines up', () => {
         expect(lines[1]).not.toContain('●');
         continue;
       }
-      const filled = [...lines[1]!].indexOf('●');
+      // Passed and the train's station filled, the ones ahead empty.
+      const marks = stations.map((i) => [...lines[1]!][i]).join('');
+      expect(marks).toBe('●'.repeat(STATIONS.indexOf(station) + 1).padEnd(STATIONS.length, '○'));
+      const filled = [...lines[1]!].lastIndexOf('●');
       expect(filled).toBe(stations[STATIONS.indexOf(station)]);
       expect([...lines[2]!].indexOf('▲')).toBe(filled);
       expect(lines[2]!.slice(0, filled).trim()).toBe('');
     }
     expect(train).toBe(`${' '.repeat(stations[3]!)}▲`);
+    // The captions: the app's own approval named, anyone's not; merged fits after the train.
+    expect(lineArt('approved').split('\n').slice(2)).toEqual([`${' '.repeat(stations[3]!)}▲`, `${' '.repeat(MAX_COLUMNS - 23)}approved on this commit`]);
+    expect(lineArt(OWN).split('\n').at(-1)).toBe(`${' '.repeat(MAX_COLUMNS - 36)}approved by Pointsman on this commit`);
+    expect(lineArt('reviewed').split('\n')[2]).toBe(`${' '.repeat(stations[2]!)}▲ reviewed on this commit`);
+    expect(lineArt('merged').split('\n')[2]).toBe(`${' '.repeat(stations[4]!)}▲ merged`);
+    // Closed without merging: no train, nothing filled, a line says so.
+    const closed = lineArt({ at: 'closed' });
+    expectRails(closed);
+    expect(closed.split('\n')).toEqual([names, rail.replaceAll('●', '○'), '   closed without merging']);
+    expect(closed).not.toMatch(/[●▲]/);
   });
 
   it('the switch: the same junction and sleeper columns for short, long, Japanese and odd names, no line wider than 60', () => {

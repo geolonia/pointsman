@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
   AppGitHub, GitHubError, actingScope, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
-  type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
+  type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewRef, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
 
@@ -44,12 +44,13 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
   let nextId = 100;
   const calls: { op: string; head?: string; name?: string; id?: number; output?: CheckRunOutput; body?: string; list?: string[] }[] = [];
   const state: PullRequestInfo = {
-    open: true, head: HEAD, draft: false, base: 'main', title: 'Docs', body: 'A body', fork: false, labels: [], requestedReviewers: [], ...pr,
+    open: true, merged: false, author: 'author', head: HEAD, draft: false, base: 'main', title: 'Docs', body: 'A body', fork: false, labels: [], requestedReviewers: [], ...pr,
   };
   const approvals: OwnApproval[] = [];
   const comments: string[] = [];
-  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string } = {
+  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string; reviewList: ReviewRef[] } = {
     state,
+    reviewList: [],
     diffText: 'diff --git a/README.md b/README.md\n+one line\n',
     approvals,
     comments,
@@ -64,6 +65,8 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
+    // Read for the line on every run that draws it: not in `calls`, which follows what the connector decides and does.
+    reviews: async () => github.reviewList.map((r) => ({ ...r })),
     diff: async (_r, _n, max) => (calls.push({ op: 'diff' }), { diff: github.diffText.slice(0, max), truncated: github.diffText.length > max }),
     approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head, marker: body.split('\n')[0]! }); return nextId++; },
     dismissReview: async (_r, _n, id) => {
@@ -702,6 +705,15 @@ describe('actions (switched on per profile action)', () => {
     }) as typeof fetch;
     const gh = new AppGitHub(APP_ID, KEY, fetchWith({ app_slug: 'pointsman-checks' }), true);
     expect(await gh.ownApprovals(REPO, 7)).toEqual([{ id: 1, commit: HEAD, marker }]);
+    // All reviews for the line: without their text; only its own bot's are its own.
+    expect(await gh.reviews(REPO, 7)).toEqual([
+      { id: 1, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
+      { id: 2, state: 'APPROVED', commit: HEAD, login: 'other-app[bot]', own: false },
+      { id: 3, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: false },
+      { id: 4, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks', own: false },
+      { id: 5, state: 'DISMISSED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
+      { id: 6, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
+    ]);
     // GitHub did not name the app: none is taken for its own (an error, so nothing is approved or recorded on it).
     const unnamed = new AppGitHub(APP_ID, KEY, fetchWith({}), true);
     await expect(unnamed.ownApprovals(REPO, 7)).rejects.toMatchObject({ retry: false, message: expect.stringContaining('no app slug') });

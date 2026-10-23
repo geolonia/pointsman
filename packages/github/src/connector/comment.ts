@@ -54,21 +54,87 @@ export const signalMark = (s: Signal) => EMOJI[s.colour];
 export const STATIONS = ['draft', 'ready', 'reviewed', 'approved', 'merged'] as const;
 export type Station = (typeof STATIONS)[number];
 
-const CAPTIONS: Partial<Record<Station, string>> = {
+/** Where the train stands: at a station, or off the line (closed without merging). */
+export interface Position {
+  at: Station | 'closed';
+  /** At "approved": the app's own approval of this commit stands (its caption says so). */
+  ownApproval?: boolean;
+}
+
+const CAPTIONS: Record<Station, string> = {
   draft: 'draft: work in progress',
   ready: 'ready for review',
-  approved: 'approved by Pointsman on this commit',
+  reviewed: 'reviewed on this commit',
+  approved: 'approved on this commit',
+  merged: 'merged',
 };
+const OWN_APPROVAL = 'approved by Pointsman on this commit';
+/** Under the line of a pull request closed without merging: no train on it. */
+export const CLOSED_TEXT = 'closed without merging';
+
+/** One review as the connector reads it (github.ts): never its text. */
+export interface ReviewRef {
+  id: number;
+  /** GitHub's state: APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED or PENDING. */
+  state: string;
+  /** The commit it was given on. */
+  commit: string;
+  /** The reviewer, lower case: only compared, never shown. */
+  login: string;
+  /** By the app's own bot account. */
+  own: boolean;
+}
+
+/** What the reviews say about this head. */
+export interface HeadReviews {
+  /** A review (a comment, a change request or an approval) of this head by someone other than the author. */
+  reviewed: boolean;
+  /** An approval of this head stands, by anyone. */
+  approved: boolean;
+  /** One of the approvals of this head that stand is the app's own. */
+  ownApproved: boolean;
+  /** A reviewer's latest verdict asks for changes (on any commit: it stands until they review again or it is dismissed). */
+  changesRequested: boolean;
+}
+
+export const NO_REVIEWS: HeadReviews = { reviewed: false, approved: false, ownApproved: false, changesRequested: false };
+
+const SUBMITTED = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED']);
+/** The states that set a reviewer's verdict; a later comment leaves it as it was (as GitHub counts it). */
+const VERDICT = new Set(['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED']);
 
 /**
- * Where the pull request is, from what the connector knows for sure: a draft;
- * approved when its own approval of this commit stands; else ready. It reads
- * no one else's reviews, and closed pull requests get no run, so the train is
- * never at "reviewed" or "merged".
+ * What the reviews say about this head, as GitHub counts them: each
+ * reviewer's latest approval, change request or dismissal is their verdict.
+ * The author's own reviews do not count; a review of an older commit counts
+ * only as a change request that still stands.
  */
-export function stationOf(draft: boolean, approvedByApp: boolean): Station {
-  if (draft) return 'draft';
-  return approvedByApp ? 'approved' : 'ready';
+export function reviewStateOf(reviews: ReviewRef[], head: string, author: string): HeadReviews {
+  const others = reviews.filter((r) => r.login !== '' && r.login !== author.toLowerCase()).sort((a, b) => a.id - b.id);
+  const verdicts = new Map<string, ReviewRef>();
+  for (const r of others) if (VERDICT.has(r.state)) verdicts.set(r.login, r);
+  const standing = [...verdicts.values()];
+  const approvals = standing.filter((r) => r.state === 'APPROVED' && r.commit === head);
+  return {
+    reviewed: others.some((r) => SUBMITTED.has(r.state) && r.commit === head),
+    approved: approvals.length > 0,
+    ownApproved: approvals.some((r) => r.own),
+    changesRequested: standing.some((r) => r.state === 'CHANGES_REQUESTED'),
+  };
+}
+
+/**
+ * Where the pull request is, from GitHub's state: merged, or closed without
+ * merging; a draft; approved while an approval of this head stands (the
+ * app's own by its records, or anyone's by the reviews) and no change request
+ * does; reviewed once someone other than the author reviewed this head (an
+ * approval is a review); else ready.
+ */
+export function positionOf(pr: { open: boolean; merged: boolean; draft: boolean }, reviews: HeadReviews, approvedByApp: boolean): Position {
+  if (!pr.open) return { at: pr.merged ? 'merged' : 'closed' };
+  if (pr.draft) return { at: 'draft' };
+  if ((reviews.approved || approvedByApp) && !reviews.changesRequested) return { at: 'approved', ownApproval: approvedByApp || reviews.ownApproved };
+  return { at: reviews.reviewed || reviews.approved || approvedByApp ? 'reviewed' : 'ready' };
 }
 
 /**
@@ -117,19 +183,24 @@ const EDGE = '━━━';
 const STATION_COLUMN = STATIONS.map((_, i) => EDGE.length + i * (SPAN.length + 1));
 
 /**
- * The line: station names, the rail with the train's station filled (●, the
- * others ○), and the train (▲) under it with a caption (none: no train).
+ * The line: station names, the rail with the train's station and the ones
+ * before it filled (● passed, ○ still ahead), and the train (▲) under its
+ * station with a caption. None: no train and nothing filled. Closed without
+ * merging: nothing filled and no train; a line under the rail says so.
  */
-export function lineArt(at: Station | undefined): string {
+export function lineArt(position: Position | Station | undefined): string {
+  const pos: Position | undefined = typeof position === 'string' ? { at: position } : position;
   let names = '';
   STATIONS.forEach((s, i) => {
     const start = Math.max(names.length === 0 ? 0 : names.length + 1, STATION_COLUMN[i]! - Math.floor((s.length - 1) / 2));
     names = names.padEnd(start) + s;
   });
-  const rail = `${EDGE}${STATIONS.map((s) => (s === at ? '●' : '○')).join(SPAN)}${EDGE}`;
-  if (!at) return [names, rail].join('\n');
-  const column = STATION_COLUMN[STATIONS.indexOf(at)]!;
-  const caption = CAPTIONS[at] ?? at;
+  const index = pos && pos.at !== 'closed' ? STATIONS.indexOf(pos.at) : -1;
+  const rail = `${EDGE}${STATIONS.map((_, i) => (i <= index ? '●' : '○')).join(SPAN)}${EDGE}`;
+  if (!pos) return [names, rail].join('\n');
+  if (pos.at === 'closed') return [names, rail, `${' '.repeat(EDGE.length)}${CLOSED_TEXT}`].join('\n');
+  const column = STATION_COLUMN[index]!;
+  const caption = pos.at === 'approved' && pos.ownApproval ? OWN_APPROVAL : CAPTIONS[pos.at];
   const train = `${' '.repeat(column)}▲`;
   // The caption after the train, or on its own line when that is too wide.
   const after = `${train} ${caption}`;
@@ -225,7 +296,7 @@ export function switchArt(d: Decision, head: string): string {
 const fence = (text: string) => `\`\`\`text\n${text.replace(/`/g, "'")}\n\`\`\``;
 
 /** The check run's details: the line and this decision's switch. */
-export function checkText(d: Decision, head: string, at: Station | undefined): string {
+export function checkText(d: Decision, head: string, at: Position | Station | undefined): string {
   return [fence(lineArt(at)), '', fence(switchArt(d, head))].join('\n');
 }
 
@@ -234,7 +305,7 @@ export function checkText(d: Decision, head: string, at: Station | undefined): s
  * Nothing in it changes from run to run unless a decision, its signal or the
  * pull request's station does: no decision ids, no times.
  */
-export function commentBody(decisions: Decision[], signals: Record<string, Record<string, SignalSpec>> | undefined, head: string, at: Station | undefined): string {
+export function commentBody(decisions: Decision[], signals: Record<string, Record<string, SignalSpec>> | undefined, head: string, at: Position | Station | undefined): string {
   // None (all skipped on this commit, or the last one no longer stands): a short neutral text, so an older one is not left standing.
   if (decisions.length === 0) {
     return [
