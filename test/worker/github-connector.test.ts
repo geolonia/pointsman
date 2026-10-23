@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, actsOnGitHub, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, actsOnGitHub, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -839,6 +839,28 @@ describe('chains: profiles that build on each other', () => {
     gh.github.diff = async (...a) => { gh.github.state.head = HEAD2; return diff(...a); };
     await expect(work.run()).rejects.toBeInstanceOf(RetryError);
     expect(pm.calls).toHaveLength(0);
+  });
+
+  it('a refused diff (no permission) is sent as empty and cut, and the run goes on', async () => {
+    const { work, pm, gh } = await chained();
+    gh.github.diff = async () => { throw new GitHubError('GitHub diff: 403', false, 403); };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await work.run();
+    errors.mockRestore();
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT]);
+    expect(pm.calls[0]!.body.state.pull_request).toMatchObject({ diff: '', diff_truncated: true });
+    expect(pm.calls[1]!.body.decisions).toEqual({ risk: expect.any(String) });
+  });
+
+  it('asks for contents: read only when a profile gets the diff', () => {
+    const granted = { metadata: 'read', contents: 'write', pull_requests: 'write', checks: 'write' };
+    expect(scopeFor(false, false)(granted)).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+    expect(scopeFor(false, true)(granted)).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write', contents: 'read' });
+    expect(scopeFor(true, true)(granted)).toEqual({ metadata: 'read', pull_requests: 'write', checks: 'write', contents: 'read' });
+    // Never more than the app has: no contents permission, none asked.
+    expect(scopeFor(false, true)({ metadata: 'read', pull_requests: 'read', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+    expect(readsDiff(chain())).toBe(true);
+    expect(readsDiff(settings())).toBe(false);
   });
 
   it('settings: runs only for listed profiles, requires only earlier ones, checked values', () => {

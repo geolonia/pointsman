@@ -216,7 +216,16 @@ export class PullRequestWork {
 
   /** The diff of this head: read the head again after it, and try again later when a push came in between. */
   async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean }> {
-    const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
+    let diff: string;
+    let truncated: boolean;
+    try {
+      ({ diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max)));
+    } catch (err) {
+      if (err instanceof RetryError) throw err;
+      // Refused (no permission): asked without it, marked as cut, so the rest of the run goes on.
+      console.error(`github connector: ${target.repo}#${target.number}: ${err instanceof Error ? err.message : String(err)}; asked without the diff`);
+      return { diff: '', diff_truncated: true };
+    }
     const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (now.head !== head) throw new RetryError(`${target.repo}#${target.number}: a push while the diff was read`);
     return { diff, diff_truncated: truncated };

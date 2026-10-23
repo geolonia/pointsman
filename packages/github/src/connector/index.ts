@@ -9,7 +9,7 @@
 import { ConfigError, type Connector, type EngineApi } from '@pointsman/module-api';
 import { AppGitHub, type ConnectorGitHub } from './github.ts';
 import { type Accepted, type ObjectStorage, PullRequestWork } from './pull-request.ts';
-import { actsOnGitHub, connectorSettings, type ConnectorSettings } from './settings.ts';
+import { actsOnGitHub, connectorSettings, readsDiff, type ConnectorSettings } from './settings.ts';
 import { bodyDigest, MAX_BODY_BYTES, targetsOf, verifySignature } from './webhook.ts';
 
 /** The objects of the pull requests, one per pull request (a Durable Object namespace has this). */
@@ -92,7 +92,7 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
 
 /** The work of one pull request's object, from the same settings. */
 export function pullRequestWork(settings: ConnectorSettings, storage: ObjectStorage, engine: EngineApi, github?: ConnectorGitHub): PullRequestWork {
-  return new PullRequestWork(storage, settings, github ?? new AppGitHub(settings.appId, settings.privateKey, undefined, actsOnGitHub(settings)), engine);
+  return new PullRequestWork(storage, settings, github ?? new AppGitHub(settings.appId, settings.privateKey, undefined, actsOnGitHub(settings), readsDiff(settings)), engine);
 }
 
 /** Reads the settings, with the objects binding; undefined when the connector is off. */
@@ -104,7 +104,7 @@ export function settingsWithObjects(env: Record<string, unknown>): { settings: C
   return { settings, objects };
 }
 
-export { actsOnGitHub, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
+export { actsOnGitHub, readsDiff, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
 export { PullRequestWork, RetryError, checkOutput, UNCLEAR_MS, type ActOutcome, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
-export { AppGitHub, GitHubError, actingScope, connectorScope, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
+export { AppGitHub, GitHubError, actingScope, connectorScope, scopeFor, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, DIFF_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
 export { targetsOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';

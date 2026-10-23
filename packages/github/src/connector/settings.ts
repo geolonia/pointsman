@@ -214,6 +214,9 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
   };
 }
 
+/** Whether a profile gets the diff: then the token may read contents (a private repository's diff needs it). */
+export const readsDiff = (s: ConnectorSettings) => Object.values(s.runs).some((r) => r.diff !== undefined);
+
 /** Whether any action is switched on: then the token may write pull requests. */
 export const actsOnGitHub = (s: ConnectorSettings) => Object.values(s.actions).some((a) => Object.keys(a).length > 0);
 
