@@ -3,11 +3,45 @@ title: Pointsman ドキュメント
 description: Pointsman は、ケースをどちらに進めるかを判定し、確信がないときは人に確認を求めます。使い方、詳しい仕様、仕組みの理由を説明します。
 ---
 
-Pointsman は、オープンソースの判定サービスです。ほかのシステムからケースを受け取ります。たとえば、道路が通れないという報告や、新しいプルリクエストです。Pointsman は決まった質問をし、人が書いたルールを当てはめ、アクションを返します。確信がないときは、人がケースを確認します。
+Pointsman は、オープンソースの判定サービスです。ほかのシステムから、判定してほしいもの(ケース)を受け取ります。たとえば、道路が通れないという報告や、新しいプルリクエストです。Pointsman は決まった質問をし、人が書いたルールを当てはめ、アクションを返します。確信がないときは、人がケースを確認します。
 
-ドキュメントは 4 つの部分に分かれています。
+はじめての方は、まず[判定のモデル](explanation/decision-model.md)を、次に[プロファイルの概要](reference/profiles.md)を読んでください。
 
-- **チュートリアル**では、手を動かしながら順に学びます。
-- **ハウツーガイド**では、Pointsman のデプロイなど、1 つの目的を達成する手順を説明します。
-- **リファレンス**には、プロファイルの形式、ファクトの種類、HTTP API、MCP ツールの仕様をまとめます。
-- **解説**では、Pointsman がなぜそのように動くのかを説明します。
+## チュートリアル
+
+手を動かしながら、順に学びます。
+
+- [はじめてのプロファイル](tutorials/first-profile.md)
+- [プルリクエストを判定する](tutorials/pull-request-facts.md)
+- [地図データで道路の通行止めを判定する](tutorials/road-closure.md)
+
+## ハウツーガイド
+
+1 つの目的を達成する手順です。
+
+- [AI アシスタントとプロファイルを書く](../authoring.md)
+- [デプロイで使うモジュールを選ぶ](how-to/choose-modules.md)
+- [Pointsman をデプロイする](../deployment.md)
+- [Pointsman でプルリクエストをレビューする](how-to/review-pull-requests.md)
+- [API トークンを入れ替える](how-to/rotate-api-tokens.md)
+- [レビューに答える](how-to/answer-reviews.md)
+- [判定ログを読み、再生する](how-to/read-the-decision-log.md)
+
+## リファレンス
+
+詳しい仕様を調べます。
+
+- [プロファイルの概要](reference/profiles.md)と[プロファイルの形式の全体](../profile-format.md)
+- [ファクトの型](reference/fact-types.md)と[コネクター](reference/connectors.md)
+- [HTTP API](reference/http-api.md) と [MCP ツール](reference/mcp-tools.md)
+
+## 解説
+
+Pointsman がなぜそのように動くのかを説明します。
+
+- [判定のモデル](explanation/decision-model.md)
+- [AI の回答は判定を厳しくする方向にしか使わない理由](explanation/stricter-only.md)
+- [欠けたファクト](explanation/missing-facts.md)
+- [Pointsman の構成](explanation/architecture.md)
+
+サイドバーで「準備中」と表示されたページには、今後書く内容と、現在参考になるページへのリンクがあります。以前のメモやスパイクの報告は「背景資料」にあります。英語だけのページは、日本語版ができるまで英語で表示します。

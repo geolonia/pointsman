@@ -188,15 +188,8 @@ marks expired tokens. When the old token had an expiry, `rotate` needs
 `--expires` for the new one (or `--no-expiry`), so a token never loses its
 expiry by accident.
 
-To rotate a token without downtime:
-
-1. `rotate --client <name> --expires <when> --keep-old`: the new token is
-   printed once; the old one keeps working. Until step 3, `list` shows the
-   client's name on two tokens; that is expected here.
-2. Put the new token in the client's secret store and check that the client
-   works.
-3. `revoke --hash <old hash>` (the command is printed by step 1). KV can take
-   up to about 60 seconds to stop the old token everywhere.
+To rotate a token without downtime, see
+[Rotate an API token](https://pointsman.net/docs/how-to/rotate-api-tokens/).
 
 A **test token** (`--test`) is for checking profiles and their examples
 against the real model, for example in a scheduled job. Its decisions are
