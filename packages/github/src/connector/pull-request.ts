@@ -144,11 +144,13 @@ export class PullRequestWork {
       await this.#storage.put({ attempt, ...(recheck && { recheckAt: 0 }) });
       const target = await this.#storage.get<PullRequestTarget>('target');
       try {
-        if (target) await this.#once(target, attempt);
+        if (target) await this.#once(target, attempt, recheck);
       } catch (err) {
         if (err instanceof RetryError) {
           // The retried alarm must find the recheck still due.
-          if (recheck && !(await this.#storage.get<number>('recheckAt'))) await this.#storage.put({ recheckAt: recheckAt });
+          // Never later than the one that was due: a profile of this run may have set a later one.
+          const current = await this.#storage.get<number>('recheckAt');
+          if (recheck && (!current || current > recheckAt!)) await this.#storage.put({ recheckAt: recheckAt });
           throw err;
         }
         // Needs a person (a permission, a setting); the next event tries again.
@@ -164,7 +166,8 @@ export class PullRequestWork {
     if (due && due > this.now()) await this.#storage.setAlarm(due);
   }
 
-  async #once(target: PullRequestTarget, attempt: number): Promise<void> {
+  /** recheck: this run comes from a recheck alarm, not an event. */
+  async #once(target: PullRequestTarget, attempt: number, recheck = false): Promise<void> {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (!pr.open) return;
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: pr.body.slice(0, MAX_BODY) };
@@ -175,6 +178,8 @@ export class PullRequestWork {
     for (const profile of this.#settings.profiles) {
       const run = Object.hasOwn(this.#settings.runs, profile) ? this.#settings.runs[profile]! : {};
       if (run.skipDrafts && pr.draft) continue;
+      // A recheck asks a waiting profile again at most recheck.max times per head; events always ask.
+      if (recheck && run.recheck && !(await this.#countRecheck(profile, pr.head, run.recheck.max))) continue;
       // A required decision that is not there (a skipped draft, a refusal) is not sent: the profile's requires must be optional.
       const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
@@ -221,20 +226,28 @@ export class PullRequestWork {
     await this.#storage.put({ kept });
   }
 
-  /** While the decision waits (its action is one of recheck.actions), asks again later, at most recheck.max times per head. */
+  /** While the decision waits (its action is one of recheck.actions), asks again later, unless its rechecks for this head are used up. */
   async #scheduleRecheck(profile: string, head: string, decision: Decision, run: RunOptions): Promise<void> {
     if (!run.recheck || !run.recheck.actions.includes(decision.action)) return;
+    const rechecks = await this.#storage.get<Rechecks>('rechecks');
+    if (rechecks?.head === head && (rechecks.count[profile] ?? 0) >= run.recheck.max) return;
     const at = this.now() + run.recheck.minutes * 60_000;
     const due = await this.#storage.get<number>('recheckAt');
-    // One already due sooner covers this one; only a new alarm counts.
+    // One already due sooner covers this one.
     if (due && due > this.now() && due <= at) return;
+    await this.#storage.put({ recheckAt: at });
+    await this.#storage.setAlarm(at);
+  }
+
+  /** Counts a recheck of this profile on this head; false when it had max already. */
+  async #countRecheck(profile: string, head: string, max: number): Promise<boolean> {
     let rechecks = (await this.#storage.get<Rechecks>('rechecks')) ?? { head, count: {} };
     if (rechecks.head !== head) rechecks = { head, count: {} };
     const count = rechecks.count[profile] ?? 0;
-    if (count >= run.recheck.max) return;
+    if (count >= max) return false;
     rechecks.count[profile] = count + 1;
-    await this.#storage.put({ rechecks, recheckAt: at });
-    await this.#storage.setAlarm(at);
+    await this.#storage.put({ rechecks });
+    return true;
   }
 
   #approves(): boolean {

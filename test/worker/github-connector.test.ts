@@ -698,6 +698,28 @@ describe('chains: profiles that build on each other', () => {
     expect(pm.calls).toHaveLength(5);
   });
 
+  it('counts rechecks per profile: one that used its max is not asked again by a recheck', async () => {
+    const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 1 } }, b: { recheck: { actions: ['wait'], minutes: 10, max: 3 } } }), profiles: ['a', 'b'] };
+    const { work, pm, later } = await chained(s, {}, (p) => Response.json(decision(p, { action: 'wait' })));
+    await work.run(); // the event: a, b
+    for (let i = 0; i < 4; i++) { later(10 * 60_000); await work.run(); }
+    // a: 1 recheck, b: 3 rechecks.
+    expect(pm.calls.filter((c) => c.profile === 'a')).toHaveLength(2);
+    expect(pm.calls.filter((c) => c.profile === 'b')).toHaveLength(4);
+  });
+
+  it('a retried recheck keeps the deadline that was due, not a later one', async () => {
+    const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 3 } }, b: {} }), profiles: ['a', 'b'] };
+    let down = false;
+    const { work, mem, later } = await chained(s, {}, (p) => (down && p === 'b' ? new Response(null, { status: 503 }) : Response.json(decision(p, { action: 'wait' }))));
+    await work.run();
+    const due = mem.data.get('recheckAt') as number;
+    later(10 * 60_000);
+    down = true;
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(mem.data.get('recheckAt')).toBe(due);
+  });
+
   it('does not schedule a recheck for an action that does not wait', async () => {
     const { work, mem } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'done' })));
     await work.run();

@@ -62,6 +62,9 @@ describe('github_release', () => {
     expect(releaseFacts([edit('docs/modules.md', '@@ -3 +3 @@\n-Version 0.8.0.\n+Version 0.9.0.')], CL, VF, TF)).toEqual(not);
     // A text file is not a version file in its own right: without TF it does not count.
     expect(releaseFacts([pkg, edit('docs/modules.md', '@@ -3 +3 @@\n-Version 0.8.0.\n+Version 0.9.0.')], CL, VF)).toEqual(not);
+    // A line with too many versions is not a version line.
+    const many = Array.from({ length: 9 }, (_, i) => `1.0.${i}`).join(' ');
+    expect(releaseFacts([pkg, edit('docs/modules.md', `@@ -3 +3 @@\n-${many} 0.8.0\n+${many} 0.9.0`)], CL, VF, TF)).toEqual(not);
     // An address is not a version.
     expect(releaseFacts([edit('src/version.ts', "@@ -1 +1 @@\n-const HOST = '10.0.8.0';\n+const HOST = '10.0.9.0';")], CL, VF, TF)).toEqual(not);
     // Down to a pre-release.

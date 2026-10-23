@@ -30,6 +30,7 @@ export interface ReleaseFacts {
 const NOT: ReleaseFacts = { version_only: false, from: '', to: '', level: 'none' };
 // Not inside a longer dotted number (an address such as 1.2.3.4) or a word.
 const SEMVER = /(?<![0-9A-Za-z.-])(\d{1,6})\.(\d{1,6})\.(\d{1,6})(-[0-9A-Za-z]{1,20}(?:\.[0-9A-Za-z]{1,20}){0,4})?(?![0-9A-Za-z-]|\.[0-9A-Za-z])/g;
+const MAX_VERSIONS_PER_LINE = 8;
 const MANIFEST_VERSION = /^\s*"version":\s*"[^"]*",?\s*$/;
 /** A line that sets a version: the key version (any case), __version__, or a name ending in _VERSION, then : or =, then the version alone. */
 const SETS_VERSION = /^\s*(?:export\s+)?(?:(?:const|let|var)\s+)?["']?(?:version|VERSION|Version|__version__|[A-Za-z0-9_]*_VERSION)["']?\s*[:=]\s*["']?[0-9][0-9A-Za-z.-]*["']?\s*[,;]?\s*$/;
@@ -59,6 +60,8 @@ function pairsOf(before: string, after: string): [string, string][] {
   if (before === after) return [];
   const olds = new Set([...before.matchAll(SEMVER)].map((m) => m[0]));
   const news = new Set([...after.matchAll(SEMVER)].map((m) => m[0]));
+  // A line with many versions is not a version line, and each pair costs a pass over the line.
+  if (olds.size > MAX_VERSIONS_PER_LINE || news.size > MAX_VERSIONS_PER_LINE) return [];
   const out: [string, string][] = [];
   for (const from of olds) {
     for (const to of news) {
