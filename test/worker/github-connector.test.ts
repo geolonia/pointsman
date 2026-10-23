@@ -613,6 +613,31 @@ describe('actions (switched on per profile action)', () => {
     expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve', 'dismiss', 'approve', 'dismiss']);
   });
 
+  it('withdraws an approval whose run stopped before its id was kept, and says so when it cannot withdraw', async () => {
+    let action = 'review';
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    // The approval is on GitHub, its record still pending, its id not kept.
+    gh.github.approvals.push({ id: 555, commit: HEAD, marker: `<!-- pointsman approve pr-docs-check ${HEAD} -->` });
+    mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:approve': { decision: 'd', state: 'pending', at: Date.now() } } });
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'dismiss').map((c) => c.id)).toEqual([555]);
+    expect(gh.github.approvals).toHaveLength(0);
+
+    // Approved again; then dismissing fails: the check run says so, and the record stays for the next run.
+    action = 'light';
+    await event();
+    await work.run();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismissal: 422', false, 422); };
+    action = 'review';
+    await event();
+    await work.run();
+    const last = gh.calls.filter((c) => c.output).at(-1)!.output!;
+    expect(last.summary).toContain('could not be withdrawn');
+    expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    errors.mockRestore();
+  });
+
   it('settings: keep_approval only next to approve, without settings', () => {
     const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
     const conf = (actions: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p'], actions }) });

@@ -139,15 +139,18 @@ The connector approves at most once per head commit. Each later decision on that
 
 When unsure, the approval goes: only the two kinds above keep it. An edit of the title or description gives a new decision on the same commit; if the risk class changes, that decision is no longer `approve` or `keep_approval`, so the approval is withdrawn.
 
-Why `keep_approval` is needed: an approval changes what the profile sees. For example, CodeRabbit reviews after Pointsman approved, and the rule that approves requires that CodeRabbit has not reviewed. The next decision is then not `approve` any more, although nothing that matters changed. With the fact [`github_app_approval`](profile-format.md#github-pull-requests), the profile can see that the app already approved this commit, and answer with its own action for that, mapped to `keep_approval`. Place that rule before the rule that approves:
+Why `keep_approval` is needed: an approval changes what the profile sees. For example, CodeRabbit reviews after Pointsman approved, and the rule that approves requires that CodeRabbit has not reviewed. The next decision is then not `approve` any more, although nothing that matters changed. With the fact [`github_app_approval`](profile-format.md#github-pull-requests), the profile can see that the app already approved this commit, and answer with its own action for that, mapped to `keep_approval`. Place that rule before the rule that approves, and after every rule that blocks (missing facts, failed checks, changes requested). It must require everything the approving rule requires, except the facts that the approval itself changes (here: that CodeRabbit has not reviewed yet). Otherwise a failed check on the same commit would keep the approval:
 
 ```yaml
 facts:
   - { name: pointsman, type: github_app_approval, at: $.pull_request, app: <the connector app's slug>, bot_id: <its bot's account id> }
 rules:
-  - when: "facts.pointsman.missing == true"
+  - when: "facts.pointsman.missing == true or facts.ci.missing == true"
     action: retry
-  - when: "facts.pointsman.approved_head == true and (decisions.risk.outcome == 'approvable' or decisions.risk.outcome == 'release' or decisions.risk.outcome == 'bump') and facts.coderabbit.changes_requested == false"
+  - when: "facts.ci.failed == true"
+    action: ask-person
+  # … the other rules that block
+  - when: "facts.pointsman.approved_head == true and (decisions.risk.outcome == 'approvable' or decisions.risk.outcome == 'release' or decisions.risk.outcome == 'bump') and facts.coderabbit.changes_requested == false and facts.ci.green == true"
     action: done
   # … then the rule that approves
 ```
@@ -159,6 +162,8 @@ and in `GITHUB_CONNECTOR`:
 ```
 
 The connector cannot tell which rule gave the action. Map `keep_approval` only to an action that the profile gives when its approval should stand, as in the rule above. If the profile also gives that action in other cases (for example a merged pull request), those keep the approval too; then give the "already approved" rule an action of its own (for example `approved`) and map that one.
+
+A profile with `once_per_head` ([Chains](#chains)) is not asked again on the same commit, so its later decisions neither keep nor withdraw anything. Do not map `approve` or `keep_approval` in such a profile: a failed check or a change request on the same commit would not withdraw the approval.
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run). For its approval to count toward a ruleset's required approvals, the app also needs **Contents: Read and write**: GitHub counts approvals only from reviewers with write access (tested on #174, 2026-10-23). The connector's tokens ask for contents only to read a diff (`contents: read`, [Chains](#chains)), never to write.
 

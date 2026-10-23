@@ -22,7 +22,7 @@ import {
   FactError, FactStaleError, FactUnavailableError,
   type FactProvider, type FactResult, type FactScope,
 } from '@pointsman/module-api';
-import { GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
+import { APP_SLUG as APP_SLUG_PATTERN, GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 import { releaseFacts } from './release';
@@ -63,7 +63,7 @@ export const MAX_MANIFEST_BYTES = 512 * 1024;
 export const MAX_REPOSITORY_MANIFESTS = 50;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 /** A GitHub App's slug: lower case letters, digits and hyphens. */
-const APP_SLUG = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
+const APP_SLUG = new RegExp(APP_SLUG_PATTERN);
 const PASSED = new Set(['success', 'neutral', 'skipped']);
 /** A repository as "owner/name"; "." and ".." are not names. */
 const FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
@@ -227,7 +227,7 @@ export class GitHubAppAuth implements GitHubAuth {
     const installation = await getJson(fetchFn, `/repos/${pr.owner}/${pr.repo}/installation`, jwt, signal, 'installation');
     const { id: installationId, permissions: granted, app_slug: slug } = installation as { id?: unknown; permissions?: unknown; app_slug?: unknown };
     if (typeof installationId !== 'number') throw new FactError('GitHub installation: unexpected answer');
-    if (typeof slug === 'string' && APP_SLUG.test(slug)) this.slugs.set(this.key_(pr), slug.toLowerCase());
+    if (typeof slug === 'string' && APP_SLUG.test(slug)) this.slugs.set(this.key_(pr), slug);
     const permissions = this.scope(isObject(granted) ? Object.fromEntries(Object.entries(granted).filter((e): e is [string, string] => typeof e[1] === 'string')) : {});
     if (Object.keys(permissions).length === 0) throw new FactError('GitHub installation: the app has none of the permissions needed');
     // The only request that is not a GET: it creates a token, it changes no repository.

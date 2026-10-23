@@ -401,7 +401,7 @@ const github_copilot: FactTypeDef = {
 };
 
 /** A GitHub App's slug, as GitHub makes it from the app's name (lower case, digits and hyphens). */
-const APP_SLUG = '^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$';
+export const APP_SLUG = '^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$';
 
 /**
  * Whether a GitHub App (by its slug, and its bot's account id when given)

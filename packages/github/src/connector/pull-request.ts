@@ -347,14 +347,21 @@ export class PullRequestWork {
     return ok;
   }
 
-  /** The decision for this head no longer approves: its approval of this head is withdrawn, and may be given again later. */
-  async #withdraw(target: PullRequestTarget, head: string, profile: string, acts: Acts): Promise<void> {
+  /**
+   * The decision for this head no longer approves: its approval of this head is withdrawn, and may be given again later.
+   * Returns false when it could not be (logged; the record stays, so the next run tries again).
+   */
+  async #withdraw(target: PullRequestTarget, pr: PullRequestInfo, profile: string, acts: Acts): Promise<boolean> {
     const key = `${profile}:approve`;
-    if (!acts.done[key]) return;
-    if (await this.#dismiss(target, (a) => a.commit === head && a.profile === profile, () => 'Pointsman no longer approves this commit: a newer decision differs.')) {
-      delete acts.done[key];
-      await this.#storage.put({ acts });
-    }
+    const record = acts.done[key];
+    if (!record) return true;
+    // A record left open (a run stopped after the approval, before its id was kept): its trace on GitHub gives the id first,
+    // so the approval is dismissed, not only forgotten.
+    if (record.state === 'pending') await retrying(() => this.#traced(target, pr, profile, { do: 'approve' }));
+    if (!(await this.#dismiss(target, (a) => a.commit === pr.head && a.profile === profile, () => 'Pointsman no longer approves this commit: a newer decision differs.'))) return false;
+    delete acts.done[key];
+    await this.#storage.put({ acts });
+    return true;
   }
 
   /**
@@ -374,8 +381,18 @@ export class PullRequestWork {
     // a decision a person still checks withdraw it.
     const keeps = spec?.do === 'approve' || spec?.do === 'keep_approval';
     if (byAction && Object.values(byAction).some((a) => a.do === 'approve') && (!keeps || pending)) {
-      await this.#withdraw(target, pr.head, profile, acts);
+      // Shown on the check run, whatever this decision's own action is.
+      if (!(await this.#withdraw(target, pr, profile, acts))) {
+        const outcome = await this.#carryOut(target, pr, profile, decision, spec, acts, pending, approveBlocked);
+        const note = 'its approval of this commit could not be withdrawn (logged; tried again on the next run)';
+        return { kind: 'skipped', text: outcome.kind === 'none' ? note : `${note}; ${outcome.text}` };
+      }
     }
+    return this.#carryOut(target, pr, profile, decision, spec, acts, pending, approveBlocked);
+  }
+
+  /** The decision's own action, after the approval was kept or withdrawn. */
+  async #carryOut(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision, spec: ActionSpec | undefined, acts: Acts, pending: boolean, approveBlocked: boolean): Promise<ActOutcome> {
     if (!spec) return { kind: 'none' };
     if (pending) return { kind: 'skipped', text: `${spec.do}: not done, a person checks this decision first` };
     // Nothing to do on GitHub and nothing to record: the approval of this head (if any) stands.
