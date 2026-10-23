@@ -197,13 +197,13 @@ export class PullRequestWork {
       const asked = run.diff ? { ...state, ...(await this.#diffOf(target, pr.head, run.diff)) } : state;
       const decision = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
       if (!decision) continue;
-      // Counted only once Pointsman answered: a failed recheck is tried again without using one up.
-      if (counted) await this.#countRecheck(profile, pr.head);
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
       // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
       if (run.oncePerHead && outcome.kind !== 'skipped') await this.#keep(profile, pr.head, keyOf, decision);
+      // Counted only once it is done (decided, acted, shown): a failed recheck is tried again without using one up.
+      if (counted) await this.#countRecheck(profile, pr.head);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
   }
@@ -238,9 +238,9 @@ export class PullRequestWork {
     if (rechecks?.head === head && (rechecks.count[profile] ?? 0) >= run.recheck.max) return;
     const at = this.now() + run.recheck.minutes * 60_000;
     const due = await this.#storage.get<number>('recheckAt');
-    // One already due sooner covers this one.
-    if (due && due > this.now() && due <= at) return;
-    await this.#storage.put({ recheckAt: at });
+    // One already due sooner for this head covers this one; one for an older head does not.
+    if (due && due > this.now() && due <= at && (await this.#storage.get<string>('recheckHead')) === head) return;
+    await this.#storage.put({ recheckAt: at, recheckHead: head });
     await this.#storage.setAlarm(at);
   }
 
@@ -348,7 +348,7 @@ export class PullRequestWork {
         const at = record.at + UNCLEAR_MS;
         const due = await this.#storage.get<number>('recheckAt');
         if (!due || at < due) {
-          await this.#storage.put({ recheckAt: at });
+          await this.#storage.put({ recheckAt: at, recheckHead: pr.head });
           await this.#storage.setAlarm(at);
         }
         return { kind: 'skipped', text: `${spec.do}: result unclear, checked again later` };

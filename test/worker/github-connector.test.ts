@@ -742,6 +742,32 @@ describe('chains: profiles that build on each other', () => {
     expect(mem2.data.get('rechecks')).toBeUndefined();
   });
 
+  it('a new head gets its own recheck deadline, not the older head\'s earlier one', async () => {
+    const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 1 } } }), profiles: ['a'] };
+    const { work, mem, gh, later, event } = await chained(s, {}, (p) => Response.json(decision(p, { action: 'wait' })));
+    await work.run();
+    later(9 * 60_000);
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(mem.data.get('recheckAt')).toBe(5_000_000 + 19 * 60_000);
+    expect(mem.data.get('recheckHead')).toBe(HEAD2);
+  });
+
+  it('a recheck whose check run fails is not counted', async () => {
+    const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 1 } } }), profiles: ['a'] };
+    const { work, mem, gh, later } = await chained(s, {}, (p) => Response.json(decision(p, { action: 'wait' })));
+    await work.run();
+    later(10 * 60_000);
+    const update = gh.github.updateCheckRun;
+    gh.github.updateCheckRun = async () => { throw new GitHubError('GitHub check run: 502', true, 502); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(mem.data.get('rechecks')).toBeUndefined();
+    gh.github.updateCheckRun = update;
+    await work.run();
+    expect((mem.data.get('rechecks') as { count: Record<string, number> }).count.a).toBe(1);
+  });
+
   it('does not schedule a recheck for an action that does not wait', async () => {
     const { work, mem } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'done' })));
     await work.run();
