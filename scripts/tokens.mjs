@@ -73,12 +73,22 @@ if (values.local === values.remote) fail('Give exactly one of --local or --remot
 /** A value as a shell word, quoted when needed. */
 const shellWord = (v) => (/^[\w./@:-]+$/.test(v) ? v : `'${v.replaceAll("'", "'\\''")}'`);
 
-/** This script's path as started (engine/scripts/tokens.mjs in a configuration repository), for a command to copy. */
-const self = () => shellWord(relative(process.cwd(), process.argv[1]) || process.argv[1]);
+/**
+ * This script's path as started (engine/scripts/tokens.mjs in a configuration
+ * repository), for a command to copy: relative to the current folder when it
+ * is inside it, else absolute; never starting with "-", which node would read
+ * as an option.
+ */
+function self() {
+  const rel = relative(process.cwd(), process.argv[1]);
+  const path = rel.startsWith('..') ? process.argv[1] : rel.startsWith('-') ? `./${rel}` : rel;
+  return shellWord(path);
+}
 
 /** The target options as typed, for a command to copy: --local or --remote, and --config when given. */
 function target() {
-  return [values.local ? '--local' : '--remote', ...(values.config ? ['--config', shellWord(values.config)] : [])].join(' ');
+  // --config=<file> as one word, so a file name starting with "-" is not read as an option.
+  return [values.local ? '--local' : '--remote', ...(values.config ? [`--config=${shellWord(values.config)}`] : [])].join(' ');
 }
 
 function wrangler(args) {
