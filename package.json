@@ -1,6 +1,6 @@
 {
   "name": "pointsman",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Decision service: typed questions in, typed answers, probabilities and an action out.",
   "license": "MIT",

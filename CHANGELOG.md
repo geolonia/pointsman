@@ -12,6 +12,22 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.12.0 (2026-10-23)
+
+An internal call between the GitHub connector and the engine (#188): where both run in the same deployment, the connector no longer needs a token.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.12.0`. No migration. Nothing changes unless you opt in.
+- **To use the internal call on Cloudflare:** set `INTERNAL_CLIENT` on the engine (the client name and its profiles, for example `{"client":"github-connector","profiles":["pr-docs-check","workflow-check"]}`; use the name of the connector's current token so its decision history carries on), deploy the engine, then give the connector a service binding `POINTSMAN` to the engine Worker with `entrypoint: "InternalEngine"` and remove `POINTSMAN_URL`. Once decisions arrive, revoke the connector's token (`tokens.mjs revoke --hash <hash>`) and delete its secret (`wrangler secret delete POINTSMAN_TOKEN`). See *Internal call* in `docs/github-connector.md`.
+
+What changed:
+
+- **Engine client port:** the connector reaches the engine through one interface (`decide`), with two adapters: HTTP with a token (the default, any runtime) and a Cloudflare service binding. An in-process adapter (connector and engine in one process) fits the same interface and is planned.
+- **`InternalEngine`** (the engine Worker's RPC entrypoint): no URL, so only Workers in the same account with a binding can call it. Every internal call runs as `INTERNAL_CLIENT`, never as a test token, and goes through the same checks as the HTTP route after the token: profile scope (a profile outside it is refused the same way), idempotency per client, the decision log under that client, decision-log facts limited to its own decisions. Trust is account-wide: anyone who can deploy Workers in the account can decide as that client. See *Internal calls* in `docs/adapters.md`.
+- **Fail loud:** the connector answers 500 when neither the binding nor URL and token are set, or when the binding and `POINTSMAN_URL` are both set; the engine refuses internal calls (`not_configured`) without `INTERNAL_CLIENT`. A `POINTSMAN_TOKEN` left next to the binding logs a warning until it is deleted.
+- A 2xx answer from the engine whose body is not JSON is now retried instead of only logged.
+
 ## 0.11.0 (2026-10-23)
 
 `github_bump` checks the lockfile's own version steps and every workspace (#186). The fields stay the same; the fact now passes less often.
