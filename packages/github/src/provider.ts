@@ -5,9 +5,12 @@
 //   github_checks    required checks of the base branch on the head commit
 //   github_property  a repository custom property
 //   github_workflows the GitHub Actions files it changes (workflows.ts)
+//   github_release   whether it only moves a version (release.ts)
+//   github_bump      whether it only bumps npm dependency versions (bump.ts)
 //
 // Read-only: this file only sends GET requests to the GitHub API (and, for a
-// GitHub App, the one POST that creates an installation token). All GitHub
+// GitHub App, the one POST that creates an installation token); github_bump
+// also reads the npm registry, without the token (npm.ts). All GitHub
 // facts of one decision come from one snapshot: the pull request and its
 // commits are read once, then only the parts the facts need, each once.
 // If GitHub's head commit is not the one the request names, every GitHub
@@ -21,6 +24,8 @@ import { GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullR
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 import { releaseFacts } from './release';
+import { ageInDays, bumpFacts, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
+import { publishTimes, REGISTRY_TIMEOUT_MS } from './npm';
 import {
   actionFolderOf, actionFolders, countWorkflows, kindOf, MAX_FILE_BYTES, MAX_PARSED_FILES, workflowSettings,
   type WorkflowFile, type WorkflowSettings,
@@ -48,6 +53,10 @@ export const MAX_REVIEW_PAGES = 5;
 /** Pages of the head commit's status history (100 each); more fail the facts that need it. */
 export const MAX_STATUS_PAGES = 3;
 const DEPENDABOT = 'dependabot[bot]';
+/** The account GitHub signs its own commits with (web edits, Dependabot). */
+const WEB_FLOW = 'web-flow';
+/** The largest package.json github_bump reads. */
+export const MAX_MANIFEST_BYTES = 512 * 1024;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const PASSED = new Set(['success', 'neutral', 'skipped']);
 /** A repository as "owner/name"; "." and ".." are not names. */
@@ -340,15 +349,30 @@ function pullRequest(v: unknown): PullRequest {
 /** "WIP" as a word in the title, for example "WIP: …", "[WIP] …", "… (wip)". */
 export const isWipTitle = (title: string): boolean => /(^|[^A-Za-z0-9])wip([^A-Za-z0-9]|$)/i.test(title);
 
-interface Commit { sha: string; verified: boolean }
+/** A commit: whether its signature is verified, and whether Dependabot made it and GitHub signed it. */
+interface Commit { sha: string; verified: boolean; byDependabot: boolean }
 
 function commits(v: unknown): Commit[] {
   if (!Array.isArray(v)) throw new FactError('GitHub commits: unexpected answer');
   return v.map((c) => {
     if (!isObject(c) || typeof c.sha !== 'string' || !isObject(c.commit)) throw new FactError('GitHub commits: unexpected answer');
     const verification = c.commit.verification;
-    return { sha: c.sha.toLowerCase(), verified: isObject(verification) && verification.verified === true };
+    // The GitHub accounts of the commit's author and committer (null when the email belongs to none).
+    const author = isObject(c.author) ? c.author : null;
+    const committer = isObject(c.committer) ? c.committer : null;
+    const byDependabot = author?.login === DEPENDABOT && author.type === 'Bot' && committer?.login === WEB_FLOW;
+    return { sha: c.sha.toLowerCase(), verified: isObject(verification) && verification.verified === true, byDependabot };
   });
+}
+
+/**
+ * Whether every commit is verified. For a pull request by Dependabot, each
+ * commit must also be Dependabot's own: authored by dependabot[bot] and
+ * committed (so signed) by GitHub, not a commit someone else added and
+ * signed with their own key.
+ */
+export function allVerified(list: Commit[], dependabot: boolean): boolean {
+  return list.every((c) => c.verified && (!dependabot || c.byDependabot));
 }
 
 /** A changed file: its name, then its earlier name when it was renamed. */
@@ -644,6 +668,54 @@ export class Snapshot {
   /** The changed files with their status and patch (null when GitHub gives none), for github_release. */
   async releaseFiles(): Promise<Change[]> {
     return this.changes();
+  }
+
+  /**
+   * A file's text at the head commit, by the contents API; null when it is
+   * not UTF-8 text. Larger than MAX_MANIFEST_BYTES fails the fact.
+   */
+  private textAtHead(path: string): Promise<string | null> {
+    return this.part(`text:${path}`, async () => {
+      const encoded = path.split('/').map(encodeURIComponent).join('/');
+      const v = await this.json(`${this.repoPath}/contents/${encoded}?ref=${this.ref.head}`, 'file');
+      if (!isObject(v) || v.type !== 'file' || v.encoding !== 'base64' || typeof v.content !== 'string') throw new FactError('GitHub file: unexpected answer');
+      const tooLarge = new FactError(`GitHub file: larger than ${MAX_MANIFEST_BYTES} bytes`);
+      if ((typeof v.size === 'number' && v.size > MAX_MANIFEST_BYTES) || v.content.length > MAX_MANIFEST_BYTES * 2) throw tooLarge;
+      try {
+        return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(base64Bytes(v.content));
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  /**
+   * github_bump (bump.ts): the changed files, then each changed package.json
+   * at the head, then the publish time of each bumped version from the npm
+   * registry. Not a bump: NO_BUMP, and nothing past the file list is read.
+   */
+  bump(now: number): Promise<BumpFacts> {
+    return this.part('bump', async () => {
+      const files = await this.changes();
+      const manifests = manifestsToRead(files);
+      if (!manifests) return NO_BUMP;
+      const heads = new Map<string, string>();
+      await Promise.all(manifests.map(async (path) => {
+        const text = await this.textAtHead(path);
+        if (text === null) throw new FactError('GitHub file: a package.json that is not UTF-8 text');
+        heads.set(path, text);
+      }));
+      const found = bumpFacts(files, heads);
+      if (!found) return NO_BUMP;
+      const signal = AbortSignal.timeout(REGISTRY_TIMEOUT_MS);
+      const byName = new Map<string, string[]>();
+      for (const { name, version } of found.versions) byName.set(name, [...(byName.get(name) ?? []), version]);
+      const times = await Promise.all([...byName].map(async ([name, versions]) => [...(await publishTimes(this.fetchFn, name, versions, signal)).values()]));
+      // The youngest release counts.
+      const ages = times.flat().map((ms) => ageInDays(ms, now));
+      // No version to look up (no spec understood, so semver is "none"): the strictest age.
+      return { ...found.facts, release_age_days: ages.length > 0 ? Math.min(...ages) : 0 };
+    });
   }
 
   /** The changed files, with their names and whether they were removed. */
@@ -1066,14 +1138,18 @@ export interface GitHubOptions {
   fetch?: typeof fetch;
   /** The name of Pointsman's own check run: never counted as a required check. */
   ignoreCheck?: string | undefined;
+  /** The clock, for github_bump's release ages (tests set it). */
+  now?: () => number;
 }
 
 export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
   private readonly auth: GitHubAuth;
   private readonly fetchFn: typeof fetch;
   private readonly ignoreCheck: string | undefined;
+  private readonly now: () => number;
 
-  constructor({ auth, fetch: fetchFn, ignoreCheck }: GitHubOptions) {
+  constructor({ auth, fetch: fetchFn, ignoreCheck, now }: GitHubOptions) {
+    this.now = now ?? (() => Date.now());
     this.auth = auth;
     // A wrapper, not fetch itself: Workers refuse an unbound global fetch.
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
@@ -1102,7 +1178,7 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
             author_member: await s.member(),
             author_dependabot: pr.author === DEPENDABOT && pr.authorIsBot,
             fork: pr.fork,
-            all_commits_verified: list ? list.every((c) => c.verified) : null,
+            all_commits_verified: list ? allVerified(list, pr.author === DEPENDABOT && pr.authorIsBot) : null,
             pushed_by_author: pushedByAuthor(list, await s.pushes(), pr.author),
             author_sole_code_owner: await s.soleCodeOwner(),
           },
@@ -1136,6 +1212,10 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       case 'github_release': {
         if (!query.versionFiles) throw new FactError('no version files');
         return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
+      }
+      case 'github_bump': {
+        const values = await s.bump(this.now());
+        return { values: { ...values }, source: values.applies ? `${source}; npm registry` : source };
       }
     }
   }

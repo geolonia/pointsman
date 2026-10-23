@@ -90,6 +90,8 @@ export * from './codeowners';
 export * from './reviews';
 export * from './glob';
 export * from './release';
+export * from './bump';
+export * from './npm';
 export * from './connector/index.ts';
 
 export default githubModule;
