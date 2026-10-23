@@ -112,6 +112,9 @@
   connector (`connectors/github`, `packages/github/src/connector`), every
   moved citation and every "Search:" command re-run at the bound commit;
   recon, interview and backtest were not run again over the whole model.
+  Its questions (Q28 to Q31) were picked from sections A (hosted service),
+  B (LLM in the loop) and G (meta) of the Geolonia question bank of the
+  `threat-model-geolonia` skill.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported through GitHub's private vulnerability reporting for
   this repository, as `SECURITY.md` says. A finding that lands in §1.3 or §1.12 is closed
