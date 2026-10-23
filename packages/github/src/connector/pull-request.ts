@@ -825,6 +825,6 @@ export function notActedOnOutput(profile: string, answer: Exclude<CheckedAnswer,
     title: answer.kind === 'test' ? 'test decision: nothing done' : 'invalid answer: nothing done',
     summary: lines.join('\n'),
     // Replaces the details of an earlier decision on this check run.
-    text: 'No decision to show: nothing was done, and the decision comment is not changed.',
+    text: 'No decision to show: nothing was done for this profile. The decision comment shows no decision from this answer.',
   };
 }
