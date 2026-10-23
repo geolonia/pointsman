@@ -200,14 +200,16 @@ export class PullRequestWork {
         decided[profile] = kept;
         continue;
       }
-      const asked = run.diff ? { ...state, ...(await this.#diffOf(target, pr.head, run.diff)) } : state;
+      const { refused, ...diffState } = run.diff ? await this.#diffOf(target, pr.head, run.diff) : { refused: undefined };
+      const asked = { ...state, ...diffState };
       const decision = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
       if (!decision) continue;
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
       // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
-      if (run.oncePerHead && outcome.kind !== 'skipped') await this.#keep(profile, pr.head, keyOf, decision);
+      // Not kept when the diff was refused: once the app may read it, the next run asks with it.
+      if (run.oncePerHead && outcome.kind !== 'skipped' && !refused) await this.#keep(profile, pr.head, keyOf, decision);
       // Counted only once it is done (decided, acted, shown): a failed recheck is tried again without using one up.
       if (counted) await this.#countRecheck(profile, pr.head);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
@@ -215,11 +217,23 @@ export class PullRequestWork {
   }
 
   /** The diff of this head: read the head again after it, and try again later when a push came in between. */
-  async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean }> {
-    const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
+  async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean; refused?: true }> {
+    let result: { diff: string; diff_truncated: boolean; refused?: true };
+    try {
+      const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
+      result = { diff, diff_truncated: truncated };
+    } catch (err) {
+      // Refused (no permission to read a private repository's contents): asked without it, marked as cut,
+      // so the rest of the run goes on. Anything else (an uninstalled app, a broken key) ends the run as before.
+      // A rate limit is a RetryError here (github.ts), never a refusal.
+      if (!(err instanceof GitHubError && (err.status === 403 || err.status === 404))) throw err;
+      console.error(`github connector: ${target.repo}#${target.number}: ${err.message}; asked without the diff`);
+      result = { diff: '', diff_truncated: true, refused: true };
+    }
+    // Also after a refusal: the decision must be about the head that was read.
     const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (now.head !== head) throw new RetryError(`${target.repo}#${target.number}: a push while the diff was read`);
-    return { diff, diff_truncated: truncated };
+    return result;
   }
 
   /** The kept decision of this profile, when it was made for this head and these inputs and its action is not one to ask again. */

@@ -15,10 +15,15 @@ const LEVEL = { read: 1, write: 2 } as Record<string, number>;
 export const CONNECTOR_PERMISSIONS: Record<string, 'read' | 'write'> = { metadata: 'read', pull_requests: 'read', checks: 'write' };
 /** With actions switched on: comments, labels, review requests and reviews need pull requests: write. */
 export const ACTING_PERMISSIONS: Record<string, 'read' | 'write'> = { ...CONNECTOR_PERMISSIONS, pull_requests: 'write' };
+/** With a profile that gets the diff: GitHub gives a private repository's diff only with contents: read. */
+export const DIFF_PERMISSIONS: Record<string, 'read' | 'write'> = { contents: 'read' };
 
 /** Each permission it needs, at most at the level the app has; none the app lacks. */
 export const connectorScope: Scope = (granted) => scopeOf(CONNECTOR_PERMISSIONS, granted);
 export const actingScope: Scope = (granted) => scopeOf(ACTING_PERMISSIONS, granted);
+/** The scope for these settings: acting adds pull requests: write, diff adds contents: read. */
+export const scopeFor = (acting: boolean, diff: boolean): Scope => (granted) =>
+  scopeOf({ ...(acting ? ACTING_PERMISSIONS : CONNECTOR_PERMISSIONS), ...(diff && DIFF_PERMISSIONS) }, granted);
 
 function scopeOf(wanted: Record<string, 'read' | 'write'>, granted: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -114,10 +119,10 @@ export class AppGitHub implements ConnectorGitHub {
   readonly #appId: number;
   readonly #fetch: typeof fetch;
 
-  /** acting: actions are switched on, so the token may write pull requests. */
-  constructor(appId: number, privateKey: string, fetchFn: typeof fetch = (u, i) => fetch(u, i), acting = false) {
+  /** acting: actions are switched on, so the token may write pull requests; diff: a profile gets the diff, so it may read contents. */
+  constructor(appId: number, privateKey: string, fetchFn: typeof fetch = (u, i) => fetch(u, i), acting = false, diff = false) {
     // Each token only for the one repository, with only these permissions.
-    this.#auth = new GitHubAppAuth(String(appId), privateKey, acting ? actingScope : connectorScope, true);
+    this.#auth = new GitHubAppAuth(String(appId), privateKey, scopeFor(acting, diff), true);
     this.#appId = appId;
     this.#fetch = fetchFn;
   }
@@ -161,9 +166,11 @@ export class AppGitHub implements ConnectorGitHub {
       throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
     }
     if (res.status >= 200 && res.status < 300) return res;
-    await res.body?.cancel();
+    // A secondary rate limit is a 403 that may carry neither header; only its message says so.
+    const message = res.status === 403 ? (await res.text().catch(() => '')).slice(0, 2000) : (await res.body?.cancel(), '');
     // Busy, down or rate limited: later. Anything else (no permission, not found) needs a person.
-    const retry = res.status >= 500 || res.status === 429 || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')));
+    const retry = res.status >= 500 || res.status === 429
+      || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after') || /rate limit/i.test(message)));
     throw new GitHubError(`GitHub ${what}: ${res.status}`, retry, res.status);
   }
 

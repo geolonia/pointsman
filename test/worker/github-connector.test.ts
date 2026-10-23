@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, actsOnGitHub, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, actsOnGitHub, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -841,6 +841,61 @@ describe('chains: profiles that build on each other', () => {
     expect(pm.calls).toHaveLength(0);
   });
 
+  it('a refused diff (no permission) is sent as empty and cut, and the run goes on', async () => {
+    const { work, pm, gh } = await chained();
+    gh.github.diff = async () => { throw new GitHubError('GitHub diff: 403', false, 403); };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await work.run();
+    errors.mockRestore();
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT]);
+    expect(pm.calls[0]!.body.state.pull_request).toMatchObject({ diff: '', diff_truncated: true });
+    expect(pm.calls[1]!.body.decisions).toEqual({ risk: expect.any(String) });
+  });
+
+  it('reads the head again after a refused diff too', async () => {
+    const { work, pm, gh } = await chained();
+    gh.github.diff = async () => { gh.github.state.head = HEAD2; throw new GitHubError('GitHub diff: 403', false, 403); };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    errors.mockRestore();
+    expect(pm.calls).toHaveLength(0);
+  });
+
+  it('a decision made without a refused diff is not kept; other errors still end the run', async () => {
+    const { work, pm, gh, event } = await chained();
+    let refuse = true;
+    const diff = gh.github.diff;
+    gh.github.diff = async (...a) => { if (refuse) throw new GitHubError('GitHub diff: 403', false, 403); return diff(...a); };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await work.run();
+    refuse = false;
+    await event();
+    await work.run(); // asked again, now with the diff
+    expect(pm.calls.filter((c) => c.profile === RISK).map((c) => c.body.state.pull_request.diff_truncated)).toEqual([true, false]);
+    // An uninstalled app or a broken key is not a refused diff.
+    gh.github.diff = async () => { throw new GitHubError('GitHub app token: not installed', false); };
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    errors.mockRestore();
+    expect(pm.calls.filter((c) => c.body.state.pull_request.head === HEAD2)).toHaveLength(0);
+    // A rate limit is tried again later.
+    gh.github.diff = async () => { throw new GitHubError('GitHub diff: 429', true, 429); };
+    await event();
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+  });
+
+  it('asks for contents: read only when a profile gets the diff', () => {
+    const granted = { metadata: 'read', contents: 'write', pull_requests: 'write', checks: 'write' };
+    expect(scopeFor(false, false)(granted)).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+    expect(scopeFor(false, true)(granted)).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write', contents: 'read' });
+    expect(scopeFor(true, true)(granted)).toEqual({ metadata: 'read', pull_requests: 'write', checks: 'write', contents: 'read' });
+    // Never more than the app has: no contents permission, none asked.
+    expect(scopeFor(false, true)({ metadata: 'read', pull_requests: 'read', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
+    expect(readsDiff(chain())).toBe(true);
+    expect(readsDiff(settings())).toBe(false);
+  });
+
   it('settings: runs only for listed profiles, requires only earlier ones, checked values', () => {
     const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x' };
     const parse = (runs: unknown) => connectorSettings({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: [RISK, NEXT], runs }) })!.runs;
@@ -871,6 +926,10 @@ describe('chains: profiles that build on each other', () => {
     expect(await small.diff(REPO, 7, 1000)).toEqual({ diff: 'diff --git a/x b/x\n', truncated: false });
     const large = new AppGitHub(APP_ID, KEY, answer(() => new Response('y'.repeat(70_000))));
     expect(await large.diff(REPO, 7, 1000)).toEqual({ diff: 'y'.repeat(1000), truncated: true });
+    const secondary = new AppGitHub(APP_ID, KEY, answer(() => Response.json({ message: 'You have exceeded a secondary rate limit.' }, { status: 403 })));
+    await expect(secondary.diff(REPO, 7, 1000)).rejects.toMatchObject({ retry: true });
+    const refused = new AppGitHub(APP_ID, KEY, answer(() => Response.json({ message: 'Resource not accessible by integration' }, { status: 403 })));
+    await expect(refused.diff(REPO, 7, 1000)).rejects.toMatchObject({ retry: false, status: 403 });
     const tooLarge = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 406 })));
     expect(await tooLarge.diff(REPO, 7, 1000)).toEqual({ diff: '', truncated: true });
     const busy = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 502 })));
