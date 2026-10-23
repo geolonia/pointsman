@@ -2,9 +2,11 @@
 
 ## Reporting a vulnerability
 
-Report security problems privately through GitHub's private vulnerability
-reporting for this repository:
-https://github.com/geolonia/pointsman/security/advisories/new
+Report security problems privately, in one of two ways:
+
+- GitHub's private vulnerability reporting for this repository:
+  https://github.com/geolonia/pointsman/security/advisories/new
+- Email to security@pointsman.net.
 
 Do not open a public issue for a security problem, and do not paste API
 tokens, real profiles or decision data into a report.
@@ -30,7 +32,8 @@ prose is authoritative.
 
 ## Supported versions
 
-Pointsman is an early proof of concept without release tags. Fixes land on
-`main`; a deployment pins the engine commit in its private config repository
-(see [docs/deployment.md](docs/deployment.md)) and picks up a fix by moving
-that pin.
+Pointsman is before 1.0, and only the latest release gets fixes. Fixes land
+on `main` and go out in the next release (see [CHANGELOG.md](CHANGELOG.md)); a
+deployment pins the engine commit in its config repository (see
+[docs/deployment.md](docs/deployment.md)) and picks up a fix by moving that
+pin to the release.
