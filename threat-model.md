@@ -72,8 +72,24 @@
   engine Worker (`InternalEngine`) that takes no token. The GitHub
   connector Worker (`connectors/github`, pointsman#160, #162, #171), which
   reaches the engine through either path, joins as the new family
-  `connector-github`. The other changes between `v0.5.0` and `v0.12.0`
-  are listed in §1.16 as not covered.
+  `connector-github`. Added: the npm registry as a collaborator and a
+  new actor (the package publisher) in §1.2, §1.9 and §1.10; the internal
+  call and the connector in §1.4 (boundary 4), §1.5, §1.6
+  (`INTERNAL_CLIENT` and the connector's settings and app permissions),
+  §1.7, §1.8 and the matrix; `github_bump` in `P-GITHUB-READ-ONLY`,
+  `P-GITHUB-FACTS-FOR-HEAD`, `P-FACTS-NEVER-GUESSED` and
+  `P-FACT-LOOKUP-BOUNDED`; the new properties
+  `P-INTERNAL-CLIENT-FROM-ENGINE`, `P-CONNECTOR-WEBHOOK-SIGNED`,
+  `P-CONNECTOR-ACTIONS-MAPPED`, `P-CONNECTOR-APPROVE-HEAD` and
+  `P-CONNECTOR-TOKEN-SCOPED`; the disclaimers `D-BUMP-PNPM9-DEV-ONLY`,
+  `D-NPM-REGISTRY-TRUSTED`, `D-INTERNAL-ACCOUNT-TRUST`,
+  `D-CONNECTOR-TRUSTS-ENGINE`, `D-CONNECTOR-KEY-REACH` and
+  `D-APPROVAL-ON-FACTS`; the obligations `R-GITHUB-BUMP-PAIR`,
+  `R-INTERNAL-CALL`, `R-CONNECTOR-APPS` and `R-CONNECTOR-APPROVE`; seven
+  misuse patterns; `KNF-INTERNAL-CALL-NO-TOKEN`; the operational state of
+  2026-10-23 in §1.2; and four questions, Q28 to Q31 (§1.18). The other
+  changes between `v0.5.0` and `v0.12.0` are listed in §1.16 as not
+  covered.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -102,7 +118,7 @@
   citing this document.
 - **Status**: under maintainer review, 2026-10-23, for the amendment of
   that day only: its four questions (Q28 to Q31, §1.18) are open, and the
-  claims that wait for them carry *(assumption, QN)*. Everything else was
+  claims that wait for them carry an assumption tag naming the question. Everything else was
   accepted on 2026-10-16. The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, and the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
@@ -125,7 +141,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 306 documented / 70 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 374 documented / 71 maintainer / 0 inferred / 4 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -217,6 +233,17 @@ configuration repository that pins one engine commit and holds the profiles
 Alpha-Omega sense is the owner of that private repository. A shared,
 multi-tenant hosted Pointsman is not a deployment the project describes;
 this model treats it as unsupported *(maintainer, 2026-10)*.
+
+Operational state that matters for threats, as of 2026-10-23: in the
+maintainer's own deployment the GitHub connector's `approve` action is on,
+with rules on facts alone (no AI question), for three kinds of pull
+request: documentation-only changes, release pull requests, and Dependabot
+patch bumps of development dependencies *(maintainer, 2026-10)*. So an
+error in the GitHub facts (`P-FACTS-NEVER-GUESSED`,
+`P-GITHUB-FACTS-FOR-HEAD`, `P-GITHUB-REQUIRED-CHECKS`) or in the
+connector's approval rules (`P-CONNECTOR-APPROVE-HEAD`) can approve a
+pull request in a live repository; whether the approval is enough to
+merge is the repository's ruleset (`R-CONNECTOR-APPROVE`).
 
 Roles, as this model uses them *(maintainer, 2026-10)*:
 
@@ -592,13 +619,13 @@ configuration is in-model even when the configuration is not the default.
 | `FACTS_MODE` (`off`, `mock`, `gsi`) | wrangler vars | `off` | `off`: every fact is missing; `mock`: fixed answers; `gsi`: public GSI data | `off` and `gsi` supported; `mock` dev-only | *(documented, docs/profile-format.md "Fact providers" table)* |
 | `FACTS_GITHUB` (`off`, `mock`, `token`, `app`) with the Worker secret `FACTS_GITHUB_TOKEN`, or `FACTS_GITHUB_APP_ID` and the Worker secret `FACTS_GITHUB_APP_PRIVATE_KEY` | wrangler vars, Worker secrets | `off` | `off`: every GitHub fact is missing (`unavailable`); `mock`: fixed answers; `token` and `app`: pull requests are read from `api.github.com` with that credential | `off`, `token` and `app` supported; `mock` dev-only | *(documented, docs/profile-format.md "Settings" table for `FACTS_GITHUB`)* |
 | `FACTS_GITHUB_IGNORE_CHECK` | wrangler vars | unset | the named check run never counts as a required check, so the deployment's own Pointsman check is not waited for | supported; narrows `P-GITHUB-REQUIRED-CHECKS` by one check name the operator chooses; a profile cannot set it | *(documented, docs/profile-format.md "Settings": "It is a deployment setting, not a profile field, so a profile cannot drop a real check")* |
-| `INTERNAL_CLIENT` | engine wrangler vars | unset | unset: every internal call is refused (500 `not_configured`); set: every Worker in the account with a binding to `InternalEngine` decides as this client, with these profiles (1 to 100, listed; `"*"` is refused), never as a test token, without expiry | supported; removing it is the only way to switch internal calls off | *(documented, docs/adapters.md "Internal calls"; `src/internal.ts` `internalClient`)* |
+| `INTERNAL_CLIENT` | engine wrangler vars | unset | unset: every internal call is refused (500 `not_configured`); set: every Worker in the account with a binding to `InternalEngine` decides as this client, with these profiles (1 to 100, listed; the wildcard is refused), never as a test token, without expiry | supported; removing it is the only way to switch internal calls off | *(documented, docs/adapters.md "Internal calls"; `src/internal.ts` `internalClient`)* |
 | `MODEL_SERVER_URL` with plain `http://` | wrangler vars / `.dev.vars` | unset | sends the state unencrypted; accepted only for loopback hosts | loopback only; any other `http://` is refused at startup (`checkServerUrl`) | *(documented, docs/models.md "Model server" table)* |
 | `AI_GATEWAY_ID` | wrangler vars | set in the template | routes model calls through the AI Gateway with logs, a 600 calls/min rate limit and a 10 s timeout; without it, direct Workers AI calls | both supported | *(documented, docs/models.md "Workers AI and AI Gateway")* |
 | AI Gateway `collect_logs` | `ai-gateway.json` | `true` | the gateway keeps every model call including the state | supported; voids `P-STATE-NOT-STORED` for the gateway's logs | *(documented, docs/models.md "Logs hold the state")* |
 | `CALLBACK_SECRET` | Worker secret | unset | unset: no callback is ever sent; the callback state says why | supported (callbacks off) | *(documented, docs/reviews.md "Callbacks": "Without that secret, nothing is sent")* |
 | GitHub login (`PUBLIC_URL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ALLOWED_GITHUB_ORGS`, `OAUTH_KV`) | wrangler vars, secret, binding | unset | all set: people may log in to `/mcp`; none: `/mcp` takes API tokens only; some: every request fails with a configuration error | both supported; a partial configuration is refused | *(documented, docs/mcp.md "Setting up GitHub login": "Set all of these or none")* |
-| `global_fetch_strictly_public` | `compatibility_flags` | present in all three wrangler configs | outbound fetches reach only public addresses | required; a deployment without it is unsupported and voids `P-OUTBOUND-PUBLIC-ONLY` | *(maintainer, 2026-10)* |
+| `global_fetch_strictly_public` | `compatibility_flags` | present in the engine, template, bridge and connector wrangler configs | outbound fetches reach only public addresses | required; a deployment without it is unsupported and voids `P-OUTBOUND-PUBLIC-ONLY` | *(maintainer, 2026-10)* |
 | `log.store_state: true` | per profile | `false` | stores the full state in D1 instead of only its hash | supported; voids `P-STATE-NOT-STORED` for that profile | *(documented, docs/decision-log.md "What is stored")* |
 | `route: true` on a `detour` fact | per profile | `false` | the fact keeps the way around, whose ends are the section's place in the state; stored with the decision, returned by the API and MCP, and written by the bridge into the Decision entity | supported; narrows `P-STATE-NOT-STORED` for that profile (the place, not the rest of the state) | *(documented, docs/decision-log.md "What is stored")* |
 | `mcp.visible: true` | per profile | `false` | the profile is listed and callable through MCP, by every logged-in person and by tokens in scope | supported | *(documented, docs/mcp.md "Only profiles that set `mcp.visible: true`")* |
@@ -701,7 +728,7 @@ they are security-relevant.
 | `connector-github` `POST /webhook` | `X-Hub-Signature-256` and the body | yes (anyone who can reach the Worker); accepted only with a valid HMAC-SHA256 of the body under the webhook secret | data, size | none — 401 before the body is parsed; a body over 2 MB gets 413, also without a Content-Length (`P-CONNECTOR-WEBHOOK-SIGNED`) | *(documented, docs/github-connector.md "Safety")* |
 | `connector-github` `POST /webhook` | `X-GitHub-Delivery`, `X-GitHub-Event` and the payload (repository, pull-request number, action, the check suite's app) | only GitHub, once the signature holds; GitHub signs only the body | data, resource-name | none — a delivery id and a body hash seen in the last 7 days are dropped as a replay; events for other repositories and the connector's own check suites are ignored; the event is only a hint: the pull request is read again with the connector's own token | *(documented, docs/github-connector.md "Safety"; `packages/github/src/connector/webhook.ts` header comment)* |
 | `connector-github` GitHub reads | the pull request (head, draft, base, title, description, fork or not, labels, requested reviewers) and, with `diff`, its diff | yes (pull-request author: title, description, diff, commits) | data, size, x-prompt-text | none — title cut to 300 and description to 8,000 characters, CodeRabbit's whole summary blocks left out; the diff read only up to its limit, `diff_truncated` when cut or refused; the head is a 40-character SHA, else the run fails | *(documented, docs/github-connector.md "How it works", "Chains")* |
-| `connector-github` GitHub reads | comments, reviews and check runs, read as traces of the connector's own actions | partly — anyone who may comment or review writes them; a comment counts only when the connector's app made it; a review only when a bot wrote it with the connector's marker, and only a review whose id the connector recorded is ever dismissed | data | none | *(documented, docs/github-connector.md "Actions": "It dismisses only approvals it recorded giving"; `packages/github/src/connector/github.ts` `findComment`, `ownApprovals`)* |
+| `connector-github` GitHub reads | comments, reviews and check runs, read as traces of the connector's own actions | partly — anyone who may comment or review writes them; a comment counts only when the connector's app made it; a review only when a bot wrote it with the connector's marker, and only a review whose id the connector recorded is ever dismissed | data | none | *(documented, `packages/github/src/connector/github.ts` `findComment`, `ownApprovals`; docs/github-connector.md "Actions": "It dismisses only approvals it recorded giving")* |
 | `connector-github` engine answer | the decision (`decision_id`, `action`, `review`) | no — the engine is the connector's trusted collaborator (`D-CONNECTOR-TRUSTS-ENGINE`) | data | none — only the status is checked (and, through the binding, that the answer is an object); 5xx and 429 are retried, another 4xx is logged and nothing is shown | *(documented, docs/github-connector.md "Safety", Retries; assumption, Q28)* |
 | `connector-github` configuration | `GITHUB_CONNECTOR` (`repos`, `profiles`, `actions`, `runs`), `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `POINTSMAN_URL`, `POINTSMAN_TOKEN`, the `POINTSMAN` binding | no — operator | serialized-state | unknown keys refused; labels, logins, action names and comment text checked; the webhook secret at least 20 characters, the key a PEM key; `POINTSMAN_URL` https (http only for loopback) | *(documented, docs/github-connector.md "Settings"; `packages/github/src/connector/settings.ts`)* |
 | `config-repo` Validate / Deploy workflows | `profiles/*.yaml` | no — pull-request authors are the integrator's own contributors; `main` is protected | serialized-state, x-policy-rules | protect `main`; require the Validate check | *(documented, template/config-repo/README.md "Protect `main`")* |
@@ -996,7 +1023,8 @@ what voids it.
   is registered after the `app.use('/v1/*', …)` middleware at
   `src/app.ts:32`; `/mcp` authenticates on lines 318 (OAuth resource server) and 320 (API tokens) of `src/app.ts`; the remaining
   routes are the OAuth flow (which issues grants only after GitHub membership)
-  and the 404 handler.
+  and the 404 handler. An internal call is not an HTTP request and carries
+  no token; who may make one is `P-INTERNAL-CLIENT-FROM-ENGINE`.
 - **`P-TOKEN-SCOPE`** — a token acts only on the profiles in its record;
   decisions, reviews and stats of other profiles answer 403 or 404 as if they
   did not exist, and the scope is checked before the profile lookup so a
@@ -1032,6 +1060,9 @@ what voids it.
   `src/decide.ts:278`, and the callback refusal in `makeDecision` (`src/decide.ts`). A test token
   also cannot send `decisions` or decide a profile with `requires`, so it
   never reads logged decisions (`makeDecision`, docs/decision-chains.md).
+  The client of internal calls is never a test token *(documented,
+  `src/internal.ts` header comment: "It is never a test token and never
+  expires")*.
 - **`P-ANSWER-SHAPE`** — a model answer is accepted only when every question
   of the profile is answered with the right type, every option or level is
   one the profile lists, every probability is in 0–1 and a score is within
@@ -1084,11 +1115,19 @@ what voids it.
   file or team that cannot be read, or a pattern or section header the
   engine does not read, makes the whole `github_pr` fact missing, and pushes GitHub does not show
   make `pushed_by_author` `unavailable` unless a known push by someone else
-  already makes it `no`; the model never sees the facts. Symptom: `bad-data-accepted`, `wrong-output`. Tier:
+  already makes it `no`; for `github_bump`, a file it cannot read (no
+  patch, a patch that does not fit the file, a `package.json` over 512 KB,
+  a tree cut short, more than 50 `package.json` files or more than 30
+  bumped versions) or a registry that does not answer with the publish
+  time makes the whole fact missing, and whatever it does not understand
+  gives the stricter value (`applies` false, `semver` `none`,
+  `registry_changed` true, `dev_only` false, `release_age_days` 0); the model never sees the facts. Symptom: `bad-data-accepted`, `wrong-output`. Tier:
   security-critical (a guessed flood depth changes whether a report goes to
-  a person; a guessed "docs only" skips a review). *(documented,
+  a person; a guessed "docs only" skips a review; a guessed "dev patch only"
+  approves a dependency bump). *(documented,
   docs/profile-format.md "A missing fact is never guessed"; "The model does
-  not see the facts"; "Missing GitHub facts")*. Voided by: nothing. Search:
+  not see the facts"; "Missing GitHub facts"; the `github_bump` row: "makes
+  the whole fact missing")*. Voided by: nothing. Search:
   `grep -n "missing" src/policy.ts src/facts.ts` — the three-valued
   evaluation at `src/policy.ts:406`. A profile version whose facts no
   chosen module answers is refused before the model call (a config error,
@@ -1103,6 +1142,11 @@ what voids it.
   `CODEOWNERS` is read only up to 128 KiB, with patterns of at most 1,024
   characters, its comments removed in one pass, and at most 50 million
   steps of matching the changed files against its patterns per decision;
+  `github_bump` reads each `package.json` up to 512 KB, at most 50 of them
+  in the tree (at most 51 more GitHub requests, in the same 5 s), at most
+  30 bumped versions with one registry read each, each registry document
+  as a stream up to 64 MB and only its `time` object kept, 8 s for all
+  registry reads;
   exceeding a bound is `error` or `timeout`, never a hang. Symptom: `hang`,
   `unbounded-allocation`. Tier: correctness-only.
   *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)*.
@@ -1111,7 +1155,10 @@ what voids it.
   — the limits at `packages/module-api/src/capabilities.ts:23`, `packages/github/src/definition.ts:82` (GitHub),
   `packages/facts-gsi/src/provider.ts:100`, `packages/facts-gsi/src/provider.ts:137`, `packages/facts-valhalla/src/router.ts:27`,
   `packages/github/src/provider.ts:42`, `packages/github/src/provider.ts:44`, `packages/github/src/provider.ts:50` and, for
-  `CODEOWNERS`, `packages/github/src/codeowners.ts:24` to `packages/github/src/codeowners.ts:28`.
+  `CODEOWNERS`, `packages/github/src/codeowners.ts:24` to `packages/github/src/codeowners.ts:28`; for `github_bump`,
+  `packages/github/src/provider.ts:59`, `packages/github/src/provider.ts:61`, `packages/github/src/bump.ts:59`,
+  `packages/github/src/npm.ts:18` and `packages/github/src/npm.ts:20`, with the size check in `publishTimes`
+  (`packages/github/src/npm.ts:147`).
 - **`P-DECISION-LOGGED-FIRST`** — every decision made with a normal token is
   stored in D1, with its profile version, model, answers, facts, rule, client
   name and state hash, before it is returned; if the log cannot be written
@@ -1188,11 +1235,16 @@ what voids it.
   engine. Search: `grep -n "sign(\|x-pointsman-signature" src/callbacks.ts` —
   the one send site at `src/callbacks.ts:69` always signs. A receiver that
   does not verify is a §1.14 misuse.
-- **`P-GITHUB-READ-ONLY`** — GitHub facts (`github_pr`, `github_paths`, `github_checks` and `github_property`) only read: the engine sends GET requests to the fixed host `api.github.com` and, with a GitHub App, one POST that creates an installation token; it never changes a repository, a pull request or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request. Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `packages/github/src/provider.ts` header: "this file only sends GET requests to the GitHub API"; docs/profile-format.md "Settings": "Making the token is the only request that is not a read")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" packages/github/src/provider.ts` — the GET at `packages/github/src/provider.ts:262` and the token POST at `packages/github/src/provider.ts:216`, both with `redirect: 'manual'`, and the 3xx check at `packages/github/src/provider.ts:250`.
-- **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub facts of a decision (`github_pr`, `github_paths`, `github_checks` and `github_property`) describe the head commit the request names, read as one snapshot: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub fact of the decision is `stale` (missing); the pull request is read again after its file list, and a push in between makes the facts that use the file list (`github_paths`, and `github_pr` through `author_sole_code_owner`) `stale`; `github_checks` is read by the head commit id; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" packages/github/src/provider.ts` — the head checks at `packages/github/src/provider.ts:642`, `packages/github/src/provider.ts:651` and `packages/github/src/provider.ts:772`.
+- **`P-GITHUB-READ-ONLY`** — GitHub facts (`github_pr`, `github_paths`, `github_checks`, `github_property` and `github_bump`) only read: the engine sends GET requests to the fixed host `api.github.com` and, with a GitHub App, one POST that creates an installation token, which since `v0.6.0` asks only for the permissions the facts use, as read; `github_bump` also sends GET requests to the fixed host `registry.npmjs.org`, without the GitHub token or any other credential; it never changes a repository, a pull request or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request. The GraphQL queries (POST, never a mutation) that `github_copilot` and the CodeRabbit module send are not covered (§1.16). Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `packages/github/src/provider.ts` header: "this file only sends GET requests to the GitHub API"; docs/profile-format.md "Settings": "Making the token is the only request that is not a read")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" packages/github/src/provider.ts` — the GET at `packages/github/src/provider.ts:262` and the token POST at `packages/github/src/provider.ts:216`, both with `redirect: 'manual'`, and the 3xx check at `packages/github/src/provider.ts:250`; the registry GET in `publishTimes` (`packages/github/src/npm.ts:131`) with `redirect: 'manual'` and only the `accept` and `user-agent` headers.
+- **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub facts of a decision (`github_pr`, `github_paths`, `github_checks`, `github_property` and `github_bump`) describe the head commit the request names, read as one snapshot: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub fact of the decision is `stale` (missing); the pull request is read again after its file list, and a push in between makes the facts that use the file list (`github_paths`, `github_bump`, and `github_pr` through `author_sole_code_owner`) `stale`; `github_bump` reads every `package.json` and the tree at the head commit the request names; `github_checks` is read by the head commit id; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" packages/github/src/provider.ts` — the head checks at `packages/github/src/provider.ts:642`, `packages/github/src/provider.ts:651` and `packages/github/src/provider.ts:772`.
 - **`P-GITHUB-REQUIRED-CHECKS`** — `github_checks` counts only the required checks of the base branch (its rulesets and its protection) and the workflows that a ruleset requires, on the head commit: a check that a rule ties to an app counts only from that app; a commit status counts only where any app may report; a required workflow counts only through the run GitHub started for the ruleset, never through a workflow at the same path that the pull request can change; a check run and a status that disagree give the stricter result; with no required checks `green` is false; only the check named by the deployment's `FACTS_GITHUB_IGNORE_CHECK` is left out. Symptom: `x-check-bypass`, `wrong-output`. Tier: security-critical. *(documented, docs/profile-format.md "One snapshot": "A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset")*. Voided by: nothing in the engine; it is never stronger than the base branch's rules (`D-GITHUB-CHECK-NAMES`). Search: `grep -n "required_workflows\|r.app === null" packages/github/src/provider.ts` — the ruleset-run flag at `packages/github/src/provider.ts:499` and its filter at `packages/github/src/provider.ts:837` and the app match at `packages/github/src/provider.ts:841`.
-- **`P-OUTBOUND-PUBLIC-ONLY`** — outbound fetches from the engine and the
-  bridge reach only public addresses: a `callback_url`, a client-ID metadata
+- **`P-INTERNAL-CLIENT-FROM-ENGINE`** — an internal call (`InternalEngine.decide`) is made as the client the engine's own `INTERNAL_CLIENT` setting names, with that setting's profiles, never as a client or scope the caller names; without the setting every internal call is refused (500 `not_configured`); the setting must list its profiles (`"*"` is refused); the call is never a test token and runs the same code as `POST /v1/decide` after the token check (profile scope, body, idempotency per client, decision log, decision-log facts of that client only); the body goes through JSON, so only JSON values reach the engine. Symptom: `x-authorization-bypass`, `x-unlogged-decision-acted-on`. Tier: security-critical. *(documented, docs/adapters.md "Internal calls"; `src/internal.ts` header comment)*. Voided by: nothing in the engine. Who may call is the Cloudflare account, not the engine (`D-INTERNAL-ACCOUNT-TRUST`). Search: `grep -n "internalClient\|decideInternal\|decideAnswer" src/index.ts src/internal.ts src/app.ts` — the client from the setting at `src/index.ts:307`, the refusal without it at `src/internal.ts:70`, the record without `test` or expiry at `src/internal.ts:88`, and both paths through `decideAnswer` (`src/internal.ts:107`; the HTTP route in `src/app.ts`).
+- **`P-CONNECTOR-WEBHOOK-SIGNED`** — the GitHub connector acts on a webhook only when its `X-Hub-Signature-256` is a valid HMAC-SHA256 of the body under the webhook secret (compared by WebCrypto's verify, in constant time); nothing is read from the body before the check; bodies over 2 MB are refused while they are read; a delivery id or a body hash seen in the last 7 days is dropped as a replay; events for repositories outside `GITHUB_CONNECTOR` `repos` and of its own check suites are ignored; and the event is only a hint, since every run reads the pull request again with the connector's own token. Symptom: `x-authentication-bypass`, `x-replay`. Tier: security-critical. *(documented, docs/github-connector.md "Safety")*. Voided by: a webhook secret that leaks or is short (at least 20 characters is enforced). Search: `grep -n "verifySignature\|readCapped\|replay" packages/github/src/connector/index.ts packages/github/src/connector/webhook.ts packages/github/src/connector/pull-request.ts` — the capped read at `packages/github/src/connector/index.ts:62`, the check at `packages/github/src/connector/index.ts:65`, the verify at `packages/github/src/connector/webhook.ts:22`, the replay check at `packages/github/src/connector/pull-request.ts:151`.
+- **`P-CONNECTOR-ACTIONS-MAPPED`** — the connector writes to GitHub only its `neutral` check runs, and beyond them only the action a deployment maps to a profile's decision action in `GITHUB_CONNECTOR` `actions`, from the fixed list `comment` (a fixed text from the settings with a marker and the decision id, never pull-request text), `label`, `request_reviewer` and `approve`; each at most once per head commit, profile and kind, with its record written before it; nothing while the decision waits for a person (`review: pending`); a refused action is not tried again for that commit. Symptom: `x-unauthorized-write`, `wrong-output`. Tier: security-critical. *(documented, docs/github-connector.md "Actions": "This is the whole list: a deployment can switch actions on, never add one")*. Voided by: nothing in the connector; what an action means for merging is the repository's rules (`R-CONNECTOR-APPROVE`). Search: `grep -n "case 'comment'\|case 'label'\|case 'request_reviewer'\|case 'approve'" packages/github/src/connector/pull-request.ts` — the dispatch in `#perform`, and the person check at `packages/github/src/connector/pull-request.ts:377`.
+- **`P-CONNECTOR-APPROVE-HEAD`** — an approval is given only on the head commit the decision was made on (the pull request is read again right before, and the review names that commit as `commit_id`), never for a draft, a closed pull request or one from a fork; after a push the connector dismisses its own earlier approvals on every run, and when a later decision on the same commit no longer approves (or waits for a person), its approval of that commit is withdrawn; if an older approval cannot be dismissed, it approves nothing in that run; it dismisses only approvals whose ids it recorded. Symptom: `x-toctou`, `x-unauthorized-write`. Tier: security-critical. *(documented, docs/github-connector.md "Actions", For `approve` also)*. Voided by: a ruleset or branch protection without "Dismiss stale pull request approvals when new commits are pushed": then an approval of an older commit counts for merging until the next run dismisses it (`R-CONNECTOR-APPROVE`). Search: `grep -n "approve" packages/github/src/connector/pull-request.ts` — the draft and fork check at `packages/github/src/connector/pull-request.ts:378`, the fresh read at `packages/github/src/connector/pull-request.ts:406`, the stale dismissal before any profile is asked at `packages/github/src/connector/pull-request.ts:209`.
+- **`P-CONNECTOR-TOKEN-SCOPED`** — the connector's installation tokens are made for the one repository of the pull request and ask only for the permissions its settings use: Metadata and Pull requests read and Checks write; Pull requests write only when `actions` are set; Contents read only when a profile has `diff`; never Contents write, and never more than the app has; the connector app's key is only in the connector's own Worker, and the engine never holds a key that can write. Symptom: `x-privilege-escalation`, `x-unauthorized-write`. Tier: security-critical. *(documented, docs/github-connector.md "Safety", "Write access only here"; "The two GitHub apps")*. Voided by: nothing for the tokens; the key itself carries every permission the app has (`D-CONNECTOR-KEY-REACH`). Search: `grep -n "PERMISSIONS\|scopeFor\|new GitHubAppAuth" packages/github/src/connector/github.ts` — the permission sets at `packages/github/src/connector/github.ts:15` to `packages/github/src/connector/github.ts:19` and the per-repository auth at `packages/github/src/connector/github.ts:125`.
+- **`P-OUTBOUND-PUBLIC-ONLY`** — outbound fetches from the engine, the
+  bridge and the GitHub connector reach only public addresses: a `callback_url`, a client-ID metadata
   URL or a redirect target on a private or loopback address fails. Symptom:
   `x-ssrf`. Tier: security-critical. *(documented, wrangler.jsonc and
   template/config-repo/wrangler.jsonc comment: "Outgoing fetches (review
@@ -1288,7 +1340,7 @@ statement. A disclaimer on absence never closes a security-critical report.
 
 | ID | The project does not provide | Conditions / boundary | Tier | False friend? | Provenance |
 | --- | --- | --- | --- | --- | --- |
-| `D-PROMPT-INJECTION` | resistance to prompt injection: a state author can steer the model's answers with text aimed at the model | the answers only, on `engine-api`, `engine-mcp`, `bridge`, `action-triage`, `action-deploy-watch`; the action stays what the policy produces for those answers (`P-ACTION-FROM-POLICY`), the answers stay inside the profile's types and options (`P-ANSWER-SHAPE`), and `review` sends the case to a person. Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
+| `D-PROMPT-INJECTION` | resistance to prompt injection: a state author can steer the model's answers with text aimed at the model | the answers only, on `engine-api`, `engine-mcp`, `bridge`, `action-triage`, `action-deploy-watch`, `connector-github`; the action stays what the policy produces for those answers (`P-ACTION-FROM-POLICY`), the answers stay inside the profile's types and options (`P-ANSWER-SHAPE`), and `review` sends the case to a person. Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
 | `D-MODEL-ACCURACY` | that a well-formed answer is right, that `p` is a calibrated accuracy, or that answers stay the same across model updates | every family that acts on an answer; the project tells integrators to keep a margin from thresholds and to re-check examples after a model update. Basis: stated | correctness-only | yes: `p` looks like accuracy and is the model's probability | *(documented, docs/fiware-demo.md "Lesson: keep a margin from the thresholds, and check the examples again after a model update"; docs/models.md "The decider's probabilities run lower than Clef-flash's")* |
 | `D-STATE-CONTENT` | validation of the content of `state` beyond its JSON type and the profile's input mapping; no sanitisation, normalisation or schema check | `engine-api`, `engine-mcp`; the profile's `input` paths select fields, they do not validate them. Basis: stated | correctness-only | no | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
 | `D-STATE-SIZE` | a limit on the size or nesting depth of `state`, or a bound on the work a large state causes in the model call | `engine-api`, `engine-mcp`, `bridge` (the entity is the state); the platform's request limit and the model backend's own limits apply. Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, openapi.yaml `DecideRequest.state` has no size constraint; maintainer, 2026-10)* |
@@ -1308,6 +1360,12 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-GITHUB-CHECK-NAMES` | that a passing required check came from the job the integrator meant: GitHub matches a required check by its name, and by its app only when the rule names one, so whoever can push a workflow to the repository, such as the author of a pull request from the same repository, can add a job that reports that name | `engine-facts`; `github_checks` is as strong as the base branch's rules, not stronger; workflows that a ruleset requires are not affected (`P-GITHUB-REQUIRED-CHECKS`); the rules are the repository owner's (`R-GITHUB-RULES`). Basis: a maintainer ruling (2026-10) | security-critical | yes: "the required checks passed" ≠ "the intended jobs ran" | *(maintainer, 2026-10)* |
 | `D-GITHUB-CREDENTIAL-REACH` | a list of allowed repositories per profile or per token: a GitHub fact reads the pull request the state names, in any repository the deployment's GitHub credential can read, and the decision returns facts about it (booleans, numbers, a custom property value); the members of a team named in that repository's `CODEOWNERS` are read the same way | `engine-facts`; the credential's reach (a fine-grained token's repositories, a GitHub App's installations) is the boundary (`R-GITHUB-REPOSITORIES`); the API token's profile scope still applies (`P-TOKEN-SCOPE`). Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
 | `D-GITHUB-RATE-LIMIT` | a GitHub request budget per client or per profile: with `FACTS_GITHUB: token`, every decision of a deployment uses the same token and its rate limit, and when it is used up, GitHub facts are `error` for every client until it resets; with `FACTS_GITHUB: app`, each installation (one per repository owner) has its own installation token and limit, so a used-up installation affects the repositories of that owner, for every client | `engine-facts`; a missing fact never matches a rule (`P-FACTS-NEVER-GUESSED`), so this blocks only where the rules are written as `R-GITHUB-POSITIVE-RULES` asks, and a missing fact that stops an earlier blocking rule can let a later allowing rule match; limiting clients is `R-RATE-LIMIT`. Basis: a maintainer ruling (2026-10) | correctness-only | no | *(maintainer, 2026-10)* |
+| `D-BUMP-PNPM9-DEV-ONLY` | a full dev-only check for packages that change only in a `pnpm-lock.yaml` v9: such a lockfile has no dev marks, so `dev_only` checks only that no `package.json` lists the changed package, or a package whose dependency line on it changes, outside `devDependencies`; a runtime dependency that reaches the package through more packages than that is not seen | `engine-facts`, `github_bump`; `package-lock.json` and pnpm v6 lockfiles carry dev marks and are checked by them. Basis: stated | security-critical | yes | *(documented, docs/profile-format.md `github_bump` row: "it does not check whether a runtime dependency reaches it through more packages than that")* |
+| `D-NPM-REGISTRY-TRUSTED` | a check of the npm registry's answer beyond its shape, or of what a new version contains: `release_age_days` is the registry's record of when the youngest bumped version was published; a registry that answers wrongly (compromised, or a spoofed answer, which needs a broken TLS connection to `registry.npmjs.org`) can make a new release look old, and an old-enough release can still be malicious; the fact reads no signatures, provenance or advisories | `engine-facts`, `github_bump`; only `release_age_days` comes from the registry, and a malformed or missing answer makes the fact missing (`P-FACTS-NEVER-GUESSED`). A deployment that approves on the age alone accepts what the registry says (`R-GITHUB-BUMP-PAIR`). Basis: a proposed ruling (Q30) | security-critical | yes | *(assumption, Q30)* |
+| `D-INTERNAL-ACCOUNT-TRUST` | per-caller control of internal calls: every Worker in the engine's Cloudflare account with a binding to `InternalEngine` decides as the `INTERNAL_CLIENT` client, without a token and without expiry; all of them share one decision history and one idempotency space; one caller cannot be revoked alone, and revoking the connector's old token does not stop internal calls; edge rules (a firewall, rate limits) on `/v1/` do not see them | `engine-api`, `connector-github`; the account is the boundary, and whoever can deploy a Worker there can already change the engine Worker (§1.3). Turning it off: remove `INTERNAL_CLIENT` and deploy. Basis: stated | security-critical | no | *(documented, docs/adapters.md "Internal calls"; docs/github-connector.md "Internal call", What that means)* |
+| `D-CONNECTOR-TRUSTS-ENGINE` | a check of the engine's answer in the connector beyond its status: the connector maps the decision's `action` as the engine gives it, does not check the decision's shape, and does not refuse a decision marked `test: true` (a test token for the connector would make it act on unlogged decisions) | `connector-github`; over HTTPS the answer comes from `POINTSMAN_URL` with the connector's token, through the binding from the bound engine Worker; the engine is the connector's trusted collaborator. Basis: a proposed ruling (Q28) | security-critical | no | *(assumption, Q28)* |
+| `D-CONNECTOR-KEY-REACH` | a limit on what the connector app's private key can do: the down-scoped tokens (`P-CONNECTOR-TOKEN-SCOPED`) limit what the connector's code asks for, not what the key can mint; with the permissions that make an approval count (Contents: Read and write, Pull requests: Read and write), a leaked key can push to and approve pull requests in every repository the app is installed on | `connector-github`; the key is a Worker secret of the connector Worker only. Basis: a proposed ruling (Q29) | security-critical | no | *(assumption, Q29)* |
+| `D-APPROVAL-ON-FACTS` | a person's review behind an approval: where a deployment maps `approve`, the approval is the profile's decision on that commit and nothing more; a profile that approves on facts alone (no AI question) is exactly as strong as its rules and the facts (`P-FACTS-NEVER-GUESSED`, `P-GITHUB-FACTS-FOR-HEAD`, `P-GITHUB-REQUIRED-CHECKS`); a profile that approves on AI answers about the title, description or diff can be steered by the pull-request author (`D-PROMPT-INJECTION`) | `connector-github`, `engine-facts`; contained by the rules the integrator writes (`R-CONNECTOR-APPROVE`, `R-GITHUB-POSITIVE-RULES`). Basis: a proposed ruling (Q31) | security-critical | yes | *(assumption, Q31)* |
 | `D-EXACTLY-ONCE` | exactly-once callback delivery: a callback can arrive more than once when a 2xx answer is lost | `engine-callbacks`. Basis: stated | correctness-only | no | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
 | `D-BRIDGE-BROKER-ACCESS-CONTROL` | its own access control for the broker side: whoever may write entities, Decision entities or completed Task entities in the tenant can trigger decisions, resolve reviews and name `reviewedBy`; the broker's access control owns this | `bridge`. Basis: stated | security-critical | no | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control")* |
 | `D-BRIDGE-RACE-WINDOWS` | atomicity across broker writes: NGSI-LD has no conditional update, so a new decision written between a read and a write can be overwritten with an older result, and two simultaneous notifications can send the same feedback twice | `bridge`. Basis: stated | correctness-only | no | *(documented, bridge/README.md "NGSI-LD has no conditional update, so there is a short window")* |
@@ -1343,6 +1401,18 @@ Well-known attack classes for a service of this kind, in one sentence each:
 - **Confused deputy through the GitHub credential**: the engine only reads
   (`P-GITHUB-READ-ONLY`), but reads any repository the credential reaches
   (`D-GITHUB-CREDENTIAL-REACH`, `R-GITHUB-REPOSITORIES`).
+- **Webhook forgery and replay**: signed bodies only, replays dropped, and
+  the event is only a hint (`P-CONNECTOR-WEBHOOK-SIGNED`).
+- **An approval for the wrong commit**: only the decided head, never drafts
+  or forks, stale ones dismissed, and the ruleset must dismiss stale
+  approvals (`P-CONNECTOR-APPROVE-HEAD`, `R-CONNECTOR-APPROVE`).
+- **A malicious dependency release approved as a routine bump**: the bump
+  facts are strict where they do not understand, but the release's age is
+  the registry's and its content is not checked (`D-NPM-REGISTRY-TRUSTED`,
+  `D-BUMP-PNPM9-DEV-ONLY`, `R-GITHUB-BUMP-PAIR`).
+- **A caller without a token**: the internal entrypoint has no URL and the
+  engine names the client (`P-INTERNAL-CLIENT-FROM-ENGINE`); the account is
+  the boundary (`D-INTERNAL-ACCOUNT-TRUST`).
 
 ## 1.13 Downstream responsibilities
 
@@ -1433,6 +1503,10 @@ the receivers must do for §1.5–§1.11 to hold.
   skip a review), check for missing facts first and write every condition as
   a known, positive value instead of counting on an earlier blocking rule
   *(documented, docs/profile-format.md "GitHub pull requests", "Safety")*.
+- **`R-GITHUB-BUMP-PAIR`** — in a profile that allows a dependency bump on `github_bump`, pair it with `github_pr` (`author_dependabot`, `all_commits_verified`, `pushed_by_author`), check `missing` first, and require `registry_changed` false and a `release_age_days` margin you chose; do not treat an old-enough release as a reviewed one (`D-NPM-REGISTRY-TRUSTED`, `D-BUMP-PNPM9-DEV-ONLY`) *(documented, docs/profile-format.md `github_bump` row: "pair it with `github_pr`"; assumption, Q30)*.
+- **`R-INTERNAL-CALL`** — for internal calls: keep the permission to deploy Workers in the engine's Cloudflare account (and Cloudflare API tokens with Workers Scripts: Edit) to the people who deploy the engine; list in `INTERNAL_CLIENT` only the connector's profiles, under the client name of its current token; once internal calls work, revoke the connector's token and delete its secret; to switch internal calls off, remove `INTERNAL_CLIENT` and deploy; do not count on edge rules for this path *(documented, docs/adapters.md "Internal calls": "Keep that permission to the people who deploy the engine"; docs/github-connector.md "Internal call")*.
+- **`R-CONNECTOR-APPS`** — for the GitHub connector: two GitHub Apps, the read-only facts app for the engine and the connector app for the connector Worker only; install both only on the repositories the connector handles; give the connector app only the permissions its settings need; put the key and the webhook secret (made with `openssl rand -hex 32`) only into wrangler; give the connector its own token limited to its profiles, never a test token *(documented, docs/github-connector.md "The two GitHub apps": "Install both apps only on the repositories the connector handles"; "Setting it up"; assumption, Q28)*.
+- **`R-CONNECTOR-APPROVE`** — before mapping a decision to `approve`: turn on "Dismiss stale pull request approvals when new commits are pushed" in the branch's ruleset or protection; keep a person's review where `CODEOWNERS` and the ruleset require one (an app cannot be a code owner); map `approve` only from profiles whose allowing rules follow `R-GITHUB-POSITIVE-RULES` and do not rest on AI answers about text the author wrote (`D-APPROVAL-ON-FACTS`) *(documented, docs/github-connector.md "Actions": "Required"; "Code owners"; assumption, Q31)*.
 - **`R-DEPLOY-TOOLING`** — run `tokens.mjs` with `--remote` only on purpose
   and keep the printed token out of shell history and logs; deploy only
   through the template's workflows so profile versions stay immutable
@@ -1468,6 +1542,25 @@ One line each in this draft; expand before publication.
 - Giving the GitHub fact credential write permissions, or a classic token
   that reaches every repository of its owner, so a leaked Worker secret
   can change repositories (`R-GITHUB-CREDENTIAL`, `R-GITHUB-REPOSITORIES`).
+- Mapping `approve` on a branch whose ruleset does not dismiss stale
+  approvals, so an approval of an older commit counts after a push until
+  the connector's next run (`R-CONNECTOR-APPROVE`).
+- Mapping `approve` from a profile whose allowing rule rests on AI answers
+  about the title, description or diff, which the author writes
+  (`D-APPROVAL-ON-FACTS`, `R-CONNECTOR-APPROVE`).
+- Approving a dependency bump on `github_bump` alone, without `github_pr`
+  saying who made the commits, or on a `release_age_days` of 0
+  (`R-GITHUB-BUMP-PAIR`).
+- Giving the GitHub connector a test token, so it acts on decisions that
+  are not logged (`D-CONNECTOR-TRUSTS-ENGINE`, `R-CONNECTOR-APPS`).
+- Using one GitHub App for the facts and the connector, so the Worker that
+  sends pull-request text to a model also holds a key that can write
+  (`R-CONNECTOR-APPS`).
+- Giving `INTERNAL_CLIENT` more profiles than the connector uses, or the
+  name of another client, so bound Workers decide in that client's history
+  (`R-INTERNAL-CALL`).
+- Counting on a firewall or rate-limit rule on `/v1/` to limit the
+  connector after switching to internal calls (`D-INTERNAL-ACCOUNT-TRUST`).
 - An allowing rule that counts on an earlier blocking rule while GitHub
   facts can be missing, or a glob such as `*.md` that was meant to cover
   every folder (`R-GITHUB-POSITIVE-RULES`).
@@ -1486,7 +1579,8 @@ Every entry is discharged by a claim in this document, matched on the
 behaviour of the code, scoped to named components, and carries its own
 provenance. `KNF-STEERED-ANSWER` and `KNF-CALLBACK-TO-PUBLIC-HOST` joined the
 table when the maintainer ratified the design positions behind them
-(2026-10).
+(2026-10). `KNF-INTERNAL-CALL-NO-TOKEN` joined with the amendment of
+2026-10-23; it rests on documented claims.
 
 | ID | Components | Symptom / attack class | What gets reported | Conditions for an exact match | Discharged by | Provenance |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1497,6 +1591,7 @@ table when the maintainer ratified the design positions behind them
 | `KNF-STATE-IN-GATEWAY-LOGS` | engine-api, engine-mcp | information disclosure | "the full state is visible in the AI Gateway logs although the decision log stores only a hash" | the deployment sets `AI_GATEWAY_ID` and the gateway has `collect_logs: true` | `D-STATE-TO-BACKEND` | *(documented, docs/models.md "Logs hold the state")* |
 | `KNF-TRIAGE-TAINT-TO-SUMMARY` | action-triage | taint flow to a sink | "untrusted issue text flows from the event payload to `GITHUB_STEP_SUMMARY` or `GITHUB_OUTPUT`" | the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them | `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/triage.mjs header: "it is never put into a shell command or into the job summary")* |
 | `KNF-STEERED-ANSWER` | engine-api, engine-mcp, bridge, action-triage, action-deploy-watch | prompt injection, steered answer | "text in the state made the model answer X" and the policy acted on that well-formed answer | every answer is inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set (either would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`) | `D-PROMPT-INJECTION` | *(maintainer, 2026-10)* |
+| `KNF-INTERNAL-CALL-NO-TOKEN` | engine-api, connector-github | missing authentication | "`InternalEngine.decide` takes no token, so anyone can decide without one" | the call came through a service binding from a Worker in the engine's own Cloudflare account; it ran as the `INTERNAL_CLIENT` client with that client's profiles; no route or URL of the engine Worker reached the entrypoint (a URL that does would be `VALID` against `P-INTERNAL-CLIENT-FROM-ENGINE`) | `P-INTERNAL-CLIENT-FROM-ENGINE`, `D-INTERNAL-ACCOUNT-TRUST` | *(documented, docs/adapters.md "Internal calls")* |
 | `KNF-CALLBACK-TO-PUBLIC-HOST` | engine-callbacks | server-side request forgery to a public host | "a token holder can make the engine POST to any public https URL" | the URL is public and https; the payload is the signed final answer; no private or loopback address was reached and no redirect was followed (either would be `VALID` against `P-OUTBOUND-PUBLIC-ONLY`) | `D-CALLBACK-ANY-PUBLIC-HOST` | *(maintainer, 2026-10)* |
 
 ## 1.16 Conditions that would change this model
@@ -1510,14 +1605,37 @@ Revise the model when any of these happens:
 - A new fact type, layer or provider, a new fact module, a module from
   outside this repository (docs/modules.md "Trust"), or a fact that the
   model can see.
-- Not yet covered: the `github_workflows` fact (pointsman#141, with the
-  `yaml` parser it uses), merged after the previous binding and part of
-  `v0.5.0`. It reads the GitHub Actions files a pull request changes, as
-  written by its author. A report about it is a `MODEL-GAP` until this
-  model is amended for it.
+- Not yet covered (a report about any of these is a `MODEL-GAP` until this
+  model is amended for it):
+  - the `github_workflows` fact (pointsman#141, with the `yaml` parser it
+    uses, part of `v0.5.0`): it reads the GitHub Actions files a pull
+    request changes, as written by its author;
+  - the `github_release` fact (pointsman#171, `v0.9.0`);
+  - the `github_copilot` fact and the GraphQL review-state reads of the
+    GitHub snapshot (pointsman#165, `v0.8.0`);
+  - the CodeRabbit module `@pointsman/coderabbit` and its fact types
+    `coderabbit`, `coderabbit_budget`, `coderabbit_queue` and
+    `coderabbit_spend` (pointsman#166, #167, `v0.8.0`);
+  - facts from the decision log: a lookup's read-only view of the asking
+    client's own decisions (`src/log-facts.ts`, pointsman#167, `v0.8.0`);
+  - connectors inside the engine Worker: the routes `/connectors/<id>/…`
+    that serve a connector such as `@pointsman/fiware` in process, its
+    queue consumer there, and the in-process engine they call
+    (`src/index.ts` `connectorsFor`, pointsman#159, `v0.6.0`). The bridge in
+    its own Worker (`bridge/src/index.ts`) stays covered;
+  - in the GitHub connector, the action kinds and review-service commands
+    the docs list under "Not yet" (they do not exist).
 - For GitHub facts: a request that writes to GitHub, a host other than
-  `api.github.com`, a fact that reads a repository the state does not name,
-  or a profile field that changes which checks count.
+  `api.github.com` and, for `github_bump`, `registry.npmjs.org`, a
+  credential sent to the registry, a fact that reads a repository the
+  state does not name, or a profile field that changes which checks count.
+- For internal calls: a second internal client or call, an in-process
+  adapter, an internal call that takes its client or scope from the
+  caller, or an entrypoint reachable by a URL.
+- For the GitHub connector: a new action kind, a check-run conclusion
+  other than `neutral`, a token that asks for Contents: write, text from
+  the pull request in a comment, a new event that starts a run, or the
+  connector running inside the engine Worker.
 - A change to the token format, the scope semantics, test tokens, or the
   addition of per-person scopes.
 - A change to the policy language that adds executable semantics or external
@@ -1585,7 +1703,40 @@ Report both, as `DISPOSITION (status)`. An escalated finding is not a
 
 ## 1.18 Open questions for the maintainers
 
-Not applicable — the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, and the three questions of the GitHub-facts amendment on 2026-10-21 (Q25: disclaim required checks matched by name; Q26: no repository allow-list, the GitHub credential's reach is the boundary; Q27: disclaim the shared GitHub rate limit), accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires.
+The 24 questions of the first draft (2026-10-16) and the three of the
+GitHub-facts amendment (Q25 to Q27, 2026-10-21) are answered and retired;
+the claims they ratified carry *(maintainer, 2026-10)*. The amendment of
+2026-10-23 asks four, in one wave. Each claim that waits for an answer
+carries an assumption tag that names its question and, under `strict`,
+escalates until it is answered.
+
+**Wave 5 — the GitHub connector and `github_bump` (2026-10-23)**
+
+- **Q28** — We believe the connector may trust the engine's answer as the
+  engine's, checking only its status, and that the deployment, not the
+  connector, keeps test tokens away from it (a test token makes it act on
+  decisions that are not logged). Proposed answer: yes; disclaim it, and
+  record a check of `test` in the connector as a hardening candidate.
+  Lands in: §1.12 `D-CONNECTOR-TRUSTS-ENGINE`, §1.13 `R-CONNECTOR-APPS`, §1.7.
+- **Q29** — We believe the connector app's key is the boundary of the
+  connector: the down-scoped tokens limit what its code asks for, but a
+  leaked key reaches everything the app may do, including Contents: write
+  where approvals must count. Proposed answer: yes; disclaim it, keep the
+  key only in the connector Worker.
+  Lands in: §1.12 `D-CONNECTOR-KEY-REACH`.
+- **Q30** — We believe the npm registry is a trusted collaborator for
+  `release_age_days`: its record of publish times is taken as it is, and
+  the fact checks neither what a new version contains nor signatures or
+  provenance. Proposed answer: yes; disclaim it, and tell integrators to
+  pair the fact with `github_pr` and an age margin.
+  Lands in: §1.12 `D-NPM-REGISTRY-TRUSTED`, §1.13 `R-GITHUB-BUMP-PAIR`, §1.10.
+- **Q31** — We believe an approval by the connector is by design the
+  profile's decision and nothing more: approvals on facts alone (as for
+  docs, release and dependency-bump pull requests) are as strong as the
+  rules and facts, and a profile that approves on AI answers about the
+  author's text can be steered. Proposed answer: yes; disclaim a person's
+  review behind it, and make the integrator's rules the control.
+  Lands in: §1.12 `D-APPROVAL-ON-FACTS`, §1.13 `R-CONNECTOR-APPROVE`.
 
 ## 1.19 Machine-readable companions
 
@@ -1598,6 +1749,9 @@ both whenever this file changes. The JSON's `trust_boundaries` are
 hand-completed after export: the plugin's exporter cannot read §1.4's tags
 and labels every boundary `inferred`, so the published JSON carries
 `documented` with the maintainer ruling as its source, matching §1.4.
+After the amendment of 2026-10-23 the JSON was regenerated with the
+plugin's exporter and the same hand completion (`description` and
+`trust_boundaries`, by a short script).
 
 ## Appendix: prior security-policy back-map
 
@@ -1626,6 +1780,9 @@ README, `docs/`, `bridge/README.md`, the Actions' READMEs, `openapi.yaml`,
 | Test token | A token whose decisions are made but not logged (`test: true`); for checking profiles. |
 | Callback | The signed POST the engine sends to a client's `callback_url` when a review is resolved. |
 | Bridge | The Worker that connects a FIWARE context broker to Pointsman. |
+| GitHub connector | The Worker that asks Pointsman about pull requests and shows each decision on GitHub as a check run; where the deployment says so, it also comments, labels, asks for a review or approves. |
+| Internal call | A call from another Worker in the same Cloudflare account to the engine's `InternalEngine` entrypoint, through a service binding; it has no URL and no token, and the engine says which client it is. |
+| Dependency bump | A pull request, usually from Dependabot, that only moves dependency versions; `github_bump` says whether a pull request is one. |
 | Security-critical / correctness-only | The tier of a property or disclaimer: whether a violation is a vulnerability or a bug. |
 | False friend | Something that looks like a security guarantee but is not (a hash ≠ anonymisation; `p` ≠ accuracy; a name in the log ≠ an authenticated person). |
 | Silence basis | A disclaimer written because nothing promises the property, rather than because the project stated a limit. It never closes a security-critical report. |
