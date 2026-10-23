@@ -1,6 +1,6 @@
 {
   "name": "@pointsman/coderabbit",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Pointsman fact module: CodeRabbit reviews of a pull request, read from GitHub.",
   "license": "MIT",
