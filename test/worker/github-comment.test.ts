@@ -310,6 +310,7 @@ describe('decision comment', () => {
     const run = api.checkRuns.find((r) => r.name === 'Pointsman: pr-risk')!;
     expect(run.output.text).not.toContain('<img');
     expect(run.output.text!.split('```').length - 1).toBe(4);
+    for (const bad of ['<img', '](', '```', '@everyone']) expect(run.output.summary).not.toContain(bad);
   });
 
   it('the line shows the train at the app\'s own approval of this commit', async () => {
@@ -496,6 +497,7 @@ describe('the art lines up', () => {
     for (const line of art.split('\n')) {
       expect(columns(line), line).toBeLessThanOrEqual(MAX_COLUMNS);
       expect([...line].length, line).toBeLessThanOrEqual(MAX_COLUMNS);
+      expect(line, line).not.toMatch(/\p{Extended_Pictographic}/u);
       const rail = railOf(line);
       const text = [...line].slice(rail.length).join('');
       if (rail.length > 0) expect(text === '' || text.startsWith(' '), line).toBe(true);
@@ -581,6 +583,11 @@ describe('the art lines up', () => {
     const many = switchArt(decision('pr-risk', { facts: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`fact${i}`, { missing: true, reason: 'timeout' }])) }), HEAD);
     expect(many).toContain('┃ facts  ✕ 12 of 12 missing:\n┃        fact0 (timeout)\n');
     expect(many).toContain('┃        +4 more');
+    // A fact name the engine accepts but longer than 64 characters still counts, shown cut.
+    const longFact = switchArt(decision('pr-risk', { facts: { ['f'.repeat(80)]: { missing: true, reason: 'timeout' }, ok: { missing: false } } }), HEAD);
+    expect(longFact).toContain(`┃ facts  ✕ 1 of 2 missing:\n┃        ${'f'.repeat(39)}… (timeout)`);
+    // A long profile name keeps the commit.
+    expect(switchArt(decision('p'.repeat(64)), HEAD).split('\n')[0]).toBe(`${'p'.repeat(49)}… @ aaaaaaa`);
   });
 
   it('counts columns as a monospace font draws them', () => {

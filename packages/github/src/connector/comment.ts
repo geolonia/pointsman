@@ -77,7 +77,8 @@ export function stationOf(draft: boolean, approvedByApp: boolean): Station {
  */
 export const MAX_COLUMNS = 60;
 
-// East Asian wide and fullwidth characters (and emoji) take two columns in a monospace font.
+// East Asian wide and fullwidth characters (and emoji) take two columns in a monospace font. A safeguard:
+// what reaches the art is checked or cleaned to ASCII first.
 const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1FAFF}\u{20000}-\u{3FFFD}]/u;
 
 /** The columns a text takes in a monospace font (box characters count one: see the note on the art below). */
@@ -138,6 +139,8 @@ export function lineArt(at: Station | undefined): string {
 
 /** Names as the engine gives them (fact and question names); anything else is not shown. */
 const NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+/** A fact's name as the engine checks it (engine.ts). */
+const FACT_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
 const MAX_LISTED = 8;
 
 /** Text from the engine (a fact's reason): only plain characters, cut short. */
@@ -190,8 +193,9 @@ function beside(name: string, head: string, items: string[]): string[] {
  * connector knows no other action of the profile.
  */
 export function switchArt(d: Decision, head: string): string {
-  const facts = Object.entries(d.facts ?? {}).filter(([name]) => NAME.test(name));
-  const missing = facts.filter(([, f]) => f.missing).map(([name, f]) => `${name} (${clean(f.reason ?? 'missing', 40)})`);
+  // Every fact the engine accepted (engine.ts: names up to 100 characters) counts; a long name is shown cut.
+  const facts = Object.entries(d.facts ?? {}).filter(([name]) => FACT_NAME.test(name));
+  const missing = facts.filter(([, f]) => f.missing).map(([name, f]) => `${cut(name, 40)} (${clean(f.reason ?? 'missing', 40)})`);
   const factLines = facts.length === 0 ? beside('facts', '– none asked', [])
     : missing.length === 0 ? beside('facts', `✓ ${facts.length} read`, [])
       : beside('facts', `✕ ${missing.length} of ${facts.length} missing:`, listed(missing));
@@ -207,10 +211,10 @@ export function switchArt(d: Decision, head: string): string {
     return [fit(line), `${next || ' '}${' '.repeat(TAKEN.length)} ← ${why}`];
   };
   const points = d.rule === null
-    ? ['┃', `┠${NOT_TAKEN} the rules: none matched`, '┃', ...taken('┗', '')]
+    ? ['┃', `┠${NOT_TAKEN} no rule matched`, '┃', ...taken('┗', '')]
     : ['┃', ...taken('┡', '│'), `└${NOT_TAKEN} later rules and the default: not taken`];
   return [
-    fit(`${label(d.profile)} @ ${head.slice(0, 7)}`),
+    `${cut(label(d.profile), MAX_COLUMNS - 10)} @ ${head.slice(0, 7)}`,
     ...factLines,
     ...aiLines,
     ...points,
