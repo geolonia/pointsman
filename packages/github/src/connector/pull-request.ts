@@ -12,7 +12,7 @@
 // run that stops in between does not create a second one: the next run looks
 // for the check run first.
 
-import type { EngineClient } from './engine.ts';
+import type { EngineAnswer, EngineClient } from './engine.ts';
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
@@ -472,16 +472,17 @@ export class PullRequestWork {
     // The key holds the run's attempt count: every run, a retry too, gets a new decision.
     const key = await sha256(JSON.stringify([profile, state, decisions, ...extra]));
     const chained = Object.keys(decisions).length > 0;
-    let res: { status: number; body?: unknown };
+    let res: EngineAnswer;
     try {
       res = await this.#engine.decide(profile, { state: { pull_request: state }, ref: `github:${state.repo}#${state.number}@${state.head}`, ...(chained && { decisions }) }, { idempotencyKey: key });
     } catch (err) {
       throw new RetryError(`Pointsman ${profile}: ${err instanceof Error ? err.message : String(err)}`);
     }
     if (res.status >= 200 && res.status < 300) return res.body as Decision;
-    if (res.status >= 500 || res.status === 429) throw new RetryError(`Pointsman ${profile}: ${res.status}`);
+    const status = res.code ? `${res.status} ${res.code}` : String(res.status);
+    if (res.status >= 500 || res.status === 429) throw new RetryError(`Pointsman ${profile}: ${status}`);
     // Other 4xx (400, 401, 403, 404, 409, 422) and redirects: not better on a retry.
-    console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: ${res.status}`);
+    console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: ${status}`);
     return null;
   }
 

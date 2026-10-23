@@ -171,8 +171,9 @@ describe('the connector: binding adapter', () => {
     expect(await engine.decide('pr-docs-check', req, { idempotencyKey: 'k' })).toEqual({ status: 200, body: { decision_id: 'd' } });
     expect(calls).toEqual([['pr-docs-check', req, { idempotencyKey: 'k' }]]);
     expect(JSON.stringify(calls)).not.toMatch(/pm_|Bearer/);
-    // A refusal's body is not passed on.
-    expect(await bindingEngine(binding(async () => ({ status: 403, body: { error: {} } }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 403 });
+    // Of a refusal only the error code is passed on, for the log.
+    expect(await bindingEngine(binding(async () => ({ status: 403, body: { error: { code: 'forbidden', message: 'x' } } }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 403, code: 'forbidden' });
+    expect(await bindingEngine(binding(async () => ({ status: 500, body: { error: { code: 'Not A Code' } } }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 500 });
   });
 
   it('throws (so the run is tried again) when the binding fails, answers nonsense or takes too long', async () => {
@@ -180,6 +181,10 @@ describe('the connector: binding adapter', () => {
     await expect(bindingEngine(binding(async () => { throw new Error('down'); })).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow('down');
     await expect(bindingEngine(binding(async () => new Response('x'))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no engine answer/);
     await expect(bindingEngine(binding(async () => ({ status: 'ok' }))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no engine answer/);
+    await expect(bindingEngine(binding(async () => ({ status: 200 }))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no decision/);
+    // A fetch binding without the entrypoint: the runtime refuses the method; the error says what to set.
+    await expect(bindingEngine(binding(() => { throw new TypeError('The RPC receiver does not implement the method "decide".'); })).decide('p', req, { idempotencyKey: 'k' }))
+      .rejects.toThrow(/"entrypoint": "InternalEngine"/);
     await expect(bindingEngine(binding(() => new Promise(() => {})), 20).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/did not answer/);
   });
 
@@ -195,15 +200,16 @@ describe('the connector: binding adapter', () => {
       pullRequest: async () => ({ open: true, head: 'a'.repeat(40), draft: false, base: 'main', title: 'T', body: 'B', fork: false, labels: [], requestedReviewers: [] }),
       findCheckRun: async () => undefined, createCheckRun: async () => 1, updateCheckRun: async () => {},
     } as unknown as Parameters<typeof pullRequestWork>[3];
-    const run = async (status: number) => {
-      const work = pullRequestWork(settings, storage, bindingEngine(binding(async () => ({ status }))), github);
+    const run = async (status: number, code?: string) => {
+      const work = pullRequestWork(settings, storage, bindingEngine(binding(async () => ({ status, body: { error: { code } } }))), github);
       await work.accept({ target: { repo: 'example/repo', number: 1 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
       return work.run();
     };
+    await expect(run(500, 'not_configured')).rejects.toThrow(/Pointsman pr-docs-check: 500 not_configured/);
     await expect(run(503)).rejects.toBeInstanceOf(RetryError);
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await run(403);
-    expect(errors.mock.calls.join(' ')).toContain('Pointsman pr-docs-check for example/repo#1: 403');
+    await run(403, 'forbidden');
+    expect(errors.mock.calls.join(' ')).toContain('Pointsman pr-docs-check for example/repo#1: 403 forbidden');
     errors.mockRestore();
   });
 });

@@ -25,6 +25,8 @@ export interface DecideBody {
 export interface EngineAnswer {
   status: number;
   body?: unknown;
+  /** With an error status: the engine's error code, when the adapter has it (for the log). */
+  code?: string;
 }
 
 /** The engine, as the connector calls it. */

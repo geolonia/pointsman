@@ -61,6 +61,8 @@ Use the client name the connector's token has today: its decisions are logged un
 
 Why no token is needed: `InternalEngine` has no URL. Only a Worker in the same Cloudflare account with a binding to it can call it, and the engine, not the caller, says who the caller is (`INTERNAL_CLIENT`). After that, the call runs the same code as `POST /v1/decide` after the token check: the same profile scope, idempotency and decision log ([adapters.md](adapters.md#internal-calls)). Edge rules on the engine's `/v1/` paths (a firewall, rate limits) do not see internal calls.
 
+What that means: anyone who can deploy a Worker in this Cloudflare account can bind `InternalEngine` and decide as the `INTERNAL_CLIENT` client, with its profiles, without a token and without an expiry. Every bound Worker is the same client (one decision history, one idempotency space). It cannot be revoked per caller, and revoking the old token does not stop it: to turn internal calls off, remove `INTERNAL_CLIENT` from the engine's config and deploy.
+
 To switch an existing deployment from the token to the internal call:
 
 1. Deploy the engine Worker with `INTERNAL_CLIENT` (the client name and profiles of the connector's token).

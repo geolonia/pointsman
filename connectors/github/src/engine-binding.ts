@@ -23,7 +23,11 @@ export function bindingEngine(binding: EngineBinding, timeoutMs = TIMEOUT_MS): E
       });
       let answer: unknown;
       try {
-        answer = await Promise.race([binding.decide(profile, body, { idempotencyKey: options.idempotencyKey }), timeout]);
+        answer = await Promise.race([Promise.resolve().then(() => binding.decide(profile, body, { idempotencyKey: options.idempotencyKey })), timeout]);
+      } catch (err) {
+        // A fetch binding (no "entrypoint") has no decide: say what to fix.
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(/does not implement|not a function/i.test(message) ? `${message} (does the ${ENGINE_BINDING} binding set "entrypoint": "InternalEngine"?)` : message);
       } finally {
         if (timer !== undefined) clearTimeout(timer);
       }
@@ -32,7 +36,13 @@ export function bindingEngine(binding: EngineBinding, timeoutMs = TIMEOUT_MS): E
       if (a === null || typeof a !== 'object' || a instanceof Response || typeof a.status !== 'number' || !Number.isInteger(a.status) || a.status < 100 || a.status > 599) {
         throw new Error(`the ${ENGINE_BINDING} binding gave no engine answer (is "entrypoint": "InternalEngine" set?)`);
       }
-      return a.status >= 200 && a.status < 300 ? { status: a.status, body: a.body } : { status: a.status };
+      if (a.status >= 200 && a.status < 300) {
+        if (a.body === null || typeof a.body !== 'object') throw new Error(`the ${ENGINE_BINDING} binding gave no decision`);
+        return { status: a.status, body: a.body };
+      }
+      // Only the error code is passed on, for the log (the engine's message stays there).
+      const code = (a.body as { error?: { code?: unknown } } | undefined)?.error?.code;
+      return typeof code === 'string' && /^[a-z_]{1,40}$/.test(code) ? { status: a.status, code } : { status: a.status };
     },
   };
 }
