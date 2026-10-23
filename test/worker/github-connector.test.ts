@@ -852,6 +852,15 @@ describe('chains: profiles that build on each other', () => {
     expect(pm.calls[1]!.body.decisions).toEqual({ risk: expect.any(String) });
   });
 
+  it('reads the head again after a refused diff too', async () => {
+    const { work, pm, gh } = await chained();
+    gh.github.diff = async () => { gh.github.state.head = HEAD2; throw new GitHubError('GitHub diff: 403', false, 403); };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    errors.mockRestore();
+    expect(pm.calls).toHaveLength(0);
+  });
+
   it('a decision made without a refused diff is not kept; other errors still end the run', async () => {
     const { work, pm, gh, event } = await chained();
     let refuse = true;
@@ -917,6 +926,10 @@ describe('chains: profiles that build on each other', () => {
     expect(await small.diff(REPO, 7, 1000)).toEqual({ diff: 'diff --git a/x b/x\n', truncated: false });
     const large = new AppGitHub(APP_ID, KEY, answer(() => new Response('y'.repeat(70_000))));
     expect(await large.diff(REPO, 7, 1000)).toEqual({ diff: 'y'.repeat(1000), truncated: true });
+    const secondary = new AppGitHub(APP_ID, KEY, answer(() => Response.json({ message: 'You have exceeded a secondary rate limit.' }, { status: 403 })));
+    await expect(secondary.diff(REPO, 7, 1000)).rejects.toMatchObject({ retry: true });
+    const refused = new AppGitHub(APP_ID, KEY, answer(() => Response.json({ message: 'Resource not accessible by integration' }, { status: 403 })));
+    await expect(refused.diff(REPO, 7, 1000)).rejects.toMatchObject({ retry: false, status: 403 });
     const tooLarge = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 406 })));
     expect(await tooLarge.diff(REPO, 7, 1000)).toEqual({ diff: '', truncated: true });
     const busy = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 502 })));

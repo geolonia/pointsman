@@ -166,9 +166,11 @@ export class AppGitHub implements ConnectorGitHub {
       throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
     }
     if (res.status >= 200 && res.status < 300) return res;
-    await res.body?.cancel();
+    // A secondary rate limit is a 403 that may carry neither header; only its message says so.
+    const message = res.status === 403 ? (await res.text().catch(() => '')).slice(0, 2000) : (await res.body?.cancel(), '');
     // Busy, down or rate limited: later. Anything else (no permission, not found) needs a person.
-    const retry = res.status >= 500 || res.status === 429 || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')));
+    const retry = res.status >= 500 || res.status === 429
+      || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after') || /rate limit/i.test(message)));
     throw new GitHubError(`GitHub ${what}: ${res.status}`, retry, res.status);
   }
 
