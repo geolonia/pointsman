@@ -12,6 +12,28 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.8.0 (2026-10-23)
+
+Facts for AI review services and from the decision log (#148, from #165,
+#166 and #167): Copilot's and CodeRabbit's state on a pull request, the
+pull request author's CodeRabbit budget, the author's waiting pull requests,
+and the spend on paid reviews. Facts can now read the engine's own decision
+log, read only and limited to the asking client.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.8.0` as usual. A module pinned with a version (`…@0.7.0`) must be pinned to `0.8.0`, or the build stops.
+- Apply the database migration `0008_log_facts.sql` (an index for facts that read the log).
+- To use the CodeRabbit facts: add `@pointsman/coderabbit` to `modules.facts` and set `FACTS_CODERABBIT: on`. It reads GitHub with the GitHub module's settings (`FACTS_GITHUB` `token` or `app`), so no new secrets. The GitHub permissions are the same as before.
+- A fact module that gives `null` in a field its type does not allow now makes that fact missing (`error`). The modules in this repository did not.
+
+What changed:
+
+- `github_copilot` (#165): `requested`, `reviewed_head`, `approved_head`, `reviews`, from Copilot's own bot account only. The GitHub snapshot also reads reviews, conversation comments, the head's status history, and review requests and threads (one GraphQL query, read only); other modules can share it.
+- `@pointsman/coderabbit` (#166), type `coderabbit`: whether CodeRabbit runs, reviewed or approved the head, `rebase_only`, open threads, findings outside the diff, billable files. Only CodeRabbit's own account counts; text someone else edited makes the fact missing ([docs/profile-format.md](docs/profile-format.md#coderabbit-reviews)).
+- Facts from the decision log (#167): a lookup gets the decision's context with a read-only view of the client's own decisions of profiles its token may use (none for a test token, [docs/modules.md](docs/modules.md#facts-from-the-decision-log)). New types `coderabbit_budget` (counted by the pull request's author, never by whoever posts a command), `coderabbit_queue` and `coderabbit_spend` (pay decisions count as reservations).
+- The engine refuses `null` in a fact field unless the type's case rules allow it, so a blocking rule never silently fails to match.
+
 ## 0.7.0 (2026-10-22)
 
 The GitHub connector can act on decisions (#147, from #162): a comment,

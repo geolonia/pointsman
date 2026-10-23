@@ -388,7 +388,7 @@ const STALE: Bilingual = { en: 'the pull request has a newer commit', ja: 'ãƒ—ãƒ
 export const definition: FactModule = {
   name: '@pointsman/github',
   // As in package.json (a test checks); released with the engine for now.
-  version: '0.7.0',
+  version: '0.8.0',
   roles: ['facts', 'connector'],
   types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot],
   reasons: { stale: STALE },
