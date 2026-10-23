@@ -352,6 +352,53 @@ describe('decision comment and approvals', () => {
   });
 });
 
+describe('decision comment with nothing to show', () => {
+  it('an existing comment is updated to a neutral text, never left stale; without one, none is written', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Its only profile's approval is withdrawn (a test decision): no row is left.
+    const gh = fakeApi();
+    const reviews: number[] = [];
+    const client = gh.github as unknown as Record<string, unknown>;
+    client.approve = async () => (reviews.push(77), 77);
+    client.ownApprovals = async () => reviews.map((id) => ({ id, commit: HEAD, marker: '' }));
+    client.dismissReview = async () => void reviews.pop();
+    const s = settings({ comment: { profiles: ['pr-next-step'] }, actions: { 'pr-next-step': { approve: { do: 'approve' } } } });
+    const { api, answers, event } = setup(s, memoryStorage(), gh);
+    answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
+    await event();
+    expect(api.comments[0]!.body).toContain('🚆 approved by Pointsman on this commit');
+    answers['pr-next-step'] = () => ({ ...decision('pr-next-step', { action: 'approve' }), test: true });
+    await event();
+    expect(api.comments).toHaveLength(1);
+    let body = api.comments[0]!.body;
+    expect(body.startsWith(COMMENT_MARKER)).toBe(true);
+    expect(body).toContain(`No decision to show for commit ${HEAD.slice(0, 7)}`);
+    expect(body).not.toContain('`pr-next-step`');
+    expect(body).toContain('🚆 ready for review');
+    // Unchanged on the next run: no call.
+    api.log.length = 0;
+    await event();
+    expect(commentCalls(api.log)).toEqual([]);
+    // A new head on which every shown profile skips the draft: the older head's decisions are not left standing.
+    const draft = setup(settings({ comment: { profiles: ['pr-risk'] }, runs: { 'pr-risk': { skipDrafts: true } } }));
+    await draft.event();
+    expect(draft.api.comments[0]!.body).toContain('`pr-risk`');
+    draft.api.pr.head = HEAD2;
+    draft.api.pr.draft = true;
+    await draft.event();
+    body = draft.api.comments[0]!.body;
+    expect(draft.api.comments).toHaveLength(1);
+    expect(body).toContain(`No decision to show for commit ${HEAD2.slice(0, 7)}`);
+    expect(body).toContain('🚆 draft');
+    // No comment yet and nothing to show: none is written.
+    const none = setup(settings({ comment: { profiles: ['pr-risk'] }, runs: { 'pr-risk': { skipDrafts: true } } }));
+    none.api.pr.draft = true;
+    await none.event();
+    expect(commentCalls(none.api.log)).toEqual([]);
+    errors.mockRestore();
+  });
+});
+
 describe('signals and the check run', () => {
   it('maps actions to signals: the deployment\'s table, then defaults, then yellow "decided: <action>"; a pending review is red', () => {
     const table = { 'pr-risk': { approvable: { signal: 'green' as const }, risky: { signal: 'red' as const, text: 'look at the code' } } };

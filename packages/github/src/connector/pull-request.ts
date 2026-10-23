@@ -288,7 +288,8 @@ export class PullRequestWork {
     // Its approval is gone: its last decision (which approved) is not shown any more.
     for (const p of withdrawn) delete record.entries[p];
     const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
-    if (decisions.length === 0) return this.#storage.put({ comment: record });
+    // Nothing to show and no comment yet: none is written. A comment that exists is updated to say so, never left stale.
+    if (decisions.length === 0 && record.id === undefined && record.hash === undefined && record.pending === undefined) return this.#storage.put({ comment: record });
     const body = commentBody(decisions, this.#settings.signals, pr.head, await this.#station(pr));
     const hash = await sha256(body);
     // Unchanged (or refused before): no call to GitHub. A write left open is done again (it is found by its marker).

@@ -140,6 +140,17 @@ export function checkText(d: Decision, head: string, at: Station | undefined): s
  * pull request's station does: no decision ids, no times.
  */
 export function commentBody(decisions: Decision[], signals: Record<string, Record<string, SignalSpec>> | undefined, head: string, at: Station | undefined): string {
+  // None (all skipped on this commit, or the last one no longer stands): a short neutral text, so an older one is not left standing.
+  if (decisions.length === 0) {
+    return [
+      COMMENT_MARKER,
+      '### 🚦 Pointsman',
+      '',
+      `No decision to show for commit ${head.slice(0, 7)}: its profiles have not decided on it yet, or their last decision no longer stands.`,
+      '',
+      fence(lineArt(at)),
+    ].join('\n');
+  }
   const rows = decisions.map((d) => {
     const s = signalOf(signals, d);
     return `| \`${d.profile}\` | ${signalMark(s)} ${s.text} | \`${d.action}\` | ${d.rule === null ? 'default' : `rule ${d.rule + 1}`} |`;
