@@ -107,7 +107,7 @@ export function settingsWithObjects(env: Record<string, unknown>): { settings: C
 
 export { actsOnGitHub, readsDiff, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalColour, type SignalSpec } from './settings.ts';
 export { checkDecision, engineSetting, httpEngine, ENGINE_BINDING, type CheckedAnswer, type DecideBody, type EngineAnswer, type EngineClient, type EngineSetting } from './engine.ts';
-export { COMMENT_MARKER, DEFAULT_SIGNALS, SIGNAL_WORDS, STATIONS, answersOf, checkText, clean, commentBody, lineArt, signalOf, stationOf, switchArt, type Signal, type Station } from './comment.ts';
+export { COMMENT_MARKER, DEFAULT_SIGNALS, MAX_COLUMNS, SIGNAL_WORDS, STATIONS, answersOf, checkText, clean, columns, commentBody, lineArt, signalOf, stationOf, switchArt, type Signal, type Station } from './comment.ts';
 export { PullRequestWork, RetryError, authorText, checkOutput, notActedOnOutput, UNCLEAR_MS, type ActOutcome, type CheckView, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
 export { AppGitHub, GitHubError, actingScope, connectorScope, scopeFor, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, DIFF_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
 export { targetsOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';
