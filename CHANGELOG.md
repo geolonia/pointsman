@@ -12,6 +12,25 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.14.0 (2026-10-23)
+
+The GitHub connector can show its decisions inside the pull request: one comment, railway style (#195, #196).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.14.0`. No migration, no new secrets.
+- The decision comment is off unless `GITHUB_CONNECTOR` sets `"comment": { "profiles": [...] }`. It needs the connector app's **Pull requests: Read and write**; the tokens ask for it only when the comment or an action is on.
+- **For every deployment:** check-run titles now start with the signal, for example `🟢 approve` or `🔴 review (shadow)`. The action word, `(shadow)` and `external_id` stay, and the details now show the line and the switch.
+
+What changed:
+
+- **The decision comment:** one comment per pull request, updated in place, never a new one per decision. A table with each chosen profile's signal (always with a word), decision and rule; a track with stations (draft, ready, reviewed, approved, merged) and `▲` under the station where the pull request is (draft, ready, or approved while the app's own approval of the commit stands); and per profile a set of points: the facts read or missing, the AI answers, the track taken (`action ← rule N`, or the default) and the one not taken. It is found again only by its marker together with the app's own bot login; a person's or another app's comment with the marker is never touched. At most one write per run, only when the text changed. When nothing is left to show, an existing comment changes to a short neutral text.
+- **Signals:** `GITHUB_CONNECTOR` → `"signals"` maps a profile's actions to red, yellow or green, optionally with a word (1 to 40 letters, digits, spaces and `, . ' ( ) -`). Defaults: `review` and `ask-person` red; `wait`, `in-progress`, `queue` and `retry` yellow; `approve`, `pass` and `done` green; any other action yellow "decided: <action>"; a decision a person still checks red.
+- **Text art:** only box characters to the left of a junction, labels after the rails, no emoji inside the art, at most 60 columns. In a font that draws box characters two columns wide the rails stay consistent; labels indented with spaces may drift.
+- **No pull-request text** in the comment: profile and action names are checked names, fact reasons are reduced to plain characters, everything sits in code blocks. Test decisions and invalid answers never put anything in it (an approval they withdraw removes its row).
+- Failures never stop the run or the actions: a refused write (403) is noted on the check runs and not tried again until the text changes; a busy or rate-limited GitHub is tried again on the next run.
+- The check-run summary now cleans the engine's fact reasons the same way, and fact names of 65 to 100 characters are counted (cut) instead of left out.
+
 ## 0.13.1 (2026-10-23)
 
 The GitHub connector checks the engine's answer before it acts, and never acts on a test decision (#193).

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Pointsman API
-  version: 0.13.1
+  version: 0.14.0
   description: |
     Decision service. A client sends a state; a decision model answers the
     profile's typed questions with probabilities; the profile's policy turns
