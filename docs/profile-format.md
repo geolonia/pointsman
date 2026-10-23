@@ -591,6 +591,7 @@ decide on a state the client did not see.
 | `github_property` | `value` (text) | The repository's custom property `property`. A property that is not set is `unset`: a known value, not a missing fact. A list (multi-select) is sorted and joined with commas. |
 | `github_workflows` | counts (numbers), `detail` (text, not for rules) | The GitHub Actions files the pull request changes: see [GitHub workflows](#github-workflows). |
 | `github_copilot` | `requested`, `reviewed_head`, `approved_head` (booleans), `reviews` (number) | Copilot's code review. `requested`: a Copilot review is requested now. `reviewed_head`: Copilot reviewed the head commit. `approved_head`: Copilot's latest review that decides (approve, request changes, or a dismissed one) approves the head commit. `reviews`: how many reviews Copilot made on the pull request. Only Copilot's own bot account counts (its login and its account id), so a person or another app cannot stand in for it. Without Copilot: false, false, false, 0. Copilot usually leaves its review as a comment, so `approved_head` is true only where it approves. |
+| `github_release` | `version_only` (boolean); `from`, `to`, `level` (text) | Whether the pull request only moves a version, as a release pull request does. `version_only` is true when every changed file is either a changelog (`changelogs`, default `CHANGELOG.md`; new or edited, only lines added) or an edited file where each changed line is the same line with one version string (`1.2.3`, optionally `-rc.1`) replaced by another, the same pair in every file, and that pair goes up. `from` and `to` are that pair; `level` is `major`, `minor` or `patch`. A file without a patch (binary, too large), a new, removed or renamed file other than a changelog, a removed changelog line, or any other change gives false, `""`, `""`, `none`. It says nothing about who made the change: pair it with `github_pr` (author, signatures, pushes). |
 
 Fact settings:
 
@@ -598,6 +599,7 @@ Fact settings:
 |---|---|---|
 | `paths` | `github_paths` | The files that count: 1 to 100 globs from the top of the repository. `*` is any characters except `/`, `**` is any number of folders (also none), `?` is one character. `*.md` matches `README.md` but not `docs/a.md`; use `**/*.md` for every folder. |
 | `except` | `github_paths` | Files that never count, even when they match `paths`: the except list wins. |
+| `changelogs` | `github_release` | The changelog files (1 to 20 globs, as for `paths`), which may only get lines added. Default `CHANGELOG.md`. |
 | `property` | `github_property` | The name of the custom property. |
 
 **Safety.** A rule with a missing fact never matches. But a missing fact
@@ -706,7 +708,7 @@ Permissions (all read) for a fine-grained token or an app:
 
 | Permission | For |
 |---|---|
-| Pull requests | `github_pr`, `github_paths`, `github_workflows`, `github_copilot` (reviews, review requests, review threads, conversation comments) |
+| Pull requests | `github_pr`, `github_paths`, `github_workflows`, `github_release`, `github_copilot` (reviews, review requests, review threads, conversation comments) |
 | Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS`, the files `github_workflows` reads |
 | Metadata | always (every app has it) |
 | Checks (apps only), Commit statuses | `github_checks`; commit statuses also for facts of other modules that read the snapshot |
