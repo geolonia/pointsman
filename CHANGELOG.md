@@ -12,6 +12,19 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.9.2 (2026-10-23)
+
+A fix for the connector's `once_per_head` (#178).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.9.2`. No migration, no new secrets, no new permissions.
+
+What changed:
+
+- CodeRabbit writes its summary into the pull request's description. The connector now leaves that block out of the description it sends. So CodeRabbit's edit no longer asks a `once_per_head` profile again on the same commit (one model call less), and CodeRabbit's text no longer reaches the model.
+- Only whole blocks are left out. Without a block, the description is sent exactly as the author wrote it.
+
 ## 0.9.1 (2026-10-23)
 
 A fix for the connector's `diff` on private repositories (#175).
