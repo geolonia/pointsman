@@ -52,6 +52,9 @@ from `docs/` with Astro Starlight (`docs-site/`):
   two languages, and that every linked file exists. `pnpm docs:build`
   builds the site and also checks every page and `#anchor` a link points
   at; CI runs both. `pnpm docs:dev` shows the site locally.
+- `pnpm site:build` puts the whole site together in `_site/`, as
+  pointsman.net serves it, with `/llms.txt` and `/llms-full.txt` for AI
+  tools, made from the pages' titles and descriptions.
 
 A new example profile goes in `examples/profiles/` and is linked from one
 use-case topic, `examples/<topic>/README.md` (see

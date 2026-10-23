@@ -17,6 +17,7 @@ export const GROUPS = [
   { dir: 'how-to', en: 'How-to guides', ja: 'ハウツーガイド' },
   { dir: 'reference', en: 'Reference', ja: 'リファレンス' },
   { dir: 'explanation', en: 'Explanation', ja: '解説' },
+  { dir: 'about', en: 'About', ja: 'このサイトについて' },
   { dir: 'background', en: 'Background', ja: '背景資料', collapsed: true },
 ];
 
