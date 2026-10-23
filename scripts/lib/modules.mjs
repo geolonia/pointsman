@@ -3,7 +3,7 @@
 // A config repository lists them in engine.json, per role:
 //
 //   "modules": {
-//     "facts": ["@pointsman/facts-gsi", "@pointsman/github@0.9.0"],
+//     "facts": ["@pointsman/facts-gsi", "@pointsman/github@0.9.1"],
 //     "connectors": ["@pointsman/fiware"]
 //   }
 //
