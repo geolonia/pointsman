@@ -12,6 +12,21 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.10.0 (2026-10-23)
+
+A new fact type for dependency bumps (#180), and CodeRabbit skips release PRs (#181).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.10.0`. No migration, no new secrets, no new permissions.
+- The engine now also reads `https://registry.npmjs.org/` (publish times, without the GitHub token) when a profile uses `github_bump`.
+
+What changed:
+
+- **`github_bump`** (module `@pointsman/github`): whether a pull request only bumps npm dependency versions, as a Dependabot pull request does, in `package.json`, `pnpm-lock.yaml` or `package-lock.json`. Fields: `applies`, `only_manifests`, `version_only`, `semver` (`major`, `minor`, `patch` or `none`; 0.x versions shifted one place, as npm's caret does), `dev_only`, `registry_changed`, `manifest_lines` and `release_age_days` (the youngest new release, transitive ones included). Anything it cannot read makes the fact missing; anything it does not understand gives the stricter value. See *Fact types* in `docs/profile-format.md`.
+- **`github_pr.all_commits_verified`** on a Dependabot pull request now also requires every commit to be authored by `dependabot[bot]` and signed by GitHub, so a person's commit on a Dependabot branch fails it.
+- **CodeRabbit** skips pull requests whose title contains `Release 0.` (this repository's `.coderabbit.yaml`), so a profile can approve release PRs on facts alone.
+
 ## 0.9.2 (2026-10-23)
 
 A fix for the connector's `once_per_head` (#178).
