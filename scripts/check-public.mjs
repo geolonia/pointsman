@@ -4,7 +4,8 @@
 //
 // - Cloudflare account or namespace ids (32 hex characters) and account_id
 // - wrangler configs with real resource ids (only "local-dev-only" and the
-//   template's <placeholders> are allowed) or routes
+//   template's <placeholders> are allowed) or routes; the one exception is
+//   the project's own public website (PUBLIC_ROUTES)
 // - decision profiles outside the example and test folders
 //
 // Usage: node scripts/check-public.mjs   (exit 1 when something is found)
@@ -22,6 +23,16 @@ const PROFILE_FOLDERS = ['examples/profiles/', 'test/fixtures/', 'template/confi
 const SKIP = new Set(['pnpm-lock.yaml']);
 const HEX_ID = /(?<![0-9a-fA-F])[0-9a-f]{32}(?![0-9a-fA-F])/g;
 const ALLOWED_ID = /^(local-dev-only|<[^>]+>)$/;
+/** Routes that are public anyway: the project's own website, https://pointsman.net. */
+const PUBLIC_ROUTES = { 'docs-site/wrangler.jsonc': ['pointsman.net'] };
+
+/** Whether a routes value (JSON) names only the public routes allowed in this file. */
+function publicRoutes(path, value) {
+  const allowed = PUBLIC_ROUTES[path];
+  if (!allowed) return false;
+  const routes = [JSON.parse(value)].flat();
+  return routes.length > 0 && routes.every((r) => allowed.includes(typeof r === 'string' ? r : r?.pattern));
+}
 
 function looksLikeProfile(path, text) {
   if (!['.yaml', '.yml', '.json'].includes(extname(path))) return false;
@@ -81,7 +92,9 @@ export function checkFile(path, text) {
   if (/^wrangler.*\.jsonc?$/.test(basename(path))) {
     try {
       for (const [where, value] of wranglerIds(text)) {
-        if (where.endsWith('routes') || where.endsWith('route')) problems.push(`${path}: ${where} is set`);
+        if (where.endsWith('routes') || where.endsWith('route')) {
+          if (!publicRoutes(path, value)) problems.push(`${path}: ${where} is set`);
+        }
         else if (!ALLOWED_ID.test(value)) problems.push(`${path}: ${where} is "${value}"; use "local-dev-only" or a <placeholder>`);
       }
     } catch (err) {

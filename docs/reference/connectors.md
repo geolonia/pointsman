@@ -16,8 +16,8 @@ Connector `github` of the module `@pointsman/github`. Setup and details: [its pa
 | What | Values |
 | --- | --- |
 | Runs | in its own Worker |
-| Actions | `check`, `comment`, `label`, `request_reviewer`, `approve`, `dismiss` |
-| Settings | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CONNECTOR`, `POINTSMAN_URL`, `POINTSMAN_TOKEN`, `PULL_REQUESTS` |
+| Actions | `check`, `comment`, `label`, `request_reviewer`, `approve`, `dismiss`, `decision_comment` |
+| Settings | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CONNECTOR`, `POINTSMAN_URL`, `POINTSMAN_TOKEN`, `POINTSMAN`, `PULL_REQUESTS` |
 
 ## `@pointsman/fiware`
 

@@ -205,6 +205,167 @@ Copilot code review on the pull request.
 
 `at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
 
+### `github_app_approval`
+
+Whether a GitHub App approved the pull request.
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `approved_head` | はい・いいえ | true のとき: *name*のアプリが head コミットを承認した |
+| `approved_any` | はい・いいえ | true のとき: *name*のアプリの承認が有効 |
+| `reviews` | 数値 | *name*のアプリのレビューの数 |
+
+プロファイルで `name`・`type`・`at` のほかに書ける設定です。
+
+| 設定 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `app` | string | はい | For github_app_approval: the GitHub App's slug; its bot account is "<slug>[bot]". |
+| `bot_id` | integer | いいえ | For github_app_approval: the account id of the app's bot (GET /users/<slug>[bot]); when given, it must match too. |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
+
+### `github_release`
+
+Whether the pull request only changes a version (and the changelog).
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `version_only` | はい・いいえ | true のとき: *name*がバージョン（と変更履歴）だけを変える |
+| `from` | 文字列 | *name*の変更前のバージョン |
+| `to` | 文字列 | *name*の変更後のバージョン |
+| `level` | 文字列 | *name*のバージョンの上げ方（major・minor・patch・none） |
+
+プロファイルで `name`・`type`・`at` のほかに書ける設定です。
+
+| 設定 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `version_files` | string[] | はい | For github_release: the files where a line that sets the version may change (globs), for example package.json or src/version.ts: a key such as version, VERSION or ENGINE_VERSION with the version as its value; in a package.json only its "version" line. |
+| `version_text_files` | string[] | いいえ | For github_release: files where any line may carry the version, for docs that name it (globs). Never files that run. |
+| `changelogs` | string[] | いいえ | For github_release: changelog files (globs), which may only get lines added; default CHANGELOG.md. |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
+
+### `github_bump`
+
+Whether the pull request only bumps npm dependency versions.
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `applies` | はい・いいえ | true のとき: *name*が npm の依存の更新 |
+| `only_manifests` | はい・いいえ | true のとき: *name*が package.json とロックファイルだけを変える |
+| `version_only` | はい・いいえ | true のとき: *name*が依存のバージョンだけを変える |
+| `semver` | 文字列 | *name*の最大のバージョンの上げ方（major・minor・patch・none） |
+| `dev_only` | はい・いいえ | true のとき: *name*が開発用の依存だけを上げる |
+| `registry_changed` | はい・いいえ | true のとき: *name*がパッケージの取得元を変えうる |
+| `manifest_lines` | 数値 | *name*の package.json の変更行数 |
+| `release_age_days` | 数値 | *name*が上げる先のいちばん新しいリリースの公開からの日数 (日) |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。10 秒で調べるのをやめます。
+
+## `@pointsman/coderabbit`
+
+モジュール `@pointsman/coderabbit` のファクト型です。このモジュールが読むデプロイの設定: `FACTS_CODERABBIT`, `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`
+
+### `coderabbit`
+
+CodeRabbit reviews of the pull request.
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `installed` | はい・いいえ | true のとき: *name*のリポジトリで CodeRabbit が動いている |
+| `ignored` | はい・いいえ | true のとき: *name*の説明が CodeRabbit を止めている |
+| `reviewed_any` | はい・いいえ | true のとき: CodeRabbit が*name*のコミットをレビューした |
+| `reviewed_head` | はい・いいえ | true のとき: CodeRabbit が*name*の head コミットをレビューした |
+| `in_progress` | はい・いいえ | true のとき: *name*の CodeRabbit レビューが動いている |
+| `approved_head` | はい・いいえ | true のとき: CodeRabbit が*name*の head コミットを承認した |
+| `rebase_only` | はい・いいえ | true のとき: *name*の head が CodeRabbit の承認したコミットと同じ変更 |
+| `changes_requested` | はい・いいえ | true のとき: CodeRabbit が*name*に変更を求めている |
+| `unresolved_threads` | 数値 | *name*の未解決の CodeRabbit スレッドの数 |
+| `outside_diff_findings` | はい・いいえ | true のとき: CodeRabbit の*name*への最新レビューに差分外の指摘がある |
+| `billable_files` | 数値 | *name*の CodeRabbit レビューで課金されるファイルの数 |
+| `price_stated` | はい・いいえ | true のとき: CodeRabbit が*name*の head の課金ファイル数を示した |
+
+プロファイルで `name`・`type`・`at` のほかに書ける設定です。
+
+| 設定 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `not_reviewed` | string[] | いいえ | For coderabbit and coderabbit_spend: files CodeRabbit does not review (globs, for example **/pnpm-lock.yaml), left out of the billable count Pointsman makes when CodeRabbit stated none. |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
+
+### `coderabbit_budget`
+
+The pull request author's CodeRabbit review budget.
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `known` | はい・いいえ | true のとき: *name*が分かっている |
+| `asked_minutes_ago` | 数値 | 作成者が*name*を尋ねてからの分数 |
+| `available` | 数値 | *name*の無料レビューの数 |
+| `wait_stated` | はい・いいえ | true のとき: CodeRabbit が*name*の待ち時間を示した |
+| `wait_minutes` | 数値 | *name*で次の無料レビューまでの分数 |
+| `allowance_per_hour` | 数値 | *name*の 1 時間あたりのレビュー数 |
+| `observed_minutes_ago` | 数値 | *name*を読んでからの分数 |
+| `taken_by_other_pr` | はい・いいえ | true のとき: *name*を読んだ後に作成者の他のプルリクエストが無料レビューを使った |
+| `author` | 文字列 | *name*の作成者 人と地図のための値です。ルールでは使えません。 |
+| `pull_request` | 文字列 | *name*のプルリクエスト 人と地図のための値です。ルールでは使えません。 |
+
+プロファイルで `name`・`type`・`at` のほかに書ける設定です。
+
+| 設定 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `review_actions` | string[] | いいえ | For coderabbit_budget and coderabbit_queue: decision actions that use a free review (default: review). |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
+
+### `coderabbit_queue`
+
+The author's pull requests waiting for a CodeRabbit review ahead of this one.
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `ahead` | 数値 | *name*で先に待っているプルリクエストの数 |
+| `wait_minutes` | 数値 | *name*での待ち時間（分） |
+| `author` | 文字列 | *name*の作成者 人と地図のための値です。ルールでは使えません。 |
+| `pull_request` | 文字列 | *name*のプルリクエスト 人と地図のための値です。ルールでは使えません。 |
+
+プロファイルで `name`・`type`・`at` のほかに書ける設定です。
+
+| 設定 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `waiting` | string[] | はい | For coderabbit_queue: decision actions that mean a pull request waits for a free review (for example wait, queue). A pull request whose latest decision of this profile has one of them waits. |
+| `review_actions` | string[] | いいえ | For coderabbit_budget and coderabbit_queue: decision actions that use a free review (default: review). |
+| `max_age_minutes` | integer | いいえ | For coderabbit_queue: a waiting decision older than this many minutes no longer counts (default 120, at most 1440). |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
+
+### `coderabbit_spend`
+
+The spend on paid CodeRabbit reviews.
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `price_usd` | 数値 | *name*のレビューの価格（米ドル） |
+| `per_pr_usd_after` | 数値 | *name*のレビュー後のプルリクエストあたりの支出（米ドル） |
+| `per_window_usd_after` | 数値 | *name*のレビュー後の時間枠あたりの支出（米ドル） |
+| `paid_for_head` | はい・いいえ | true のとき: *name*の head の有料レビューが依頼され始まった |
+| `author` | 文字列 | *name*の作成者 人と地図のための値です。ルールでは使えません。 |
+| `pull_request` | 文字列 | *name*のプルリクエスト 人と地図のための値です。ルールでは使えません。 |
+| `head` | 文字列 | *name*の head コミット 人と地図のための値です。ルールでは使えません。 |
+
+プロファイルで `name`・`type`・`at` のほかに書ける設定です。
+
+| 設定 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `pay_actions` | string[] | はい | For coderabbit_spend: decision actions that pay for a review (for example pay). Every logged decision with one of them counts at its price, once per head, until shown otherwise. |
+| `usd_per_file` | number | はい | For coderabbit_spend: the price per billable file, in US dollars, when CodeRabbit stated no price for the head. |
+| `window_hours` | integer | いいえ | For coderabbit_spend: the time window of per_window_usd_after, in hours (default 5, at most 24). |
+| `pr_hours` | integer | いいえ | For coderabbit_spend: how far back per_pr_usd_after counts payments of the pull request, in hours (default 48, at most 168). |
+| `payer_apps` | integer[] | いいえ | For coderabbit_spend: GitHub Apps, by id, whose paid review comments count for paid_for_head (besides the author and organization owners and members). |
+| `not_reviewed` | string[] | いいえ | For coderabbit and coderabbit_spend: files CodeRabbit does not review (globs, for example **/pnpm-lock.yaml), left out of the billable count Pointsman makes when CodeRabbit stated none. |
+
+`at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
+
 ## 欠けた理由
 
 値のないファクトは「欠けた」ファクトです。フィールド `missing` が true になり、`reason` に理由が入ります。ルールではどちらも使えます。
@@ -215,5 +376,6 @@ Copilot code review on the pull request.
 | `timeout` | 調べるのに時間がかかりすぎた | すべてのファクト |
 | `error` | エラー | すべてのファクト |
 | `no_location` | リクエストに位置がない | `inside`, `nearest`, `detour` |
-| `no_pr` | リクエストにプルリクエストがない | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot` |
-| `stale` | プルリクエストに新しいコミットがある | `@pointsman/github` |
+| `no_pr` | リクエストにプルリクエストがない | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release`, `github_bump`, `coderabbit`, `coderabbit_budget`, `coderabbit_queue`, `coderabbit_spend` |
+| `stale` | プルリクエストに新しいコミットがある | `@pointsman/coderabbit` |
+| `no_log` | 読める判定ログがない（テストトークン、または判定の外での参照） | `@pointsman/coderabbit` |

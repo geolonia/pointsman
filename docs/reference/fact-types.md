@@ -203,6 +203,167 @@ Copilot code review on the pull request.
 
 Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
 
+### `github_app_approval`
+
+Whether a GitHub App approved the pull request.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `approved_head` | yes or no | true: the app of *name* approved the head commit |
+| `approved_any` | yes or no | true: an approval by the app of *name* stands |
+| `reviews` | number | the number of reviews by the app of *name* |
+
+Settings in a profile, besides `name`, `type` and `at`:
+
+| Setting | Type | Required | Description |
+| --- | --- | --- | --- |
+| `app` | string | yes | For github_app_approval: the GitHub App's slug; its bot account is "<slug>[bot]". |
+| `bot_id` | integer | no | For github_app_approval: the account id of the app's bot (GET /users/<slug>[bot]); when given, it must match too. |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
+
+### `github_release`
+
+Whether the pull request only changes a version (and the changelog).
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `version_only` | yes or no | true: *name* only changes a version (and the changelog) |
+| `from` | text | the version before *name* |
+| `to` | text | the version after *name* |
+| `level` | text | the kind of version step of *name* (major, minor, patch or none) |
+
+Settings in a profile, besides `name`, `type` and `at`:
+
+| Setting | Type | Required | Description |
+| --- | --- | --- | --- |
+| `version_files` | string[] | yes | For github_release: the files where a line that sets the version may change (globs), for example package.json or src/version.ts: a key such as version, VERSION or ENGINE_VERSION with the version as its value; in a package.json only its "version" line. |
+| `version_text_files` | string[] | no | For github_release: files where any line may carry the version, for docs that name it (globs). Never files that run. |
+| `changelogs` | string[] | no | For github_release: changelog files (globs), which may only get lines added; default CHANGELOG.md. |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
+
+### `github_bump`
+
+Whether the pull request only bumps npm dependency versions.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `applies` | yes or no | true: *name* is an npm dependency bump |
+| `only_manifests` | yes or no | true: *name* only changes package.json and lockfiles |
+| `version_only` | yes or no | true: *name* only changes dependency versions |
+| `semver` | text | the largest version step of *name* (major, minor, patch or none) |
+| `dev_only` | yes or no | true: *name* only bumps dev dependencies |
+| `registry_changed` | yes or no | true: *name* may change where a package comes from |
+| `manifest_lines` | number | the number of changed lines in the package.json files of *name* |
+| `release_age_days` | number | the age of the youngest release that *name* bumps to (days) |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 10 s.
+
+## `@pointsman/coderabbit`
+
+Fact types of the module `@pointsman/coderabbit`. Deployment settings it reads: `FACTS_CODERABBIT`, `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`.
+
+### `coderabbit`
+
+CodeRabbit reviews of the pull request.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `installed` | yes or no | true: CodeRabbit runs in the repository of *name* |
+| `ignored` | yes or no | true: the description of *name* switches CodeRabbit off |
+| `reviewed_any` | yes or no | true: CodeRabbit reviewed a commit of *name* |
+| `reviewed_head` | yes or no | true: CodeRabbit reviewed the head commit of *name* |
+| `in_progress` | yes or no | true: a CodeRabbit review of *name* is running |
+| `approved_head` | yes or no | true: CodeRabbit approved the head commit of *name* |
+| `rebase_only` | yes or no | true: the head of *name* has the same change as the commit CodeRabbit approved |
+| `changes_requested` | yes or no | true: CodeRabbit requests changes on *name* |
+| `unresolved_threads` | number | the number of open CodeRabbit threads on *name* |
+| `outside_diff_findings` | yes or no | true: CodeRabbit's latest review of *name* has findings outside the diff |
+| `billable_files` | number | the number of files a CodeRabbit review of *name* would bill |
+| `price_stated` | yes or no | true: CodeRabbit stated the billable files of the head of *name* |
+
+Settings in a profile, besides `name`, `type` and `at`:
+
+| Setting | Type | Required | Description |
+| --- | --- | --- | --- |
+| `not_reviewed` | string[] | no | For coderabbit and coderabbit_spend: files CodeRabbit does not review (globs, for example **/pnpm-lock.yaml), left out of the billable count Pointsman makes when CodeRabbit stated none. |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
+
+### `coderabbit_budget`
+
+The pull request author's CodeRabbit review budget.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `known` | yes or no | true: the budget *name* is known |
+| `asked_minutes_ago` | number | the minutes since the author asked for *name* |
+| `available` | number | the number of free reviews in *name* |
+| `wait_stated` | yes or no | true: CodeRabbit stated a wait for *name* |
+| `wait_minutes` | number | the minutes to wait for the next free review in *name* |
+| `allowance_per_hour` | number | the reviews per hour in *name* |
+| `observed_minutes_ago` | number | the minutes since *name* was read |
+| `taken_by_other_pr` | yes or no | true: another pull request of the author took a free review since *name* was read |
+| `author` | text | the author in *name* For people and maps only; rules cannot use it. |
+| `pull_request` | text | the pull request of *name* For people and maps only; rules cannot use it. |
+
+Settings in a profile, besides `name`, `type` and `at`:
+
+| Setting | Type | Required | Description |
+| --- | --- | --- | --- |
+| `review_actions` | string[] | no | For coderabbit_budget and coderabbit_queue: decision actions that use a free review (default: review). |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
+
+### `coderabbit_queue`
+
+The author's pull requests waiting for a CodeRabbit review ahead of this one.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `ahead` | number | the number of pull requests ahead in *name* |
+| `wait_minutes` | number | the minutes to wait in *name* |
+| `author` | text | the author in *name* For people and maps only; rules cannot use it. |
+| `pull_request` | text | the pull request of *name* For people and maps only; rules cannot use it. |
+
+Settings in a profile, besides `name`, `type` and `at`:
+
+| Setting | Type | Required | Description |
+| --- | --- | --- | --- |
+| `waiting` | string[] | yes | For coderabbit_queue: decision actions that mean a pull request waits for a free review (for example wait, queue). A pull request whose latest decision of this profile has one of them waits. |
+| `review_actions` | string[] | no | For coderabbit_budget and coderabbit_queue: decision actions that use a free review (default: review). |
+| `max_age_minutes` | integer | no | For coderabbit_queue: a waiting decision older than this many minutes no longer counts (default 120, at most 1440). |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
+
+### `coderabbit_spend`
+
+The spend on paid CodeRabbit reviews.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `price_usd` | number | the price of the review in *name* (USD) |
+| `per_pr_usd_after` | number | the spend on the pull request after the review in *name* (USD) |
+| `per_window_usd_after` | number | the spend in the time window after the review in *name* (USD) |
+| `paid_for_head` | yes or no | true: a paid review of the head of *name* was requested and started |
+| `author` | text | the author in *name* For people and maps only; rules cannot use it. |
+| `pull_request` | text | the pull request of *name* For people and maps only; rules cannot use it. |
+| `head` | text | the head commit of *name* For people and maps only; rules cannot use it. |
+
+Settings in a profile, besides `name`, `type` and `at`:
+
+| Setting | Type | Required | Description |
+| --- | --- | --- | --- |
+| `pay_actions` | string[] | yes | For coderabbit_spend: decision actions that pay for a review (for example pay). Every logged decision with one of them counts at its price, once per head, until shown otherwise. |
+| `usd_per_file` | number | yes | For coderabbit_spend: the price per billable file, in US dollars, when CodeRabbit stated no price for the head. |
+| `window_hours` | integer | no | For coderabbit_spend: the time window of per_window_usd_after, in hours (default 5, at most 24). |
+| `pr_hours` | integer | no | For coderabbit_spend: how far back per_pr_usd_after counts payments of the pull request, in hours (default 48, at most 168). |
+| `payer_apps` | integer[] | no | For coderabbit_spend: GitHub Apps, by id, whose paid review comments count for paid_for_head (besides the author and organization owners and members). |
+| `not_reviewed` | string[] | no | For coderabbit and coderabbit_spend: files CodeRabbit does not review (globs, for example **/pnpm-lock.yaml), left out of the billable count Pointsman makes when CodeRabbit stated none. |
+
+Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
+
 ## Missing reasons
 
 A fact that has no value is *missing*: its field `missing` is true and `reason` says why. Rules can test both.
@@ -213,5 +374,6 @@ A fact that has no value is *missing*: its field `missing` is true and `reason` 
 | `timeout` | the lookup took too long | any fact |
 | `error` | an error | any fact |
 | `no_location` | no location in the request | `inside`, `nearest`, `detour` |
-| `no_pr` | no pull request in the request | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot` |
-| `stale` | the pull request has a newer commit | `@pointsman/github` |
+| `no_pr` | no pull request in the request | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release`, `github_bump`, `coderabbit`, `coderabbit_budget`, `coderabbit_queue`, `coderabbit_spend` |
+| `stale` | the pull request has a newer commit | `@pointsman/coderabbit` |
+| `no_log` | no decision log to read (a test token, or a lookup outside a decision) | `@pointsman/coderabbit` |

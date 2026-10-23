@@ -18,8 +18,8 @@ editUrl: false
 | 項目 | 値 |
 | --- | --- |
 | 動かす場所 | 専用の Worker |
-| アクション | `check`, `comment`, `label`, `request_reviewer`, `approve`, `dismiss` |
-| 設定 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CONNECTOR`, `POINTSMAN_URL`, `POINTSMAN_TOKEN`, `PULL_REQUESTS` |
+| アクション | `check`, `comment`, `label`, `request_reviewer`, `approve`, `dismiss`, `decision_comment` |
+| 設定 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CONNECTOR`, `POINTSMAN_URL`, `POINTSMAN_TOKEN`, `POINTSMAN`, `PULL_REQUESTS` |
 
 ## `@pointsman/fiware`
 
