@@ -90,10 +90,19 @@
    group's line, like a station on a track, not a solid green bar. */
 :root {
   --ps-current: var(--sl-color-text-accent);
+  /* The group's line, visible enough to read as a track (3.12:1 on #181818). */
+  --ps-track: #6b665e;
 }
 :root[data-theme='light'] {
-  /* Darker than the accent, for contrast on the sidebar's paper colour. */
+  /* Darker than the accent, for contrast on the sidebar's paper colour
+     (6.24:1 on #ede9e1; the accent #1f7a50 would be 4.38:1). */
   --ps-current: #17603f;
+  /* 3.24:1 on #ede9e1. */
+  --ps-track: #8a7f72;
+}
+/* The line beside each group's entries (Starlight's `ul ul li` border). */
+.sidebar-content ul ul li {
+  border-inline-start-color: var(--ps-track);
 }
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover,
