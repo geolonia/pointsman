@@ -212,7 +212,7 @@ export class PullRequestWork {
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
       // Everything the decision rests on, besides the head: a new one when any of it changes.
       const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, decisions, run, this.#settings.actions[profile] ?? null])) : '';
-      const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun) : undefined;
+      const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun, refOf(target, pr.head)) : undefined;
       if (kept) {
         // Its action was carried out and its check run written when it was made.
         decided[profile] = kept;
@@ -261,11 +261,13 @@ export class PullRequestWork {
   }
 
   /** The kept decision of this profile, when it was made for this head and these inputs and its action is not one to ask again. */
-  async #kept(profile: string, head: string, key: string, rerun: string[]): Promise<Decision | undefined> {
+  async #kept(profile: string, head: string, key: string, rerun: string[], ref: string): Promise<Decision | undefined> {
     const kept = await this.#storage.get<Kept>('kept');
     const k = kept?.head === head ? kept.byProfile[profile] : undefined;
     // Never a decision a person still checks: their answer comes with a new one.
-    return k && k.key === key && !rerun.includes(k.decision.action) && k.decision.review?.status !== 'pending' ? k.decision : undefined;
+    // Checked again like a new answer: one kept before the check (a test decision, say) is asked anew.
+    return k && k.key === key && !rerun.includes(k.decision.action) && k.decision.review?.status !== 'pending'
+      && checkDecision(k.decision, { profile, ref }).kind === 'decision' ? k.decision : undefined;
   }
 
   async #keep(profile: string, head: string, key: string, decision: Decision): Promise<void> {
@@ -526,6 +528,7 @@ export class PullRequestWork {
     // The key holds the run's attempt count: every run, a retry too, gets a new decision.
     const key = await sha256(JSON.stringify([profile, state, decisions, ...extra]));
     const chained = Object.keys(decisions).length > 0;
+    // As refOf gives it (the kept decisions are checked against that).
     const ref = `github:${state.repo}#${state.number}@${state.head}`;
     let res: EngineAnswer;
     try {
@@ -537,7 +540,7 @@ export class PullRequestWork {
       const checked = checkDecision(res.body, { profile, ref });
       // Not tried again (a new answer to the same key would be the same); the reason names a field, never its value.
       if (checked.kind === 'invalid') console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: not a decision (${checked.reason}); nothing done`);
-      if (checked.kind === 'test') console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: a test decision (not logged); nothing done. Is POINTSMAN_TOKEN a test token?`);
+      if (checked.kind === 'test') console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: a test decision (not logged); nothing done. Is the connector's token a test token?`);
       return checked;
     }
     const status = res.code ? `${res.status} ${res.code}` : String(res.status);
@@ -608,6 +611,11 @@ async function retrying<T>(f: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The ref of a decision about this head. */
+function refOf(target: { repo: string; number: number }, head: string): string {
+  return `github:${target.repo}#${target.number}@${head}`;
+}
+
 async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -650,7 +658,7 @@ export function notActedOnOutput(profile: string, answer: Exclude<CheckedAnswer,
       `Decision \`${answer.decision.decision_id}\``,
     ]
     : [
-      `Pointsman's answer for the profile \`${profile}\` is not a decision the connector can use: ${answer.reason}. Nothing was done for it, and it is not tried again until the next event.`,
+      `Pointsman's answer for the profile \`${profile}\` is not a decision the connector can use: ${answer.reason}. Nothing was done for it, and it is not tried again until the next event or recheck.`,
       '',
       'This check never blocks.',
     ];

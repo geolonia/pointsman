@@ -83,8 +83,13 @@ function fakeEngine(answer: (profile: string) => Response = (p) => Response.json
     fetch: async (url, init) => {
       const profile = decodeURIComponent(url.split('/v1/decide/')[1]!);
       const headers = new Headers(init.headers);
-      calls.push({ profile, key: headers.get('idempotency-key')!, body: JSON.parse(String(init.body)), auth: headers.get('authorization')! });
-      return answer(profile);
+      const sent = JSON.parse(String(init.body));
+      calls.push({ profile, key: headers.get('idempotency-key')!, body: sent, auth: headers.get('authorization')! });
+      const res = answer(profile);
+      // As the engine does: a decision echoes the ref it was sent (one that sets its own ref keeps it).
+      if (!res.ok) return res;
+      const out = await res.clone().json().catch(() => undefined);
+      return out !== null && typeof out === 'object' && !Array.isArray(out) && !('ref' in out) ? Response.json({ ...out, ref: sent.ref }, { status: res.status }) : res;
     },
   };
   // The HTTP adapter, as the connector Worker builds it.
@@ -1153,8 +1158,8 @@ describe('the engine\'s answer: checked before anything is done (checkDecision)'
     const d = full();
     expect(checkDecision(d, asked)).toEqual({ kind: 'decision', decision: d });
     expect((checkDecision(d, asked) as { decision: unknown }).decision).toBe(d);
-    // The fields that may be missing: ref, facts, review, test (false is not a test decision).
-    const { ref: _r, facts: _f, review: _v, ...lean } = d;
+    // The fields that may be missing: facts, review, test (false is not a test decision).
+    const { facts: _f, review: _v, ...lean } = d;
     expect(checkDecision({ ...lean, rule: 0 }, asked).kind).toBe('decision');
     expect(checkDecision({ ...lean, test: false }, asked).kind).toBe('decision');
     // Every action name a profile can give, at its longest.
@@ -1170,7 +1175,9 @@ describe('the engine\'s answer: checked before anything is done (checkDecision)'
       ['"action"', { ...full(), action: { do: 'approve' } }], ['"action"', { ...full(), action: 'a'.repeat(65) }], ['"action"', { ...full(), action: big }],
       ['"action"', { ...full(), action: 'Light' }], ['"action"', { ...full(), action: 'light\n' }],
       ['"profile"', { ...full(), profile: 'other' }], ['"profile"', { ...full(), profile: undefined }],
-      ['"ref"', { ...full(), ref: `github:${REPO}#7@${HEAD2}` }],
+      ['"ref"', { ...full(), ref: `github:${REPO}#7@${HEAD2}` }], ['"ref"', { ...full(), ref: undefined }],
+      ['"review"', { ...full(), review: { status: 'resolved' } }], ['"review"', { ...full(), review: { status: 'Pending' } }],
+      ['"facts"', { ...full(), facts: { 'a`b': { missing: true, reason: 'r' } } }], ['"facts"', { ...full(), facts: { '': { missing: true } } }],
       ['"profile_version"', { ...full(), profile_version: 0 }], ['"profile_version"', { ...full(), profile_version: '3' }],
       ['"rule"', { ...full(), rule: undefined }], ['"rule"', { ...full(), rule: -1 }], ['"rule"', { ...full(), rule: 1.5 }],
       ['"review"', { ...full(), review: 'pending' }], ['"review"', { ...full(), review: null }], ['"review"', { ...full(), review: {} }], ['"review"', { ...full(), review: [] }],
@@ -1253,6 +1260,31 @@ describe('the engine\'s answer: checked before anything is done (checkDecision)'
     errors.mockRestore();
   });
 
+  it('a kept decision is checked again: one kept before the check (a test decision) is asked anew', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { work, mem, pm, event } = await acting(ACT, (p) => Response.json(decision(p, { action: 'wait' })), { [PROFILE]: { oncePerHead: { rerun: [] } } });
+    await work.run();
+    await event();
+    await work.run();
+    expect(pm.calls).toHaveLength(1);
+    const kept = mem.data.get('kept') as any;
+    kept.byProfile[PROFILE].decision.test = true;
+    mem.data.set('kept', kept);
+    await event();
+    await work.run();
+    expect(pm.calls).toHaveLength(2);
+    errors.mockRestore();
+  });
+
+  it('a 2xx that is not JSON is an invalid answer over HTTP too, not tried again', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { work, gh } = await acting(ACT, () => new Response('<html>', { status: 200 }));
+    await expect(work.run()).resolves.toBeUndefined();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(lastOutput(gh.calls).summary).toContain('not an object');
+    errors.mockRestore();
+  });
+
   it('a test decision is never sent on to the profiles that require it', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mem = memoryStorage();
@@ -1263,6 +1295,8 @@ describe('the engine\'s answer: checked before anything is done (checkDecision)'
     await work.accept({ target: { repo: REPO, number: 7 }, delivery: 'd1', digest: 'x1' }, Date.now());
     await work.run();
     expect(pm.calls.map((c) => c.body.decisions)).toEqual([undefined, undefined]);
+    // pr-next was still asked and shown.
+    expect(gh.calls.filter((c) => c.op === 'create').map((c) => c.name)).toEqual(['Pointsman: pr-risk', 'Pointsman: pr-next']);
     errors.mockRestore();
   });
 

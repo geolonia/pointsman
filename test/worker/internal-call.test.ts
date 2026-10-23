@@ -181,7 +181,9 @@ describe('the connector: binding adapter', () => {
     await expect(bindingEngine(binding(async () => { throw new Error('down'); })).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow('down');
     await expect(bindingEngine(binding(async () => new Response('x'))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no engine answer/);
     await expect(bindingEngine(binding(async () => ({ status: 'ok' }))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no engine answer/);
-    await expect(bindingEngine(binding(async () => ({ status: 200 }))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no decision/);
+    // A 2xx without a decision is passed on as it came: the connector's check refuses it (not tried again), as over HTTP.
+    expect(await bindingEngine(binding(async () => ({ status: 200 }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 200, body: undefined });
+    expect(await bindingEngine(binding(async () => ({ status: 200, body: 'light' }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 200, body: 'light' });
     // A fetch binding without the entrypoint: the runtime refuses the method; the error says what to set.
     await expect(bindingEngine(binding(() => { throw new TypeError('The RPC receiver does not implement the method "decide".'); })).decide('p', req, { idempotencyKey: 'k' }))
       .rejects.toThrow(/"entrypoint": "InternalEngine"/);
@@ -246,7 +248,7 @@ describe('the connector checks the answer the same way through both adapters', (
       createCheckRun: async (_r: string, _h: string, _n: string, o: CheckRunOutput) => (outputs.push(o), 1),
       updateCheckRun: async (_r: string, _i: number, o: CheckRunOutput) => void outputs.push(o),
     } as unknown as Parameters<typeof pullRequestWork>[3];
-    const decision = { decision_id: crypto.randomUUID(), action: 'light', profile: 'pr-docs-check', profile_version: 1, rule: null };
+    const decision = { decision_id: crypto.randomUUID(), ref: `github:example/repo#1@${'a'.repeat(40)}`, action: 'light', profile: 'pr-docs-check', profile_version: 1, rule: null };
     const run = async (answer: unknown) => {
       const work = pullRequestWork(settings, storage, bindingEngine(binding(async () => ({ status: 200, body: answer }))), github);
       await work.accept({ target: { repo: 'example/repo', number: 1 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
@@ -257,6 +259,8 @@ describe('the connector checks the answer the same way through both adapters', (
     expect((await run(decision)).title).toBe('light (shadow)');
     expect((await run({ ...decision, action: '' })).title).toBe('invalid answer: nothing done');
     expect((await run([decision])).title).toBe('invalid answer: nothing done');
+    expect((await run('light')).title).toBe('invalid answer: nothing done');
+    expect((await run(undefined)).summary).toContain('not an object');
     expect((await run({ ...decision, profile: 'other' })).summary).toContain('"profile" is not the profile asked');
     expect((await run({ ...decision, test: true })).title).toBe('test decision: nothing done');
     errors.mockRestore();
