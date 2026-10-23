@@ -19,7 +19,7 @@ An internal call between the GitHub connector and the engine (#188): where both 
 For deployments:
 
 - Move `ref` in `engine.json` to the commit of `v0.12.0`. No migration. Nothing changes unless you opt in.
-- **To use the internal call on Cloudflare:** set `INTERNAL_CLIENT` on the engine (the client name and its profiles, for example `{"client":"github-connector","profiles":["pr-docs-check","workflow-check"]}`; use the name of the connector's current token so its decision history carries on), deploy the engine, then give the connector a service binding `POINTSMAN` to the engine Worker with `entrypoint: "InternalEngine"` and remove `POINTSMAN_URL`. Once decisions arrive, revoke the connector's token (`tokens.mjs revoke --hash <hash>`) and delete its secret (`wrangler secret delete POINTSMAN_TOKEN`). See *Internal call* in `docs/github-connector.md`.
+- **To use the internal call on Cloudflare:** set `INTERNAL_CLIENT` on the engine (the client name and its profiles, for example `{"client":"github-connector","profiles":["pr-docs-check","workflow-check"]}`; use the name of the connector's current token so its decision history carries on), deploy the engine, then give the connector a service binding `POINTSMAN` to the engine Worker with `entrypoint: "InternalEngine"`, remove `POINTSMAN_URL` and deploy the connector. Once decisions arrive, revoke the connector's token (`tokens.mjs revoke --hash <hash>`) and delete its secret (`wrangler secret delete POINTSMAN_TOKEN`). See *Internal call* in `docs/github-connector.md`.
 
 What changed:
 
