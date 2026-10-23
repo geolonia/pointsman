@@ -173,6 +173,12 @@ export class PullRequestWork {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (!pr.open) return;
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: pr.body.slice(0, MAX_BODY) };
+    // A recheck deadline of an older head is void: a new head starts with none.
+    const recheckHead = await this.#storage.get<string>('recheckHead');
+    if (recheckHead !== undefined && recheckHead !== pr.head) {
+      await this.#storage.put({ recheckAt: 0, recheckHead: pr.head });
+      if (recheck) return;
+    }
     // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
     const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
     // The decisions of this run (or kept for this head), for the profiles that require them.

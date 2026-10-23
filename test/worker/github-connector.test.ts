@@ -754,6 +754,23 @@ describe('chains: profiles that build on each other', () => {
     expect(mem.data.get('recheckHead')).toBe(HEAD2);
   });
 
+  it('a new head voids the older head\'s recheck deadline, also when nothing waits on the new head', async () => {
+    const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 1 } } }), profiles: ['a'] };
+    let action = 'wait';
+    const { work, pm, mem, gh, later, event } = await chained(s, {}, (p) => Response.json(decision(p, { action })));
+    await work.run(); // head A waits: recheck due in 10 min
+    later(9 * 60_000);
+    action = 'done';
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run(); // head B: done, no recheck
+    expect(mem.data.get('recheckAt')).toBe(0);
+    later(2 * 60_000);
+    await work.run(); // A's old deadline passed: nothing is asked
+    expect(pm.calls).toHaveLength(2);
+    expect(mem.data.get('rechecks')).toBeUndefined();
+  });
+
   it('a recheck whose check run fails is not counted', async () => {
     const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 1 } } }), profiles: ['a'] };
     const { work, mem, gh, later } = await chained(s, {}, (p) => Response.json(decision(p, { action: 'wait' })));
