@@ -42,12 +42,15 @@ can use: [AI and agents](ai.md).
 
 - This site sets no cookies and has no analytics and no forms.
 - The documentation uses fonts served from this site. The landing page loads
-  the font IBM Plex Mono from Google Fonts, so your browser connects to
-  fonts.googleapis.com and fonts.gstatic.com when you open it.
+  the font IBM Plex Mono (the Japanese page also IBM Plex Sans JP) from
+  Google Fonts, so your browser connects to fonts.googleapis.com and
+  fonts.gstatic.com when you open it.
 - The search runs in your browser and sends nothing. Your choice of light or
-  dark mode is stored in your browser only.
+  dark mode, and which parts of the sidebar are open, are kept in your
+  browser only.
 - Cloudflare, which hosts the site, processes ordinary access logs (IP
-  address, browser type and similar) as far as needed to deliver it.
+  address, browser type and similar) as far as needed to deliver it, and
+  may receive your browser's reports of network errors.
 - See also Geolonia's [privacy policy](https://www.geolonia.com/privacy/)
   (in Japanese).
 

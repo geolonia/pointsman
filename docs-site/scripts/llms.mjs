@@ -67,7 +67,7 @@ export function llms(pages) {
 }
 
 export function llmsFull(pages) {
-  const parts = ['# Pointsman documentation', '', `The text of every English page of ${SITE}${BASE}, in sidebar order. Index: ${SITE}/llms.txt`];
+  const parts = ['# Pointsman: every page of the documentation', '', `The text of every English page of ${SITE}${BASE}, in sidebar order. Index: ${SITE}/llms.txt`];
   const start = pages.find((p) => p.slug === '');
   for (const p of [...(start ? [start] : []), ...GROUPS.flatMap((g) => inGroup(pages, g.dir))]) {
     if (planned(p)) continue;
