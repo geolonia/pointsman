@@ -638,6 +638,36 @@ describe('actions (switched on per profile action)', () => {
     errors.mockRestore();
   });
 
+  it('an open approve record: kept when its trace is found, and a trace that cannot be read leaves it open and is shown', async () => {
+    let action = 'done';
+    const KEEP = { 'pr-docs-check': { light: { do: 'approve' as const }, done: { do: 'keep_approval' as const } } };
+    const { work, gh, mem, event } = await acting(KEEP, (p) => Response.json(decision(p, { action })));
+    const open = () => mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:approve': { decision: 'd', state: 'pending', at: Date.now() } } });
+    const state = () => (mem.data.get('acts') as any).done['pr-docs-check:approve']?.state;
+    const lastSummary = () => gh.calls.filter((c) => c.output).at(-1)!.output!.summary;
+    // keep_approval: the approval is on GitHub, its record still open: found, closed and kept.
+    gh.github.approvals.push({ id: 556, commit: HEAD, marker: `<!-- pointsman approve pr-docs-check ${HEAD} -->` });
+    open();
+    await work.run();
+    expect(state()).toBe('done');
+    expect(lastSummary()).toContain('approval of this commit kept');
+    expect(ops(gh.calls)).toEqual([]);
+
+    // The reviews cannot be read (an error that does not pass): the record stays open, the check run says so.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.ownApprovals = async () => { throw new GitHubError('GitHub app token: GitHub installation: no app slug', false); };
+    for (const [next, text] of [['done', 'unclear, the record stays open'], ['light', 'result unclear, the record stays open'], ['review', 'could not be withdrawn']] as const) {
+      open();
+      action = next;
+      await event();
+      await work.run();
+      expect(state(), next).toBe('pending');
+      expect(lastSummary(), next).toContain(text);
+    }
+    expect(ops(gh.calls)).toEqual([]);
+    errors.mockRestore();
+  });
+
   it('settings: keep_approval only next to approve, without settings', () => {
     const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
     const conf = (actions: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p'], actions }) });

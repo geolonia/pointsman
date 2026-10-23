@@ -357,7 +357,8 @@ export class PullRequestWork {
     if (!record) return true;
     // A record left open (a run stopped after the approval, before its id was kept): its trace on GitHub gives the id first,
     // so the approval is dismissed, not only forgotten.
-    if (record.state === 'pending') await retrying(() => this.#traced(target, pr, profile, { do: 'approve' }));
+    // Not readable (an error that does not pass): not withdrawn, shown as such; the record stays.
+    if (record.state === 'pending' && (await this.#tracedOrUnknown(target, pr, profile, { do: 'approve' })) === 'unknown') return false;
     if (!(await this.#dismiss(target, (a) => a.commit === pr.head && a.profile === profile, () => 'Pointsman no longer approves this commit: a newer decision differs.'))) return false;
     delete acts.done[key];
     await this.#storage.put({ acts });
@@ -397,7 +398,18 @@ export class PullRequestWork {
     if (pending) return { kind: 'skipped', text: `${spec.do}: not done, a person checks this decision first` };
     // Nothing to do on GitHub and nothing to record: the approval of this head (if any) stands.
     if (spec.do === 'keep_approval') {
-      return acts.done[`${profile}:approve`]?.state === 'done'
+      const approveKey = `${profile}:approve`;
+      const approved = acts.done[approveKey];
+      // An approval whose run stopped before its record was closed: settled by its trace first.
+      if (approved?.state === 'pending') {
+        const traced = await this.#tracedOrUnknown(target, pr, profile, { do: 'approve' });
+        if (traced === 'unknown') return { kind: 'skipped', text: 'keep_approval: whether this commit is approved is unclear, the record stays open' };
+        if (traced) {
+          acts.done[approveKey] = { ...approved, state: 'done' };
+          await this.#storage.put({ acts });
+        }
+      }
+      return acts.done[approveKey]?.state === 'done'
         ? { kind: 'done', text: 'approval of this commit kept' }
         : { kind: 'skipped', text: 'keep_approval: no approval of this commit to keep' };
     }
@@ -409,7 +421,10 @@ export class PullRequestWork {
     if (record?.state === 'done') return { kind: 'done', text: `${describe(spec)} (already done for this commit)` };
     if (record?.state === 'failed') return { kind: 'skipped', text: `${spec.do}: failed earlier; not tried again for this commit` };
     if (record?.state === 'pending') {
-      if (await retrying(() => this.#traced(target, pr, profile, spec))) {
+      const traced = await this.#tracedOrUnknown(target, pr, profile, spec);
+      // Not readable: the record stays open (never failed, so a later withdraw can still find the approval).
+      if (traced === 'unknown') return { kind: 'skipped', text: `${spec.do}: result unclear, the record stays open` };
+      if (traced) {
         acts.done[key] = { ...record, state: 'done' };
         await this.#storage.put({ acts });
         return { kind: 'done', text: `${describe(spec)} (found done)` };
@@ -489,6 +504,17 @@ export class PullRequestWork {
       }
       case 'keep_approval':
         return false;
+    }
+  }
+
+  /** #traced, with an error that does not pass logged and given as 'unknown' (a passing one is still a RetryError). */
+  async #tracedOrUnknown(target: PullRequestTarget, pr: PullRequestInfo, profile: string, spec: ActionSpec): Promise<boolean | 'unknown'> {
+    try {
+      return await retrying(() => this.#traced(target, pr, profile, spec));
+    } catch (err) {
+      if (err instanceof RetryError) throw err;
+      console.error(`github connector: ${target.repo}#${target.number} ${profile} ${spec.do} trace: ${err instanceof Error ? err.message : String(err)}`);
+      return 'unknown';
     }
   }
 
