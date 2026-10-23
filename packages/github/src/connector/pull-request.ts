@@ -173,30 +173,36 @@ export class PullRequestWork {
     // The decisions of this run (or kept for this head), for the profiles that require them.
     const decided: Record<string, Decision> = {};
     for (const profile of this.#settings.profiles) {
-      const run = this.#settings.runs[profile] ?? {};
+      const run = Object.hasOwn(this.#settings.runs, profile) ? this.#settings.runs[profile]! : {};
       if (run.skipDrafts && pr.draft) continue;
+      // A required decision that is not there (a skipped draft, a refusal) is not sent: the profile's requires must be optional.
       const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
-      const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base])) : '';
+      // Everything the decision rests on, besides the head: a new one when any of it changes.
+      const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base, decisions, run])) : '';
       const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun) : undefined;
       if (kept) {
-        // Its check run shows it already.
+        // Its action was carried out and its check run written when it was made.
         decided[profile] = kept;
         continue;
       }
-      const asked = run.diff ? { ...state, ...(await this.#diffOf(target, run.diff)) } : state;
+      const asked = run.diff ? { ...state, ...(await this.#diffOf(target, pr.head, run.diff)) } : state;
       const decision = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
       if (!decision) continue;
       decided[profile] = decision;
-      if (run.oncePerHead) await this.#keep(profile, pr.head, keyOf, decision);
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
+      // Kept only once its action and check run are done, so a retried run does them.
+      if (run.oncePerHead) await this.#keep(profile, pr.head, keyOf, decision);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
   }
 
-  async #diffOf(target: PullRequestTarget, max: number): Promise<{ diff: string; diff_truncated: boolean }> {
+  /** The diff of this head: read the head again after it, and try again later when a push came in between. */
+  async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean }> {
     const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
+    const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
+    if (now.head !== head) throw new RetryError(`${target.repo}#${target.number}: a push while the diff was read`);
     return { diff, diff_truncated: truncated };
   }
 
@@ -204,7 +210,8 @@ export class PullRequestWork {
   async #kept(profile: string, head: string, key: string, rerun: string[]): Promise<Decision | undefined> {
     const kept = await this.#storage.get<Kept>('kept');
     const k = kept?.head === head ? kept.byProfile[profile] : undefined;
-    return k && k.key === key && !rerun.includes(k.decision.action) ? k.decision : undefined;
+    // Never a decision a person still checks: their answer comes with a new one.
+    return k && k.key === key && !rerun.includes(k.decision.action) && k.decision.review?.status !== 'pending' ? k.decision : undefined;
   }
 
   async #keep(profile: string, head: string, key: string, decision: Decision): Promise<void> {
@@ -217,14 +224,17 @@ export class PullRequestWork {
   /** While the decision waits (its action is one of recheck.actions), asks again later, at most recheck.max times per head. */
   async #scheduleRecheck(profile: string, head: string, decision: Decision, run: RunOptions): Promise<void> {
     if (!run.recheck || !run.recheck.actions.includes(decision.action)) return;
+    const at = this.now() + run.recheck.minutes * 60_000;
+    const due = await this.#storage.get<number>('recheckAt');
+    // One already due sooner covers this one; only a new alarm counts.
+    if (due && due > this.now() && due <= at) return;
     let rechecks = (await this.#storage.get<Rechecks>('rechecks')) ?? { head, count: {} };
     if (rechecks.head !== head) rechecks = { head, count: {} };
     const count = rechecks.count[profile] ?? 0;
     if (count >= run.recheck.max) return;
     rechecks.count[profile] = count + 1;
-    const at = this.now() + run.recheck.minutes * 60_000;
-    const due = await this.#storage.get<number>('recheckAt');
-    await this.#storage.put({ rechecks, ...((!due || at < due) && { recheckAt: at }) });
+    await this.#storage.put({ rechecks, recheckAt: at });
+    await this.#storage.setAlarm(at);
   }
 
   #approves(): boolean {

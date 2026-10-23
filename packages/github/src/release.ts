@@ -1,7 +1,10 @@
-// github_release (docs/profile-format.md#github-releases): whether a pull
-// request only moves a version, the way a release pull request does. Every
-// changed line is either added to a changelog, or the same line with one
-// version string replaced by another, the same pair in every file.
+// github_release (docs/profile-format.md#github-pull-requests): whether a
+// pull request only moves a version, the way a release pull request does.
+// Every changed file is a changelog that only gets lines added, or one of
+// the listed version files, edited in place, where each changed line is the
+// same line with one version replaced by a higher one, the same pair in
+// every file. In a package.json only the "version" line may change, so a
+// dependency that happens to move by the same pair does not count.
 
 import { matchesAny } from './glob';
 
@@ -23,7 +26,9 @@ export interface ReleaseFacts {
 }
 
 const NOT: ReleaseFacts = { version_only: false, from: '', to: '', level: 'none' };
-const SEMVER = /\b(\d{1,6})\.(\d{1,6})\.(\d{1,6})(-[0-9A-Za-z.-]{1,50})?\b/g;
+// Not inside a longer dotted number (an address such as 1.2.3.4) or a word.
+const SEMVER = /(?<![0-9A-Za-z.-])(\d{1,6})\.(\d{1,6})\.(\d{1,6})(-[0-9A-Za-z]{1,20}(?:\.[0-9A-Za-z]{1,20}){0,4})?(?![0-9A-Za-z-]|\.[0-9A-Za-z])/g;
+const MANIFEST_VERSION = /^\s*"version":\s*"[^"]*",?\s*$/;
 
 /** The changed lines of a patch: runs of removed lines and the added lines right after them, per hunk. */
 function runs(patch: string): { removed: string[]; added: string[] }[] {
@@ -61,8 +66,13 @@ function pairsOf(before: string, after: string): [string, string][] {
 
 const parse = (v: string) => v.match(/^(\d+)\.(\d+)\.(\d+)/)!.slice(1).map(Number) as [number, number, number];
 
-/** "major", "minor" or "patch" for a higher version (a pre-release counts as its numbers); "none" when it is not higher. */
+/**
+ * "major", "minor" or "patch" for a step up to a release; "none" when it is
+ * not higher or goes to a pre-release (0.9.0-rc.1 → 0.9.0 is a patch step,
+ * 0.9.0 → 0.9.0-rc.1 is none).
+ */
 export function levelOf(from: string, to: string): string {
+  if (to.includes('-')) return 'none';
   const [a, b] = [parse(from), parse(to)];
   if (b[0] > a[0]) return 'major';
   if (b[0] < a[0]) return 'none';
@@ -70,28 +80,32 @@ export function levelOf(from: string, to: string): string {
   if (b[1] < a[1]) return 'none';
   if (b[2] > a[2]) return 'patch';
   if (b[2] < a[2]) return 'none';
-  // Same numbers: only a pre-release changed (0.9.0-rc.1 → 0.9.0).
-  return from !== to ? 'patch' : 'none';
+  // Same numbers: from a pre-release to its release.
+  return from.includes('-') ? 'patch' : 'none';
 }
 
-export function releaseFacts(files: ReleaseFile[], changelogs: string[]): ReleaseFacts {
+/** files: where a version may change (globs); changelogs: files that may only get lines added. */
+export function releaseFacts(files: ReleaseFile[], changelogs: string[], versionFiles: string[]): ReleaseFacts {
   if (files.length === 0) return NOT;
   let pair: [string, string] | null = null;
   let versions = 0;
   for (const f of files) {
-    if (f.patch === null) return NOT;
-    const changelog = f.names.length === 1 && matchesAny(f.names[0]!, changelogs);
+    if (f.patch === null || f.names.length !== 1) return NOT;
+    const name = f.names[0]!;
+    const changelog = matchesAny(name, changelogs);
     const lines = runs(f.patch);
     if (changelog) {
       // A changelog may be new or edited, but only gets lines added.
       if ((f.status !== 'modified' && f.status !== 'added') || lines.some((r) => r.removed.length > 0)) return NOT;
       continue;
     }
-    // Any other file: edited in place, each line replaced by the same line with the new version.
-    if (f.status !== 'modified' || lines.length === 0) return NOT;
+    // A version file: edited in place, each line replaced by the same line with the new version.
+    if (!matchesAny(name, versionFiles) || f.status !== 'modified' || lines.length === 0) return NOT;
+    const manifest = name === 'package.json' || name.endsWith('/package.json');
     for (const r of lines) {
       if (r.removed.length === 0 || r.removed.length !== r.added.length) return NOT;
       for (let i = 0; i < r.removed.length; i++) {
+        if (manifest && !(MANIFEST_VERSION.test(r.removed[i]!) && MANIFEST_VERSION.test(r.added[i]!))) return NOT;
         const found = pairsOf(r.removed[i]!, r.added[i]!);
         const fits = pair ? found.some(([a, b]) => a === pair![0] && b === pair![1]) : found.length === 1;
         if (!fits) return NOT;

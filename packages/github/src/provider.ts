@@ -1133,8 +1133,10 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
         const [all, state] = await Promise.all([s.reviews(), s.reviewState()]);
         return { values: copilotFacts(all, state, query.pr.head), source };
       }
-      case 'github_release':
-        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS) }, source };
+      case 'github_release': {
+        if (!query.versionFiles) throw new FactError('no version files');
+        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles) }, source };
+      }
     }
   }
 }

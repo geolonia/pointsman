@@ -164,6 +164,10 @@ function runsOf(v: unknown, profiles: string[]): Record<string, RunOptions> {
         max: max === undefined ? 12 : integer(max, 1, 48, `${where}.recheck.max`),
       };
     }
+    // A kept decision would answer every recheck: the waiting actions must be ones to ask again.
+    if (o.oncePerHead && o.recheck && !o.recheck.actions.every((a) => o.oncePerHead!.rerun.includes(a))) {
+      throw new ConfigError(`${where}: with once_per_head, every recheck action must be in rerun`);
+    }
     out[profile] = o;
   }
   return out;

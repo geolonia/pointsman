@@ -22,6 +22,8 @@ export interface GitHubFactSpec extends FactSpec {
   except?: string[];
   /** For `github_property`: the name of a repository custom property. */
   property?: string;
+  /** For `github_release`: the files where a version may change (globs). */
+  version_files?: string[];
   /** For `github_release`: the changelog files (globs); default CHANGELOG.md. */
   changelogs?: string[];
   /** For `github_workflows`: entries added to the defaults (settings.ts, docs/profile-format.md#github-workflows). */
@@ -47,7 +49,8 @@ export interface GitHubFactQuery {
   property?: string;
   /** For `github_workflows`: entries added to the default settings. */
   workflows?: Partial<WorkflowSettings>;
-  /** For `github_release`: the changelog files (globs). */
+  /** For `github_release`: the version files and the changelog files (globs). */
+  versionFiles?: string[];
   changelogs?: string[];
 }
 
@@ -393,8 +396,9 @@ export const RELEASE_CHANGELOGS = ['CHANGELOG.md'];
 /**
  * Whether the pull request only moves a version, like a release pull
  * request (release.ts): every changed line is added to a changelog, or is
- * the same line with one version replaced by another, the same pair in
- * every file. Not a release: false, "", "", "none".
+ * in one of the version files and the same line with one version replaced
+ * by a higher one, the same pair in every file. Not a release: false, "",
+ * "", "none".
  */
 const github_release: FactTypeDef = {
   type: 'github_release',
@@ -402,17 +406,26 @@ const github_release: FactTypeDef = {
   fields: { version_only: { kind: 'boolean' }, from: { kind: 'string' }, to: { kind: 'string' }, level: { kind: 'string' } },
   input: pullRequest,
   settings: {
+    version_files: {
+      description: 'For github_release: the files where a version may change (globs), for example package.json or src/version.ts. In a package.json only its "version" line may change.',
+      type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: GLOB,
+    },
     changelogs: {
       description: 'For github_release: changelog files (globs), which may only get lines added; default CHANGELOG.md.',
       type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: GLOB,
     },
   },
-  query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({ ...base(spec, pr), ...(spec.changelogs !== undefined && { changelogs: spec.changelogs }) }),
+  required: ['version_files'],
+  query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({
+    ...base(spec, pr),
+    ...(spec.version_files !== undefined && { versionFiles: spec.version_files }),
+    ...(spec.changelogs !== undefined && { changelogs: spec.changelogs }),
+  }),
   timeoutMs: GITHUB_TIMEOUT_MS,
   mock: { version_only: false, from: '', to: '', level: 'none' },
   words: {
     en: {
-      describe: (f, s) => `${f}: whether the pull request (${s.at}) only changes a version: lines added to ${(gh(s).changelogs ?? RELEASE_CHANGELOGS).join(', ')}, and lines where only one version string changes, the same in every file.`,
+      describe: (f, s) => `${f}: whether the pull request (${s.at}) only changes a version: lines added to ${(gh(s).changelogs ?? RELEASE_CHANGELOGS).join(', ')}, and in ${(gh(s).version_files ?? []).join(', ')} lines where only one version goes up, the same in every file.`,
       fields: {
         version_only: ['% only changes a version (and the changelog)', '% changes more than a version'],
         from: 'the version before %',
@@ -421,7 +434,7 @@ const github_release: FactTypeDef = {
       },
     },
     ja: {
-      describe: (f, s) => `${f}：プルリクエスト（${s.at}）がバージョンだけを変えるか。${(gh(s).changelogs ?? RELEASE_CHANGELOGS).join('、')} への行の追加と、バージョン文字列だけが変わる行（すべてのファイルで同じ）のみ。`,
+      describe: (f, s) => `${f}：プルリクエスト（${s.at}）がバージョンだけを変えるか。${(gh(s).changelogs ?? RELEASE_CHANGELOGS).join('、')} への行の追加と、${(gh(s).version_files ?? []).join('、')} でバージョンだけが上がる行（すべてのファイルで同じ）のみ。`,
       fields: {
         version_only: ['%がバージョン（と変更履歴）だけを変える', '%がバージョン以外も変える'],
         from: '%の変更前のバージョン',

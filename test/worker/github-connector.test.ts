@@ -704,6 +704,44 @@ describe('chains: profiles that build on each other', () => {
     expect(mem.data.get('recheckAt')).toBeUndefined();
   });
 
+  it('keeps a decision only after its check run is written, so a retried run asks again', async () => {
+    const { work, pm, gh } = await chained();
+    const create = gh.github.createCheckRun;
+    let fail = true;
+    gh.github.createCheckRun = async (...a) => { if (fail) { fail = false; throw new GitHubError('GitHub check run: 502', true, 502); } return create(...a); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    await work.run();
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(2);
+  });
+
+  it('never keeps a decision a person still checks', async () => {
+    const { work, pm, event } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'normal', review: { status: 'pending' } })));
+    await work.run();
+    await event();
+    await work.run();
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(2);
+  });
+
+  it('a kept decision that rests on an earlier one is asked again when that one is new', async () => {
+    let n = 0;
+    const s = { ...chain({ a: { oncePerHead: { rerun: ['incomplete'] } }, b: { requires: { a: 'a' }, oncePerHead: { rerun: [] } } }), profiles: ['a', 'b'] };
+    const { work, pm, event } = await chained(s, {}, (p) => Response.json(decision(p, { action: p === 'a' && n++ === 0 ? 'incomplete' : 'normal' })));
+    await work.run(); // a: incomplete, b decided on it
+    await event();
+    await work.run(); // a asked again (rerun): a new decision, so b too
+    await event();
+    await work.run(); // both kept
+    expect(pm.calls.map((c) => c.profile)).toEqual(['a', 'b', 'a', 'b']);
+  });
+
+  it('tries again later when a push comes in while the diff is read', async () => {
+    const { work, pm, gh } = await chained();
+    const diff = gh.github.diff;
+    gh.github.diff = async (...a) => { gh.github.state.head = HEAD2; return diff(...a); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(pm.calls).toHaveLength(0);
+  });
+
   it('settings: runs only for listed profiles, requires only earlier ones, checked values', () => {
     const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x' };
     const parse = (runs: unknown) => connectorSettings({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: [RISK, NEXT], runs }) })!.runs;
@@ -719,6 +757,7 @@ describe('chains: profiles that build on each other', () => {
     expect(() => parse({ [RISK]: { recheck: { actions: ['wait'], minutes: 1 } } })).toThrow(/minutes/);
     expect(() => parse({ [RISK]: { recheck: { actions: [], minutes: 10 } } })).toThrow(/actions/);
     expect(() => parse({ [RISK]: { skip: true } })).toThrow(/unknown key skip/);
+    expect(() => parse({ [RISK]: { once_per_head: { rerun: ['incomplete'] }, recheck: { actions: ['wait'], minutes: 10 } } })).toThrow(/must be in rerun/);
   });
 
   it('reads the diff from GitHub, up to the limit, and none for a very large pull request', async () => {
