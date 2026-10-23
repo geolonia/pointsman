@@ -71,17 +71,76 @@ export function stationOf(draft: boolean, approvedByApp: boolean): Station {
   return approvedByApp ? 'approved' : 'ready';
 }
 
-/** The line, with the train under its station (none: no train). */
+/**
+ * The widest line of the art, in columns: it does not wrap on a phone. Longer
+ * text is stacked on more lines, or cut with "…".
+ */
+export const MAX_COLUMNS = 60;
+
+// East Asian wide and fullwidth characters (and emoji) take two columns in a monospace font. A safeguard:
+// what reaches the art is checked or cleaned to ASCII first.
+const WIDE = /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{1F300}-\u{1FAFF}\u{20000}-\u{3FFFD}]/u;
+
+/** The columns a text takes in a monospace font (box characters count one: see the note on the art below). */
+export function columns(text: string): number {
+  let n = 0;
+  for (const ch of text) n += WIDE.test(ch) ? 2 : 1;
+  return n;
+}
+
+/** The text cut to `max` columns, with "…" when cut. */
+function cut(text: string, max: number): string {
+  if (columns(text) <= max) return text;
+  let out = '';
+  for (const ch of text) {
+    if (columns(out + ch) > max - 1) break;
+    out += ch;
+  }
+  return `${out}…`;
+}
+
+/** A line of the art, never wider than MAX_COLUMNS. */
+const fit = (line: string) => cut(line, MAX_COLUMNS);
+
+// The art (line and switch) keeps three rules, so it lines up in any monospace font:
+// - Text of varying length (names, rules, reasons) only at the end of a line, after the rails.
+// - No emoji in it (two columns in most fonts, not in all).
+// - Every rail line is only box characters up to where its text starts, and all
+//   of them are of East Asian width "ambiguous": a Japanese font that draws them
+//   two columns wide widens the whole drawing, but its junctions still line up.
+//   Station names have their own line above the rail.
+
+/** Between two stations: two sleepers. */
+const SPAN = '━━━┿━━━┿━━━';
+const EDGE = '━━━';
+/** The column of each station on the rail. */
+const STATION_COLUMN = STATIONS.map((_, i) => EDGE.length + i * (SPAN.length + 1));
+
+/**
+ * The line: station names, the rail with the train's station filled (●, the
+ * others ○), and the train (▲) under it with a caption (none: no train).
+ */
 export function lineArt(at: Station | undefined): string {
-  const sep = ' ─── ';
-  const line = STATIONS.join(sep);
-  if (!at) return line;
-  const column = STATIONS.slice(0, STATIONS.indexOf(at)).reduce((n, s) => n + s.length + sep.length, 0);
-  return `${line}\n${' '.repeat(column)}🚆 ${CAPTIONS[at] ?? at}`;
+  let names = '';
+  STATIONS.forEach((s, i) => {
+    const start = Math.max(names.length === 0 ? 0 : names.length + 1, STATION_COLUMN[i]! - Math.floor((s.length - 1) / 2));
+    names = names.padEnd(start) + s;
+  });
+  const rail = `${EDGE}${STATIONS.map((s) => (s === at ? '●' : '○')).join(SPAN)}${EDGE}`;
+  if (!at) return [names, rail].join('\n');
+  const column = STATION_COLUMN[STATIONS.indexOf(at)]!;
+  const caption = CAPTIONS[at] ?? at;
+  const train = `${' '.repeat(column)}▲`;
+  // The caption after the train, or on its own line when that is too wide.
+  const after = `${train} ${caption}`;
+  const lines = columns(after) <= MAX_COLUMNS ? [after] : [train, fit(`${' '.repeat(Math.max(0, MAX_COLUMNS - columns(caption)))}${caption}`)];
+  return [names, rail, ...lines].join('\n');
 }
 
 /** Names as the engine gives them (fact and question names); anything else is not shown. */
 const NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+/** A fact's name as the engine checks it (engine.ts). */
+const FACT_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
 const MAX_LISTED = 8;
 
 /** Text from the engine (a fact's reason): only plain characters, cut short. */
@@ -105,25 +164,61 @@ export function answersOf(d: Decision): string[] {
   return out;
 }
 
-const listed = (items: string[]) => (items.length > MAX_LISTED ? [...items.slice(0, MAX_LISTED), `+${items.length - MAX_LISTED} more`] : items).join(', ');
+const listed = (items: string[]) => (items.length > MAX_LISTED ? [...items.slice(0, MAX_LISTED), `+${items.length - MAX_LISTED} more`] : items);
 
-/** Why the decision took its track: facts, AI answers, and the rule that set it. */
+/** A profile's or an action's name as the engine checked it (engine.ts); anything else is cleaned. */
+const label = (name: string) => (NAME.test(name) ? name : clean(name, 64));
+
+/** The legs of the points: the track taken is heavy, the one not taken light. */
+const TAKEN = '━━━┿━━━┿━━━';
+const NOT_TAKEN = '───┼───┼───';
+
+/**
+ * Lines beside the track (┃) for one kind of input: its name, then `head` and
+ * the items on one line when that fits, else one a line.
+ */
+function beside(name: string, head: string, items: string[]): string[] {
+  const inline = `┃ ${name.padEnd(6)} ${[head, items.join(', ')].filter(Boolean).join(' ')}`;
+  if (columns(inline) <= MAX_COLUMNS) return [inline];
+  return [...(head ? [head] : []), ...items].map((row, i) => fit(`┃ ${(i === 0 ? name : '').padEnd(6)} ${row}`));
+}
+
+/**
+ * Why the decision took its track: the track passes the facts and the AI
+ * answers, then reaches the points. Rules are checked in order and the first
+ * that matches sets the action, so a rule's points send the train off to the
+ * right (heavy) and the later rules and the default are the track not taken
+ * (light); with no rule matched, the rules' points are not taken and the
+ * train goes on to the default. Only these two tracks are drawn: the
+ * connector knows no other action of the profile.
+ */
 export function switchArt(d: Decision, head: string): string {
-  const facts = Object.entries(d.facts ?? {}).filter(([name]) => NAME.test(name));
-  const missing = facts.filter(([, f]) => f.missing).map(([name, f]) => `${name} (${clean(f.reason ?? 'missing', 40)})`);
-  const factLine = facts.length === 0 ? '– none asked'
-    : missing.length === 0 ? `✓ ${facts.length} read`
-      : `✕ ${missing.length} of ${facts.length} missing: ${listed(missing)}`;
+  // Every fact the engine accepted (engine.ts: names up to 100 characters) counts; a long name is shown cut.
+  const facts = Object.entries(d.facts ?? {}).filter(([name]) => FACT_NAME.test(name));
+  const missing = facts.filter(([, f]) => f.missing).map(([name, f]) => `${cut(name, 40)} (${clean(f.reason ?? 'missing', 40)})`);
+  const factLines = facts.length === 0 ? beside('facts', '– none asked', [])
+    : missing.length === 0 ? beside('facts', `✓ ${facts.length} read`, [])
+      : beside('facts', `✕ ${missing.length} of ${facts.length} missing:`, listed(missing));
   const answers = answersOf(d);
-  const why = d.rule === null ? 'the default (no rule matched)' : `rule ${d.rule + 1}`;
+  const aiLines = beside('AI', answers.length === 0 ? '– none asked' : '', listed(answers));
+  const action = label(d.action);
+  const why = d.rule === null ? 'the default' : `rule ${d.rule + 1}`;
+  // The track taken, with its action and why; "← why" on the next line (`next`, the rail below) when too wide.
+  const taken = (junction: string, next: string) => {
+    const line = `${junction}${TAKEN} ${action}`;
+    const full = `${line}  ← ${why}`;
+    if (columns(full) <= MAX_COLUMNS) return [full, ...(next ? [next] : [])];
+    return [fit(line), `${next || ' '}${' '.repeat(TAKEN.length)} ← ${why}`];
+  };
+  const points = d.rule === null
+    ? ['┃', `┠${NOT_TAKEN} no rule matched`, '┃', ...taken('┗', '')]
+    : ['┃', ...taken('┡', '│'), `└${NOT_TAKEN} later rules and the default: not taken`];
   return [
-    `${d.profile} @ ${head.slice(0, 7)}`,
-    '  ║',
-    `  ╠═ facts  ${factLine}`,
-    `  ╠═ AI     ${answers.length === 0 ? '– none asked' : listed(answers)}`,
-    '  ║',
-    `  ╚═▶ ${d.action}   ← ${why}`,
-    ...(d.review?.status === 'pending' ? ['      a person checks this decision before it counts'] : []),
+    `${cut(label(d.profile), MAX_COLUMNS - 10)} @ ${head.slice(0, 7)}`,
+    ...factLines,
+    ...aiLines,
+    ...points,
+    ...(d.review?.status === 'pending' ? ['a person checks this decision before it counts'] : []),
   ].join('\n');
 }
 

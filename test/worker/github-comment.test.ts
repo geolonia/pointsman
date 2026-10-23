@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
-  AppGitHub, COMMENT_MARKER, actsOnGitHub, checkOutput, commentBody, connectorSettings, httpEngine, lineArt, pullRequestWork, signalOf, switchArt,
+  AppGitHub, COMMENT_MARKER, actsOnGitHub, checkOutput, checkText, columns, commentBody, connectorSettings, httpEngine, lineArt, MAX_COLUMNS, STATIONS, pullRequestWork, signalOf, switchArt,
   type ConnectorSettings, type Decision, type ObjectStorage,
 } from '@pointsman/github';
 import type { EngineApi } from '@pointsman/module-api';
@@ -279,7 +279,7 @@ describe('decision comment', () => {
     // pr-risk skipped the draft: its decision of the older head is not shown.
     expect(body).not.toContain('`pr-risk`');
     expect(body).toContain(`For commit ${HEAD2.slice(0, 7)}`);
-    expect(body).toContain('🚆 draft');
+    expect(body).toContain('▲ draft: work in progress');
     expect((mem.data.get('comment') as any).head).toBe(HEAD2);
     expect(work).toBeDefined();
   });
@@ -304,11 +304,13 @@ describe('decision comment', () => {
     expect(body.split('```').length - 1).toBe(2 * 3);
     expect(body).toContain('kind: ?');
     expect(body).toContain('level: level 2');
-    expect(body).toContain('✕ 1 of 1 missing: ci (');
+    expect(body).toContain('✕ 1 of 1 missing:');
+    expect(body).toContain('ci (');
     // The check run's details are cleaned the same way.
     const run = api.checkRuns.find((r) => r.name === 'Pointsman: pr-risk')!;
     expect(run.output.text).not.toContain('<img');
     expect(run.output.text!.split('```').length - 1).toBe(4);
+    for (const bad of ['<img', '](', '```', '@everyone']) expect(run.output.summary).not.toContain(bad);
   });
 
   it('the line shows the train at the app\'s own approval of this commit', async () => {
@@ -322,7 +324,7 @@ describe('decision comment', () => {
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
     await event();
     expect(reviews).toHaveLength(1);
-    expect(api.comments[0]!.body).toContain('🚆 approved by Pointsman on this commit');
+    expect(api.comments[0]!.body).toContain(lineArt('approved'));
   });
 });
 
@@ -345,7 +347,7 @@ describe('decision comment and approvals', () => {
       expect(reviews).toEqual([]);
       const body = api.comments[0]!.body;
       expect(body).not.toContain('`pr-next-step`');
-      expect(body).toContain('🚆 ready for review');
+      expect(body).toContain('▲ ready for review');
       expect(body).toContain('`pr-risk`');
     }
     errors.mockRestore();
@@ -366,7 +368,7 @@ describe('decision comment with nothing to show', () => {
     const { api, answers, event } = setup(s, memoryStorage(), gh);
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
     await event();
-    expect(api.comments[0]!.body).toContain('🚆 approved by Pointsman on this commit');
+    expect(api.comments[0]!.body).toContain(lineArt('approved'));
     answers['pr-next-step'] = () => ({ ...decision('pr-next-step', { action: 'approve' }), test: true });
     await event();
     expect(api.comments).toHaveLength(1);
@@ -374,7 +376,7 @@ describe('decision comment with nothing to show', () => {
     expect(body.startsWith(COMMENT_MARKER)).toBe(true);
     expect(body).toContain(`No decision to show for commit ${HEAD.slice(0, 7)}`);
     expect(body).not.toContain('`pr-next-step`');
-    expect(body).toContain('🚆 ready for review');
+    expect(body).toContain('▲ ready for review');
     // Unchanged on the next run: no call.
     api.log.length = 0;
     await event();
@@ -389,7 +391,7 @@ describe('decision comment with nothing to show', () => {
     body = draft.api.comments[0]!.body;
     expect(draft.api.comments).toHaveLength(1);
     expect(body).toContain(`No decision to show for commit ${HEAD2.slice(0, 7)}`);
-    expect(body).toContain('🚆 draft');
+    expect(body).toContain('▲ draft: work in progress');
     // No comment yet and nothing to show: none is written.
     const none = setup(settings({ comment: { profiles: ['pr-risk'] }, runs: { 'pr-risk': { skipDrafts: true } } }));
     none.api.pr.draft = true;
@@ -422,7 +424,7 @@ describe('signals and the check run', () => {
     expect(out.text).toContain(lineArt('approved'));
     expect(out.text).toContain(switchArt(d, HEAD));
     expect(out.text).toContain('✕ 1 of 2 missing: reviews (timeout)');
-    expect(out.text).toContain('╚═▶ approve   ← rule 4');
+    expect(out.text).toContain('┡━━━┿━━━┿━━━ approve  ← rule 4');
   });
 
   it('renders the comment as documented', () => {
@@ -440,19 +442,21 @@ describe('signals and the check run', () => {
       | \`pr-next-step\` | 🔴 needs a person | \`review\` | rule 8 |
 
       \`\`\`text
-      draft ─── ready ─── reviewed ─── approved ─── merged
-                🚆 ready for review
+       draft       ready      reviewed    approved     merged
+      ━━━○━━━┿━━━┿━━━●━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━
+                     ▲ ready for review
       \`\`\`
 
       <details><summary><code>pr-risk</code>: why <code>approvable</code></summary>
 
       \`\`\`text
       pr-risk @ aaaaaaa
-        ║
-        ╠═ facts  ✓ 1 read
-        ╠═ AI     matches_title: yes
-        ║
-        ╚═▶ approvable   ← rule 3
+      ┃ facts  ✓ 1 read
+      ┃ AI     matches_title: yes
+      ┃
+      ┡━━━┿━━━┿━━━ approvable  ← rule 3
+      │
+      └───┼───┼─── later rules and the default: not taken
       \`\`\`
 
       </details>
@@ -461,17 +465,135 @@ describe('signals and the check run', () => {
 
       \`\`\`text
       pr-next-step @ aaaaaaa
-        ║
-        ╠═ facts  ✓ 2 read
-        ╠═ AI     – none asked
-        ║
-        ╚═▶ review   ← rule 8
+      ┃ facts  ✓ 2 read
+      ┃ AI     – none asked
+      ┃
+      ┡━━━┿━━━┿━━━ review  ← rule 8
+      │
+      └───┼───┼─── later rules and the default: not taken
       \`\`\`
 
       </details>
 
       <sub>For commit aaaaaaa. One comment, updated when a decision changes; the check runs \`Pointsman: <profile>\` have the decision ids.</sub>"
     `);
+  });
+});
+
+describe('the art lines up', () => {
+  // Box Drawing and Geometric Shapes: the only characters a rail is made of.
+  const BOX = /^[\u2500-\u257F\u25A0-\u25FF]$/u;
+  /** The rail a line starts with: its box characters up to the first other one (none: a line of text). */
+  const railOf = (line: string) => {
+    const rail: string[] = [];
+    for (const ch of line) {
+      if (!BOX.test(ch)) break;
+      rail.push(ch);
+    }
+    return rail;
+  };
+  /** Each rail line: only box characters up to its end, then nothing or a space and its text, with no box character in that text. */
+  const expectRails = (art: string) => {
+    for (const line of art.split('\n')) {
+      expect(columns(line), line).toBeLessThanOrEqual(MAX_COLUMNS);
+      expect([...line].length, line).toBeLessThanOrEqual(MAX_COLUMNS);
+      expect(line, line).not.toMatch(/\p{Extended_Pictographic}/u);
+      const rail = railOf(line);
+      const text = [...line].slice(rail.length).join('');
+      if (rail.length > 0) expect(text === '' || text.startsWith(' '), line).toBe(true);
+      expect([...text].some((ch) => BOX.test(ch) && ch !== '▲'), line).toBe(false);
+    }
+  };
+  const sleepers = (rail: string[]) => rail.flatMap((ch, i) => ('┿┼'.includes(ch) ? [i] : []));
+
+  const LABELS = { short: 'a', long: 'x'.repeat(64), cjk: '低リスク承認', odd: '```<b>@everyone|\n`' + '\t~~~' };
+  const decisionsFor = (l: string) => [2, null, 999].flatMap((rule) => [false, true].map((pending) => decision(l, {
+    action: l, rule,
+    facts: { ci: { missing: false }, [l]: { missing: true, reason: l }, ['f'.repeat(64)]: { missing: true, reason: `${l} ${l}` } },
+    answers: { q: { type: 'choice', value: l }, ['q'.repeat(64)]: { type: 'noul', value: true } },
+    ...(pending && { review: { status: 'pending' } }),
+  })));
+
+  it('the line: station names centred over their stations, the train under its station, for every station', () => {
+    const at = 'approved' as const;
+    const [names, rail, train] = lineArt(at).split('\n') as [string, string, string];
+    expect(railOf(rail)).toHaveLength([...rail].length);
+    const stations = [...rail].flatMap((ch, i) => ('○●'.includes(ch) ? [i] : []));
+    expect(stations).toHaveLength(STATIONS.length);
+    STATIONS.forEach((s, i) => {
+      const start = names.indexOf(s);
+      expect(start + Math.floor((s.length - 1) / 2), s).toBe(stations[i]);
+    });
+    for (const station of [...STATIONS, undefined]) {
+      const art = lineArt(station);
+      expectRails(art);
+      const lines = art.split('\n');
+      expect(lines[0]).toBe(names);
+      expect([...lines[1]!].flatMap((ch, i) => ('○●'.includes(ch) ? [i] : []))).toEqual(stations);
+      if (!station) {
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).not.toContain('●');
+        continue;
+      }
+      const filled = [...lines[1]!].indexOf('●');
+      expect(filled).toBe(stations[STATIONS.indexOf(station)]);
+      expect([...lines[2]!].indexOf('▲')).toBe(filled);
+      expect(lines[2]!.slice(0, filled).trim()).toBe('');
+    }
+    expect(train).toBe(`${' '.repeat(stations[3]!)}▲`);
+  });
+
+  it('the switch: the same junction and sleeper columns for short, long, Japanese and odd names, no line wider than 60', () => {
+    const reference = switchArt(decision('a'), HEAD).split('\n').map(railOf).filter((r) => r.length > 1);
+    expect(reference.map((r) => r.length)).toEqual([12, 12]);
+    for (const [kind, l] of Object.entries(LABELS)) {
+      for (const d of decisionsFor(l)) {
+        const art = switchArt(d, HEAD);
+        expectRails(art);
+        const lines = art.split('\n');
+        const rails = lines.map(railOf);
+        // The legs of the points: both start at column 0, as long, with sleepers at the same columns.
+        const legs = rails.filter((r) => r.length > 1);
+        expect(legs.map((r) => r.length), kind).toEqual([12, 12]);
+        expect(legs.map(sleepers), kind).toEqual(reference.map(sleepers));
+        expect(legs.map((r) => r[0]), kind).toEqual(d.rule === null ? ['┠', '┗'] : ['┡', '└']);
+        // Every line but the first (the profile) and the last of a pending review starts on the track, at column 0.
+        const track = lines.slice(1, d.review ? -1 : undefined);
+        for (const line of track) expect(BOX.test([...line][0]!) || line.trimStart().startsWith('← '), line).toBe(true);
+        if (d.review) expect(lines.at(-1)).toBe('a person checks this decision before it counts');
+      }
+    }
+  });
+
+  it('long and odd names are cut or stacked, never let out of the code block', () => {
+    for (const l of Object.values(LABELS)) {
+      for (const d of decisionsFor(l)) {
+        const text = checkText(d, HEAD, 'approved');
+        expect(text.split('```').length - 1).toBe(4);
+        const inside = text.split('\n').filter((line) => !line.startsWith('```'));
+        for (const line of inside) {
+          expect(line).not.toMatch(/[`<>|\t~]|@everyone/);
+          expect(columns(line), line).toBeLessThanOrEqual(MAX_COLUMNS);
+        }
+      }
+    }
+    const long = switchArt(decision('pr-risk', { action: 'a'.repeat(64), rule: 11 }), HEAD).split('\n');
+    expect(long).toContain(`┡━━━┿━━━┿━━━ ${'a'.repeat(46)}…`);
+    expect(long).toContain('│            ← rule 12');
+    const many = switchArt(decision('pr-risk', { facts: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`fact${i}`, { missing: true, reason: 'timeout' }])) }), HEAD);
+    expect(many).toContain('┃ facts  ✕ 12 of 12 missing:\n┃        fact0 (timeout)\n');
+    expect(many).toContain('┃        +4 more');
+    // A fact name the engine accepts but longer than 64 characters still counts, shown cut.
+    const longFact = switchArt(decision('pr-risk', { facts: { ['f'.repeat(80)]: { missing: true, reason: 'timeout' }, ok: { missing: false } } }), HEAD);
+    expect(longFact).toContain(`┃ facts  ✕ 1 of 2 missing:\n┃        ${'f'.repeat(39)}… (timeout)`);
+    // A long profile name keeps the commit.
+    expect(switchArt(decision('p'.repeat(64)), HEAD).split('\n')[0]).toBe(`${'p'.repeat(49)}… @ aaaaaaa`);
+  });
+
+  it('counts columns as a monospace font draws them', () => {
+    expect(columns('approvable')).toBe(10);
+    expect(columns('低リスク')).toBe(8);
+    expect(columns('━┿●○▲')).toBe(5);
   });
 });
 

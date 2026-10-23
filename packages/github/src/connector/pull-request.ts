@@ -14,7 +14,7 @@
 
 import { type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
-import { checkText, COMMENT_MARKER, commentBody, signalMark, signalOf, type Station, stationOf } from './comment.ts';
+import { checkText, clean, COMMENT_MARKER, commentBody, signalMark, signalOf, type Station, stationOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
 
@@ -782,7 +782,7 @@ export interface CheckView {
 }
 
 export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }, view: CheckView = {}): CheckRunOutput {
-  const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${(f.reason ?? 'missing').slice(0, 300)})`);
+  const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${clean(f.reason ?? 'missing', 300)})`);
   const lines = [
     `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
     '',

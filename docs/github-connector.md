@@ -198,19 +198,21 @@ The comment for that pull request, when `pr-risk` decided `approvable` by its ru
 | `pr-next-step` | 🔴 needs a person | `ask-person` | rule 8 |
 
 ```text
-draft ─── ready ─── reviewed ─── approved ─── merged
-          🚆 ready for review
+ draft       ready      reviewed    approved     merged
+━━━○━━━┿━━━┿━━━●━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━
+               ▲ ready for review
 ```
 
 <details><summary><code>pr-risk</code>: why <code>approvable</code></summary>
 
 ```text
 pr-risk @ 1a2b3c4
-  ║
-  ╠═ facts  ✓ 1 read
-  ╠═ AI     matches_title: yes
-  ║
-  ╚═▶ approvable   ← rule 3
+┃ facts  ✓ 1 read
+┃ AI     matches_title: yes
+┃
+┡━━━┿━━━┿━━━ approvable  ← rule 3
+│
+└───┼───┼─── later rules and the default: not taken
 ```
 
 </details>
@@ -219,11 +221,12 @@ pr-risk @ 1a2b3c4
 
 ```text
 pr-next-step @ 1a2b3c4
-  ║
-  ╠═ facts  ✕ 1 of 3 missing: ci (timeout)
-  ╠═ AI     – none asked
-  ║
-  ╚═▶ ask-person   ← rule 8
+┃ facts  ✕ 1 of 3 missing: ci (timeout)
+┃ AI     – none asked
+┃
+┡━━━┿━━━┿━━━ ask-person  ← rule 8
+│
+└───┼───┼─── later rules and the default: not taken
 ```
 
 </details>
@@ -236,8 +239,9 @@ The check run `Pointsman: pr-next-step` of the same decision is titled `🔴 ask
 What it shows:
 
 - **Signal**: one per profile, always with a word next to the colour (screen readers read the word). See [Signals](#signals).
-- **Line**: the pull request's progress, with the train where it is. The connector places the train only by what it knows for sure: `draft`; `approved` while its own approval of this commit stands; otherwise `ready`. It does not read other people's reviews, and closed pull requests get no run, so the train is never at `reviewed` or `merged`. A check run's line is drawn when that check run is written: if a later profile of the same run approves, an earlier profile's check run still shows `ready` until the next run, while the comment shows `approved`.
-- **Switch**: why the decision took its track, from the decision itself: how many facts were read and which are missing (with the engine's reason), the AI answers' values (yes/no, the chosen option, a level; not the probabilities), the rule that set it (or the profile's default), and whether a person still checks it. The same as the check run shows; no fact values, no text of the pull request.
+- **Line**: the pull request's progress. The station names sit above the rail; the train's station is filled (`●`, the others `○`) and the train (`▲`) stands under it. The connector places the train only by what it knows for sure: `draft`; `approved` while its own approval of this commit stands; otherwise `ready`. It does not read other people's reviews, and closed pull requests get no run, so the train is never at `reviewed` or `merged`, and no station is filled for where the pull request may have been before. A check run's line is drawn when that check run is written: if a later profile of the same run approves, an earlier profile's check run still shows `ready` until the next run, while the comment shows `approved`.
+- **Switch**: why the decision took its track, from the decision itself. The track passes the facts (how many were read, which are missing, with the engine's reason) and the AI answers' values (yes/no, the chosen option, a level; not the probabilities), then reaches the points. Rules are checked in order and the first that matches sets the action: the rule's points send the train onto the heavy track (`━`) with its action and rule, and the light track (`─`) is the one not taken. With no rule matched, the rules' track is the light one and the train goes on to the default. Only these two tracks are drawn: the decision does not say which actions the other rules or the default would give. A line says when a person still checks the decision. The same as the check run shows; no fact values, no text of the pull request.
+- **Drawing**: so it lines up in every monospace font, names, rules and reasons only come at the end of a line, after the rails; the drawing has no emoji (the signals are in the table); every rail line is only box characters up to its text, all of a kind that a Japanese font may draw two columns wide, so such a font only widens the drawing. In such a font, the station names and the train (after spaces) can stand slightly off their stations; the filled station on the rail is always right. No line is wider than 60 columns, so it does not wrap on a phone: a long list goes on more lines, and a name that is still too long is cut with `…` (the table has a profile's and an action's name in full, the check run's summary a fact's).
 
 Rules:
 
