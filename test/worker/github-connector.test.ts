@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
   AppGitHub, GitHubError, actingScope, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
-  type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewRef, UNCLEAR_MS,
+  type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewSummary, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
 
@@ -48,9 +48,9 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
   };
   const approvals: OwnApproval[] = [];
   const comments: string[] = [];
-  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string; reviewList: ReviewRef[] } = {
+  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string; summary: ReviewSummary } = {
     state,
-    reviewList: [],
+    summary: { head: HEAD, decision: null, reviews: [] },
     diffText: 'diff --git a/README.md b/README.md\n+one line\n',
     approvals,
     comments,
@@ -66,7 +66,7 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
     // Read for the line on every run that draws it: not in `calls`, which follows what the connector decides and does.
-    reviews: async () => github.reviewList.map((r) => ({ ...r })),
+    reviewSummary: async () => structuredClone(github.summary),
     diff: async (_r, _n, max) => (calls.push({ op: 'diff' }), { diff: github.diffText.slice(0, max), truncated: github.diffText.length > max }),
     approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head, marker: body.split('\n')[0]! }); return nextId++; },
     dismissReview: async (_r, _n, id) => {
@@ -695,10 +695,6 @@ describe('actions (switched on per profile action)', () => {
       { id: 4, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks', type: 'User' } },
       { id: 5, state: 'DISMISSED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
       { id: 6, state: 'APPROVED', body: 'Looks good', commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
-      // A deleted account, with write access when it reviewed.
-      { id: 7, state: 'CHANGES_REQUESTED', body: 'x', commit_id: HEAD, user: null, author_association: 'MEMBER' },
-      { id: 8, state: 'APPROVED', body: 'x', commit_id: HEAD, user: { login: 'Bob', type: 'User' }, author_association: 'COLLABORATOR' },
-      { id: 9, state: 'APPROVED', body: 'x', commit_id: HEAD, user: { login: 'drive-by', type: 'User' }, author_association: 'NONE' },
     ];
     const fetchWith = (installation: Record<string, unknown>) => (async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -709,21 +705,48 @@ describe('actions (switched on per profile action)', () => {
     }) as typeof fetch;
     const gh = new AppGitHub(APP_ID, KEY, fetchWith({ app_slug: 'pointsman-checks' }), true);
     expect(await gh.ownApprovals(REPO, 7)).toEqual([{ id: 1, commit: HEAD, marker }]);
-    // All reviews for the line: without their text; only its own bot's are its own.
-    expect(await gh.reviews(REPO, 7)).toEqual([
-      { id: 1, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true, writer: false },
-      { id: 2, state: 'APPROVED', commit: HEAD, login: 'other-app[bot]', own: false, writer: false },
-      { id: 3, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: false, writer: false },
-      { id: 4, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks', own: false, writer: false },
-      { id: 5, state: 'DISMISSED', commit: HEAD, login: 'pointsman-checks[bot]', own: true, writer: false },
-      { id: 6, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true, writer: false },
-      { id: 7, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'ghost:7', own: false, writer: true },
-      { id: 8, state: 'APPROVED', commit: HEAD, login: 'bob', own: false, writer: true },
-      { id: 9, state: 'APPROVED', commit: HEAD, login: 'drive-by', own: false, writer: false },
-    ]);
     // GitHub did not name the app: none is taken for its own (an error, so nothing is approved or recorded on it).
     const unnamed = new AppGitHub(APP_ID, KEY, fetchWith({}), true);
     await expect(unnamed.ownApprovals(REPO, 7)).rejects.toMatchObject({ retry: false, message: expect.stringContaining('no app slug') });
+  });
+
+  it('reads the review decision and the reviews in one GraphQL query, without their text; errors are errors', async () => {
+    const sent: { url: string; method: string; body: any }[] = [];
+    let answer: unknown;
+    const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = String(input);
+      if (url.endsWith('/installation')) return Response.json({ id: 9, app_slug: 'pointsman-checks', permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' } });
+      if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+      sent.push({ url, method: init.method ?? 'GET', body: JSON.parse(String(init.body)) });
+      return Response.json(answer);
+    }) as typeof fetch;
+    const gh = new AppGitHub(APP_ID, KEY, fetchFn, true);
+    const node = (databaseId: number, state: string, author: unknown, oid: string | null = HEAD) => ({ databaseId, state, commit: oid ? { oid } : null, author, body: 'Looks good @everyone' });
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: 'APPROVED', reviews: { nodes: [
+      node(1, 'APPROVED', { __typename: 'Bot', login: 'pointsman-checks' }),
+      node(2, 'APPROVED', { __typename: 'Bot', login: 'coderabbitai' }),
+      node(3, 'COMMENTED', { __typename: 'User', login: 'pointsman-checks' }),
+      node(4, 'CHANGES_REQUESTED', null, null),
+      node(5, 'APPROVED', { __typename: 'User', login: 'Bob' }),
+    ] } } } } };
+    expect(await gh.reviewSummary(REPO, 7)).toEqual({ head: HEAD, decision: 'APPROVED', reviews: [
+      { id: 1, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
+      { id: 2, state: 'APPROVED', commit: HEAD, login: 'coderabbitai[bot]', own: false },
+      { id: 3, state: 'COMMENTED', commit: HEAD, login: 'pointsman-checks', own: false },
+      { id: 4, state: 'CHANGES_REQUESTED', commit: '', login: 'ghost:4', own: false },
+      { id: 5, state: 'APPROVED', commit: HEAD, login: 'bob', own: false },
+    ] });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ url: 'https://api.github.com/graphql', method: 'POST', body: { variables: { owner: 'example', name: 'repo', number: 7 } } });
+    expect(sent[0]!.body.query).toMatch(/^query\b/);
+    expect(sent[0]!.body.query).not.toMatch(/mutation|body/);
+    // No review rule: GitHub decides nothing.
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { nodes: [] } } } } };
+    expect((await gh.reviewSummary(REPO, 7)).decision).toBeNull();
+    for (const bad of [{ errors: [{ type: 'RATE_LIMITED' }], data: null }, { data: { repository: { pullRequest: null } } }, { errors: [{ message: 'x' }], data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: 'APPROVED', reviews: { nodes: [] } } } } }]) {
+      answer = bad;
+      await expect(gh.reviewSummary(REPO, 7), JSON.stringify(bad)).rejects.toBeInstanceOf(GitHubError);
+    }
   });
 
   it('dismisses only approvals it recorded giving, and approves nothing while an old one cannot be dismissed', async () => {

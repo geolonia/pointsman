@@ -48,9 +48,12 @@ function fakeApi() {
   const comments: Comment[] = [];
   const checkRuns: { id: number; head: string; name: string; output: { title: string; summary: string; text?: string } }[] = [];
   const log: string[] = [];
-  /** The pull request's reviews, as GitHub lists them; `reviewsFail` answers their read with this status. */
-  const reviews: { id: number; state: string; commit_id: string; body: string; user: { login: string; type: string }; author_association: string }[] = [];
-  const api = { pr, comments, checkRuns, log, reviews, fail: 0, reviewsFail: 0 };
+  /**
+   * The pull request's reviews (as REST lists them; GraphQL gives them as nodes) and GitHub's review decision.
+   * `reviewsFail` answers the GraphQL query with this status; `graphqlErrors` with errors.
+   */
+  const reviews: { id: number; state: string; commit_id: string; body: string; user: { login: string; type: string } | null }[] = [];
+  const api = { pr, comments, checkRuns, log, reviews, decision: null as string | null, fail: 0, reviewsFail: 0, graphqlErrors: false };
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const method = init.method ?? 'GET';
@@ -65,10 +68,15 @@ function fakeApi() {
         head: { sha: pr.head, repo: { full_name: REPO } }, base: { ref: 'main', repo: { full_name: REPO } },
       });
     }
-    if (path === `/repos/${REPO}/pulls/7/reviews` && method === 'GET') {
+    if (path === '/graphql' && method === 'POST') {
       if (api.reviewsFail) return Response.json({ message: 'no' }, { status: api.reviewsFail });
-      const page = Number(url.searchParams.get('page') ?? '1');
-      return Response.json(page === 1 ? reviews : []);
+      if (api.graphqlErrors) return Response.json({ data: null, errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }] });
+      expect(body.variables).toEqual({ owner: 'example', name: 'repo', number: 7 });
+      const nodes = reviews.slice(-100).map((r) => ({
+        databaseId: r.id, state: r.state, commit: { oid: r.commit_id },
+        author: r.user && { __typename: r.user.type === 'Bot' ? 'Bot' : 'User', login: r.user.type === 'Bot' ? r.user.login.replace(/\[bot\]$/, '') : r.user.login },
+      }));
+      return Response.json({ data: { repository: { pullRequest: { headRefOid: pr.head, reviewDecision: api.decision, reviews: { nodes } } } } });
     }
     if (path.startsWith(`/repos/${REPO}/commits/`) && path.endsWith('/check-runs')) {
       const name = url.searchParams.get('check_name');
@@ -138,7 +146,8 @@ function setup(s: ConnectorSettings = settings(), mem = memoryStorage(), gh = fa
   return { work, mem, gh, api: gh.api, answers, pm, event };
 }
 const commentCalls = (log: string[]) => log.filter((l) => l.includes('comments'));
-const OWN = { at: 'approved', ownApproval: true } as const;
+const OWN = { at: 'approved', ownApproval: true, onHead: true } as const;
+const ON_HEAD = { at: 'approved', onHead: true } as const;
 
 describe('decision comment', () => {
   it('is off by default: no comment is read or written, and the token does not ask to write pull requests for it', async () => {
@@ -333,29 +342,34 @@ describe('decision comment', () => {
   });
 });
 
-const review = (id: number, state: string, login: string, commit = HEAD, type = 'User', association = 'COLLABORATOR') => ({
-  id, state, commit_id: commit, body: 'Looks good @everyone <b>x</b>', user: { login, type }, author_association: association,
+const review = (id: number, state: string, login: string | null, commit = HEAD, type = 'User') => ({
+  id, state, commit_id: commit, body: 'Looks good @everyone <b>x</b>', user: login === null ? null : { login, type },
 });
 
-/** The app's approvals, faked on the client (the HTTP fake writes no reviews); they show in the reviews list as its bot's. */
+/**
+ * The app's approvals, faked on the client (the HTTP fake writes no reviews): they show in the reviews as its
+ * bot's, and GitHub's review decision follows them (as with a ruleset that counts the app's approval).
+ */
 function fakeApprovals(gh: ReturnType<typeof fakeApi>) {
   const ids: number[] = [];
   const client = gh.github as unknown as Record<string, unknown>;
-  client.approve = async () => { ids.push(77); gh.api.reviews.push(review(77, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot', 'NONE')); return 77; };
+  client.approve = async () => { ids.push(77); gh.api.reviews.push(review(77, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot')); gh.api.decision = 'APPROVED'; return 77; };
   client.ownApprovals = async () => ids.map((id) => ({ id, commit: HEAD, marker: '' }));
-  client.dismissReview = async () => { ids.pop(); gh.api.reviews.find((r) => r.id === 77)!.state = 'DISMISSED'; };
+  client.dismissReview = async () => { ids.pop(); gh.api.reviews.find((r) => r.id === 77)!.state = 'DISMISSED'; gh.api.decision = 'REVIEW_REQUIRED'; };
   return ids;
 }
 /** The line of the comment (its first code block). */
 const lineOf = (body: string) => body.split('```text\n')[1]!.split('\n```')[0]!;
-const reviewReads = (log: string[]) => log.filter((l) => l === 'GET /pulls/7/reviews').length;
+const reviewReads = (log: string[]) => log.filter((l) => l === 'POST /graphql').length;
 
 describe('where the train stands', () => {
   it('reads the reviews once per run: a bot\'s review of this head is "reviewed", with the stations before it filled', async () => {
     const { api, event } = setup();
     api.reviews.push(review(1, 'COMMENTED', 'coderabbitai[bot]', HEAD, 'Bot'));
+    api.decision = 'REVIEW_REQUIRED';
     await event();
     expect(reviewReads(api.log)).toBe(1);
+    expect(api.log.filter((l) => l.includes('reviews'))).toEqual([]);
     const line = lineOf(api.comments[0]!.body);
     expect(line).toBe(lineArt('reviewed'));
     expect(line.split('\n')[1]).toBe('━━━●━━━┿━━━┿━━━●━━━┿━━━┿━━━●━━━┿━━━┿━━━○━━━┿━━━┿━━━○━━━');
@@ -371,100 +385,137 @@ describe('where the train stands', () => {
     expect(reviewReads(api.log)).toBe(1);
   });
 
-  it('an approval of this head by a person is "approved", without a name; the app\'s own keeps its caption', async () => {
+  it('"approved" is GitHub\'s review decision: a bot\'s approval counts where the ruleset counts it, without a name', async () => {
     const { api, event } = setup();
-    api.reviews.push(review(1, 'APPROVED', 'bob'));
+    api.reviews.push(review(1, 'APPROVED', 'coderabbitai[bot]', HEAD, 'Bot'));
+    api.decision = 'APPROVED';
     await event();
-    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
-    expect(api.comments[0]!.body).not.toContain('bob');
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(ON_HEAD));
+    expect(api.comments[0]!.body).not.toContain('coderabbit');
     expect(api.comments[0]!.body).not.toContain('by Pointsman');
-    // Its own bot's approval (on GitHub, without a record of it here) is named as its own.
+    // Its own bot's approval of this head among them (on GitHub, without a record of it here): named as its own.
     api.reviews.push(review(2, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot'));
     await event();
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt(OWN));
-  });
-
-  it('a change request after an approval is not "approved", nor a request by another reviewer; a new approval by the same reviewer is', async () => {
-    const { api, event } = setup();
-    api.reviews.push(review(1, 'APPROVED', 'bob'), review(2, 'CHANGES_REQUESTED', 'bob'));
+    // Its own approval of an older commit, or one it took back: not its own caption.
+    api.reviews[1]!.commit_id = HEAD2;
     await event();
-    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
-    // A comment after the change request leaves it standing.
-    api.reviews.push(review(3, 'COMMENTED', 'bob'));
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(ON_HEAD));
+    api.reviews[1]!.commit_id = HEAD;
+    api.reviews.push(review(3, 'DISMISSED', `${SLUG}[bot]`, HEAD, 'Bot'));
     await event();
-    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
-    api.reviews.push(review(4, 'APPROVED', 'bob'));
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(ON_HEAD));
+    // GitHub still approves, but only approvals of an older commit stand (the rules keep them after a push): not "on this commit".
+    api.reviews[0]!.commit_id = HEAD2;
     await event();
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
-    // Another reviewer asks for changes (on an older commit too: it stands until dismissed).
-    api.reviews.push(review(5, 'CHANGES_REQUESTED', 'carol', HEAD2));
-    await event();
-    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
-    // Dismissed: the approval counts again.
-    api.reviews[4]!.state = 'DISMISSED';
-    await event();
-    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+    expect(lineOf(api.comments[0]!.body)).not.toContain('on this commit');
   });
 
-  it('an approval counts only by someone with write access or the app: a drive-by approval in a public repository is "reviewed"', async () => {
+  it('approvals GitHub does not count (REVIEW_REQUIRED: a drive-by approval), a change request, or no review rule (null): "reviewed", never "approved"', async () => {
     const { api, event } = setup();
-    for (const association of ['NONE', 'CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR']) {
-      api.reviews.length = 0;
-      api.reviews.push(review(1, 'APPROVED', 'mallory', HEAD, 'User', association), review(2, 'APPROVED', 'some-app[bot]', HEAD, 'Bot', association));
+    api.reviews.push(review(1, 'APPROVED', 'mallory'), review(2, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot'));
+    for (const decision of ['REVIEW_REQUIRED', 'CHANGES_REQUESTED', null, 'SOMETHING_NEW']) {
+      api.decision = decision;
       await event();
-      expect(lineOf(api.comments[0]!.body), association).toBe(lineArt('reviewed'));
+      expect(lineOf(api.comments[0]!.body), String(decision)).toBe(lineArt('reviewed'));
     }
-    for (const association of ['OWNER', 'MEMBER', 'COLLABORATOR']) {
-      api.reviews.length = 0;
-      api.reviews.push(review(1, 'APPROVED', 'bob', HEAD, 'User', association));
-      await event();
-      expect(lineOf(api.comments[0]!.body), association).toBe(lineArt('approved'));
-    }
+    // Without a review of this head: ready.
+    api.reviews.length = 0;
+    api.decision = 'CHANGES_REQUESTED';
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
   });
 
-  it('its own approval dismissed on GitHub by a person (its records still have it): not "approved"', async () => {
+  it('its approval withdrawn later in the same run (after the line was drawn): the reviews are read again, the train moves back', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const gh = fakeApi();
     fakeApprovals(gh);
     const { api, answers, event } = setup(settings({ actions: { 'pr-next-step': { approve: { do: 'approve' } } } }), memoryStorage(), gh);
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
     await event();
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt(OWN));
-    api.reviews.find((r) => r.id === 77)!.state = 'DISMISSED';
+    // pr-risk's check run draws the line first (approved), then pr-next-step's answer withdraws the approval.
+    answers['pr-next-step'] = () => 'not a decision';
+    api.log.length = 0;
     await event();
-    // A dismissed review counts for nothing.
+    expect(reviewReads(api.log)).toBe(2);
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
+    errors.mockRestore();
   });
 
-  it('reviews of an older commit, the author\'s own and dismissed ones do not count', async () => {
+  it('its approval dismissed in this run and the reviews not readable after: never "approved", in this run or a later one that cannot read them', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const gh = fakeApi();
+    fakeApprovals(gh);
+    const { api, answers, event } = setup(settings({ actions: { 'pr-next-step': { approve: { do: 'approve' } } } }), memoryStorage(), gh);
+    answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(OWN));
+    // The first read of the next run works (pr-risk's check run), the one after the dismissal fails.
+    const client = gh.github as unknown as Record<string, unknown>;
+    const dismiss = client.dismissReview as () => Promise<void>;
+    client.dismissReview = async () => { await dismiss(); api.reviewsFail = 503; };
+    answers['pr-next-step'] = () => 'not a decision';
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
+    answers['pr-next-step'] = () => decision('pr-next-step', { action: 'review', rule: 7 });
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
+    errors.mockRestore();
+  });
+
+  it('a push between the reads (GitHub decided for another head): taken as not readable', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const gh = fakeApi();
+    const { api, event } = setup(settings(), memoryStorage(), gh);
+    api.reviews.push(review(1, 'APPROVED', 'bob', HEAD2));
+    api.decision = 'APPROVED';
+    // The pull request reads HEAD (first read of each run); GitHub's answer is about HEAD2 (a push came in between).
+    let reads = 0;
+    Object.defineProperty(api.pr, 'head', { get: () => (reads++ % 2 === 0 ? HEAD : HEAD2), configurable: true });
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
+    expect(errors.mock.calls.join(' ')).toContain('the head changed');
+    errors.mockRestore();
+  });
+
+  it('reviews of an older commit, the author\'s own, dismissed and pending ones are not "reviewed"', async () => {
     const { api, event } = setup();
     api.reviews.push(review(1, 'APPROVED', 'bob', HEAD2), review(2, 'COMMENTED', 'carol', HEAD2), review(3, 'COMMENTED', 'Alice'), review(4, 'DISMISSED', 'dave'), review(5, 'PENDING', 'erin'));
     await event();
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
+    // A deleted account's review of this head counts.
+    api.reviews.push(review(6, 'COMMENTED', null));
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
   });
 
   it('a draft stays at "draft", whatever its reviews say', async () => {
     const { api, event } = setup();
     api.pr.draft = true;
     api.reviews.push(review(1, 'APPROVED', 'bob'));
+    api.decision = 'APPROVED';
     await event();
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('draft'));
     expect(reviewReads(api.log)).toBe(0);
   });
 
-  it('reviews that cannot be read: the train stays where they last put it on this head, else at "ready"; the run goes on', async () => {
+  it('reviews that cannot be read (HTTP or GraphQL errors): the train stays where they last put it on this head, else at "ready"; the run goes on', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { api, pm, event } = setup();
     api.reviews.push(review(1, 'APPROVED', 'bob'));
+    api.decision = 'APPROVED';
     await event();
-    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
-    for (const status of [500, 403, 429]) {
-      api.reviewsFail = status;
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(ON_HEAD));
+    for (const fail of [() => { api.reviewsFail = 500; }, () => { api.reviewsFail = 403; }, () => { api.reviewsFail = 429; }, () => { api.reviewsFail = 0; api.graphqlErrors = true; }]) {
+      fail();
       api.log.length = 0;
       const before = pm.calls();
       await expect(event()).resolves.toBeUndefined();
       expect(pm.calls()).toBe(before + 2);
       expect(commentCalls(api.log)).toEqual([]);
-      expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+      expect(lineOf(api.comments[0]!.body)).toBe(lineArt(ON_HEAD));
     }
     expect(errors.mock.calls.join(' ')).toContain('reading reviews for the line');
     // A new head: what the reviews said of the older one does not carry over.
@@ -473,8 +524,9 @@ describe('where the train stands', () => {
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
     // Never read: ready.
     const fresh = setup();
-    fresh.api.reviewsFail = 500;
+    fresh.api.graphqlErrors = true;
     fresh.api.reviews.push(review(1, 'APPROVED', 'bob'));
+    fresh.api.decision = 'APPROVED';
     await fresh.event();
     expect(lineOf(fresh.api.comments[0]!.body)).toBe(lineArt('ready'));
     errors.mockRestore();
@@ -521,6 +573,21 @@ describe('closed pull requests', () => {
     expect(pm.calls()).toBe(calls + 2);
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('reviewed'));
     expect(api.comments).toHaveLength(1);
+  });
+
+  it('closed, and GitHub busy while writing the comment: the run is tried again (no later event would come)', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { api, work, event } = setup();
+    await event();
+    api.pr.state = 'closed';
+    api.pr.merged = true;
+    api.fail = 503;
+    await work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await expect(work.run()).rejects.toThrow(/closed pull request/);
+    api.fail = 0;
+    await work.run();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('merged'));
+    errors.mockRestore();
   });
 
   it('closed with no comment yet: none is written', async () => {
@@ -746,9 +813,9 @@ describe('the art lines up', () => {
       expect([...lines[2]!].indexOf('▲')).toBe(filled);
       expect(lines[2]!.slice(0, filled).trim()).toBe('');
     }
-    expect(train).toBe(`${' '.repeat(stations[3]!)}▲`);
-    // The captions: the app's own approval named, anyone's not; merged fits after the train.
-    expect(lineArt('approved').split('\n').slice(2)).toEqual([`${' '.repeat(stations[3]!)}▲`, `${' '.repeat(MAX_COLUMNS - 23)}approved on this commit`]);
+    // The captions: the app's own approval named, anyone's not; "on this commit" only for an approval of it; merged fits after the train.
+    expect(train).toBe(`${' '.repeat(stations[3]!)}▲ approved`);
+    expect(lineArt({ at: 'approved', onHead: true }).split('\n').slice(2)).toEqual([`${' '.repeat(stations[3]!)}▲`, `${' '.repeat(MAX_COLUMNS - 23)}approved on this commit`]);
     expect(lineArt(OWN).split('\n').at(-1)).toBe(`${' '.repeat(MAX_COLUMNS - 36)}approved by Pointsman on this commit`);
     expect(lineArt('reviewed').split('\n')[2]).toBe(`${' '.repeat(stations[2]!)}▲ reviewed on this commit`);
     expect(lineArt('merged').split('\n')[2]).toBe(`${' '.repeat(stations[4]!)}▲ merged`);

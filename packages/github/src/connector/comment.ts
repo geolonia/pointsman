@@ -59,16 +59,19 @@ export interface Position {
   at: Station | 'closed';
   /** At "approved": the app's own approval of this commit stands (its caption says so). */
   ownApproval?: boolean;
+  /** At "approved": an approval of this commit stands (not only of an older one). */
+  onHead?: boolean;
 }
 
 const CAPTIONS: Record<Station, string> = {
   draft: 'draft: work in progress',
   ready: 'ready for review',
   reviewed: 'reviewed on this commit',
-  approved: 'approved on this commit',
+  approved: 'approved',
   merged: 'merged',
 };
 const OWN_APPROVAL = 'approved by Pointsman on this commit';
+const HEAD_APPROVAL = 'approved on this commit';
 /** Under the line of a pull request closed without merging: no train on it. */
 export const CLOSED_TEXT = 'closed without merging';
 
@@ -77,70 +80,75 @@ export interface ReviewRef {
   id: number;
   /** GitHub's state: APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED or PENDING. */
   state: string;
-  /** The commit it was given on. */
+  /** The commit it was given on ('' when GitHub no longer has it). */
   commit: string;
-  /** The reviewer, lower case: only compared, never shown. */
+  /** The reviewer, lower case, as REST names them (a bot "<slug>[bot]"): only compared, never shown. */
   login: string;
   /** By the app's own bot account. */
   own: boolean;
-  /** By someone with write access (owner, member, collaborator): only their approvals count, as on GitHub. */
-  writer: boolean;
+}
+
+/** What GitHub says about the reviews: its review decision (the merge box's, by the repository's rules) and the newest reviews. */
+export interface ReviewSummary {
+  /** The head commit GitHub decided for. */
+  head: string;
+  /** null: the repository requires no review, so GitHub decides nothing. */
+  decision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  reviews: ReviewRef[];
 }
 
 /** What the reviews say about this head. */
 export interface HeadReviews {
   /** A review (a comment, a change request or an approval) of this head by someone other than the author. */
   reviewed: boolean;
-  /** An approval of this head stands, by someone with write access or the app. */
+  /** GitHub's review decision is APPROVED. */
   approved: boolean;
-  /** One of the approvals of this head that stand is the app's own. */
+  /** The app's own latest verdict is an approval of this head. */
   ownApproved: boolean;
-  /** A reviewer's latest verdict asks for changes (on any commit: it stands until they review again or it is dismissed). */
-  changesRequested: boolean;
+  /** Someone's (not the author's) latest verdict is an approval of this head. */
+  headApproved: boolean;
 }
 
-export const NO_REVIEWS: HeadReviews = { reviewed: false, approved: false, ownApproved: false, changesRequested: false };
+export const NO_REVIEWS: HeadReviews = { reviewed: false, approved: false, ownApproved: false, headApproved: false };
 
 const SUBMITTED = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED']);
-/** The states that set a reviewer's verdict; a later comment leaves it as it was (as GitHub counts it). */
+/** The states that set a reviewer's verdict; a later comment leaves it as it was. */
 const VERDICT = new Set(['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED']);
 
 /**
- * What the reviews say about this head: each reviewer's latest approval,
- * change request or dismissal is their verdict (a later comment leaves it).
- * Approvals count only by someone with write access or the app itself, as
- * GitHub counts them (anyone may approve in a public repository); a change
- * request counts by anyone (it only holds the train back). The author's own
- * reviews do not count; a review of an older commit counts only as a change
- * request that still stands.
+ * What GitHub says about this head. Approved only by GitHub's own review
+ * decision, as the merge box shows it under the repository's rules (whose
+ * approvals count, how many, whether a new commit dismisses them); with no
+ * review rule GitHub decides nothing, and the train is never at "approved".
+ * Reviewed: someone other than the author reviewed this head (dismissed and
+ * pending reviews do not count).
  */
-export function reviewStateOf(reviews: ReviewRef[], head: string, author: string): HeadReviews {
-  const others = reviews.filter((r) => r.login !== '' && r.login !== author.toLowerCase()).sort((a, b) => a.id - b.id);
+export function reviewStateOf(summary: ReviewSummary, head: string, author: string): HeadReviews {
+  // The author unknown (or a deleted account): no review is known to be someone else's.
+  const known = author !== '' && author.toLowerCase() !== 'ghost';
+  const others = known ? summary.reviews.filter((r) => r.login !== '' && r.login !== author.toLowerCase()).sort((a, b) => a.id - b.id) : [];
   const verdicts = new Map<string, ReviewRef>();
   for (const r of others) if (VERDICT.has(r.state)) verdicts.set(r.login, r);
-  const standing = [...verdicts.values()];
-  const approvals = standing.filter((r) => r.state === 'APPROVED' && r.commit === head && (r.writer || r.own));
+  const onHead = [...verdicts.values()].filter((r) => r.state === 'APPROVED' && r.commit === head);
+  const approved = summary.decision === 'APPROVED';
   return {
     reviewed: others.some((r) => SUBMITTED.has(r.state) && r.commit === head),
-    approved: approvals.length > 0,
-    ownApproved: approvals.some((r) => r.own),
-    changesRequested: standing.some((r) => r.state === 'CHANGES_REQUESTED'),
+    approved,
+    ownApproved: approved && onHead.some((r) => r.own),
+    headApproved: approved && onHead.length > 0,
   };
 }
 
 /**
  * Where the pull request is, from GitHub's state: merged, or closed without
- * merging; a draft; approved while an approval of this head stands and no
- * change request does; reviewed once someone other than the author reviewed
- * this head (an approval is a review); else ready. `approvedByApp`: the app's
- * own approval of this head stands by its records (used only when the
- * reviews could not be read).
+ * merging; a draft; approved when GitHub's review decision is; reviewed once
+ * someone other than the author reviewed this head; else ready.
  */
-export function positionOf(pr: { open: boolean; merged: boolean; draft: boolean }, reviews: HeadReviews, approvedByApp = false): Position {
+export function positionOf(pr: { open: boolean; merged: boolean; draft: boolean }, reviews: HeadReviews): Position {
   if (!pr.open) return { at: pr.merged ? 'merged' : 'closed' };
   if (pr.draft) return { at: 'draft' };
-  if ((reviews.approved || approvedByApp) && !reviews.changesRequested) return { at: 'approved', ownApproval: approvedByApp || reviews.ownApproved };
-  return { at: reviews.reviewed || reviews.approved || approvedByApp ? 'reviewed' : 'ready' };
+  if (reviews.approved) return { at: 'approved', ownApproval: reviews.ownApproved, onHead: reviews.headApproved };
+  return { at: reviews.reviewed ? 'reviewed' : 'ready' };
 }
 
 /**
@@ -206,7 +214,7 @@ export function lineArt(position: Position | Station | undefined): string {
   if (!pos) return [names, rail].join('\n');
   if (pos.at === 'closed') return [names, rail, `${' '.repeat(EDGE.length)}${CLOSED_TEXT}`].join('\n');
   const column = STATION_COLUMN[index]!;
-  const caption = pos.at === 'approved' && pos.ownApproval ? OWN_APPROVAL : CAPTIONS[pos.at];
+  const caption = pos.at === 'approved' && pos.ownApproval ? OWN_APPROVAL : pos.at === 'approved' && pos.onHead ? HEAD_APPROVAL : CAPTIONS[pos.at];
   const train = `${' '.repeat(column)}▲`;
   // The caption after the train, or on its own line when that is too wide.
   const after = `${train} ${caption}`;

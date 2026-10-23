@@ -6,7 +6,7 @@
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
-import type { ReviewRef } from './comment.ts';
+import type { ReviewRef, ReviewSummary } from './comment.ts';
 
 const API = 'https://api.github.com';
 const USER_AGENT = 'pointsman-github-connector (+https://github.com/geolonia/pointsman)';
@@ -116,8 +116,8 @@ export interface ConnectorGitHub {
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
   /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
-  /** Every review of the pull request, without its text: where the train stands (comment.ts). More than 1000: an error (the newest would be missing). */
-  reviews(repo: string, number: number): Promise<ReviewRef[]>;
+  /** GitHub's review decision and the newest 100 reviews, without their text (one GraphQL query): where the train stands (comment.ts). */
+  reviewSummary(repo: string, number: number): Promise<ReviewSummary>;
   /** The unified diff, cut to `max` characters; empty and cut when GitHub does not give one (too large). */
   diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }>;
   approve(repo: string, number: number, head: string, body: string): Promise<number>;
@@ -130,8 +130,18 @@ export const markerOf = (head: string, profile: string, kind: string) => `${MARK
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const SHA = /^[0-9a-f]{40}$/;
-/** Review authors with write access to the repository, as GitHub's `author_association` gives them. */
-const WRITERS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+/** GitHub's review decisions (GraphQL PullRequestReviewDecision). */
+const DECISIONS = new Set(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']);
+/** Only this query is sent to GraphQL: it reads, never writes. The newest 100 reviews: those of the head are among them. */
+const REVIEW_SUMMARY_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
+      reviewDecision
+      reviews(last: 100) { nodes { databaseId state commit { oid } author { __typename login } } }
+    }
+  }
+}`;
 
 export class AppGitHub implements ConnectorGitHub {
   readonly #auth: GitHubAppAuth;
@@ -167,7 +177,8 @@ export class AppGitHub implements ConnectorGitHub {
     }
     let res: Response;
     try {
-      res = await this.#fetch(`${API}/repos/${owner}/${name}${path}`, {
+      // GraphQL has one URL for every repository; the token is still the one repository's.
+      res = await this.#fetch(path === '/graphql' ? `${API}/graphql` : `${API}/repos/${owner}/${name}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${token}`,
@@ -268,22 +279,27 @@ export class AppGitHub implements ConnectorGitHub {
     }
   }
 
-  async reviews(repo: string, number: number): Promise<ReviewRef[]> {
-    const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
-    if (reviews.length >= 1000) throw new GitHubError('GitHub reviews: more than the 1000 read', false);
-    const bot = await this.#botLogin(repo);
-    return reviews
-      .filter((r) => typeof r.id === 'number' && typeof r.state === 'string' && typeof r.commit_id === 'string')
+  async reviewSummary(repo: string, number: number): Promise<ReviewSummary> {
+    const [owner, name] = repo.split('/') as [string, string];
+    const answer = await this.#call(repo, 'POST', '/graphql', 'review decision', { query: REVIEW_SUMMARY_QUERY, variables: { owner, name, number } });
+    const pr = isObject(answer) && isObject(answer.data) && isObject(answer.data.repository) ? answer.data.repository.pullRequest : undefined;
+    // Errors (also a rate limit: GraphQL answers it with 200) or no pull request: not a summary to place the train by.
+    if (!isObject(answer) || (answer.errors !== undefined && answer.errors !== null) || !isObject(pr) || typeof pr.headRefOid !== 'string' || !isObject(pr.reviews) || !Array.isArray(pr.reviews.nodes)) {
+      throw new GitHubError('GitHub review decision: unexpected answer', false);
+    }
+    const decision = typeof pr.reviewDecision === 'string' && DECISIONS.has(pr.reviewDecision) ? pr.reviewDecision as ReviewSummary['decision'] : null;
+    const bot = (await this.#botLogin(repo)).toLowerCase();
+    const reviews: ReviewRef[] = pr.reviews.nodes.filter(isObject)
+      .filter((r) => typeof r.databaseId === 'number' && typeof r.state === 'string')
       .map((r) => {
-        // A deleted account (no user): still a reviewer of its own, so a change request of theirs keeps standing.
-        const user = isObject(r.user) && typeof r.user.login === 'string' ? r.user : undefined;
-        const login = user ? (user.login as string).toLowerCase() : `ghost:${r.id as number}`;
-        return {
-          id: r.id as number, state: r.state as string, commit: r.commit_id as string, login,
-          own: user?.type === 'Bot' && login === bot,
-          writer: typeof r.author_association === 'string' && WRITERS.has(r.author_association),
-        };
+        const author = isObject(r.author) && typeof r.author.login === 'string' ? r.author : undefined;
+        const isBot = author?.__typename === 'Bot';
+        // As REST names them: a bot is "<slug>[bot]" (GraphQL leaves "[bot]" out). A deleted account: a reviewer of its own.
+        const login = author ? `${(author.login as string).toLowerCase()}${isBot ? '[bot]' : ''}` : `ghost:${r.databaseId as number}`;
+        const commit = isObject(r.commit) && typeof r.commit.oid === 'string' ? r.commit.oid : '';
+        return { id: r.databaseId as number, state: r.state as string, commit, login, own: isBot && login === bot };
       });
+    return { head: pr.headRefOid, decision, reviews };
   }
 
   async ownApprovals(repo: string, number: number): Promise<OwnApproval[]> {

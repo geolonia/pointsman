@@ -272,42 +272,44 @@ export class PullRequestWork {
     if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown, withdrawn);
   }
 
-  /** Whether the app's own approval of this head stands (by its records). */
-  async #approvedHere(head: string): Promise<boolean> {
-    const acts = await this.#storage.get<Acts>('acts');
-    return acts?.head === head && Object.entries(acts.done).some(([key, r]) => key.endsWith(':approve') && r.state === 'done');
-  }
-
   /**
-   * Where the train stands (comment.ts positionOf): GitHub's state and the
-   * reviews, read once per run and again after the run approved or dismissed.
-   * The app's own records count only when the reviews could not be read.
+   * Where the train stands (comment.ts positionOf): GitHub's state and its
+   * review decision, read once per run and again after the run approved or
+   * dismissed an approval.
    */
   async #position(target: PullRequestTarget, pr: PullRequestInfo): Promise<Position> {
     if (!pr.open || pr.draft) return positionOf(pr, NO_REVIEWS);
     this.#reviews ??= this.#readReviews(target, pr);
-    const read = await this.#reviews;
-    return read ? positionOf(pr, read) : positionOf(pr, await this.#seenReviews(pr.head), await this.#approvedHere(pr.head));
+    return positionOf(pr, (await this.#reviews) ?? await this.#seenReviews(pr.head));
   }
 
   /** What the reviews say about this head; undefined when they cannot be read (any error, a rate limit too: logged, the run goes on). */
   async #readReviews(target: PullRequestTarget, pr: PullRequestInfo): Promise<HeadReviews | undefined> {
-    let state: HeadReviews;
     try {
-      state = reviewStateOf(await this.#github.reviews(target.repo, target.number), pr.head, pr.author);
+      const summary = await this.#github.reviewSummary(target.repo, target.number);
+      // A push since the pull request was read: GitHub decided for another head than the one drawn.
+      if (summary.head !== pr.head) throw new Error('the head changed since the pull request was read');
+      const state = reviewStateOf(summary, pr.head, pr.author);
+      const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+      if (seen?.head !== pr.head || JSON.stringify(seen.state) !== JSON.stringify(state)) await this.#storage.put({ reviewsSeen: { head: pr.head, state } });
+      return state;
     } catch (err) {
       console.error(`github connector: ${target.repo}#${target.number} reading reviews for the line: ${err instanceof Error ? err.message : String(err)}`);
       return undefined;
     }
-    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
-    if (seen?.head !== pr.head || JSON.stringify(seen.state) !== JSON.stringify(state)) await this.#storage.put({ reviewsSeen: { head: pr.head, state } });
-    return state;
   }
 
   /** What the reviews said when last read on this head, else nothing: the train never moves on for a failed read. */
   async #seenReviews(head: string): Promise<HeadReviews> {
-    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen').catch(() => undefined);
     return seen?.head === head ? seen.state : NO_REVIEWS;
+  }
+
+  /** It dismissed an approval: the reviews are read again, and what they said before no longer shows it approved (a failed read keeps it back). */
+  async #forgetApproval(): Promise<void> {
+    this.#reviews = undefined;
+    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+    if (seen?.state.approved) await this.#storage.put({ reviewsSeen: { head: seen.head, state: { ...seen.state, approved: false, ownApproved: false, headApproved: false } } });
   }
 
   /**
@@ -321,6 +323,8 @@ export class PullRequestWork {
     const profiles = this.#settings.comment!.profiles;
     const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
     await this.#writeIfChanged(target, record.head, record, commentBody(decisions, this.#settings.signals, record.head, await this.#position(target, pr)), {});
+    // A closed pull request gets no more events: a write left open (GitHub busy) is tried again by this run's retry.
+    if ((await this.#storage.get<CommentRecord>('comment'))?.pending !== undefined) throw new RetryError(`${target.repo}#${target.number}: the decision comment of the closed pull request`);
   }
 
   /**
@@ -500,7 +504,7 @@ export class PullRequestWork {
       if (!which(a)) { kept.push(a); continue; }
       try {
         await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, message(a)));
-        this.#reviews = undefined;
+        await this.#forgetApproval();
       } catch (err) {
         if (err instanceof RetryError) throw err;
         console.error(`github connector: ${target.repo}#${target.number} dismissing review ${a.id}: ${err instanceof Error ? err.message : String(err)}`);
