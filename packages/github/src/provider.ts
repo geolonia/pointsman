@@ -746,6 +746,8 @@ export class Snapshot {
   private async repositoryDevOnly(heads: Map<string, string>, names: Set<string>): Promise<boolean> {
     const tree = await this.tree(this.ref.head);
     const found = [...tree].filter(([path]) => path === 'package.json' || path.endsWith('/package.json'));
+    // Every changed package.json is in the tree at the head; one that is not cannot be placed.
+    if ([...heads.keys()].some((path) => !tree.has(path))) throw new FactError('GitHub tree: a changed package.json is not in the tree');
     if (found.length > MAX_REPOSITORY_MANIFESTS) throw new FactError(`more than ${MAX_REPOSITORY_MANIFESTS} package.json files in the repository`);
     const texts = await Promise.all(found.map(async ([path, file]) => {
       const known = heads.get(path);
@@ -753,8 +755,6 @@ export class Snapshot {
       if (file.size > MAX_MANIFEST_BYTES) throw new FactError(`GitHub file: larger than ${MAX_MANIFEST_BYTES} bytes`);
       return this.blob(file.sha);
     }));
-    // Every changed package.json is in the tree at the head; one that is not cannot be placed.
-    if ([...heads.keys()].some((path) => !tree.has(path))) throw new FactError('GitHub tree: a changed package.json is not in the tree');
     return devOnlyInRepository(texts, names);
   }
 

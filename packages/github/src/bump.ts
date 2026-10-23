@@ -217,7 +217,7 @@ export function stepOf(from: string, to: string): string {
 }
 
 /** The largest of two steps; "none" wins, since it is not understood. */
-const larger = (a: string, b: string) => (a === 'none' || b === 'none' ? 'none' : STEPS[Math.min(STEPS.indexOf(a), STEPS.indexOf(b))]!);
+export const larger = (a: string, b: string): string => (a === 'none' || b === 'none' ? 'none' : STEPS[Math.min(STEPS.indexOf(a), STEPS.indexOf(b))]!);
 
 /** A spec that names a source instead of a version: a URL, git, a file, a link, an alias, a workspace. */
 const SOURCE_SPEC = /[:/]/;

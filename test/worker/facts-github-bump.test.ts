@@ -559,6 +559,8 @@ describe('github_bump: every version a lockfile changes', () => {
     expect(lockfileSteps('pnpm-lock.yaml', "@@ -1 +1 @@\n-lockfileVersion: '6.0'\n+lockfileVersion: '9.0'").semver).toBe('none');
     // A version that is not a pinned one.
     expect(lockfileSteps('pnpm-lock.yaml', '@@ -1,4 +1,4 @@ importers:\n   .:\n     devDependencies:\n       x:\n-        version: 1.0.0\n+        version: link:../x').semver).toBe('none');
+    // A version field beside an unchanged key (a tarball or repository package): not understood.
+    expect(lockfileSteps('pnpm-lock.yaml', '@@ -1,3 +1,3 @@ packages:\n   foo@1.0.0:\n-    version: 1.0.0\n+    version: 2.0.0')).toMatchObject({ semver: 'none', runtime: true });
     // Nothing about versions: null.
     expect(lockfileSteps('pnpm-lock.yaml', `@@ -1,2 +1,2 @@ packages:\n   debug@4.4.1:\n-    resolution: {integrity: ${integrity()}}\n+    resolution: {integrity: ${integrity()}}`))
       .toEqual({ semver: null, names: [], runtime: false });
@@ -618,6 +620,14 @@ describe('github_bump: dev_only over every package.json of the repository', () =
     expect(await values({ ...lock, repository: { 'app/package.json': manifest({}, { '@vitest/runner': '^4.1.0' }) } })).toMatchObject({ dev_only: false });
     expect(await values({ ...lock, repository: { 'app/package.json': manifest({}, {}, { peerDependencies: { '@vitest/runner': '*' } }) } })).toMatchObject({ dev_only: false });
     expect(await values({ ...lock, repository: { 'app/package.json': manifest({}, {}, { bundleDependencies: ['@vitest/runner'] }) } })).toMatchObject({ dev_only: false });
+    // pnpm v9 has no dev marks: a package whose dependency moves counts as changed, so a workspace that has it as a dependency says no.
+    const edge = ['@@ -900,4 +900,4 @@ snapshots:', '   express@4.18.2:', '     dependencies:', '-      debug: 4.3.4', '+      debug: 4.3.5'].join('\n');
+    const express = withLock([keyHunk('packages', 'debug', '4.3.4', '4.3.5'), edge], { debug: () => document('debug', { '4.3.5': daysAgo(9) }) });
+    expect(await values(express)).toMatchObject({ semver: 'patch', dev_only: true });
+    expect(await values({ ...express, repository: { 'app/package.json': manifest({}, { express: '^4.18.2' }) } })).toMatchObject({ semver: 'patch', dev_only: false });
+    // The same line with its package key above the hunk: not known, so not dev only.
+    const unplaced = withLock([keyHunk('packages', 'debug', '4.3.4', '4.3.5'), '@@ -900,2 +900,2 @@ snapshots:\n-      debug: 4.3.4\n+      debug: 4.3.5'], { debug: () => document('debug', { '4.3.5': daysAgo(9) }) });
+    expect(await values(unplaced)).toMatchObject({ semver: 'patch', dev_only: false });
     // A package.json that is not JSON cannot tell: not dev only.
     expect(await values({ ...vitestBump(), repository: { 'fixtures/package.json': '{ not json' } })).toMatchObject({ dev_only: false });
   });

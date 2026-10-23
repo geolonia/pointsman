@@ -15,7 +15,7 @@
 // place the patch does not show. A dependency of an importer or a package
 // added or removed is no step (the package itself is a key or an entry).
 
-import { stepOf } from './bump';
+import { larger as largerStep, stepOf } from './bump';
 
 export interface LockfileSteps {
   /** The largest step: "major", "minor", "patch" or "none"; null when no version changes. */
@@ -99,12 +99,8 @@ class Buckets {
   }
 }
 
-const STEPS = ['major', 'minor', 'patch'];
 /** The larger of two steps; "none" wins; null is no step yet. */
-function larger(a: string | null, b: string): string {
-  if (a === null) return b;
-  return a === 'none' || b === 'none' ? 'none' : STEPS[Math.min(STEPS.indexOf(a), STEPS.indexOf(b))]!;
-}
+const larger = (a: string | null, b: string): string => (a === null ? b : largerStep(a, b));
 
 /** A pnpm-lock.yaml line as key and value; null when it is not one (a list item, a flow line). */
 function yamlKey(body: string): { key: string; value: string | null } | null {
@@ -156,7 +152,7 @@ function sidesOf(mark: string | undefined): (0 | 1)[] | null {
   return null;
 }
 
-/** pnpm-lock.yaml (v9, v6, and the importers of v5). */
+/** pnpm-lock.yaml (v9, v6; v5 package keys are not understood, see lockfileChanges). */
 function pnpmSteps(patch: string): LockfileSteps {
   const buckets = new Buckets();
   let runtime = false;
@@ -168,6 +164,8 @@ function pnpmSteps(patch: string): LockfileSteps {
   const removed = new Set<string>();
   const added = new Set<string>();
   const dev = new Set<string>();
+  /** Packages whose dependency lines change. */
+  const consumers = new Set<string>();
   /** A changed line in a package block whose key the patch does not show. */
   let unplaced = false;
   for (const hunk of hunks(patch)) {
@@ -283,6 +281,12 @@ function pnpmSteps(patch: string): LockfileSteps {
           buckets.add(`${section}|${key[2]}`, key[2]!, true, side, key[3]!);
           continue;
         }
+        if (level === 2 && kv.key === 'version') {
+          // A version field beside the key (a tarball or repository package): not a step this reads.
+          buckets.unknown = true;
+          runtime = true;
+          continue;
+        }
         if (level === 3 && kv.value !== null) {
           const list = p[2];
           const version = withoutPeers(kv.value);
@@ -290,6 +294,9 @@ function pnpmSteps(patch: string): LockfileSteps {
           if (list === 'dependencies' || list === 'optionalDependencies' || (list === undefined && PINNED.test(version))) {
             const name = unquote(kv.key);
             buckets.add(`${section}|${key ? key[2] : '?'}|${name}`, name, false, side, version);
+            // The package that now uses another version is changed too: the package.json check sees it when it is a direct dependency.
+            if (key) consumers.add(key[2]!);
+            else runtime = true;
           }
         }
         continue;
@@ -309,9 +316,9 @@ function pnpmSteps(patch: string): LockfileSteps {
     if (key && key[1] === '' && onlyV9) continue;
     if (!dev.has(block)) runtime = true;
   }
-  if (unplaced && !onlyV9) runtime = true;
+  if (unplaced) runtime = true;
   const { semver, names } = buckets.result(false);
-  return { semver, names, runtime };
+  return { semver, names: [...new Set([...names, ...consumers])], runtime };
 }
 
 /** A package-lock.json entry key ("node_modules/<name>", maybe nested), four spaces deep. */
