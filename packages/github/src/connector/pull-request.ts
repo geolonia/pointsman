@@ -59,7 +59,9 @@ export function authorText(body: string): string {
     out += rest.slice(0, i);
     rest = rest.slice(end + BOT_BLOCK_END.length);
   }
-  return (out + rest).trim();
+  // Without a block, the author's text exactly (an indented code block keeps its spaces);
+  // with one, the space left around it is trimmed.
+  return rest.length === body.length ? body : (out + rest).trim();
 }
 
 /** A run starts this long after an event, so a burst (several finished check suites) becomes one run. */

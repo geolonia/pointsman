@@ -917,6 +917,8 @@ describe('chains: profiles that build on each other', () => {
     const start = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
     const end = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
     expect(authorText('Fix the docs.')).toBe('Fix the docs.');
+    // No block: the author's text exactly, also its leading spaces (an indented code block).
+    expect(authorText('    code\nmore  \n')).toBe('    code\nmore  \n');
     expect(authorText(`Fix the docs.\n${start}\nbot\n${end}\nMore by the author.`)).toBe('Fix the docs.\n\nMore by the author.');
     expect(authorText(`${start}a${end}x${start}b${end}`)).toBe('x');
     // Only whole blocks: a start marker without an end stays text (quoted in prose, or a broken edit).
