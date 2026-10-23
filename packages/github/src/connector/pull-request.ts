@@ -38,6 +38,32 @@ export interface Accepted {
 /** Same as the shadow poller: enough for the AI questions, keeps a very long description out of the model. */
 const MAX_TITLE = 300;
 const MAX_BODY = 8000;
+/** CodeRabbit's summary in the description, between these markers: written by a bot, not by the author. */
+const BOT_BLOCK_START = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
+const BOT_BLOCK_END = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
+
+/**
+ * The description as the author wrote it: CodeRabbit's summary blocks left
+ * out, only whole ones (a start marker without an end marker after it stays
+ * text). So its edits neither ask a once_per_head profile again nor reach
+ * the model. The author cannot claim more than they wrote this way: they
+ * control the description anyway, and the facts come from GitHub.
+ */
+export function authorText(body: string): string {
+  let out = '';
+  let rest = body;
+  for (;;) {
+    const i = rest.indexOf(BOT_BLOCK_START);
+    const end = i < 0 ? -1 : rest.indexOf(BOT_BLOCK_END, i + BOT_BLOCK_START.length);
+    if (end < 0) break;
+    out += rest.slice(0, i);
+    rest = rest.slice(end + BOT_BLOCK_END.length);
+  }
+  // Without a block, the author's text exactly (an indented code block keeps its spaces);
+  // with one, the space left around it is trimmed.
+  return rest.length === body.length ? body : (out + rest).trim();
+}
+
 /** A run starts this long after an event, so a burst (several finished check suites) becomes one run. */
 export const SETTLE_MS = 20_000;
 /** Deliveries and bodies are remembered this long, at most this many. */
@@ -172,7 +198,7 @@ export class PullRequestWork {
   async #once(target: PullRequestTarget, attempt: number, recheck = false): Promise<void> {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (!pr.open) return;
-    const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: pr.body.slice(0, MAX_BODY) };
+    const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
     // A recheck deadline of an older head is void: a new head starts with none.
     const recheckHead = await this.#storage.get<string>('recheckHead');
     if (recheckHead !== undefined && recheckHead !== pr.head) {
