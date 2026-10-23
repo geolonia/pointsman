@@ -10,9 +10,12 @@
 //   github_copilot   Copilot's code review (reviews.ts)
 //   github_app_approval whether a GitHub App's approval of the head stands (reviews.ts)
 //
-// Read-only: this file only sends GET requests to the GitHub API (and, for a
-// GitHub App, the one POST that creates an installation token); github_bump
-// also reads the npm registry, without the token (npm.ts). All GitHub
+// Read-only: this file sends GET requests to the GitHub REST API; GraphQL
+// queries for review threads and editors (a POST to /graphql, as GitHub's
+// GraphQL API takes; only the queries in reviews.ts, never a mutation: used
+// by github_copilot and the CodeRabbit module); and, for a GitHub App, the
+// one POST that creates an installation token. github_bump also reads the
+// npm registry, without the token (npm.ts). All GitHub
 // facts of one decision come from one snapshot: the pull request and its
 // commits are read once, then only the parts the facts need, each once.
 // If GitHub's head commit is not the one the request names, every GitHub

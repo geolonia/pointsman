@@ -103,6 +103,7 @@ An adapter must:
 
 - Throw when the engine cannot be reached or does not answer within 60 seconds, so the run is tried again; answer the engine's status otherwise (the connector retries 5xx and 429, and logs other refusals).
 - Never put a token or a secret in an error or a log line.
+- Pass the 2xx body on as it came. The connector, not the adapter, checks it (`checkDecision` in `engine.ts`): the same check for every adapter, so a decision of the wrong shape or a test decision is never acted on, whichever way it came ([github-connector.md](github-connector.md#safety)).
 
 ### Scheduled jobs
 

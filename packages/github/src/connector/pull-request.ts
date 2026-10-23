@@ -12,7 +12,7 @@
 // run that stops in between does not create a second one: the next run looks
 // for the check run first.
 
-import type { EngineAnswer, EngineClient } from './engine.ts';
+import { type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
@@ -116,15 +116,7 @@ export class RetryError extends Error {
   override name = 'RetryError';
 }
 
-export interface Decision {
-  decision_id: string;
-  action: string;
-  profile: string;
-  profile_version: number;
-  rule: number | null;
-  facts?: Record<string, { missing?: boolean; reason?: string }>;
-  review?: { status: string };
-}
+export type { Decision } from './engine.ts';
 
 export class PullRequestWork {
   readonly #storage: ObjectStorage;
@@ -228,8 +220,14 @@ export class PullRequestWork {
       }
       const { refused, ...diffState } = run.diff ? await this.#diffOf(target, pr.head, run.diff) : { refused: undefined };
       const asked = { ...state, ...diffState };
-      const decision = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
-      if (!decision) continue;
+      const answer = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
+      if (!answer) continue;
+      if (answer.kind !== 'decision') {
+        // Not a decision to act on: nothing is done, nothing is kept or sent on, and an approval of this head is withdrawn.
+        await this.#notActedOn(target, pr, profile, answer);
+        continue;
+      }
+      const { decision } = answer;
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
@@ -523,18 +521,25 @@ export class PullRequestWork {
     if (!given.some((g) => g.id === a.id)) await this.#storage.put({ approvals: [...given, { id: a.id, commit: a.commit, profile: a.profile }] });
   }
 
-  /** Asks Pointsman; null when it refused (a setting to fix, logged). */
-  async #decide(profile: string, state: Record<string, unknown>, decisions: Record<string, string>, extra: unknown[]): Promise<Decision | null> {
+  /** Asks Pointsman; null when it refused (a setting to fix, logged); with a 2xx, the checked answer (checkDecision). */
+  async #decide(profile: string, state: Record<string, unknown>, decisions: Record<string, string>, extra: unknown[]): Promise<CheckedAnswer | null> {
     // The key holds the run's attempt count: every run, a retry too, gets a new decision.
     const key = await sha256(JSON.stringify([profile, state, decisions, ...extra]));
     const chained = Object.keys(decisions).length > 0;
+    const ref = `github:${state.repo}#${state.number}@${state.head}`;
     let res: EngineAnswer;
     try {
-      res = await this.#engine.decide(profile, { state: { pull_request: state }, ref: `github:${state.repo}#${state.number}@${state.head}`, ...(chained && { decisions }) }, { idempotencyKey: key });
+      res = await this.#engine.decide(profile, { state: { pull_request: state }, ref, ...(chained && { decisions }) }, { idempotencyKey: key });
     } catch (err) {
       throw new RetryError(`Pointsman ${profile}: ${err instanceof Error ? err.message : String(err)}`);
     }
-    if (res.status >= 200 && res.status < 300) return res.body as Decision;
+    if (res.status >= 200 && res.status < 300) {
+      const checked = checkDecision(res.body, { profile, ref });
+      // Not tried again (a new answer to the same key would be the same); the reason names a field, never its value.
+      if (checked.kind === 'invalid') console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: not a decision (${checked.reason}); nothing done`);
+      if (checked.kind === 'test') console.error(`github connector: Pointsman ${profile} for ${state.repo}#${state.number}: a test decision (not logged); nothing done. Is POINTSMAN_TOKEN a test token?`);
+      return checked;
+    }
     const status = res.code ? `${res.status} ${res.code}` : String(res.status);
     if (res.status >= 500 || res.status === 429) throw new RetryError(`Pointsman ${profile}: ${status}`);
     // Other 4xx (400, 401, 403, 404, 409, 422) and redirects: not better on a retry.
@@ -543,7 +548,26 @@ export class PullRequestWork {
   }
 
   async #showCheck(repo: string, head: string, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<void> {
-    const output = checkOutput(decision, outcome);
+    return this.#writeCheck(repo, head, profile, decision.decision_id, checkOutput(decision, outcome));
+  }
+
+  /**
+   * A test decision or an answer that is not a decision: nothing of it is done. An approval of this head
+   * that the profile could have given is withdrawn (fail-safe, as for any decision that does not keep it).
+   * Its check run says so.
+   */
+  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>): Promise<void> {
+    const byAction = this.#settings.actions[profile];
+    let note: string | undefined;
+    if (byAction && Object.values(byAction).some((a) => a.do === 'approve')) {
+      let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
+      if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
+      if (!(await this.#withdraw(target, pr, profile, acts))) note = 'Its approval of this commit could not be withdrawn (logged; tried again on the next run).';
+    }
+    await this.#writeCheck(target.repo, pr.head, profile, answer.kind === 'test' ? answer.decision.decision_id : '', notActedOnOutput(profile, answer, note));
+  }
+
+  async #writeCheck(repo: string, head: string, profile: string, decisionId: string, output: CheckRunOutput): Promise<void> {
     const name = checkName(profile);
     let checks = (await this.#storage.get<Checks>('checks')) ?? { head, runs: {} };
     if (checks.head !== head) checks = { head, runs: {} };
@@ -552,23 +576,23 @@ export class PullRequestWork {
     // A record without an id: an earlier run may have created it before it stopped.
     if (record && id === undefined) id = await retrying(() => this.#github.findCheckRun(repo, head, name));
     if (id === undefined) {
-      id = await this.#create(checks, repo, head, profile, decision, output);
+      id = await this.#create(checks, repo, head, profile, decisionId, output);
     } else {
       try {
         await retrying(() => this.#github.updateCheckRun(repo, id!, output));
       } catch (err) {
         // Deleted on GitHub: make a new one.
         if (!(err instanceof GitHubError && err.status === 404)) throw err;
-        id = await this.#create(checks, repo, head, profile, decision, output);
+        id = await this.#create(checks, repo, head, profile, decisionId, output);
       }
     }
-    checks.runs[profile] = { decision: decision.decision_id, id };
+    checks.runs[profile] = { decision: decisionId, id };
     await this.#storage.put({ checks });
   }
 
   /** The record first, then the check run. */
-  async #create(checks: Checks, repo: string, head: string, profile: string, decision: Decision, output: CheckRunOutput): Promise<number> {
-    checks.runs[profile] = { decision: decision.decision_id };
+  async #create(checks: Checks, repo: string, head: string, profile: string, decisionId: string, output: CheckRunOutput): Promise<number> {
+    checks.runs[profile] = { decision: decisionId };
     await this.#storage.put({ checks });
     return retrying(() => this.#github.createCheckRun(repo, head, checkName(profile), output));
   }
@@ -600,7 +624,7 @@ function describe(spec: ActionSpec): string {
 }
 
 export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }): CheckRunOutput {
-  const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name}\` (${f.reason ?? 'missing'})`);
+  const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${(f.reason ?? 'missing').slice(0, 300)})`);
   const lines = [
     `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
     '',
@@ -613,4 +637,28 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' })
     `Decision \`${d.decision_id}\``,
   ];
   return { externalId: d.decision_id, conclusion: 'neutral', title: outcome.kind === 'none' ? `${d.action} (shadow)` : d.action, summary: lines.join('\n') };
+}
+
+/** The check run for a test decision or an answer that is not a decision: neutral, and nothing was done. */
+export function notActedOnOutput(profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>, note?: string): CheckRunOutput {
+  const lines = answer.kind === 'test'
+    ? [
+      `Pointsman answered with a **test decision** for the profile \`${profile}\` (\`test: true\`, decided **${answer.decision.action}**). A test decision is not logged, so nothing was done for it.`,
+      '',
+      'The connector\'s token is probably a test token: give it a token that is not one (scripts/tokens.mjs without --test). This check never blocks.',
+      '',
+      `Decision \`${answer.decision.decision_id}\``,
+    ]
+    : [
+      `Pointsman's answer for the profile \`${profile}\` is not a decision the connector can use: ${answer.reason}. Nothing was done for it, and it is not tried again until the next event.`,
+      '',
+      'This check never blocks.',
+    ];
+  if (note) lines.splice(1, 0, '', note);
+  return {
+    externalId: answer.kind === 'test' ? answer.decision.decision_id : 'invalid-answer',
+    conclusion: 'neutral',
+    title: answer.kind === 'test' ? 'test decision: nothing done' : 'invalid answer: nothing done',
+    summary: lines.join('\n'),
+  };
 }
