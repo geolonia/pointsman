@@ -74,7 +74,7 @@ For `approve` also:
 - When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again.
 - If an old approval cannot be dismissed, it approves nothing in that run.
 - **Required:** the branch's ruleset (or branch protection) must have "Dismiss stale pull request approvals when new commits are pushed" on. Otherwise an approval of an older commit counts for merging until the connector's next run dismisses it.
-- **Code owners:** an app cannot be a code owner (`CODEOWNERS` lists people and teams). Where the ruleset requires a code owner's review and `CODEOWNERS` covers a changed file, a person must still approve; the app's approval counts only for the other review rules.
+- **Code owners:** an app cannot be a code owner (`CODEOWNERS` names users, teams and email addresses). Where the ruleset requires a code owner's review and `CODEOWNERS` covers a changed file, a person must still approve; the app's approval still counts toward the required number of approvals.
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run).
 
