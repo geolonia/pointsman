@@ -60,6 +60,15 @@
   module runs inside the Worker and is handed only its own settings), and
   §1.16. The `github_workflows` fact (pointsman#141), merged after the
   previous binding, is not covered by this model yet (§1.16).
+  Amended 2026-10-23 and re-bound to `v0.12.0` for two changes: the
+  `github_bump` fact (pointsman#180, #186; v0.10.0 and v0.11.0), which
+  adds `registry.npmjs.org` as an outbound host and more GitHub reads, and
+  the internal call (pointsman#188, v0.12.0), a new entry point of the
+  engine Worker (`InternalEngine`) that takes no token. The GitHub
+  connector Worker (`connectors/github`, pointsman#160, #162, #171), which
+  reaches the engine through either path, joins as the new family
+  `connector-github`. The other changes between `v0.5.0` and `v0.12.0`
+  are listed in §1.16 as not covered.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
