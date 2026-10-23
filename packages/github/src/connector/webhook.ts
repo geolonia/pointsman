@@ -53,9 +53,11 @@ function numbersOf(list: unknown): number[] {
 
 /**
  * The pull requests an event is about. Events of the connector's own app
- * (its check suites) are left out: they would start the next run.
+ * (its check suites) are left out: they would start the next run. A closed
+ * pull request only with `closed` (the decision comment is on: it shows the
+ * merge or the close).
  */
-export function targetsOf(event: string, payload: unknown, appId: number): PullRequestTarget[] {
+export function targetsOf(event: string, payload: unknown, appId: number, closed = false): PullRequestTarget[] {
   if (!isObject(payload)) return [];
   const repo = repoOf(payload);
   if (!repo) return [];
@@ -63,7 +65,7 @@ export function targetsOf(event: string, payload: unknown, appId: number): PullR
   const one = (pr: unknown): PullRequestTarget[] => (isObject(pr) && isNumber(pr.number) ? [{ repo, number: pr.number }] : []);
   switch (event) {
     case 'pull_request':
-      return typeof action === 'string' && PR_ACTIONS.has(action) ? one(payload.pull_request) : [];
+      return typeof action === 'string' && (PR_ACTIONS.has(action) || (closed && action === 'closed')) ? one(payload.pull_request) : [];
     case 'pull_request_review':
       return typeof action === 'string' && REVIEW_ACTIONS.has(action) ? one(payload.pull_request) : [];
     // A finished check suite (one per app and push), not each check run:

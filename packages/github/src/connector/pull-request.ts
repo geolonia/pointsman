@@ -14,7 +14,7 @@
 
 import { type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
-import { checkText, clean, COMMENT_MARKER, commentBody, signalMark, signalOf, type Station, stationOf } from './comment.ts';
+import { checkText, clean, COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
 
@@ -122,6 +122,12 @@ interface CommentRecord {
   failed?: string;
 }
 
+/** What the reviews said about a head when they were last read: kept for a run that cannot read them. */
+interface ReviewsSeen {
+  head: string;
+  state: HeadReviews;
+}
+
 /** Rechecks scheduled for this head, by profile. */
 interface Rechecks {
   head: string;
@@ -142,6 +148,8 @@ export class PullRequestWork {
   readonly #engine: EngineClient;
   /** The clock (tests set it). */
   now: () => number = () => Date.now();
+  /** This run's read of the reviews (made when the line is first drawn; again after an approval or a dismissal); undefined inside: not readable. */
+  #reviews: Promise<HeadReviews | undefined> | undefined;
 
   constructor(storage: ObjectStorage, settings: ConnectorSettings, github: ConnectorGitHub, engine: EngineClient) {
     this.#storage = storage;
@@ -206,7 +214,9 @@ export class PullRequestWork {
   /** recheck: this run comes from a recheck alarm, not an event. */
   async #once(target: PullRequestTarget, attempt: number, recheck = false): Promise<void> {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
-    if (!pr.open) return;
+    this.#reviews = undefined;
+    // Closed (merged or not): Pointsman is not asked; the comment shows it, once (unchanged, no write). A reopen runs as usual.
+    if (!pr.open) return this.#settings.comment ? this.#closeComment(target, pr) : undefined;
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
     // A recheck deadline of an older head is void: a new head starts with none.
     const recheckHead = await this.#storage.get<string>('recheckHead');
@@ -251,7 +261,7 @@ export class PullRequestWork {
       const { decision } = answer;
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
-      shown[profile] = await this.#showCheck(target.repo, pr, profile, decision, outcome);
+      shown[profile] = await this.#showCheck(target.repo, target.number, pr, profile, decision, outcome);
       // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
       // Not kept when the diff was refused: once the app may read it, the next run asks with it.
       if (run.oncePerHead && outcome.kind !== 'skipped' && !refused) await this.#keep(profile, pr.head, keyOf, decision);
@@ -262,14 +272,59 @@ export class PullRequestWork {
     if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown, withdrawn);
   }
 
-  /** Whether the app's own approval of this head stands (by its records). */
-  async #approvedHere(head: string): Promise<boolean> {
-    const acts = await this.#storage.get<Acts>('acts');
-    return acts?.head === head && Object.entries(acts.done).some(([key, r]) => key.endsWith(':approve') && r.state === 'done');
+  /**
+   * Where the train stands (comment.ts positionOf): GitHub's state and its
+   * review decision, read once per run and again after the run approved or
+   * dismissed an approval.
+   */
+  async #position(target: PullRequestTarget, pr: PullRequestInfo): Promise<Position> {
+    if (!pr.open || pr.draft) return positionOf(pr, NO_REVIEWS);
+    this.#reviews ??= this.#readReviews(target, pr);
+    return positionOf(pr, (await this.#reviews) ?? await this.#seenReviews(pr.head));
   }
 
-  async #station(pr: PullRequestInfo): Promise<Station> {
-    return stationOf(pr.draft, await this.#approvedHere(pr.head));
+  /** What the reviews say about this head; undefined when they cannot be read (any error, a rate limit too: logged, the run goes on). */
+  async #readReviews(target: PullRequestTarget, pr: PullRequestInfo): Promise<HeadReviews | undefined> {
+    try {
+      const summary = await this.#github.reviewSummary(target.repo, target.number);
+      // A push since the pull request was read: GitHub decided for another head than the one drawn.
+      if (summary.head !== pr.head) throw new Error('the head changed since the pull request was read');
+      const state = reviewStateOf(summary, pr.head, pr.author);
+      const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+      if (seen?.head !== pr.head || JSON.stringify(seen.state) !== JSON.stringify(state)) await this.#storage.put({ reviewsSeen: { head: pr.head, state } });
+      return state;
+    } catch (err) {
+      console.error(`github connector: ${target.repo}#${target.number} reading reviews for the line: ${err instanceof Error ? err.message : String(err)}`);
+      return undefined;
+    }
+  }
+
+  /** What the reviews said when last read on this head, else nothing: the train never moves on for a failed read. */
+  async #seenReviews(head: string): Promise<HeadReviews> {
+    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen').catch(() => undefined);
+    return seen?.head === head ? seen.state : NO_REVIEWS;
+  }
+
+  /** It dismissed an approval: the reviews are read again, and what they said before no longer shows it approved (a failed read keeps it back). */
+  async #forgetApproval(): Promise<void> {
+    this.#reviews = undefined;
+    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+    if (seen?.state.approved) await this.#storage.put({ reviewsSeen: { head: seen.head, state: { ...seen.state, approved: false, ownApproved: false, headApproved: false } } });
+  }
+
+  /**
+   * A closed pull request: its comment, if it has one, shows the train at
+   * "merged" or the line closed, with the decisions it showed last (of the
+   * commit they were made on). Nothing else is read or written.
+   */
+  async #closeComment(target: PullRequestTarget, pr: PullRequestInfo): Promise<void> {
+    const record = await this.#storage.get<CommentRecord>('comment');
+    if (!record || (record.id === undefined && record.hash === undefined && record.pending === undefined)) return;
+    const profiles = this.#settings.comment!.profiles;
+    const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
+    await this.#writeIfChanged(target, record.head, record, commentBody(decisions, this.#settings.signals, record.head, await this.#position(target, pr)), {});
+    // A closed pull request gets no more events: a write left open (GitHub busy) is tried again by this run's retry.
+    if ((await this.#storage.get<CommentRecord>('comment'))?.pending !== undefined) throw new RetryError(`${target.repo}#${target.number}: the decision comment of the closed pull request`);
   }
 
   /**
@@ -290,7 +345,11 @@ export class PullRequestWork {
     const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
     // Nothing to show and no comment yet: none is written. A comment that exists is updated to say so, never left stale.
     if (decisions.length === 0 && record.id === undefined && record.hash === undefined && record.pending === undefined) return this.#storage.put({ comment: record });
-    const body = commentBody(decisions, this.#settings.signals, pr.head, await this.#station(pr));
+    await this.#writeIfChanged(target, pr.head, record, commentBody(decisions, this.#settings.signals, pr.head, await this.#position(target, pr)), shown);
+  }
+
+  /** The write of the comment: only when its text changed; the record first, then the write. */
+  async #writeIfChanged(target: PullRequestTarget, head: string, record: CommentRecord, body: string, shown: Record<string, CheckRunOutput>): Promise<void> {
     const hash = await sha256(body);
     // Unchanged (or refused before): no call to GitHub. A write left open is done again (it is found by its marker).
     if (record.pending === undefined && (hash === record.hash || hash === record.failed)) return this.#storage.put({ comment: record });
@@ -313,7 +372,7 @@ export class PullRequestWork {
         note = `The decision comment could not be written (${status}); not tried again until it changes. Does the app have "Pull requests: Read and write"?`;
       }
       await this.#storage.put({ comment: record });
-      return this.#noteOnChecks(target, pr.head, shown, note);
+      return this.#noteOnChecks(target, head, shown, note);
     }
     // Outside the try: a storage failure here is not a refused write.
     record.hash = hash;
@@ -445,6 +504,7 @@ export class PullRequestWork {
       if (!which(a)) { kept.push(a); continue; }
       try {
         await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, message(a)));
+        await this.#forgetApproval();
       } catch (err) {
         if (err instanceof RetryError) throw err;
         console.error(`github connector: ${target.repo}#${target.number} dismissing review ${a.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -584,6 +644,7 @@ export class PullRequestWork {
         return this.#github.requestReviewers(repo, number, spec.reviewers);
       case 'approve': {
         const id = await this.#github.approve(repo, number, pr.head, `${markerOf(pr.head, profile, 'approve')}\nPointsman approved ${pr.head.slice(0, 7)} (decision \`${decision.decision_id}\`, profile \`${profile}\`).`);
+        this.#reviews = undefined;
         await this.#remember({ id, commit: pr.head, profile });
         return;
       }
@@ -661,8 +722,8 @@ export class PullRequestWork {
   }
 
   /** Writes the decision's check run: its output. */
-  async #showCheck(repo: string, pr: PullRequestInfo, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<CheckRunOutput> {
-    const output = checkOutput(decision, outcome, { signals: this.#settings.signals, head: pr.head, station: await this.#station(pr) });
+  async #showCheck(repo: string, number: number, pr: PullRequestInfo, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<CheckRunOutput> {
+    const output = checkOutput(decision, outcome, { signals: this.#settings.signals, head: pr.head, station: await this.#position({ repo, number }, pr) });
     await this.#writeCheck(repo, pr.head, profile, decision.decision_id, output);
     return output;
   }
@@ -778,7 +839,7 @@ export interface CheckView {
   signals?: Record<string, Record<string, SignalSpec>> | undefined;
   /** With the head: the line and the switch in the details. */
   head?: string;
-  station?: Station;
+  station?: Position | Station;
 }
 
 export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }, view: CheckView = {}): CheckRunOutput {
