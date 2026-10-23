@@ -720,6 +720,28 @@ describe('chains: profiles that build on each other', () => {
     expect(mem.data.get('recheckAt')).toBe(due);
   });
 
+  it('a recheck that fails does not use one up; an event when a recheck is due counts as an event', async () => {
+    const s = { ...chain({ a: { recheck: { actions: ['wait'], minutes: 10, max: 1 } } }), profiles: ['a'] };
+    let down = false;
+    const { work, pm, mem, later } = await chained(s, {}, (p) => (down ? new Response(null, { status: 503 }) : Response.json(decision(p, { action: 'wait' }))));
+    await work.run();
+    later(10 * 60_000);
+    down = true;
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    down = false;
+    await work.run(); // the retried recheck: still allowed
+    expect(pm.calls.filter((c) => !c.body.decisions)).toHaveLength(3);
+    expect((mem.data.get('rechecks') as { count: Record<string, number> }).count.a).toBe(1);
+    // A new recheck is due, but an event comes first: an event run, not counted.
+    const { work: w2, pm: pm2, mem: mem2, later: later2, event: event2 } = await chained(s, {}, (p) => Response.json(decision(p, { action: 'wait' })));
+    await w2.run();
+    later2(10 * 60_000);
+    await event2();
+    await w2.run();
+    expect(pm2.calls).toHaveLength(2);
+    expect(mem2.data.get('rechecks')).toBeUndefined();
+  });
+
   it('does not schedule a recheck for an action that does not wait', async () => {
     const { work, mem } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'done' })));
     await work.run();

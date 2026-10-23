@@ -144,7 +144,9 @@ export class PullRequestWork {
       await this.#storage.put({ attempt, ...(recheck && { recheckAt: 0 }) });
       const target = await this.#storage.get<PullRequestTarget>('target');
       try {
-        if (target) await this.#once(target, attempt, recheck);
+        // A run with a new event counts as an event, also when a recheck is due too.
+        const event = generation !== ((await this.#storage.get<number>('done')) ?? 0);
+        if (target) await this.#once(target, attempt, recheck && !event);
       } catch (err) {
         if (err instanceof RetryError) {
           // The retried alarm must find the recheck still due.
@@ -179,7 +181,8 @@ export class PullRequestWork {
       const run = Object.hasOwn(this.#settings.runs, profile) ? this.#settings.runs[profile]! : {};
       if (run.skipDrafts && pr.draft) continue;
       // A recheck asks a waiting profile again at most recheck.max times per head; events always ask.
-      if (recheck && run.recheck && !(await this.#countRecheck(profile, pr.head, run.recheck.max))) continue;
+      const counted = recheck && run.recheck !== undefined;
+      if (counted && !(await this.#mayRecheck(profile, pr.head, run.recheck!.max))) continue;
       // A required decision that is not there (a skipped draft, a refusal) is not sent: the profile's requires must be optional.
       const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
@@ -194,6 +197,8 @@ export class PullRequestWork {
       const asked = run.diff ? { ...state, ...(await this.#diffOf(target, pr.head, run.diff)) } : state;
       const decision = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
       if (!decision) continue;
+      // Counted only once Pointsman answered: a failed recheck is tried again without using one up.
+      if (counted) await this.#countRecheck(profile, pr.head);
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
@@ -239,15 +244,18 @@ export class PullRequestWork {
     await this.#storage.setAlarm(at);
   }
 
-  /** Counts a recheck of this profile on this head; false when it had max already. */
-  async #countRecheck(profile: string, head: string, max: number): Promise<boolean> {
+  /** Whether a recheck may still ask this profile on this head. */
+  async #mayRecheck(profile: string, head: string, max: number): Promise<boolean> {
+    const rechecks = await this.#storage.get<Rechecks>('rechecks');
+    return rechecks?.head !== head || (rechecks.count[profile] ?? 0) < max;
+  }
+
+  /** Counts a recheck of this profile on this head. */
+  async #countRecheck(profile: string, head: string): Promise<void> {
     let rechecks = (await this.#storage.get<Rechecks>('rechecks')) ?? { head, count: {} };
     if (rechecks.head !== head) rechecks = { head, count: {} };
-    const count = rechecks.count[profile] ?? 0;
-    if (count >= max) return false;
-    rechecks.count[profile] = count + 1;
+    rechecks.count[profile] = (rechecks.count[profile] ?? 0) + 1;
     await this.#storage.put({ rechecks });
-    return true;
   }
 
   #approves(): boolean {
