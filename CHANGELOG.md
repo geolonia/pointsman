@@ -12,6 +12,20 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.11.0 (2026-10-23)
+
+`github_bump` checks the lockfile's own version steps and every workspace (#186). The fields stay the same; the fact now passes less often.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.11.0`. No migration, no new secrets, no new permissions.
+- A bump pull request may now take up to 51 more GitHub requests (the head tree and each `package.json` the pull request does not change), only when everything else already says dev only.
+
+What changed:
+
+- **`semver`** is the largest step over every version a lockfile changes too, transitive ones included: each removed version is paired with the added version of the same package at the same place. A package added or removed without a counterpart, more than one version of a package on one side, a downgrade or pre-release, a change of `lockfileVersion`, `overrides`, `settings` or another unknown section, or a version line the patch does not place gives `none`. npm v1 and v2 lockfiles give `none`.
+- **`dev_only`** reads every `package.json` at the head commit: false when any of them lists a bumped package, or a package the lockfile changes, outside `devDependencies`. Where the lockfile marks dev packages (`package-lock.json`, pnpm v6), every changed package must carry the mark. pnpm v9 has no marks, so only the changed package and the one above it are checked. The fact is missing when the tree is truncated, has more than 50 `package.json` files, or one is over 512 KB.
+
 ## 0.10.0 (2026-10-23)
 
 A new fact type for dependency bumps (#180), and CodeRabbit skips release PRs (#181).
