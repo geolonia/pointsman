@@ -3,3 +3,4 @@ allowBuilds:
   workerd: true
 packages:
   - packages/*
+  - docs-site

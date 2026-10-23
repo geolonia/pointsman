@@ -36,6 +36,23 @@ A new source of facts is a fact module, not a change to the engine: see
 [docs/modules.md](docs/modules.md). A new shared fact type (a capability) is
 a change to `packages/module-api/src/capabilities.ts`.
 
+The documentation site (https://pointsman.net/docs/) is built
+from `docs/` with Astro Starlight (`docs-site/`):
+
+- A page written for the site goes in `docs/<group>/` in English and in
+  `docs/ja/<group>/` in Japanese, with the same headings and code blocks.
+  Write each language natively; do not translate sentence by sentence.
+- Link to other files with relative paths, as on GitHub; the build turns
+  them into site links. Where the older files in `docs/` appear on the site
+  is set in `docs-site/pages.mjs`.
+- The pages in `docs/reference/` marked as generated come from the code:
+  after changing a fact module, `openapi.yaml` or the MCP tools, run
+  `pnpm docs:reference` and commit the result.
+- `pnpm docs:check` (part of `pnpm check`) checks the generated pages, the
+  two languages, and that every linked file exists. `pnpm docs:build`
+  builds the site and also checks every page and `#anchor` a link points
+  at; CI runs both. `pnpm docs:dev` shows the site locally.
+
 A new example profile goes in `examples/profiles/` and is linked from one
 use-case topic, `examples/<topic>/README.md` (see
 [examples/README.md](examples/README.md)). A test checks this.

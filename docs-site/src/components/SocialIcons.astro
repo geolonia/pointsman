@@ -1,0 +1,22 @@
+---
+// The header's links: back to the landing page (https://pointsman.net/,
+// or /ja/ from the Japanese docs), then Starlight's own social icons.
+import Default from '@astrojs/starlight/components/SocialIcons.astro';
+
+const ja = Astro.locals.starlightRoute.locale === 'ja';
+---
+
+<a class="home" href={ja ? '/ja/' : '/'}>{ja ? 'ホーム' : 'Home'}</a>
+<Default />
+
+<style>
+  .home {
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .home:hover {
+    color: var(--sl-color-white);
+  }
+</style>

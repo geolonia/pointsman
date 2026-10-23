@@ -20,6 +20,7 @@ for (const [name, path, text, expected] of [
   ['a D1 uuid', 'wrangler.jsonc', '{ "d1_databases": [{ "binding": "DB", "database_id": "6f0a3c1e-1111-4222-8333-444455556666" }] }', /database_id is "6f0a3c1e/],
   ['a wrangler.toml', 'wrangler.toml', 'name = "x"', /use wrangler.jsonc/],
   ['routes', 'wrangler.jsonc', wrangler('local-dev-only', '\n  "routes": ["x.example.com/*"],'), /routes is set/],
+  ['another route in the website config', 'docs-site/wrangler.jsonc', '{ "name": "s", "routes": [{ "pattern": "pointsman.net" }, { "pattern": "x.example.com" }] }', /routes is set/],
   ['a profile outside the example folders', 'profiles/team.yaml', profile, /a decision profile outside/],
 ]) {
   test(`flags ${name}`, () => {
@@ -30,6 +31,7 @@ for (const [name, path, text, expected] of [
 
 for (const [name, path, text] of [
   ['local-dev-only ids', 'wrangler.jsonc', wrangler('local-dev-only')],
+  ['the website\'s own domain', 'docs-site/wrangler.jsonc', '{ "name": "s", "routes": [{ "pattern": "pointsman.net", "custom_domain": true }] }'],
   ['JSONC with inline and block comments', 'wrangler.jsonc', '{ /* block */ "name": "x", // inline\n "kv_namespaces": [{ "binding": "T", "id": "local-dev-only" }], }'],
   ['template placeholders', 'template/config-repo/wrangler.jsonc', wrangler('<PROFILES namespace id>')],
   ['a 64-hex SHA-256', 'docs/a.md', `hash ${'ab'.repeat(32)}`],

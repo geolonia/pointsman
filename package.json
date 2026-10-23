@@ -17,13 +17,18 @@
     "test:worker": "pnpm build && vitest run",
     "validate:profiles": "node scripts/validate-profiles.mjs examples/profiles",
     "test:cases": "node scripts/test-profile.mjs examples/cases --profiles examples/profiles",
-    "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm test:cases && pnpm check:public && pnpm deploy:dry-run",
+    "check": "pnpm typecheck && pnpm test && pnpm validate:profiles && pnpm test:cases && pnpm check:public && pnpm docs:check && pnpm deploy:dry-run",
     "deploy:dry-run": "pnpm build && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler deploy --dry-run --config connectors/github/wrangler.jsonc --outdir .wrangler/dry-run-github",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "dev:live": "pnpm build && wrangler dev --env live",
     "ai-gateway": "node scripts/ai-gateway.mjs",
     "check:public": "node scripts/check-public.mjs",
-    "check:core": "node scripts/check-core.mjs"
+    "check:core": "node scripts/check-core.mjs",
+    "docs:reference": "node scripts/docs-reference.mjs",
+    "docs:check": "node scripts/docs-reference.mjs --check && node docs-site/scripts/check-languages.mjs && node docs-site/scripts/sync.mjs",
+    "docs:build": "pnpm --filter @pointsman/docs-site build",
+    "docs:dev": "pnpm --filter @pointsman/docs-site dev",
+    "site:build": "pnpm docs:build && node docs-site/scripts/assemble.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.2",
