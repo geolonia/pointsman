@@ -66,44 +66,57 @@
 
 /* Layout, as on datamodels.jp: the header and the page are at most 1440 px
    wide and centred, so on a wide screen the navbar does not stretch to the
-   window's edges and the sidebar starts at the content's left edge.
-   --gutter is the empty space on each side. Starlight's own layout
-   (PageFrame, TwoColumnContent) stays as it is; only its edges move in. */
+   window's edges and the sidebar starts at the content's left edge. The
+   empty space on each side is max(0, (100% - 1440 px) / 2): a percentage, so
+   it is measured without the scrollbar. Starlight's own layout (PageFrame,
+   TwoColumnContent) stays as it is; only its edges move in. */
 :root {
-  --site-max-width: 90rem;
-  --gutter: max(0px, calc((100vw - var(--site-max-width)) / 2));
+  --ps-max-width: 90rem;
 }
 @media (min-width: 50rem) {
   .page > .header {
-    padding-inline: calc(var(--gutter) + var(--sl-nav-pad-x));
+    padding-inline: calc(max(0px, (100% - var(--ps-max-width)) / 2) + var(--sl-nav-pad-x));
   }
   .sidebar-pane {
-    inset-inline-start: var(--gutter);
+    inset-inline-start: max(0px, (100% - var(--ps-max-width)) / 2);
   }
   .main-frame {
-    padding-inline-start: calc(var(--sl-content-inline-start, 0rem) + var(--gutter));
-    padding-inline-end: var(--gutter);
+    padding-inline-start: calc(var(--sl-content-inline-start, 0rem) + max(0px, (100% - var(--ps-max-width)) / 2));
+    padding-inline-end: max(0px, (100% - var(--ps-max-width)) / 2);
   }
 }
 
 /* The page you are on, in the sidebar: green text and a small dot on the
    group's line, like a station on a track, not a solid green bar. */
+:root {
+  --ps-current: var(--sl-color-text-accent);
+}
+:root[data-theme='light'] {
+  /* Darker than the accent, for contrast on the sidebar's paper colour. */
+  --ps-current: #17603f;
+}
 .sidebar-content a[aria-current='page'],
 .sidebar-content a[aria-current='page']:hover,
 .sidebar-content a[aria-current='page']:focus {
   position: relative;
-  color: var(--sl-color-text-accent);
+  color: var(--ps-current);
   background-color: transparent;
-  font-weight: 600;
 }
-.sidebar-content a[aria-current='page']::before {
+/* Only links inside a group have the line (Starlight's `ul ul li` border, one
+   link padding to the left); the dot sits on it, level with the first line. */
+.sidebar-content ul ul a[aria-current='page']::before {
   content: '';
   position: absolute;
-  /* The group's line is the list item's border, one link padding to the left. */
   inset-inline-start: calc(-1 * var(--sl-sidebar-item-padding-inline, 0.5rem) - 4px);
-  top: calc(50% - 3.5px);
+  top: calc(0.3em + 0.5lh - 3.5px);
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background-color: var(--sl-color-text-accent);
+  background-color: var(--ps-current);
+}
+@media (forced-colors: active) {
+  .sidebar-content ul ul a[aria-current='page']::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
 }
