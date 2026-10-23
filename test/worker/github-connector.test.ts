@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, actsOnGitHub, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -894,6 +894,33 @@ describe('chains: profiles that build on each other', () => {
     expect(scopeFor(false, true)({ metadata: 'read', pull_requests: 'read', checks: 'write' })).toEqual({ metadata: 'read', pull_requests: 'read', checks: 'write' });
     expect(readsDiff(chain())).toBe(true);
     expect(readsDiff(settings())).toBe(false);
+  });
+
+  it('CodeRabbit\'s summary in the description neither asks a once-per-head profile again nor reaches the model', async () => {
+    const block = (text: string) => `<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n${text}\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->`;
+    const { work, pm, gh, event } = await chained(chain(), { body: 'A body' });
+    await work.run();
+    gh.github.state.body = `A body\n\n${block('## Summary by CodeRabbit\n- Docs')}`;
+    await event();
+    await work.run();
+    // The same pr-risk decision: CodeRabbit's edit is not the author's.
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(1);
+    expect(pm.calls.at(-1)!.body.state.pull_request.body).toBe('A body');
+    // An edit by the author asks again.
+    gh.github.state.body = `A body, edited\n\n${block('## Summary by CodeRabbit\n- Docs, more')}`;
+    await event();
+    await work.run();
+    expect(pm.calls.filter((c) => c.profile === RISK).map((c) => c.body.state.pull_request.body)).toEqual(['A body', 'A body, edited']);
+  });
+
+  it('authorText leaves out CodeRabbit\'s blocks, also one without its end marker', () => {
+    const start = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
+    const end = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
+    expect(authorText('Fix the docs.')).toBe('Fix the docs.');
+    expect(authorText(`Fix the docs.\n${start}\nbot\n${end}\nMore by the author.`)).toBe('Fix the docs.\n\nMore by the author.');
+    expect(authorText(`${start}a${end}x${start}b${end}`)).toBe('x');
+    expect(authorText(`Fix.\n${start}\nno end`)).toBe('Fix.');
+    expect(authorText(`${end} only an end marker`)).toBe(`${end} only an end marker`);
   });
 
   it('settings: runs only for listed profiles, requires only earlier ones, checked values', () => {
