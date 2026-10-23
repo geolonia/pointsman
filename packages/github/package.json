@@ -1,6 +1,6 @@
 {
   "name": "@pointsman/github",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "private": true,
   "description": "Pointsman fact module: pull-request facts read from GitHub.",
   "license": "MIT",

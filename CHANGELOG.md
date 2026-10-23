@@ -12,6 +12,24 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.14.1 (2026-10-23)
+
+The decision comment's train shows where the pull request really is (#200).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.14.1`. No migration, no new secrets, no new permissions.
+- **For every deployment with the connector:** each run on an open, non-draft pull request now makes one GraphQL read (the review decision and the last 100 reviews), with or without the comment, because check runs draw the line too. A second one only in runs that approve or dismiss.
+
+What changed:
+
+- **Approved** comes from GitHub's own review decision (`reviewDecision`, what the merge box shows under the repository's rules): the train is at "approved" only when it is `APPROVED`, so an approval counts exactly where the ruleset counts it (also an AI review service's), and a drive-by approval never does. `CHANGES_REQUESTED`, `REVIEW_REQUIRED` and no review rule at all never show it. The caption says "approved by Pointsman on this commit" when the app's own latest review approves the head, "approved on this commit" when someone's does, else "approved".
+- **Reviewed:** any review of the current head by someone other than the author (dismissed and pending ones don't count).
+- **Merged and closed:** on `closed`, the comment gets one last update, without asking Pointsman: the train at "merged", or "closed without merging". A reopen runs as usual. The connector accepts `closed` events only when the comment is on.
+- **Filled stations:** the train's station and every station before it are filled.
+- **No names or review text** in the comment.
+- **Fail safe:** if the reviews can't be read (an error, a rate limit, a push in between), the run goes on and the train stays where the last read put it on this head, else at "ready". After the app dismissed its own approval, a failed read never shows "approved".
+
 ## 0.14.0 (2026-10-23)
 
 The GitHub connector can show its decisions inside the pull request: one comment, railway style (#195, #196).
