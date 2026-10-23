@@ -4,7 +4,9 @@ description: Replace a client's API token with a new one, without a moment in wh
 sidebar: { order: 50 }
 ---
 
-Every client that calls Pointsman has its own API token. Rotate a token when
+Every client that calls Pointsman over its API has its own API token (the
+GitHub connector's internal call has none, so there is nothing to rotate for
+it). Rotate a token when
 it is about to expire, when someone who knew it leaves, or when it may have
 leaked. These steps replace it without downtime: the old token keeps working
 until you revoke it in step 3.
@@ -35,10 +37,11 @@ old token kept; revoke it once the new one is in place:
 ```
 
 The new token has the same profiles as the old one. It is shown only once:
-copy it now. Pointsman stores only a hash of it.
+copy it now. Pointsman stores only a hash of it. (In the output above, the
+hashes and the token are shortened.)
 
 `--expires` takes a duration from now (`12h`, `90d`, `2w`) or a date
-(`2027-01-31`, the end of that day in UTC). When the old token had an expiry,
+(`2027-01-31`, the end of that day in UTC), at least one hour away. When the old token had an expiry,
 the new one needs `--expires` too, or `--no-expiry`, so that a token never
 loses its expiry by accident.
 

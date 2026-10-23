@@ -78,8 +78,10 @@ decision can say which rules made it.
    lists for people to check), a person checks the case first,
    gives the final action and can correct the AI's answers.
 5. **Everything is recorded.** The decision log keeps the answers, the
-   facts, the rule that fit, the model, and the profile version, which says
-   which questions were asked.
+   facts, the rule that fit, the model, the versions of the engine and its
+   modules, and the profile version, which says which questions were asked.
+   The request itself is kept only as a hash, unless the profile asks to
+   keep it.
    The corrections show how often the AI was right.
 
 ## Why it is split this way
@@ -90,7 +92,8 @@ decision can say which rules made it.
   what the profile does, and a person can always see why a decision was
   made. Some decisions need no AI answer at all: a profile can approve a
   release pull request on facts alone, when it changes only version fields
-  and the changelog.
+  and the changelog and other facts check who made it (see `github_release`
+  in the [profile format](../profile-format.md#github-pull-requests)).
 - **Probabilities, not only answers.** A rule can ask how sure the model is,
   for example `team.p >= 0.85` (`p` is the probability of the answer to the
   question `team`). When the model is not sure, the rules send the

@@ -24,7 +24,8 @@ Every fact has two more fields besides its own:
 ## Unknown, not false
 
 A rule that compares a missing fact, for example `facts.flood.rank >= 5`, is
-neither true nor false: it is *unknown*. A rule fits only when its condition
+neither true nor false: it is *unknown*. So is a comparison with a field that
+has no value, for example the distance when `nearest` found nothing. A rule fits only when its condition
 is true, so an unknown condition never gives its action. Combined with
 `and` and `or`, unknown works as you would expect:
 
@@ -32,7 +33,10 @@ is true, so an unknown condition never gives its action. Combined with
 - `true or unknown` is true: one true part is enough.
 - `not unknown` stays unknown.
 
-This is why a rule cannot fit "by accident" because data was not there.
+So a rule never fits because of data that was not there. But a missing fact
+can stop an *earlier* rule that blocks something, so that a *later* rule that
+allows it fits instead. That is why the next section puts the missing-fact
+rule first.
 
 ## What a profile does with it
 
@@ -54,7 +58,10 @@ detour can only be computed for a road section, not for a single point:
 
 Where a wrong pass would be costly, put the missing-fact rule first and let it
 send the case to a person (`review`) or ask to try again later (`retry`, an
-action name some example profiles use), never let it pass. See
+action name some example profiles use), never let it pass. In a rule that
+allows something, name every condition as a known value
+(`facts.risky.any == false`) instead of counting on an earlier rule; see
+the [safety note in the profile format](../profile-format.md#github-pull-requests). See
 [Why AI answers can only make a decision stricter](stricter-only.md).
 
 The details, with every type and reason, are in the

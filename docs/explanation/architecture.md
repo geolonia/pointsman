@@ -52,15 +52,19 @@ checks run the same engine with different modules.
   client's decisions. See [Fact modules](../modules.md).
 - **Connectors** connect another system: they bring its cases in and carry
   the results back, for example to a FIWARE platform (`@pointsman/fiware`)
-  or to a pull request as a check run (`@pointsman/github`). They ask the
+  or to a pull request as a check on it (`@pointsman/github`). They ask the
   engine through the same public API as any other client, with their own
   token. The GitHub connector can instead make an internal call when it
-  runs in the same Cloudflare account: no token, but the same checks. See
+  runs in the same Cloudflare account: no token, but the same checks.
+  Anyone who can deploy code to that account can make such a call, so it
+  decides as one fixed client with a fixed list of profiles; see
+  [internal calls](../adapters.md#internal-calls) and
   [Connectors](../connectors.md).
 - **Adapters** connect the engine to the platform it runs on: where the
   decision log and the profiles are stored, which AI service answers, how
   requests come in, and how a connector in another Worker calls the engine.
-  Today that is Cloudflare Workers. See
+  Today that is Cloudflare Workers, Cloudflare's service for running code
+  on its servers. See
   [Adapters](../adapters.md).
 
 One package can have more than one role: `@pointsman/github` looks up facts
@@ -70,9 +74,9 @@ and is a connector.
 
 - **Small engine.** A new data source or a new system is a new module, not a
   change to the engine. The engine stays the same for every deployment.
-- **Each deployment chooses.** A deployment lists its modules, with pinned
-  versions, and every decision records the versions of the engine and of the
-  fact modules it used.
+- **Each deployment chooses.** A deployment lists its modules, and can pin
+  their versions. Every decision records the versions of the engine and of
+  the modules that answered its facts.
 - **No lock-in.** The engine core uses no Cloudflare-specific code; a check
   of its types and imports covers this. Another platform needs other adapters, but the
   profiles and their rules stay the same.

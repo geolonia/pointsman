@@ -49,18 +49,18 @@ policy:
 
 | 部分 | 内容 | 詳細 |
 |---|---|---|
-| `id`、`version` | API で使うプロファイルの名前(`POST /v1/decide/issue-triage`)とバージョンです。変更するたびにバージョンを上げます。 | [Fields](../../profile-format.md#fields) |
-| `title`、`description` | 何を判定するプロファイルかを、承認する人のために英語と日本語で書きます。 | [Fields](../../profile-format.md#fields) |
-| `model`、`fallback_models` | 答える AI モデルと、失敗したときに試すモデルです。 | [Models](../../models.md) |
-| `input` | リクエストのどの部分を AI に見せるかです。 | [Fields](../../profile-format.md#fields) |
-| `questions` | AI が答える質問です。`noul`(はい・いいえ)、`choice`(選択肢から 1 つ)、`score`(段階)があります。 | [Question types](../../profile-format.md#question-types) |
-| `facts` | Pointsman 自身が調べるデータです(この例にはありません)。 | [Facts](../../profile-format.md#facts)、[ファクトの型](fact-types.md) |
-| `requires` | この判定が前提にする、以前の判定です(この例にはありません)。 | [Decision chains](../../profile-format.md#decision-chains) |
-| `policy` | ルールです。上から順に調べ、最初に当てはまったルールでアクションが決まります。どれも当てはまらないときは `default` になります。 | [Policy conditions](../../profile-format.md#policy-conditions) |
+| `id`、`version` | API で使うプロファイルの名前(`POST /v1/decide/issue-triage`)とバージョンです。変更するたびにバージョンを上げます。 | [フィールド(英語)](../../profile-format.md#fields) |
+| `title`、`description` | 何を判定するプロファイルかを、承認する人のために英語と日本語で書きます。 | [フィールド(英語)](../../profile-format.md#fields) |
+| `model`、`fallback_models` | 答える AI モデルと、失敗したときに試すモデルです。 | [モデル(英語)](../../models.md) |
+| `input` | リクエストのどの部分を AI に見せるかです。 | [フィールド(英語)](../../profile-format.md#fields) |
+| `questions` | AI が答える質問です。`noul`(はい・いいえ)、`choice`(選択肢から 1 つ)、`score`(段階)があります。 | [質問の型(英語)](../../profile-format.md#question-types) |
+| `facts` | Pointsman 自身が調べるデータです(この例にはありません)。 | [ファクト(英語)](../../profile-format.md#facts)、[ファクトの型](fact-types.md) |
+| `requires` | この判定が前提にする、以前の判定です(この例にはありません)。 | [判定のチェーン(英語)](../../profile-format.md#decision-chains) |
+| `policy` | ルールです。上から順に調べ、最初に当てはまったルールでアクションが決まります。どれも当てはまらないときは `default` になります。 | [ポリシーの条件(英語)](../../profile-format.md#policy-conditions) |
 
 ## 文章で読む
 
-`explain-profile` は、承認する人のためにプロファイルをふつうの文章に直します。Pointsman のリポジトリをチェックアウトし、Node.js 24 で実行します。この例のルールは次のように読めます。
+`explain-profile` は、承認する人のためにプロファイルをふつうの文章に直します。Pointsman のリポジトリをチェックアウトし、Node.js 24 で実行します。この例の出力のうち、ルールの部分を抜き出すと次のとおりです。
 
 ```sh
 node scripts/explain-profile.mjs examples/profiles/issue-triage.yaml

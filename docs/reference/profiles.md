@@ -70,7 +70,7 @@ policy:
 
 `explain-profile` turns a profile into plain sentences, for the people who
 approve it. Run it in a checkout of the Pointsman repository, with Node.js 24.
-The rules of this example read:
+The rules part of its output for this example (shortened):
 
 ```sh
 node scripts/explain-profile.mjs examples/profiles/issue-triage.yaml
