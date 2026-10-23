@@ -1,0 +1,31 @@
+---
+// Starlight's footer, with a short credit: who runs the site, and the page
+// that says more. Pointsman itself is an open-source project; the credit is
+// for the site.
+import Default from '@astrojs/starlight/components/Footer.astro';
+import { BASE } from '../../pages.mjs';
+
+const ja = Astro.locals.starlightRoute.locale === 'ja';
+const about = `${BASE}${ja ? 'ja/' : ''}about/`;
+---
+
+<Default />
+<p class="credit">
+  {ja ? '運営: ' : 'Operated by '}<a href="https://www.geolonia.com/">Geolonia</a>{' · '}<a href={about}
+    >{ja ? 'このサイトについて' : 'About this site'}</a
+  >
+</p>
+
+<style>
+  .credit {
+    margin-top: 1.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+  }
+  .credit a {
+    color: inherit;
+  }
+  .credit a:hover {
+    color: var(--sl-color-white);
+  }
+</style>

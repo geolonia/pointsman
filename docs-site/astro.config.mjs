@@ -27,10 +27,21 @@ export default defineConfig({
         ja: { label: '日本語', lang: 'ja' },
       },
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/geolonia/pointsman' }],
-      customCss: ['./src/styles/custom.css'],
+      customCss: [
+        // IBM Plex, served from this site: no request to a font service.
+        '@fontsource/ibm-plex-sans/latin-400.css',
+        '@fontsource/ibm-plex-sans/latin-500.css',
+        '@fontsource/ibm-plex-sans/latin-600.css',
+        '@fontsource/ibm-plex-mono/latin-400.css',
+        '@fontsource/ibm-plex-mono/latin-600.css',
+        './src/styles/custom.css',
+      ],
       sidebar,
-      // A link back to the landing page in the header.
-      components: { SocialIcons: './src/components/SocialIcons.astro' },
+      // A Home link in the header, and a credit in the footer.
+      components: {
+        SocialIcons: './src/components/SocialIcons.astro',
+        Footer: './src/components/Footer.astro',
+      },
     }),
   ],
 });
