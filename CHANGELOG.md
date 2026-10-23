@@ -12,6 +12,21 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.13.1 (2026-10-23)
+
+The GitHub connector checks the engine's answer before it acts, and never acts on a test decision (#193).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.13.1`. No migration, no new secrets, no new permissions.
+
+What changed:
+
+- **The engine's answer is checked** once, for both the HTTP adapter and the service binding: `decision_id` (a UUID), `action` (an action name), `profile` and `ref` (the ones asked for), `profile_version`, `rule`, and `facts`, `review` and `test` when present must have the right shape. A decision kept for `once_per_head` is checked again before it is reused. An answer that does not fit is an invalid answer.
+- **Test decisions are never acted on:** a decision with `test: true` (made with a test token) does nothing.
+- **For an invalid answer or a test decision** the connector does nothing (no approve, `keep_approval`, comment, label or reviewer request), keeps nothing, sends nothing on through `requires` and schedules no recheck. In a profile that maps `approve`, an approval of the head commit is withdrawn, as for any decision that does not keep it. For a test decision the check run also says to use a token made without `--test`. The check run is neutral and says `invalid answer: nothing done` or `test decision: nothing done`; the log names the field, never its value. It is not retried; the next event asks again.
+- A 2xx body that is not JSON (HTTP) or not an object (binding) used to be retried; it is now an invalid answer.
+
 ## 0.13.0 (2026-10-23)
 
 The GitHub connector can keep its approval when a later decision says so, and a fact tells a profile whether the app already approved the head (#191).
