@@ -26,6 +26,7 @@
 // --profiles is given) and revokes its old ones, or with --keep-old leaves
 // them for you to revoke once the new token is in place.
 
+import { relative } from 'node:path';
 import { parseArgs } from 'node:util';
 // Same token format and hashing as the Worker (Node.js strips the types).
 import { hashToken, newToken, tokenKey } from '../src/auth.ts';
@@ -68,6 +69,17 @@ if (positionals.length !== 1 || !['create', 'rotate', 'revoke', 'list'].includes
 }
 // No default target: writing to the wrong namespace should not be one typo away.
 if (values.local === values.remote) fail('Give exactly one of --local or --remote.');
+
+/** A value as a shell word, quoted when needed. */
+const shellWord = (v) => (/^[\w./@:-]+$/.test(v) ? v : `'${v.replaceAll("'", "'\\''")}'`);
+
+/** This script's path as started (engine/scripts/tokens.mjs in a configuration repository), for a command to copy. */
+const self = () => shellWord(relative(process.cwd(), process.argv[1]) || process.argv[1]);
+
+/** The target options as typed, for a command to copy: --local or --remote, and --config when given. */
+function target() {
+  return [values.local ? '--local' : '--remote', ...(values.config ? ['--config', shellWord(values.config)] : [])].join(' ');
+}
 
 function wrangler(args) {
   const full = ['kv', 'key', ...args, '--binding', 'TOKENS', values.local ? '--local' : '--remote'];
@@ -171,7 +183,7 @@ switch (command) {
     await putToken(client, profiles, !!old[0]?.test, expiresAt);
     for (const t of old) {
       if (values['keep-old']) {
-        console.log(`\nold token kept; revoke it once the new one is in place:\n  node scripts/tokens.mjs revoke --hash ${t.hash} ${values.local ? '--local' : '--remote'}`);
+        console.log(`\nold token kept; revoke it once the new one is in place:\n  node ${self()} revoke --hash ${t.hash} ${target()}`);
       } else {
         wrangler(['delete', tokenKey(t.hash)]);
         console.log(`\nrevoked old token ${t.hash}`);

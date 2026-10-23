@@ -73,6 +73,17 @@ test('rotate --keep-old keeps the old token and --profiles changes the scope', (
   assert.match(r.stdout, new RegExp(`revoke --hash ${'a'.repeat(64)} --remote`));
 });
 
+test('rotate --keep-old prints the revoke command with the same --config', () => {
+  const list = stored(['a'.repeat(64), { client: 'demo', profiles: ['x'] }]);
+  for (const [config, shown] of [['deploy/wrangler.jsonc', 'deploy/wrangler.jsonc'], ["my config's.jsonc", `'my config'\\''s.jsonc'`]]) {
+    const r = runWith(list, 'rotate', '--client', 'demo', '--keep-old', '--remote', '--config', config, '--dry-run');
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes(`revoke --hash ${'a'.repeat(64)} --remote --config ${shown}\n`), r.stdout);
+    // The script's path as started, so the command also works from a configuration repository (engine/scripts/...).
+    assert.match(r.stdout, /\n {2}node \S*scripts\/tokens\.mjs revoke /);
+  }
+});
+
 for (const [name, list, args, message] of [
   ['a client without a token', stored(), ['--client', 'demo'], /has no token; use create/],
   ['--test', stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }]), ['--client', 'demo', '--test'], /leave out --test/],
