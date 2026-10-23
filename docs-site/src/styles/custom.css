@@ -35,3 +35,10 @@
 .diagram text.title { font-weight: 600; }
 .diagram .line { stroke: var(--sl-color-gray-3); stroke-width: 1.5; fill: none; }
 .diagram .arrowhead { fill: var(--sl-color-gray-3); }
+
+/* "Planned" badges: quiet, so they mark a page without drawing the eye. */
+.sl-badge.note {
+  --sl-color-bg-badge: transparent;
+  --sl-color-border-badge: var(--sl-color-gray-5);
+  --sl-color-text-badge: var(--sl-color-gray-3);
+}

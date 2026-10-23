@@ -135,7 +135,7 @@ for (const [file, slug] of pages) {
       '---',
       `title: ${yaml(title)}`,
       `description: ${yaml(legacy.description)}`,
-      `sidebar: { order: ${legacy.order} }`,
+      `sidebar: { order: ${legacy.order}${legacy.label ? `, label: ${yaml(legacy.label)}` : ''} }`,
       `editUrl: ${yaml(`${GITHUB}/edit/main/${file}`)}`,
       '---',
       '',

@@ -3,14 +3,50 @@ title: Pointsman documentation
 description: Pointsman decides which way a case goes, or calls a person when it is not sure. Learn to use it, look up the details, and read why it works as it does.
 ---
 
-Pointsman is an open-source decision service. Your systems send it a case,
-for example a report of a closed road or a new pull request. Pointsman asks
+Pointsman is an open-source decision service. Your systems send it a
+*case*, something to decide, for example a report of a closed road or a new
+pull request. Pointsman asks
 fixed questions, applies rules that people wrote, and answers with an action.
 When it is not sure, a person checks the case.
 
-The documentation has four parts:
+New here? Read [The decision model](explanation/decision-model.md) first,
+then [Profiles at a glance](reference/profiles.md).
 
-- **Tutorials** teach by doing, step by step.
-- **How-to guides** reach one goal, for example deploying Pointsman.
-- **Reference** lists the facts: the profile format, the fact types, the HTTP API and the MCP tools.
-- **Explanation** says why Pointsman works as it does.
+## Tutorials
+
+Learn by doing, step by step.
+
+- [Your first profile](tutorials/first-profile.md)
+- [Decide about a pull request](tutorials/pull-request-facts.md)
+- [A road-closure decision with map data](tutorials/road-closure.md)
+
+## How-to guides
+
+Reach one goal.
+
+- [Write a profile with an AI assistant](authoring.md)
+- [Choose modules for a deployment](how-to/choose-modules.md)
+- [Deploy Pointsman](deployment.md)
+- [Rotate an API token](how-to/rotate-api-tokens.md)
+- [Answer reviews](how-to/answer-reviews.md)
+- [Read and replay the decision log](how-to/read-the-decision-log.md)
+
+## Reference
+
+Look up the details.
+
+- [Profiles at a glance](reference/profiles.md) and the [full profile format](profile-format.md)
+- [Fact types](reference/fact-types.md) and [connectors](reference/connectors.md)
+- [HTTP API](reference/http-api.md) and [MCP tools](reference/mcp-tools.md)
+
+## Explanation
+
+Why Pointsman works as it does.
+
+- [The decision model](explanation/decision-model.md)
+- [Why AI answers can only make a decision stricter](explanation/stricter-only.md)
+- [Missing facts](explanation/missing-facts.md)
+- [How Pointsman is built](explanation/architecture.md)
+
+Pages marked *Planned* in the sidebar say what they will contain and link to
+what exists today. Older notes and spike reports are under *Background*.

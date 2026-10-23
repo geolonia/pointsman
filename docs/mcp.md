@@ -6,14 +6,10 @@ instead of deciding on their own.
 
 ## Tools
 
-| Tool | What it does |
-|---|---|
-| `list_profiles` | The profiles you can use: questions, answer options, possible actions, the state fields to send, and the earlier decisions a profile `requires` |
-| `explain_profile` | A profile in plain sentences, in English or Japanese: what the AI is asked, the facts and earlier decisions it uses, and each rule as "If …, the action is …". Optional: `lang` (`en` or `ja`) and `version` (see [profile-format.md](profile-format.md#explain)) |
-| `replay_profile` | Try a changed policy on the decisions already made: how many actions would change, from what to what, and how often they would match what a person answered. No model is called (see [profile-format.md](profile-format.md#replay)) |
-| `decide` | Ask a profile; returns typed answers with probabilities and the action (for example `auto`, or `review` when a person should decide). Optional: `decisions` (earlier decision ids by name, for a profile with `requires`) and `idempotency_key` (the same key again returns the same decision) |
-| `get_decision` | A decision by id: answers, action, profile version, model, review status, feedback, and what it read from earlier decisions |
-| `submit_feedback` | Correct a decision: the right answer for one or more questions. Only for people logged in with GitHub, recorded under their login |
+`list_profiles`, `explain_profile`, `replay_profile`, `decide` and
+`get_decision`, and `submit_feedback` for people logged in with GitHub
+(recorded under their login). Each tool with its arguments:
+[MCP tools](reference/mcp-tools.md), generated from the server's code.
 
 Feedback is a person's judgement, so API tokens do not get `submit_feedback`.
 
