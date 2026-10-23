@@ -24,7 +24,7 @@ What changed:
 
 - **The engine's answer is checked** once, for both the HTTP adapter and the service binding: `decision_id` (a UUID), `action` (an action name), `profile` and `ref` (the ones asked for), `profile_version`, `rule`, and `facts`, `review` and `test` when present must have the right shape. A decision kept for `once_per_head` is checked again before it is reused. An answer that does not fit is an invalid answer.
 - **Test decisions are never acted on:** a decision with `test: true` (made with a test token) does nothing.
-- **For an invalid answer or a test decision** the connector does nothing (no approve, `keep_approval`, comment, label or reviewer request), keeps nothing, sends nothing on through `requires` and schedules no recheck. An approval of the head commit is withdrawn, as for any decision that does not keep it. The check run is neutral and says `invalid answer: nothing done` or `test decision: nothing done`; the log names the field, never its value. It is not retried; the next event asks again.
+- **For an invalid answer or a test decision** the connector does nothing (no approve, `keep_approval`, comment, label or reviewer request), keeps nothing, sends nothing on through `requires` and schedules no recheck. In a profile that maps `approve`, an approval of the head commit is withdrawn, as for any decision that does not keep it. For a test decision the check run also says to use a token made without `--test`. The check run is neutral and says `invalid answer: nothing done` or `test decision: nothing done`; the log names the field, never its value. It is not retried; the next event asks again.
 - A 2xx body that is not JSON (HTTP) or not an object (binding) used to be retried; it is now an invalid answer.
 
 ## 0.13.0 (2026-10-23)
