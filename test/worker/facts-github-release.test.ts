@@ -12,7 +12,9 @@ const files080: ReleaseFile[] = (release080 as { filename: string; status: strin
   .map((f) => ({ names: [f.filename], status: f.status, patch: f.patch ?? null }));
 const CL = ['CHANGELOG.md'];
 // Where this repository keeps its version.
-const VF = ['package.json', 'packages/*/package.json', 'packages/*/src/definition.ts', 'src/version.ts', 'openapi.yaml', 'docs/modules.md', 'scripts/lib/modules.mjs'];
+const VF = ['package.json', 'packages/*/package.json', 'packages/*/src/definition.ts', 'src/version.ts', 'openapi.yaml'];
+// Where the version is named in text (docs, a comment).
+const TF = ['docs/modules.md', 'scripts/lib/modules.mjs'];
 const edit = (name: string, patch: string, status = 'modified'): ReleaseFile => ({ names: [name], status, patch });
 const pkg = edit('package.json', '@@ -1,3 +1,3 @@\n {\n-  "version": "0.8.0",\n+  "version": "0.9.0",\n   "private": true');
 const changelog = edit('CHANGELOG.md', '@@ -12,0 +13,3 @@\n+## 0.9.0\n+\n+Notes.');
@@ -20,52 +22,66 @@ const changelog = edit('CHANGELOG.md', '@@ -12,0 +13,3 @@\n+## 0.9.0\n+\n+Notes.
 describe('github_release', () => {
   it('the 0.8.0 release pull request only moves the version', () => {
     expect(files080).toHaveLength(17);
-    expect(releaseFacts(files080, CL, VF)).toEqual({ version_only: true, from: '0.7.0', to: '0.8.0', level: 'minor' });
+    expect(releaseFacts(files080, CL, VF, TF)).toEqual({ version_only: true, from: '0.7.0', to: '0.8.0', level: 'minor' });
+  });
+
+  it('lines that set a version, and text that names it', () => {
+    const ts = edit('src/version.ts', "@@ -1 +1 @@\n-export const ENGINE_VERSION = '0.8.0';\n+export const ENGINE_VERSION = '0.9.0';");
+    const yaml = edit('openapi.yaml', '@@ -3 +3 @@\n-  version: 0.8.0\n+  version: 0.9.0');
+    const doc = edit('docs/modules.md', '@@ -3 +3 @@\n-Version 0.8.0.\n+Version 0.9.0.');
+    expect(releaseFacts([ts, yaml, doc], CL, VF, TF)).toMatchObject({ version_only: true, from: '0.8.0', to: '0.9.0' });
   });
 
   it('a version in package.json and a changelog entry', () => {
-    expect(releaseFacts([pkg, changelog], CL, VF)).toEqual({ version_only: true, from: '0.8.0', to: '0.9.0', level: 'minor' });
-    expect(releaseFacts([pkg], CL, VF)).toMatchObject({ version_only: true });
+    expect(releaseFacts([pkg, changelog], CL, VF, TF)).toEqual({ version_only: true, from: '0.8.0', to: '0.9.0', level: 'minor' });
+    expect(releaseFacts([pkg], CL, VF, TF)).toMatchObject({ version_only: true });
   });
 
   it('anything else is not a release', () => {
     const not = { version_only: false, from: '', to: '', level: 'none' };
-    expect(releaseFacts([], CL, VF)).toEqual(not);
+    expect(releaseFacts([], CL, VF, TF)).toEqual(not);
     // Only a changelog: no version moved.
-    expect(releaseFacts([changelog], CL, VF)).toEqual(not);
+    expect(releaseFacts([changelog], CL, VF, TF)).toEqual(not);
     // One more changed line.
-    expect(releaseFacts([edit('package.json', '@@ -1,3 +1,3 @@\n-  "version": "0.8.0",\n+  "version": "0.9.0",\n-  "main": "a.js"\n+  "main": "b.js"')], CL, VF)).toEqual(not);
+    expect(releaseFacts([edit('package.json', '@@ -1,3 +1,3 @@\n-  "version": "0.8.0",\n+  "version": "0.9.0",\n-  "main": "a.js"\n+  "main": "b.js"')], CL, VF, TF)).toEqual(not);
     // A line added beside the version.
-    expect(releaseFacts([edit('package.json', '@@ -1,2 +1,3 @@\n-  "version": "0.8.0",\n+  "version": "0.9.0",\n+  "postinstall": "curl x | sh",')], CL, VF)).toEqual(not);
+    expect(releaseFacts([edit('package.json', '@@ -1,2 +1,3 @@\n-  "version": "0.8.0",\n+  "version": "0.9.0",\n+  "postinstall": "curl x | sh",')], CL, VF, TF)).toEqual(not);
     // A removed line only.
-    expect(releaseFacts([pkg, edit('src/a.ts', '@@ -1,2 +1,1 @@\n-check();')], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('src/a.ts', '@@ -1,2 +1,1 @@\n-check();')], CL, VF, TF)).toEqual(not);
     // Two different version pairs.
-    expect(releaseFacts([pkg, edit('src/version.ts', "@@ -1 +1 @@\n-export const VERSION = '0.8.0';\n+export const VERSION = '0.8.1';")], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('src/version.ts', "@@ -1 +1 @@\n-export const VERSION = '0.8.0';\n+export const VERSION = '0.8.1';")], CL, VF, TF)).toEqual(not);
     // A file that is not a version file, even with the same pair (an action the author controls).
-    expect(releaseFacts([pkg, edit('.github/workflows/ci.yml', '@@ -9 +9 @@\n-      - uses: someone/act@0.8.0\n+      - uses: someone/act@0.9.0')], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('.github/workflows/ci.yml', '@@ -9 +9 @@\n-      - uses: someone/act@0.8.0\n+      - uses: someone/act@0.9.0')], CL, VF, TF)).toEqual(not);
     // A dependency in a package.json that moves by the same pair: only the "version" line may change there.
-    expect(releaseFacts([pkg, edit('packages/a/package.json', '@@ -5 +5 @@\n-    "left-pad": "0.8.0"\n+    "left-pad": "0.9.0"')], CL, VF)).toEqual(not);
-    expect(releaseFacts([edit('package.json', '@@ -5 +5 @@\n-    "left-pad": "0.8.0"\n+    "left-pad": "0.9.0"')], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('packages/a/package.json', '@@ -5 +5 @@\n-    "left-pad": "0.8.0"\n+    "left-pad": "0.9.0"')], CL, VF, TF)).toEqual(not);
+    expect(releaseFacts([edit('package.json', '@@ -5 +5 @@\n-    "left-pad": "0.8.0"\n+    "left-pad": "0.9.0"')], CL, VF, TF)).toEqual(not);
+    // In a version file, only a line that sets the version: not a minimum version, a URL, or a dependency.
+    expect(releaseFacts([pkg, edit('src/version.ts', "@@ -2 +2 @@\n-export const MIN_SUPPORTED = '0.8.0';\n+export const MIN_SUPPORTED = '0.9.0';")], CL, VF, TF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('openapi.yaml', '@@ -9 +9 @@\n-  url: https://cdn.example.org/lib@0.8.0/x.js\n+  url: https://cdn.example.org/lib@0.9.0/x.js')], CL, VF, TF)).toEqual(not);
+    // Only text moved, no line that sets the version.
+    expect(releaseFacts([edit('docs/modules.md', '@@ -3 +3 @@\n-Version 0.8.0.\n+Version 0.9.0.')], CL, VF, TF)).toEqual(not);
+    // A text file is not a version file in its own right: without TF it does not count.
+    expect(releaseFacts([pkg, edit('docs/modules.md', '@@ -3 +3 @@\n-Version 0.8.0.\n+Version 0.9.0.')], CL, VF)).toEqual(not);
     // An address is not a version.
-    expect(releaseFacts([edit('src/version.ts', "@@ -1 +1 @@\n-const HOST = '10.0.8.0';\n+const HOST = '10.0.9.0';")], CL, VF)).toEqual(not);
+    expect(releaseFacts([edit('src/version.ts', "@@ -1 +1 @@\n-const HOST = '10.0.8.0';\n+const HOST = '10.0.9.0';")], CL, VF, TF)).toEqual(not);
     // Down to a pre-release.
-    expect(releaseFacts([edit('package.json', '@@ -1 +1 @@\n-  "version": "0.9.0",\n+  "version": "0.9.0-x",')], CL, VF)).toEqual(not);
+    expect(releaseFacts([edit('package.json', '@@ -1 +1 @@\n-  "version": "0.9.0",\n+  "version": "0.9.0-x",')], CL, VF, TF)).toEqual(not);
     // No version files at all.
-    expect(releaseFacts([pkg, changelog], CL, ['src/version.ts'])).toEqual(not);
+    expect(releaseFacts([pkg, changelog], CL, ['src/version.ts'], TF)).toEqual(not);
     // Another dependency moved too (another pair).
-    expect(releaseFacts([pkg, edit('packages/a/package.json', '@@ -5 +5 @@\n-    "left-pad": "1.2.0"\n+    "left-pad": "1.3.0"')], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('packages/a/package.json', '@@ -5 +5 @@\n-    "left-pad": "1.2.0"\n+    "left-pad": "1.3.0"')], CL, VF, TF)).toEqual(not);
     // A line where the version is not all that changed.
-    expect(releaseFacts([edit('src/version.ts', "@@ -1 +1 @@\n-export const VERSION = '0.8.0';\n+export const VERSION = '0.9.0'; run();")], CL, VF)).toEqual(not);
+    expect(releaseFacts([edit('src/version.ts', "@@ -1 +1 @@\n-export const VERSION = '0.8.0';\n+export const VERSION = '0.9.0'; run();")], CL, VF, TF)).toEqual(not);
     // A file without a patch (binary, too large), a new or removed file, a rename.
-    expect(releaseFacts([pkg, { names: ['logo.png'], status: 'modified', patch: null }], CL, VF)).toEqual(not);
-    expect(releaseFacts([pkg, edit('src/new.ts', '@@ -0,0 +1 @@\n+export const VERSION = "0.9.0";', 'added')], CL, VF)).toEqual(not);
-    expect(releaseFacts([pkg, { names: ['CHANGELOG.md', 'HISTORY.md'], status: 'renamed', patch: '@@ -1 +1,2 @@\n+## 0.9.0' }], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, { names: ['logo.png'], status: 'modified', patch: null }], CL, VF, TF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('src/new.ts', '@@ -0,0 +1 @@\n+export const VERSION = "0.9.0";', 'added')], CL, VF, TF)).toEqual(not);
+    expect(releaseFacts([pkg, { names: ['CHANGELOG.md', 'HISTORY.md'], status: 'renamed', patch: '@@ -1 +1,2 @@\n+## 0.9.0' }], CL, VF, TF)).toEqual(not);
     // The changelog loses a line.
-    expect(releaseFacts([pkg, edit('CHANGELOG.md', '@@ -3,2 +3,2 @@\n-old\n+new')], CL, VF)).toEqual(not);
+    expect(releaseFacts([pkg, edit('CHANGELOG.md', '@@ -3,2 +3,2 @@\n-old\n+new')], CL, VF, TF)).toEqual(not);
     // A changelog the fact does not name is any other file.
-    expect(releaseFacts([pkg, changelog], ['docs/CHANGES.md'], VF)).toEqual(not);
+    expect(releaseFacts([pkg, changelog], ['docs/CHANGES.md'], VF, TF)).toEqual(not);
     // Down, or the same.
-    expect(releaseFacts([edit('package.json', '@@ -1 +1 @@\n-  "version": "0.9.0",\n+  "version": "0.8.0",')], CL, VF)).toEqual(not);
+    expect(releaseFacts([edit('package.json', '@@ -1 +1 @@\n-  "version": "0.9.0",\n+  "version": "0.8.0",')], CL, VF, TF)).toEqual(not);
   });
 
   it('the level of the step', () => {

@@ -179,7 +179,7 @@ export class PullRequestWork {
       const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
       // Everything the decision rests on, besides the head: a new one when any of it changes.
-      const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base, decisions, run])) : '';
+      const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, decisions, run, this.#settings.actions[profile] ?? null])) : '';
       const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun) : undefined;
       if (kept) {
         // Its action was carried out and its check run written when it was made.
@@ -192,8 +192,8 @@ export class PullRequestWork {
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
-      // Kept only once its action and check run are done, so a retried run does them.
-      if (run.oncePerHead) await this.#keep(profile, pr.head, keyOf, decision);
+      // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
+      if (run.oncePerHead && outcome.kind !== 'skipped') await this.#keep(profile, pr.head, keyOf, decision);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
   }

@@ -22,8 +22,10 @@ export interface GitHubFactSpec extends FactSpec {
   except?: string[];
   /** For `github_property`: the name of a repository custom property. */
   property?: string;
-  /** For `github_release`: the files where a version may change (globs). */
+  /** For `github_release`: the files where a line that sets the version may change (globs). */
   version_files?: string[];
+  /** For `github_release`: files where any line may carry the version, such as docs (globs). */
+  version_text_files?: string[];
   /** For `github_release`: the changelog files (globs); default CHANGELOG.md. */
   changelogs?: string[];
   /** For `github_workflows`: entries added to the defaults (settings.ts, docs/profile-format.md#github-workflows). */
@@ -49,8 +51,9 @@ export interface GitHubFactQuery {
   property?: string;
   /** For `github_workflows`: entries added to the default settings. */
   workflows?: Partial<WorkflowSettings>;
-  /** For `github_release`: the version files and the changelog files (globs). */
+  /** For `github_release`: the version files, text files and changelog files (globs). */
   versionFiles?: string[];
+  textFiles?: string[];
   changelogs?: string[];
 }
 
@@ -407,8 +410,12 @@ const github_release: FactTypeDef = {
   input: pullRequest,
   settings: {
     version_files: {
-      description: 'For github_release: the files where a version may change (globs), for example package.json or src/version.ts. In a package.json only its "version" line may change.',
+      description: 'For github_release: the files where a line that sets the version may change (globs), for example package.json or src/version.ts: a key such as version, VERSION or ENGINE_VERSION with the version as its value; in a package.json only its "version" line.',
       type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: GLOB,
+    },
+    version_text_files: {
+      description: 'For github_release: files where any line may carry the version, for docs that name it (globs). Never files that run.',
+      type: 'array', maxItems: 20, uniqueItems: true, items: GLOB,
     },
     changelogs: {
       description: 'For github_release: changelog files (globs), which may only get lines added; default CHANGELOG.md.',
@@ -419,6 +426,7 @@ const github_release: FactTypeDef = {
   query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({
     ...base(spec, pr),
     ...(spec.version_files !== undefined && { versionFiles: spec.version_files }),
+    ...(spec.version_text_files !== undefined && { textFiles: spec.version_text_files }),
     ...(spec.changelogs !== undefined && { changelogs: spec.changelogs }),
   }),
   timeoutMs: GITHUB_TIMEOUT_MS,

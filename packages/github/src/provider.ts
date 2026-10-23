@@ -1135,7 +1135,7 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       }
       case 'github_release': {
         if (!query.versionFiles) throw new FactError('no version files');
-        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles) }, source };
+        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
       }
     }
   }

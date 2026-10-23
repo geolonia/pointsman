@@ -714,6 +714,18 @@ describe('chains: profiles that build on each other', () => {
     expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(2);
   });
 
+  it('does not keep a decision whose action was not done, so a later run does it', async () => {
+    const s = { ...chain({ [RISK]: { oncePerHead: { rerun: [] } } }), profiles: [RISK], actions: { [RISK]: { normal: { do: 'approve' as const } } } };
+    const { work, pm, gh, event } = await chained(s, { draft: true });
+    await work.run(); // a draft: approve skipped
+    expect(gh.calls.filter((c) => c.op === 'approve')).toHaveLength(0);
+    gh.github.state.draft = false;
+    await event();
+    await work.run(); // ready on the same head: asked again, approved
+    expect(pm.calls).toHaveLength(2);
+    expect(gh.calls.filter((c) => c.op === 'approve')).toHaveLength(1);
+  });
+
   it('never keeps a decision a person still checks', async () => {
     const { work, pm, event } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'normal', review: { status: 'pending' } })));
     await work.run();

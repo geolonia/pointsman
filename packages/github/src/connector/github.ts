@@ -233,7 +233,8 @@ export class AppGitHub implements ConnectorGitHub {
       if (err instanceof GitHubError && err.status === 406) return { diff: '', truncated: true };
       throw err;
     }
-    if (!res.body) return { diff: '', truncated: false };
+    // No body: not known to be empty.
+    if (!res.body) return { diff: '', truncated: true };
     // Read only up to the limit, however large the diff is.
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let text = '';
