@@ -17,9 +17,10 @@ import {
   FactError, FactStaleError, FactUnavailableError,
   type FactProvider, type FactResult, type FactScope,
 } from '@pointsman/module-api';
-import { GITHUB_TIMEOUT_MS, type GitHubFactQuery, type PullRequestRef } from './definition';
+import { GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
+import { releaseFacts } from './release';
 import {
   actionFolderOf, actionFolders, countWorkflows, kindOf, MAX_FILE_BYTES, MAX_PARSED_FILES, workflowSettings,
   type WorkflowFile, type WorkflowSettings,
@@ -351,7 +352,7 @@ function commits(v: unknown): Commit[] {
 }
 
 /** A changed file: its name, then its earlier name when it was renamed. */
-interface Change { names: string[]; removed: boolean }
+interface Change { names: string[]; removed: boolean; status: string; patch: string | null }
 
 /** Changed files of one page; a renamed file counts with both names. */
 function changedFiles(v: unknown): Change[] {
@@ -359,7 +360,7 @@ function changedFiles(v: unknown): Change[] {
   return v.map((f) => {
     if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub files: unexpected answer');
     const names = typeof f.previous_filename === 'string' ? [f.filename, f.previous_filename] : [f.filename];
-    return { names, removed: f.status === 'removed' };
+    return { names, removed: f.status === 'removed', status: typeof f.status === 'string' ? f.status : '', patch: typeof f.patch === 'string' ? f.patch : null };
   });
 }
 
@@ -638,6 +639,11 @@ export class Snapshot {
   /** The changed paths, one entry per file (a renamed file has both names). */
   async files(): Promise<string[][]> {
     return (await this.changes()).map((c) => c.names);
+  }
+
+  /** The changed files with their status and patch (null when GitHub gives none), for github_release. */
+  async releaseFiles(): Promise<Change[]> {
+    return this.changes();
   }
 
   /** The changed files, with their names and whether they were removed. */
@@ -1126,6 +1132,10 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       case 'github_copilot': {
         const [all, state] = await Promise.all([s.reviews(), s.reviewState()]);
         return { values: copilotFacts(all, state, query.pr.head), source };
+      }
+      case 'github_release': {
+        if (!query.versionFiles) throw new FactError('no version files');
+        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
       }
     }
   }

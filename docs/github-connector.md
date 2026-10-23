@@ -77,6 +77,31 @@ For `approve` also:
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run).
 
+## Chains
+
+Profiles can build on each other ([decision-chains.md](decision-chains.md)): for example a first profile sorts the pull request into a risk class with AI questions, and a second one, rules only, decides the next step from that class and the review state. The connector runs such a chain when `GITHUB_CONNECTOR` has `runs`, by profile:
+
+```json
+{
+  "repos": ["owner/name"],
+  "profiles": ["pr-risk", "pr-next-step"],
+  "runs": {
+    "pr-risk": { "skip_drafts": true, "once_per_head": { "rerun": ["incomplete"] }, "diff": 30000 },
+    "pr-next-step": { "requires": { "risk": "pr-risk" }, "recheck": { "actions": ["wait", "queue"], "minutes": 10, "max": 12 } }
+  }
+}
+```
+
+| Key | What it does |
+| --- | --- |
+| `requires` | Sends the decision of an earlier profile of the same run as `decisions`, by the name in the profile's `requires`. Only a profile listed before this one. When the earlier profile was not asked (a draft with `skip_drafts`), nothing is sent for it, so that requirement should be `optional` in the profile. |
+| `skip_drafts` | Not asked while the pull request is a draft (no model calls for work in progress). |
+| `once_per_head` | Asked once per head commit, title, description, base branch, draft state, required decisions, `runs` settings and `actions` of the profile; the next runs reuse that decision (also for `requires`) without asking again. `rerun`: actions after which it is asked again on the next run, for example the action of a rule for missing facts. A decision is kept only once its check run is written and its action done (or none is mapped), and never while a person checks it. A new version of the profile applies from the next commit or edit. Facts that change without a new commit (checks, reviews) are not read again for a kept decision, so use it for profiles whose answer rests on the commit. |
+| `diff` | Adds the pull request's unified diff to the state as `diff`, cut to this many characters (1,000 to 100,000), with `diff_truncated`. GitHub gives no diff for very large pull requests: then `diff` is empty and `diff_truncated` is true. The head is read again after the diff; a push in between means the run is tried again. The diff goes to the profile's model like the rest of the state, and to the decision log only where the profile keeps the state (`log.store_state`). It is text the author wrote: like the title, it can only make AI answers stricter in a careful profile. |
+| `recheck` | While the decision's action is one of `actions`, asks again after `minutes` (5 to 120) without a new event, at most `max` times per head commit (default 12). For decisions that wait, for example for a free review. A recheck is a run: every profile is asked again, except kept ones. With `once_per_head`, the `actions` must also be in `rerun`. |
+
+Without `runs`, every profile is asked on every run with the title and the description, as before.
+
 ## The two GitHub apps
 
 The part that reads pull-request text (the engine, with its AI questions) never holds a key that can write. So a deployment has two apps, as the design asks:
@@ -102,7 +127,7 @@ The connector Worker ([connectors/github/wrangler.jsonc](../connectors/github/wr
 | `GITHUB_APP_ID` | The connector app's id (a number) |
 | `GITHUB_APP_PRIVATE_KEY` | Secret: the connector app's private key (PEM, as GitHub gives it) |
 | `GITHUB_WEBHOOK_SECRET` | Secret: the webhook secret set in the app (at least 20 characters) |
-| `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)) |
+| `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)) and `"runs"` ([Chains](#chains)) |
 | `POINTSMAN_URL` | Pointsman's base URL (https) |
 | `POINTSMAN_TOKEN` | Secret: a Pointsman API token for the connector's client, limited to its profiles |
 | `PULL_REQUESTS` | The Durable Object binding (class `PullRequest`) |
@@ -125,4 +150,4 @@ The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `F
 - **Commit statuses.** A `status` event names a commit, not a pull request, so it starts no run; a finished check suite does.
 - **One commit in two pull requests** (one branch to two bases) gets a check run from each.
 - **Pull requests from forks.** GitHub lists no pull requests on a fork's check suites, so only the pull request's own events start a run.
-- **Re-deciding on a timer.** A decision is made again only on the next event.
+- **Re-deciding on a timer** only for profiles with `recheck` ([Chains](#chains)); others are decided again on the next event.

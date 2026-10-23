@@ -22,6 +22,12 @@ export interface GitHubFactSpec extends FactSpec {
   except?: string[];
   /** For `github_property`: the name of a repository custom property. */
   property?: string;
+  /** For `github_release`: the files where a line that sets the version may change (globs). */
+  version_files?: string[];
+  /** For `github_release`: files where any line may carry the version, such as docs (globs). */
+  version_text_files?: string[];
+  /** For `github_release`: the changelog files (globs); default CHANGELOG.md. */
+  changelogs?: string[];
   /** For `github_workflows`: entries added to the defaults (settings.ts, docs/profile-format.md#github-workflows). */
   privileged_triggers?: string[];
   inert_actions?: string[];
@@ -33,7 +39,7 @@ export interface GitHubFactSpec extends FactSpec {
 
 const gh = (spec: FactSpec) => spec as GitHubFactSpec;
 
-export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot';
+export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot' | 'github_release';
 
 export interface GitHubFactQuery {
   type: GitHubFactType;
@@ -45,6 +51,10 @@ export interface GitHubFactQuery {
   property?: string;
   /** For `github_workflows`: entries added to the default settings. */
   workflows?: Partial<WorkflowSettings>;
+  /** For `github_release`: the version files, text files and changelog files (globs). */
+  versionFiles?: string[];
+  textFiles?: string[];
+  changelogs?: string[];
 }
 
 const REPO = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
@@ -383,6 +393,67 @@ const github_copilot: FactTypeDef = {
   cases: { nullable: [], defaults: {} },
 };
 
+/** The changelog of github_release when the fact names none. */
+export const RELEASE_CHANGELOGS = ['CHANGELOG.md'];
+
+/**
+ * Whether the pull request only moves a version, like a release pull
+ * request (release.ts): every changed line is added to a changelog, or is
+ * in one of the version files and the same line with one version replaced
+ * by a higher one, the same pair in every file. Not a release: false, "",
+ * "", "none".
+ */
+const github_release: FactTypeDef = {
+  type: 'github_release',
+  description: 'github_release: whether the pull request only changes a version (and the changelog).',
+  fields: { version_only: { kind: 'boolean' }, from: { kind: 'string' }, to: { kind: 'string' }, level: { kind: 'string' } },
+  input: pullRequest,
+  settings: {
+    version_files: {
+      description: 'For github_release: the files where a line that sets the version may change (globs), for example package.json or src/version.ts: a key such as version, VERSION or ENGINE_VERSION with the version as its value; in a package.json only its "version" line.',
+      type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: GLOB,
+    },
+    version_text_files: {
+      description: 'For github_release: files where any line may carry the version, for docs that name it (globs). Never files that run.',
+      type: 'array', maxItems: 20, uniqueItems: true, items: GLOB,
+    },
+    changelogs: {
+      description: 'For github_release: changelog files (globs), which may only get lines added; default CHANGELOG.md.',
+      type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: GLOB,
+    },
+  },
+  required: ['version_files'],
+  query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({
+    ...base(spec, pr),
+    ...(spec.version_files !== undefined && { versionFiles: spec.version_files }),
+    ...(spec.version_text_files !== undefined && { textFiles: spec.version_text_files }),
+    ...(spec.changelogs !== undefined && { changelogs: spec.changelogs }),
+  }),
+  timeoutMs: GITHUB_TIMEOUT_MS,
+  mock: { version_only: false, from: '', to: '', level: 'none' },
+  words: {
+    en: {
+      describe: (f, s) => `${f}: whether the pull request (${s.at}) only changes a version: lines added to ${(gh(s).changelogs ?? RELEASE_CHANGELOGS).join(', ')}, and in ${(gh(s).version_files ?? []).join(', ')} lines where only one version goes up, the same in every file.`,
+      fields: {
+        version_only: ['% only changes a version (and the changelog)', '% changes more than a version'],
+        from: 'the version before %',
+        to: 'the version after %',
+        level: 'the kind of version step of % (major, minor, patch or none)',
+      },
+    },
+    ja: {
+      describe: (f, s) => `${f}：プルリクエスト（${s.at}）がバージョンだけを変えるか。${(gh(s).changelogs ?? RELEASE_CHANGELOGS).join('、')} への行の追加と、${(gh(s).version_files ?? []).join('、')} でバージョンだけが上がる行（すべてのファイルで同じ）のみ。`,
+      fields: {
+        version_only: ['%がバージョン（と変更履歴）だけを変える', '%がバージョン以外も変える'],
+        from: '%の変更前のバージョン',
+        to: '%の変更後のバージョン',
+        level: '%のバージョンの上げ方（major・minor・patch・none）',
+      },
+    },
+  },
+  cases: { nullable: [], defaults: {} },
+};
+
 const STALE: Bilingual = { en: 'the pull request has a newer commit', ja: 'プルリクエストに新しいコミットがある' };
 
 export const definition: FactModule = {
@@ -390,7 +461,7 @@ export const definition: FactModule = {
   // As in package.json (a test checks); released with the engine for now.
   version: '0.8.0',
   roles: ['facts', 'connector'],
-  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot],
+  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot, github_release],
   reasons: { stale: STALE },
   settings: ['FACTS_GITHUB', 'FACTS_GITHUB_TOKEN', 'FACTS_GITHUB_APP_ID', 'FACTS_GITHUB_APP_PRIVATE_KEY', 'FACTS_GITHUB_IGNORE_CHECK'],
   // The connector (docs/github-connector.md): in its own Worker only, with the write app's key.

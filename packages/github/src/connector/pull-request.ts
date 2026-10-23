@@ -13,7 +13,7 @@
 // for the check run first.
 
 import type { EngineApi } from '@pointsman/module-api';
-import { checkName, type ActionSpec, type ConnectorSettings } from './settings.ts';
+import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
 
@@ -73,6 +73,18 @@ interface Checks {
   runs: Record<string, { decision: string; id?: number }>;
 }
 
+/** Decisions kept for once_per_head, by profile: for this head, and the title, body and base they were asked with. */
+interface Kept {
+  head: string;
+  byProfile: Record<string, { key: string; decision: Decision }>;
+}
+
+/** Rechecks scheduled for this head, by profile. */
+interface Rechecks {
+  head: string;
+  count: Record<string, number>;
+}
+
 /** A failure a later run can fix (GitHub or Pointsman busy or down). The run is tried again. */
 export class RetryError extends Error {
   override name = 'RetryError';
@@ -125,18 +137,22 @@ export class PullRequestWork {
       const generation = (await this.#storage.get<number>('generation')) ?? 0;
       const recheckAt = await this.#storage.get<number>('recheckAt');
       const recheck = recheckAt !== undefined && recheckAt > 0 && this.now() >= recheckAt;
-      // Nothing new, and no unclear action due to be looked at again.
-      if (generation === ((await this.#storage.get<number>('done')) ?? 0) && !recheck) return;
+      // Nothing new, and no unclear action or waiting decision due to be looked at again.
+      if (generation === ((await this.#storage.get<number>('done')) ?? 0) && !recheck) return this.#alarmForRecheck();
       // Each run asks Pointsman anew (a retry too): an action never rests on an older answer.
       const attempt = ((await this.#storage.get<number>('attempt')) ?? 0) + 1;
       await this.#storage.put({ attempt, ...(recheck && { recheckAt: 0 }) });
       const target = await this.#storage.get<PullRequestTarget>('target');
       try {
-        if (target) await this.#once(target, attempt);
+        // A run with a new event counts as an event, also when a recheck is due too.
+        const event = generation !== ((await this.#storage.get<number>('done')) ?? 0);
+        if (target) await this.#once(target, attempt, recheck && !event);
       } catch (err) {
         if (err instanceof RetryError) {
           // The retried alarm must find the recheck still due.
-          if (recheck && !(await this.#storage.get<number>('recheckAt'))) await this.#storage.put({ recheckAt: recheckAt });
+          // Never later than the one that was due: a profile of this run may have set a later one.
+          const current = await this.#storage.get<number>('recheckAt');
+          if (recheck && (!current || current > recheckAt!)) await this.#storage.put({ recheckAt: recheckAt });
           throw err;
         }
         // Needs a person (a permission, a setting); the next event tries again.
@@ -146,18 +162,106 @@ export class PullRequestWork {
     }
   }
 
-  async #once(target: PullRequestTarget, attempt: number): Promise<void> {
+  /** After a run: the alarm for a recheck still to come (an event's alarm may have replaced it). */
+  async #alarmForRecheck(): Promise<void> {
+    const due = await this.#storage.get<number>('recheckAt');
+    if (due && due > this.now()) await this.#storage.setAlarm(due);
+  }
+
+  /** recheck: this run comes from a recheck alarm, not an event. */
+  async #once(target: PullRequestTarget, attempt: number, recheck = false): Promise<void> {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     if (!pr.open) return;
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: pr.body.slice(0, MAX_BODY) };
+    // A recheck deadline of an older head is void: a new head starts with none.
+    const recheckHead = await this.#storage.get<string>('recheckHead');
+    if (recheckHead !== undefined && recheckHead !== pr.head) {
+      await this.#storage.put({ recheckAt: 0, recheckHead: pr.head });
+      if (recheck) return;
+    }
     // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
     const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
+    // The decisions of this run (or kept for this head), for the profiles that require them.
+    const decided: Record<string, Decision> = {};
     for (const profile of this.#settings.profiles) {
-      const decision = await this.#decide(profile, state, [pr.draft, pr.base, attempt]);
+      const run = Object.hasOwn(this.#settings.runs, profile) ? this.#settings.runs[profile]! : {};
+      if (run.skipDrafts && pr.draft) continue;
+      // A recheck asks a waiting profile again at most recheck.max times per head; events always ask.
+      const counted = recheck && run.recheck !== undefined;
+      if (counted && !(await this.#mayRecheck(profile, pr.head, run.recheck!.max))) continue;
+      // A required decision that is not there (a skipped draft, a refusal) is not sent: the profile's requires must be optional.
+      const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
+        .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
+      // Everything the decision rests on, besides the head: a new one when any of it changes.
+      const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, decisions, run, this.#settings.actions[profile] ?? null])) : '';
+      const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun) : undefined;
+      if (kept) {
+        // Its action was carried out and its check run written when it was made.
+        decided[profile] = kept;
+        continue;
+      }
+      const asked = run.diff ? { ...state, ...(await this.#diffOf(target, pr.head, run.diff)) } : state;
+      const decision = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
       if (!decision) continue;
+      decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
       await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
+      // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
+      if (run.oncePerHead && outcome.kind !== 'skipped') await this.#keep(profile, pr.head, keyOf, decision);
+      // Counted only once it is done (decided, acted, shown): a failed recheck is tried again without using one up.
+      if (counted) await this.#countRecheck(profile, pr.head);
+      await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
+  }
+
+  /** The diff of this head: read the head again after it, and try again later when a push came in between. */
+  async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean }> {
+    const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
+    const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
+    if (now.head !== head) throw new RetryError(`${target.repo}#${target.number}: a push while the diff was read`);
+    return { diff, diff_truncated: truncated };
+  }
+
+  /** The kept decision of this profile, when it was made for this head and these inputs and its action is not one to ask again. */
+  async #kept(profile: string, head: string, key: string, rerun: string[]): Promise<Decision | undefined> {
+    const kept = await this.#storage.get<Kept>('kept');
+    const k = kept?.head === head ? kept.byProfile[profile] : undefined;
+    // Never a decision a person still checks: their answer comes with a new one.
+    return k && k.key === key && !rerun.includes(k.decision.action) && k.decision.review?.status !== 'pending' ? k.decision : undefined;
+  }
+
+  async #keep(profile: string, head: string, key: string, decision: Decision): Promise<void> {
+    let kept = (await this.#storage.get<Kept>('kept')) ?? { head, byProfile: {} };
+    if (kept.head !== head) kept = { head, byProfile: {} };
+    kept.byProfile[profile] = { key, decision };
+    await this.#storage.put({ kept });
+  }
+
+  /** While the decision waits (its action is one of recheck.actions), asks again later, unless its rechecks for this head are used up. */
+  async #scheduleRecheck(profile: string, head: string, decision: Decision, run: RunOptions): Promise<void> {
+    if (!run.recheck || !run.recheck.actions.includes(decision.action)) return;
+    const rechecks = await this.#storage.get<Rechecks>('rechecks');
+    if (rechecks?.head === head && (rechecks.count[profile] ?? 0) >= run.recheck.max) return;
+    const at = this.now() + run.recheck.minutes * 60_000;
+    const due = await this.#storage.get<number>('recheckAt');
+    // One already due sooner for this head covers this one; one for an older head does not.
+    if (due && due > this.now() && due <= at && (await this.#storage.get<string>('recheckHead')) === head) return;
+    await this.#storage.put({ recheckAt: at, recheckHead: head });
+    await this.#storage.setAlarm(at);
+  }
+
+  /** Whether a recheck may still ask this profile on this head. */
+  async #mayRecheck(profile: string, head: string, max: number): Promise<boolean> {
+    const rechecks = await this.#storage.get<Rechecks>('rechecks');
+    return rechecks?.head !== head || (rechecks.count[profile] ?? 0) < max;
+  }
+
+  /** Counts a recheck of this profile on this head. */
+  async #countRecheck(profile: string, head: string): Promise<void> {
+    let rechecks = (await this.#storage.get<Rechecks>('rechecks')) ?? { head, count: {} };
+    if (rechecks.head !== head) rechecks = { head, count: {} };
+    rechecks.count[profile] = (rechecks.count[profile] ?? 0) + 1;
+    await this.#storage.put({ rechecks });
   }
 
   #approves(): boolean {
@@ -250,7 +354,7 @@ export class PullRequestWork {
         const at = record.at + UNCLEAR_MS;
         const due = await this.#storage.get<number>('recheckAt');
         if (!due || at < due) {
-          await this.#storage.put({ recheckAt: at });
+          await this.#storage.put({ recheckAt: at, recheckHead: pr.head });
           await this.#storage.setAlarm(at);
         }
         return { kind: 'skipped', text: `${spec.do}: result unclear, checked again later` };
@@ -324,15 +428,16 @@ export class PullRequestWork {
   }
 
   /** Asks Pointsman; null when it refused (a setting to fix, logged). */
-  async #decide(profile: string, state: Record<string, unknown>, extra: unknown[]): Promise<Decision | null> {
+  async #decide(profile: string, state: Record<string, unknown>, decisions: Record<string, string>, extra: unknown[]): Promise<Decision | null> {
     // The key holds the run's attempt count: every run, a retry too, gets a new decision.
-    const key = await sha256(JSON.stringify([profile, state, ...extra]));
+    const key = await sha256(JSON.stringify([profile, state, decisions, ...extra]));
+    const chained = Object.keys(decisions).length > 0;
     let res: Response;
     try {
       res = await this.#engine.fetch(`${this.#engine.url}/v1/decide/${encodeURIComponent(profile)}`, {
         method: 'POST',
         headers: { authorization: `Bearer ${this.#settings.pointsmanToken}`, 'content-type': 'application/json', 'idempotency-key': key },
-        body: JSON.stringify({ state: { pull_request: state }, ref: `github:${state.repo}#${state.number}@${state.head}` }),
+        body: JSON.stringify({ state: { pull_request: state }, ref: `github:${state.repo}#${state.number}@${state.head}`, ...(chained && { decisions }) }),
         redirect: 'manual',
         signal: AbortSignal.timeout(60_000),
       });
