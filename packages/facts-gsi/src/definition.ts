@@ -11,7 +11,7 @@ export const GSI_LAYERS = { 'gsi-flood-max': 'inside', 'gsi-shelters-flood': 'ne
 export const definition: FactModule = {
   name: '@pointsman/facts-gsi',
   // As in package.json (a test checks); released with the engine for now.
-  version: '0.13.1',
+  version: '0.14.0',
   roles: ['facts'],
   capabilities: (['inside', 'nearest'] as const).map((type) => ({
     type,
