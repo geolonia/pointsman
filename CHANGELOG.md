@@ -27,8 +27,15 @@ For deployments:
 
 What changed:
 
-- GitHub connector: optional `runs` in `GITHUB_CONNECTOR`, by profile ([docs/github-connector.md](docs/github-connector.md#chains)): `requires` sends the decision of an earlier profile of the same run as `decisions`; `skip_drafts`; `once_per_head` reuses a decision for the same head, title, description, base, draft state, required decisions and settings, asked again after a `rerun` action, kept only once its action and check run are done and never while a person checks it; `diff` adds the unified diff to the state (cut, with `diff_truncated`; the head is read again after it); `recheck` asks again after some minutes while the decision waits, at most `max` times per head, counted only for rechecks that were done.
-- `github_release` in `@pointsman/github`: `version_only`, `from`, `to`, `level`. True when every changed file is a changelog that only gets lines added, or one of the `version_files` where each changed line sets the version (a `version`, `__version__` or `*_VERSION` key; in a `package.json` only its `"version"` line), or a `version_text_files` line that names it, with one version replaced by a higher one, the same pair in every file ([docs/profile-format.md](docs/profile-format.md#github-pull-requests)). It says nothing about who made the change: pair it with `github_pr`.
+- GitHub connector: optional `runs` in `GITHUB_CONNECTOR`, by profile ([docs/github-connector.md](docs/github-connector.md#chains)):
+  - `requires` sends the decision of an earlier profile of the same run as `decisions`.
+  - `skip_drafts`: the profile is not asked for drafts.
+  - `once_per_head` reuses a decision until the commit, title, description or settings change. `rerun` lists actions after which it is asked again. A decision is kept only after its action and check run are done.
+  - `diff` adds the pull request's diff to the state, cut to a limit (`diff_truncated`).
+  - `recheck` asks again after some minutes while the decision waits, at most `max` times per commit. With `once_per_head`, the waiting actions must also be in `rerun`.
+- `github_release` in `@pointsman/github` ([docs/profile-format.md](docs/profile-format.md#github-pull-requests)): whether a pull request only moves a version, with `version_only`, `from`, `to` and `level`.
+  - Changed files may only be the changelog (lines added), lines in `version_files` that set the version (in a `package.json` only its `"version"` line), and lines in `version_text_files` that name it. The same version pair everywhere, going up.
+  - `version_files` is required. The fact says nothing about who made the change: use it with `github_pr`.
 
 ## 0.8.0 (2026-10-23)
 
