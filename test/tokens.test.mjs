@@ -86,6 +86,10 @@ test('rotate --keep-old prints the revoke command with the same --config', () =>
     // The script's path as started, so the command also works from a configuration repository (engine/scripts/...).
     assert.match(r.stdout, /\n {2}node \S*scripts\/tokens\.mjs revoke /);
   }
+  // --local stays --local, and no --config is added when none was given.
+  const local = runWith(list, 'rotate', '--client', 'demo', '--keep-old', '--local', '--dry-run');
+  assert.equal(local.status, 0, local.stderr);
+  assert.ok(local.stdout.includes(`revoke --hash ${'a'.repeat(64)} --local\n`), local.stdout);
 });
 
 for (const [name, list, args, message] of [
