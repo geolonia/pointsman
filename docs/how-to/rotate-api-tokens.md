@@ -57,10 +57,14 @@ node scripts/tokens.mjs list --local
 
 ## 3. Revoke the old token
 
-Run the command that step 1 printed:
+Run the command that step 1 printed. That command leaves out `--config`: if
+you used `--config` in step 1 (for a deployed Worker), add the same
+`--config` here. Otherwise the revoke uses another configuration, and the old
+token keeps working.
 
 ```sh
 node scripts/tokens.mjs revoke --hash <old hash> --local
+node scripts/tokens.mjs revoke --hash <old hash> --remote --config <your wrangler config>
 ```
 
 ```text

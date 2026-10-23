@@ -41,10 +41,11 @@ node scripts/tokens.mjs list --local
 
 ## 3. 古いトークンを取り消す
 
-手順 1 で表示されたコマンドを実行します。
+手順 1 で表示されたコマンドを実行します。表示されたコマンドには `--config` が含まれません。手順 1 で `--config` を使った場合(デプロイ済みの Worker の場合)は、同じ `--config` を付けてください。付けないと別の設定で取り消しが実行され、古いトークンが使えるまま残ります。
 
 ```sh
 node scripts/tokens.mjs revoke --hash <old hash> --local
+node scripts/tokens.mjs revoke --hash <old hash> --remote --config <your wrangler config>
 ```
 
 ```text
