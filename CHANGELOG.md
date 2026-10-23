@@ -12,6 +12,20 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.9.1 (2026-10-23)
+
+A fix for the connector's `diff` on private repositories (#175).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.9.1`. No migration, no new secrets.
+- If a profile uses `diff` on a private repository, give the connector app **Contents: Read-only**. Without it, the profile is asked without the diff.
+
+What changed:
+
+- GitHub gives a private repository's diff only to a token that may read its contents. With a profile that uses `diff`, the connector's token now also asks for `contents: read` (never more than the app has).
+- A diff GitHub refuses (403, 404) no longer ends the run: the profile gets an empty diff with `diff_truncated: true`, the later profiles are still asked, and a `once_per_head` decision made so is not kept. A 403 for a rate limit is tried again later. The head is read again after the diff either way.
+
 ## 0.9.0 (2026-10-23)
 
 Chains of profiles in the GitHub connector, and a fact for release pull
