@@ -19,14 +19,14 @@ The GitHub connector can keep its approval when a later decision says so, and a 
 For deployments:
 
 - Move `ref` in `engine.json` to the commit of `v0.13.0`. No migration, no new secrets, no new permissions.
-- Nothing changes unless a profile uses `github_app_approval` and the connector maps an action to `keep_approval`.
+- The fact and `keep_approval` are opt-in. The last two changes below apply to every connector that maps `approve`: its own approvals are matched by the app's bot login (taken from the installation answer's `app_slug`), and a withdraw that fails now holds back that run's action.
 
 What changed:
 
-- **`github_app_approval`** (module `@pointsman/github`): `approved_head` (the app's latest deciding review is an approval of the current head; a dismissed one never counts), `approved_any`, `reviews`. Settings: `app` (the app's slug, required) and `bot_id` (its bot account id, recommended: without it, an app that later takes a deleted app's slug would match). Another bot, a person or a pending review never counts; unreadable reviews make the fact missing.
+- **`github_app_approval`** (module `@pointsman/github`): `approved_head` (the app's latest deciding review is an approval of the current head; a dismissed one never counts), `approved_any`, `reviews`. Settings: `app` (the app's slug, required) and `bot_id` (its bot account id, recommended: without it, an app that later takes a deleted app's slug would match). Another bot, a person or a pending review never counts; unreadable reviews make the fact missing, and a push while they are read makes it `stale`. `approved_any`: the app's latest deciding review is an approval, on any commit.
 - **`keep_approval`** (connector action kind): a later decision on the same head mapped to it keeps the app's approval and approves nothing. It is allowed only in a profile that also maps `approve`. Any other later action withdraws the approval, and so does a decision a person still checks. Give the keep rule the approve rule's other conditions (CI and so on). See *When the approval stays* in `docs/github-connector.md`.
 - **The connector's own approvals** now count only reviews by the app's own bot (`<slug>[bot]`, the slug from the installation), not any bot's review with the marker.
-- **Withdrawing is more careful:** a run that stopped after approving is matched to its review on GitHub before withdrawing, so the approval is dismissed rather than forgotten. A withdraw that fails, or whose lookup fails, is shown on the check run, and its record stays open so the next run tries again.
+- **Withdrawing is more careful:** a run that stopped after approving is matched to its review on GitHub before withdrawing, so the approval is dismissed rather than forgotten. A withdraw that fails, or whose lookup fails, is shown on the check run, the decision's own action waits (`skipped`), and the record stays open so the next run tries again.
 
 ## 0.12.0 (2026-10-23)
 
