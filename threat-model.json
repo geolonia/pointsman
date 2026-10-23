@@ -956,7 +956,7 @@
       "write to the TOKENS or PROFILES namespaces (only the operator's scripts do)",
       "log the state, a token, an API key or a model response"
     ],
-    "provenance": "inferred",
+    "provenance": "documented",
     "source": "maintainer ruling, 2026-10 (host side effects); bridge/README.md \"Configuration\" (bridge redirects)"
   },
   "build_variants": [
