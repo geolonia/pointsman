@@ -65,7 +65,9 @@ decision can say which rules made it.
      the model is, from 0 to 1.
    - Pointsman looks up the profile's *facts* in data, for example whether
      the place is in a flood zone or how many files a pull request changes.
-     The AI does not see or guess them.
+     Some facts read Pointsman's own decision log instead, for example how
+     many of an author's pull requests wait for a review; they see only the
+     asking client's own decisions. The AI does not see or guess facts.
 3. **Rules decide.** People write the rules, for example "danger 70 % or
    more: urgent". Pointsman checks them in order; the first rule whose
    condition is true (the first that *fits*) gives the action. When no rule
@@ -86,7 +88,9 @@ decision can say which rules made it.
   questions. What follows from the answers is written in rules that people
   can read, test and change. So the model can be replaced without changing
   what the profile does, and a person can always see why a decision was
-  made.
+  made. Some decisions need no AI answer at all: a profile can approve a
+  release pull request on facts alone, when it changes only version fields
+  and the changelog.
 - **Probabilities, not only answers.** A rule can ask how sure the model is,
   for example `team.p >= 0.85` (`p` is the probability of the answer to the
   question `team`). When the model is not sure, the rules send the

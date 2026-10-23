@@ -46,15 +46,21 @@ checks run the same engine with different modules.
 - **Fact modules** look up facts. Modules are packages in this repository,
   built into the engine (not published on npm). For example flood zones and shelters
   (`@pointsman/facts-gsi`), the way around a closed road
-  (`@pointsman/facts-valhalla`) or the state of a pull request
-  (`@pointsman/github`). See [Fact modules](../modules.md).
+  (`@pointsman/facts-valhalla`), the state of a pull request
+  (`@pointsman/github`) or its AI reviews (`@pointsman/coderabbit`). Some
+  facts read the engine's own decision log, read-only and only the asking
+  client's decisions. See [Fact modules](../modules.md).
 - **Connectors** connect another system: they bring its cases in and carry
   the results back, for example to a FIWARE platform (`@pointsman/fiware`)
-  or to a pull request as a check run (`@pointsman/github`). They use the
-  same public API as any other client. See [Connectors](../connectors.md).
+  or to a pull request as a check run (`@pointsman/github`). They ask the
+  engine through the same public API as any other client, with their own
+  token. The GitHub connector can instead make an internal call when it
+  runs in the same Cloudflare account: no token, but the same checks. See
+  [Connectors](../connectors.md).
 - **Adapters** connect the engine to the platform it runs on: where the
-  decision log and the profiles are stored, which AI service answers, and how
-  requests come in. Today that is Cloudflare Workers. See
+  decision log and the profiles are stored, which AI service answers, how
+  requests come in, and how a connector in another Worker calls the engine.
+  Today that is Cloudflare Workers. See
   [Adapters](../adapters.md).
 
 One package can have more than one role: `@pointsman/github` looks up facts

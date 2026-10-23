@@ -4,7 +4,7 @@ description: "Every setting (environment variable) of a deployment, with its def
 sidebar: { order: 95, badge: { text: 'Planned', variant: 'note' } }
 ---
 
-This page is planned. Every setting (environment variable) of a deployment, with its default and what it changes. It will be generated from the code, like the fact types.
+This page is planned. Every setting (environment variable) of a deployment, with its default and what it changes, for example `FACTS_CODERABBIT` or `INTERNAL_CLIENT`. It will be generated from the code, like the fact types.
 
 Until it is written, these pages help:
 

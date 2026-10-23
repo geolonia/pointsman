@@ -4,7 +4,7 @@ description: "Pick the fact modules and connectors a deployment needs, and pin t
 sidebar: { order: 20, badge: { text: 'Planned', variant: 'note' } }
 ---
 
-This page is planned. Pick the fact modules and connectors your deployment needs, list them in `engine.json` and pin their versions.
+This page is planned. Pick the fact modules and connectors your deployment needs, list them in `engine.json` and pin their versions. It will also say when to add `@pointsman/coderabbit`, the facts about CodeRabbit reviews and their budget.
 
 Until it is written, these pages help:
 
