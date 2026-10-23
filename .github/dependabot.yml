@@ -42,7 +42,16 @@ updates:
       interval: weekly
     cooldown:
       default-days: 8
+    # A dependency goes to the first group it matches. Patch bumps of dev
+    # dependencies come in a PR of their own, which Pointsman may approve
+    # on facts alone (the bump class); a PR with any minor step or runtime
+    # dependency is not approvable, so the rest stays in a second PR that
+    # gets a CodeRabbit review.
     groups:
+      npm-dev-patch:
+        dependency-type: development
+        update-types:
+          - patch
       npm:
         update-types:
           - minor
