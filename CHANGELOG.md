@@ -12,6 +12,31 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.9.0 (2026-10-23)
+
+Chains of profiles in the GitHub connector, and a fact for release pull
+requests (#171, for #149): the connector can run a profile that builds on
+another (for example a risk class with AI questions, then a next step with
+rules only), and `github_release` says whether a pull request only moves a
+version.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.9.0` as usual. A module pinned with a version (`…@0.8.0`) must be pinned to `0.9.0`, or the build stops.
+- No database migration and no new secrets. Without `runs` in `GITHUB_CONNECTOR`, the connector works as before.
+
+What changed:
+
+- GitHub connector: optional `runs` in `GITHUB_CONNECTOR`, by profile ([docs/github-connector.md](docs/github-connector.md#chains)):
+  - `requires` sends the decision of an earlier profile of the same run as `decisions`.
+  - `skip_drafts`: the profile is not asked for drafts.
+  - `once_per_head` reuses a decision until the commit, title, description or settings change. `rerun` lists actions after which it is asked again. A decision is kept only after its action and check run are done.
+  - `diff` adds the pull request's diff to the state, cut to a limit (`diff_truncated`).
+  - `recheck` asks again after some minutes while the decision waits, at most `max` times per commit. With `once_per_head`, the waiting actions must also be in `rerun`.
+- `github_release` in `@pointsman/github` ([docs/profile-format.md](docs/profile-format.md#github-pull-requests)): whether a pull request only moves a version, with `version_only`, `from`, `to` and `level`.
+  - Changed files may only be the changelog (lines added), lines in `version_files` that set the version (in a `package.json` only its `"version"` line), and lines in `version_text_files` that name it. The same version pair everywhere, going up.
+  - `version_files` is required. The fact says nothing about who made the change: use it with `github_pr`.
+
 ## 0.8.0 (2026-10-23)
 
 Facts for AI review services and from the decision log (#148, from #165,
