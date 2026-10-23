@@ -326,6 +326,32 @@ describe('decision comment', () => {
   });
 });
 
+describe('decision comment and approvals', () => {
+  it('an approval withdrawn for a test decision or an invalid answer: that profile\'s row goes, and the train moves back', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const bad of [() => ({ ...decision('pr-next-step', { action: 'approve' }), test: true }), () => 'not a decision']) {
+      const gh = fakeApi();
+      const reviews: number[] = [];
+      const client = gh.github as unknown as Record<string, unknown>;
+      client.approve = async () => (reviews.push(77), 77);
+      client.ownApprovals = async () => reviews.map((id) => ({ id, commit: HEAD, marker: '' }));
+      client.dismissReview = async () => void reviews.pop();
+      const { api, answers, event } = setup(settings({ actions: { 'pr-next-step': { approve: { do: 'approve' } } } }), memoryStorage(), gh);
+      answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
+      await event();
+      expect(api.comments[0]!.body).toContain('| `pr-next-step` | 🟢 go | `approve` |');
+      answers['pr-next-step'] = bad;
+      await event();
+      expect(reviews).toEqual([]);
+      const body = api.comments[0]!.body;
+      expect(body).not.toContain('`pr-next-step`');
+      expect(body).toContain('🚆 ready for review');
+      expect(body).toContain('`pr-risk`');
+    }
+    errors.mockRestore();
+  });
+});
+
 describe('signals and the check run', () => {
   it('maps actions to signals: the deployment\'s table, then defaults, then yellow "decided: <action>"; a pending review is red', () => {
     const table = { 'pr-risk': { approvable: { signal: 'green' as const }, risky: { signal: 'red' as const, text: 'look at the code' } } };
@@ -429,6 +455,8 @@ describe('settings', () => {
       [{ signals: { 'pr-risk': { approvable: { signal: 'green', text: '<b>go</b>' } } } }, /text must be/],
       [{ signals: { 'pr-risk': { approvable: { signal: 'green', text: '[go](https://x.example)' } } } }, /text must be/],
       [{ signals: { 'pr-risk': { approvable: { signal: 'green', text: 'x'.repeat(41) } } } }, /text must be/],
+      [{ signals: { 'pr-risk': { approvable: { signal: 'green', text: 'see https.x.example/a' } } } }, /text must be/],
+      [{ signals: { 'pr-risk': { approvable: { signal: 'green', text: 'go :tada:' } } } }, /text must be/],
       [{ signals: { 'pr-risk': { approvable: { signal: 'green', colour: 'x' } } } }, /unknown key colour/],
     ] as const) {
       expect(() => connectorSettings(env(bad as Record<string, unknown>)), JSON.stringify(bad)).toThrow(message);

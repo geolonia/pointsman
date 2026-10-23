@@ -220,6 +220,8 @@ export class PullRequestWork {
     const decided: Record<string, Decision> = {};
     // The check runs written in this run, by profile (a failed comment is noted on them).
     const shown: Record<string, CheckRunOutput> = {};
+    // Profiles whose approval of this head was withdrawn for an answer that is not a decision: their row in the comment no longer stands.
+    const withdrawn = new Set<string>();
     for (const profile of this.#settings.profiles) {
       const run = Object.hasOwn(this.#settings.runs, profile) ? this.#settings.runs[profile]! : {};
       if (run.skipDrafts && pr.draft) continue;
@@ -243,7 +245,7 @@ export class PullRequestWork {
       if (!answer) continue;
       if (answer.kind !== 'decision') {
         // Not a decision to act on: nothing is done, nothing is kept or sent on, and an approval of this head is withdrawn.
-        await this.#notActedOn(target, pr, profile, answer);
+        if (await this.#notActedOn(target, pr, profile, answer)) withdrawn.add(profile);
         continue;
       }
       const { decision } = answer;
@@ -257,7 +259,7 @@ export class PullRequestWork {
       if (counted) await this.#countRecheck(profile, pr.head);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
-    if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown);
+    if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown, withdrawn);
   }
 
   /** Whether the app's own approval of this head stands (by its records). */
@@ -277,12 +279,14 @@ export class PullRequestWork {
    * marker and the app's own bot account. A failure is logged and noted on
    * this run's check runs; it never stops the run.
    */
-  async #updateComment(target: PullRequestTarget, pr: PullRequestInfo, decided: Record<string, Decision>, shown: Record<string, CheckRunOutput>): Promise<void> {
+  async #updateComment(target: PullRequestTarget, pr: PullRequestInfo, decided: Record<string, Decision>, shown: Record<string, CheckRunOutput>, withdrawn: Set<string>): Promise<void> {
     const profiles = this.#settings.comment!.profiles;
     let record = (await this.#storage.get<CommentRecord>('comment')) ?? { head: pr.head, entries: {} };
     // A new head starts with no decisions shown; the comment itself stays.
     if (record.head !== pr.head) record = { ...record, head: pr.head, entries: {} };
     for (const p of profiles) if (decided[p]) record.entries[p] = slim(decided[p]);
+    // Its approval is gone: its last decision (which approved) is not shown any more.
+    for (const p of withdrawn) delete record.entries[p];
     const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
     if (decisions.length === 0) return this.#storage.put({ comment: record });
     const body = commentBody(decisions, this.#settings.signals, pr.head, await this.#station(pr));
@@ -294,11 +298,6 @@ export class PullRequestWork {
     let note: string;
     try {
       record.id = await this.#writeComment(target, record.id, body);
-      record.hash = hash;
-      delete record.pending;
-      delete record.failed;
-      await this.#storage.put({ comment: record });
-      return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const status = err instanceof GitHubError && err.status ? err.status : 'error';
@@ -313,12 +312,21 @@ export class PullRequestWork {
         note = `The decision comment could not be written (${status}); not tried again until it changes. Does the app have "Pull requests: Read and write"?`;
       }
       await this.#storage.put({ comment: record });
+      return this.#noteOnChecks(target, pr.head, shown, note);
     }
+    // Outside the try: a storage failure here is not a refused write.
+    record.hash = hash;
+    delete record.pending;
+    delete record.failed;
+    await this.#storage.put({ comment: record });
+  }
+
+  /** A note on this run's check runs; only a hint, so a failure is logged, never retried. */
+  async #noteOnChecks(target: PullRequestTarget, head: string, shown: Record<string, CheckRunOutput>, note: string): Promise<void> {
     for (const [profile, output] of Object.entries(shown)) {
       try {
-        await this.#writeCheck(target.repo, pr.head, profile, output.externalId, { ...output, summary: `${output.summary}\n\n${note}` });
+        await this.#writeCheck(target.repo, head, profile, output.externalId, { ...output, summary: `${output.summary}\n\n${note}` });
       } catch (err) {
-        if (err instanceof RetryError) throw err;
         console.error(`github connector: ${target.repo}#${target.number} ${profile} check run: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
@@ -663,15 +671,20 @@ export class PullRequestWork {
    * that the profile could have given is withdrawn (fail-safe, as for any decision that does not keep it).
    * Its check run says so.
    */
-  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>): Promise<void> {
+  /** Returns whether an approval of this head was withdrawn. */
+  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>): Promise<boolean> {
     const byAction = this.#settings.actions[profile];
     let note: string | undefined;
+    let withdrawn = false;
     if (byAction && Object.values(byAction).some((a) => a.do === 'approve')) {
       let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
       if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
+      const had = acts.done[`${profile}:approve`] !== undefined;
       if (!(await this.#withdraw(target, pr, profile, acts))) note = 'Its approval of this commit could not be withdrawn (logged; tried again on the next run).';
+      else withdrawn = had;
     }
     await this.#writeCheck(target.repo, pr.head, profile, answer.kind === 'test' ? answer.decision.decision_id : '', notActedOnOutput(profile, answer, note));
+    return withdrawn;
   }
 
   async #writeCheck(repo: string, head: string, profile: string, decisionId: string, output: CheckRunOutput): Promise<void> {
@@ -705,15 +718,25 @@ export class PullRequestWork {
   }
 }
 
-/** What the comment keeps of a decision: what it shows, nothing more (no fact values). */
+/** An AI answer as the comment keeps it: its type and a small value of a known shape, or nothing. */
+function slimAnswer(a: unknown): { type: string; value: boolean | string | number } | undefined {
+  if (a === null || typeof a !== 'object') return undefined;
+  const { type, value } = a as { type?: unknown; value?: unknown };
+  if (type === 'noul' && typeof value === 'boolean') return { type, value };
+  if (type === 'choice' && typeof value === 'string') return { type, value: value.slice(0, 65) };
+  if (type === 'score' && typeof value === 'number' && Number.isSafeInteger(value)) return { type, value };
+  return undefined;
+}
+
+/** What the comment keeps of a decision: what it shows, nothing more (no fact values), each part small. */
 function slim(d: Decision): Decision {
   const answers = d.answers !== null && typeof d.answers === 'object' && !Array.isArray(d.answers)
-    ? Object.fromEntries(Object.entries(d.answers as Record<string, unknown>).slice(0, 50)
-      .map(([k, a]) => [k, a !== null && typeof a === 'object' ? { type: (a as { type?: unknown }).type, value: (a as { value?: unknown }).value } : null]))
+    ? Object.fromEntries(Object.entries(d.answers as Record<string, unknown>).filter(([k]) => k.length <= 64).slice(0, 20)
+      .map(([k, a]) => [k, slimAnswer(a)]).filter(([, a]) => a !== undefined))
     : undefined;
   return {
     decision_id: d.decision_id, action: d.action, profile: d.profile, profile_version: d.profile_version, rule: d.rule,
-    ...(d.facts && { facts: Object.fromEntries(Object.entries(d.facts).map(([k, f]) => [k, { ...(f.missing !== undefined && { missing: f.missing }), ...(f.reason !== undefined && { reason: f.reason.slice(0, 100) }) }])) }),
+    ...(d.facts && { facts: Object.fromEntries(Object.entries(d.facts).slice(0, 50).map(([k, f]) => [k, { ...(f.missing !== undefined && { missing: f.missing }), ...(f.reason !== undefined && { reason: f.reason.slice(0, 100) }) }])) }),
     ...(d.review && { review: { status: d.review.status } }),
     ...(answers && { answers }),
   };

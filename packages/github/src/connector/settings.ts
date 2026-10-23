@@ -199,8 +199,8 @@ function runsOf(v: unknown, profiles: string[]): Record<string, RunOptions> {
 }
 
 const COLOURS = ['red', 'yellow', 'green'];
-/** A signal's word: letters, digits, spaces and a little punctuation, nothing markdown or HTML reads. */
-const SIGNAL_TEXT = /^[\p{L}\p{N}](?:[\p{L}\p{N} ,.:'/()-]{0,38}[\p{L}\p{N}.)])?$/u;
+/** A signal's word: letters, digits, spaces and a little punctuation, nothing markdown or HTML reads (no : or /, so no link or emoji code). */
+const SIGNAL_TEXT = /^[\p{L}\p{N}](?:[\p{L}\p{N} ,.'()-]{0,38}[\p{L}\p{N}.)])?$/u;
 
 function signalsOf(v: unknown, profiles: string[]): Record<string, Record<string, SignalSpec>> | undefined {
   if (v === undefined) return undefined;
@@ -216,7 +216,7 @@ function signalsOf(v: unknown, profiles: string[]): Record<string, Record<string
       if (Object.keys(more).length > 0) throw new ConfigError(`${where}.${action}: unknown key ${Object.keys(more)[0]}`);
       if (typeof signal !== 'string' || !COLOURS.includes(signal)) throw new ConfigError(`${where}.${action}: the signal must be red, yellow or green`);
       if (text !== undefined && (typeof text !== 'string' || !SIGNAL_TEXT.test(text))) {
-        throw new ConfigError(`${where}.${action}.text must be 1 to 40 letters, digits, spaces or , . : ' / ( ) -`);
+        throw new ConfigError(`${where}.${action}.text must be 1 to 40 letters, digits, spaces or , . ' ( ) -`);
       }
       out[profile][action] = { signal: signal as SignalColour, ...(text !== undefined && { text: text as string }) };
     }

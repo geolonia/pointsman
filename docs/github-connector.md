@@ -236,7 +236,7 @@ The check run `Pointsman: pr-next-step` of the same decision is titled `🔴 ask
 What it shows:
 
 - **Signal**: one per profile, always with a word next to the colour (screen readers read the word). See [Signals](#signals).
-- **Line**: the pull request's progress, with the train where it is. The connector places the train only by what it knows for sure: `draft`; `approved` while its own approval of this commit stands; otherwise `ready`. It does not read other people's reviews, and closed pull requests get no run, so the train is never at `reviewed` or `merged`.
+- **Line**: the pull request's progress, with the train where it is. The connector places the train only by what it knows for sure: `draft`; `approved` while its own approval of this commit stands; otherwise `ready`. It does not read other people's reviews, and closed pull requests get no run, so the train is never at `reviewed` or `merged`. A check run's line is drawn when that check run is written: if a later profile of the same run approves, an earlier profile's check run still shows `ready` until the next run, while the comment shows `approved`.
 - **Switch**: why the decision took its track, from the decision itself: how many facts were read and which are missing (with the engine's reason), the AI answers' values (yes/no, the chosen option, a level; not the probabilities), the rule that set it (or the profile's default), and whether a person still checks it. The same as the check run shows; no fact values, no text of the pull request.
 
 Rules:
@@ -245,7 +245,7 @@ Rules:
 - **Only when it changed**: the comment holds no decision ids or times, so a new decision with the same action, rule, facts and answers changes nothing and makes no call to GitHub. At most one write per run (the update, or the first comment).
 - **Recorded before the write**, like the actions: a run that stops while writing leaves the record open, and the next run writes it again (it finds the comment by its marker first, so there is never a second one).
 - **A new head commit** starts with no decisions shown; profiles not asked on it (a draft with `skip_drafts`) are left out until they decide.
-- **Test decisions and invalid answers** ([Safety](#safety)) never change the comment: it keeps the profile's last real decision on this commit.
+- **Test decisions and invalid answers** ([Safety](#safety)) never put anything in the comment: it keeps the profile's last real decision on this commit. One exception: when such an answer made the connector withdraw the profile's approval of this commit ([When the approval stays](#when-the-approval-stays)), that profile's row is removed (its last decision no longer stands) and the train moves back to `ready`.
 - **Failures** never stop the run or the actions. Refused by GitHub (no permission): logged, noted on the run's check runs, and not tried again until the comment's text changes. Busy or rate limited: noted on the check runs, and the next run writes it.
 - **Nothing from the pull request**: the comment never shows the title, the description or the diff. Profile and action names are checked names; the engine's fact reasons are cut to 40 characters of letters, digits and plain punctuation; an AI answer's option is shown only when it is a plain name; and all of it is in code blocks. So text in the pull request cannot add markdown, HTML, links or mentions to the comment.
 
@@ -253,7 +253,7 @@ Rules:
 
 ### Signals
 
-Each decision gets a signal: red (a person or a review is needed), yellow (waiting) or green (go). A deployment sets them per profile and action in `signals`: either the colour (`"red"`), or the colour and the word shown next to it (`{ "signal": "red", "text": "look at the code" }`; 1 to 40 letters, digits, spaces and `, . : ' / ( ) -`). The signals are used in the comment and in every check run's title, also without the comment.
+Each decision gets a signal: red (a person or a review is needed), yellow (waiting) or green (go). A deployment sets them per profile and action in `signals`: either the colour (`"red"`), or the colour and the word shown next to it (`{ "signal": "red", "text": "look at the code" }`; 1 to 40 letters, digits, spaces and `, . ' ( ) -`, so no link or emoji code). The signals are used in the comment and in every check run's title, also without the comment.
 
 Without one, these defaults apply:
 
