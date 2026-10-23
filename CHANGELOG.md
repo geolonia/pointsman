@@ -12,6 +12,22 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.13.0 (2026-10-23)
+
+The GitHub connector can keep its approval when a later decision says so, and a fact tells a profile whether the app already approved the head (#191).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.13.0`. No migration, no new secrets, no new permissions.
+- Nothing changes unless a profile uses `github_app_approval` and the connector maps an action to `keep_approval`.
+
+What changed:
+
+- **`github_app_approval`** (module `@pointsman/github`): `approved_head` (the app's latest deciding review is an approval of the current head; a dismissed one never counts), `approved_any`, `reviews`. Settings: `app` (the app's slug, required) and `bot_id` (its bot account id, recommended: without it, an app that later takes a deleted app's slug would match). Another bot, a person or a pending review never counts; unreadable reviews make the fact missing.
+- **`keep_approval`** (connector action kind): a later decision on the same head mapped to it keeps the app's approval and approves nothing. It is allowed only in a profile that also maps `approve`. Any other later action withdraws the approval, and so does a decision a person still checks. Give the keep rule the approve rule's other conditions (CI and so on). See *When the approval stays* in `docs/github-connector.md`.
+- **The connector's own approvals** now count only reviews by the app's own bot (`<slug>[bot]`, the slug from the installation), not any bot's review with the marker.
+- **Withdrawing is more careful:** a run that stopped after approving is matched to its review on GitHub before withdrawing, so the approval is dismissed rather than forgotten. A withdraw that fails, or whose lookup fails, is shown on the check run, and its record stays open so the next run tries again.
+
 ## 0.12.0 (2026-10-23)
 
 An internal call between the GitHub connector and the engine (#188): where both run in the same deployment, the connector no longer needs a token.
