@@ -24,7 +24,7 @@ import { GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullR
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
 import { releaseFacts } from './release';
-import { ageInDays, bumpFacts, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
+import { ageInDays, bumpFacts, devOnlyInRepository, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
 import { publishTimes, REGISTRY_TIMEOUT_MS } from './npm';
 import {
   actionFolderOf, actionFolders, countWorkflows, kindOf, MAX_FILE_BYTES, MAX_PARSED_FILES, workflowSettings,
@@ -57,6 +57,8 @@ const DEPENDABOT = 'dependabot[bot]';
 const WEB_FLOW = 'web-flow';
 /** The largest package.json github_bump reads. */
 export const MAX_MANIFEST_BYTES = 512 * 1024;
+/** The package.json files of a repository github_bump reads for dev_only; a repository with more fails the fact. */
+export const MAX_REPOSITORY_MANIFESTS = 50;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const PASSED = new Set(['success', 'neutral', 'skipped']);
 /** A repository as "owner/name"; "." and ".." are not names. */
@@ -692,7 +694,9 @@ export class Snapshot {
   /**
    * github_bump (bump.ts): the changed files, then each changed package.json
    * at the head, then the publish time of each bumped version from the npm
-   * registry. Not a bump: NO_BUMP, and nothing past the file list is read.
+   * registry and, when the rest says dev only, every other package.json of
+   * the repository at the head (the tree, then each file). Not a bump:
+   * NO_BUMP, and nothing past the file list is read.
    */
   bump(now: number): Promise<BumpFacts> {
     return this.part('bump', async () => {
@@ -707,22 +711,51 @@ export class Snapshot {
       }));
       const found = bumpFacts(files, heads);
       if (!found) return NO_BUMP;
-      // One limit for every registry read; the first failure stops the others (the fact is missing anyway).
-      const stop = new AbortController();
-      const signal = AbortSignal.any([AbortSignal.timeout(REGISTRY_TIMEOUT_MS), stop.signal]);
-      const byName = new Map<string, string[]>();
-      for (const { name, version } of found.versions) byName.set(name, [...(byName.get(name) ?? []), version]);
-      let times: number[][];
-      try {
-        times = await Promise.all([...byName].map(async ([name, versions]) => [...(await publishTimes(this.fetchFn, name, versions, signal)).values()]));
-      } finally {
-        stop.abort();
-      }
-      // The youngest release counts.
-      const ages = times.flat().map((ms) => ageInDays(ms, now));
+      const [ages, devOnly] = await Promise.all([
+        this.releaseAges(found.versions, now),
+        found.facts.dev_only ? this.repositoryDevOnly(heads, new Set(found.devNames)) : Promise.resolve(false),
+      ]);
       // No version to look up (no spec understood, so semver is "none"): the strictest age.
-      return { ...found.facts, release_age_days: ages.length > 0 ? Math.min(...ages) : 0 };
+      return { ...found.facts, dev_only: devOnly, release_age_days: ages.length > 0 ? Math.min(...ages) : 0 };
     });
+  }
+
+  /** The age in days of each version, from the npm registry. */
+  private async releaseAges(found: { name: string; version: string }[], now: number): Promise<number[]> {
+    // One limit for every registry read; the first failure stops the others (the fact is missing anyway).
+    const stop = new AbortController();
+    const signal = AbortSignal.any([AbortSignal.timeout(REGISTRY_TIMEOUT_MS), stop.signal]);
+    const byName = new Map<string, string[]>();
+    for (const { name, version } of found) byName.set(name, [...(byName.get(name) ?? []), version]);
+    let times: number[][];
+    try {
+      times = await Promise.all([...byName].map(async ([name, versions]) => [...(await publishTimes(this.fetchFn, name, versions, signal)).values()]));
+    } finally {
+      stop.abort();
+    }
+    return times.flat().map((ms) => ageInDays(ms, now));
+  }
+
+  /**
+   * Whether no package.json of the repository at the head lists one of
+   * `names` outside devDependencies: the recursive tree (cut short fails
+   * the fact), then each package.json not read already, by its blob. More
+   * than MAX_REPOSITORY_MANIFESTS, or one larger than MAX_MANIFEST_BYTES,
+   * fails the fact.
+   */
+  private async repositoryDevOnly(heads: Map<string, string>, names: Set<string>): Promise<boolean> {
+    const tree = await this.tree(this.ref.head);
+    const found = [...tree].filter(([path]) => path === 'package.json' || path.endsWith('/package.json'));
+    // Every changed package.json is in the tree at the head; one that is not cannot be placed.
+    if ([...heads.keys()].some((path) => !tree.has(path))) throw new FactError('GitHub tree: a changed package.json is not in the tree');
+    if (found.length > MAX_REPOSITORY_MANIFESTS) throw new FactError(`more than ${MAX_REPOSITORY_MANIFESTS} package.json files in the repository`);
+    const texts = await Promise.all(found.map(async ([path, file]) => {
+      const known = heads.get(path);
+      if (known !== undefined) return known;
+      if (file.size > MAX_MANIFEST_BYTES) throw new FactError(`GitHub file: larger than ${MAX_MANIFEST_BYTES} bytes`);
+      return this.blob(file.sha);
+    }));
+    return devOnlyInRepository(texts, names);
   }
 
   /** The changed files, with their names and whether they were removed. */
