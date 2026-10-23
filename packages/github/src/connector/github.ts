@@ -116,7 +116,7 @@ export interface ConnectorGitHub {
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
   /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
-  /** Every review of the pull request (at most 1000), without its text: where the train stands (comment.ts). */
+  /** Every review of the pull request, without its text: where the train stands (comment.ts). More than 1000: an error (the newest would be missing). */
   reviews(repo: string, number: number): Promise<ReviewRef[]>;
   /** The unified diff, cut to `max` characters; empty and cut when GitHub does not give one (too large). */
   diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }>;
@@ -130,6 +130,8 @@ export const markerOf = (head: string, profile: string, kind: string) => `${MARK
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const SHA = /^[0-9a-f]{40}$/;
+/** Review authors with write access to the repository, as GitHub's `author_association` gives them. */
+const WRITERS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 export class AppGitHub implements ConnectorGitHub {
   readonly #auth: GitHubAppAuth;
@@ -268,13 +270,19 @@ export class AppGitHub implements ConnectorGitHub {
 
   async reviews(repo: string, number: number): Promise<ReviewRef[]> {
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    if (reviews.length >= 1000) throw new GitHubError('GitHub reviews: more than the 1000 read', false);
     const bot = await this.#botLogin(repo);
     return reviews
-      .filter((r) => typeof r.id === 'number' && typeof r.state === 'string' && typeof r.commit_id === 'string' && isObject(r.user) && typeof r.user.login === 'string')
+      .filter((r) => typeof r.id === 'number' && typeof r.state === 'string' && typeof r.commit_id === 'string')
       .map((r) => {
-        const user = r.user as Record<string, unknown>;
-        const login = (user.login as string).toLowerCase();
-        return { id: r.id as number, state: r.state as string, commit: r.commit_id as string, login, own: user.type === 'Bot' && login === bot };
+        // A deleted account (no user): still a reviewer of its own, so a change request of theirs keeps standing.
+        const user = isObject(r.user) && typeof r.user.login === 'string' ? r.user : undefined;
+        const login = user ? (user.login as string).toLowerCase() : `ghost:${r.id as number}`;
+        return {
+          id: r.id as number, state: r.state as string, commit: r.commit_id as string, login,
+          own: user?.type === 'Bot' && login === bot,
+          writer: typeof r.author_association === 'string' && WRITERS.has(r.author_association),
+        };
       });
   }
 

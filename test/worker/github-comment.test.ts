@@ -49,7 +49,7 @@ function fakeApi() {
   const checkRuns: { id: number; head: string; name: string; output: { title: string; summary: string; text?: string } }[] = [];
   const log: string[] = [];
   /** The pull request's reviews, as GitHub lists them; `reviewsFail` answers their read with this status. */
-  const reviews: { id: number; state: string; commit_id: string; body: string; user: { login: string; type: string } }[] = [];
+  const reviews: { id: number; state: string; commit_id: string; body: string; user: { login: string; type: string }; author_association: string }[] = [];
   const api = { pr, comments, checkRuns, log, reviews, fail: 0, reviewsFail: 0 };
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
@@ -324,10 +324,7 @@ describe('decision comment', () => {
   it('the line shows the train at the app\'s own approval of this commit', async () => {
     const gh = fakeApi();
     // The approval (a review) is faked on the client: this test is about the line.
-    const reviews: number[] = [];
-    const client = gh.github as unknown as Record<string, unknown>;
-    client.approve = async () => (reviews.push(77), 77);
-    client.ownApprovals = async () => reviews.map((id) => ({ id, commit: HEAD, marker: '' }));
+    const reviews = fakeApprovals(gh);
     const { api, answers, event } = setup(settings({ actions: { 'pr-next-step': { approve: { do: 'approve' } } } }), memoryStorage(), gh);
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
     await event();
@@ -336,7 +333,19 @@ describe('decision comment', () => {
   });
 });
 
-const review = (id: number, state: string, login: string, commit = HEAD, type = 'User') => ({ id, state, commit_id: commit, body: 'Looks good @everyone <b>x</b>', user: { login, type } });
+const review = (id: number, state: string, login: string, commit = HEAD, type = 'User', association = 'COLLABORATOR') => ({
+  id, state, commit_id: commit, body: 'Looks good @everyone <b>x</b>', user: { login, type }, author_association: association,
+});
+
+/** The app's approvals, faked on the client (the HTTP fake writes no reviews); they show in the reviews list as its bot's. */
+function fakeApprovals(gh: ReturnType<typeof fakeApi>) {
+  const ids: number[] = [];
+  const client = gh.github as unknown as Record<string, unknown>;
+  client.approve = async () => { ids.push(77); gh.api.reviews.push(review(77, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot', 'NONE')); return 77; };
+  client.ownApprovals = async () => ids.map((id) => ({ id, commit: HEAD, marker: '' }));
+  client.dismissReview = async () => { ids.pop(); gh.api.reviews.find((r) => r.id === 77)!.state = 'DISMISSED'; };
+  return ids;
+}
 /** The line of the comment (its first code block). */
 const lineOf = (body: string) => body.split('```text\n')[1]!.split('\n```')[0]!;
 const reviewReads = (log: string[]) => log.filter((l) => l === 'GET /pulls/7/reviews').length;
@@ -395,6 +404,35 @@ describe('where the train stands', () => {
     api.reviews[4]!.state = 'DISMISSED';
     await event();
     expect(lineOf(api.comments[0]!.body)).toBe(lineArt('approved'));
+  });
+
+  it('an approval counts only by someone with write access or the app: a drive-by approval in a public repository is "reviewed"', async () => {
+    const { api, event } = setup();
+    for (const association of ['NONE', 'CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR']) {
+      api.reviews.length = 0;
+      api.reviews.push(review(1, 'APPROVED', 'mallory', HEAD, 'User', association), review(2, 'APPROVED', 'some-app[bot]', HEAD, 'Bot', association));
+      await event();
+      expect(lineOf(api.comments[0]!.body), association).toBe(lineArt('reviewed'));
+    }
+    for (const association of ['OWNER', 'MEMBER', 'COLLABORATOR']) {
+      api.reviews.length = 0;
+      api.reviews.push(review(1, 'APPROVED', 'bob', HEAD, 'User', association));
+      await event();
+      expect(lineOf(api.comments[0]!.body), association).toBe(lineArt('approved'));
+    }
+  });
+
+  it('its own approval dismissed on GitHub by a person (its records still have it): not "approved"', async () => {
+    const gh = fakeApi();
+    fakeApprovals(gh);
+    const { api, answers, event } = setup(settings({ actions: { 'pr-next-step': { approve: { do: 'approve' } } } }), memoryStorage(), gh);
+    answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
+    await event();
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt(OWN));
+    api.reviews.find((r) => r.id === 77)!.state = 'DISMISSED';
+    await event();
+    // A dismissed review counts for nothing.
+    expect(lineOf(api.comments[0]!.body)).toBe(lineArt('ready'));
   });
 
   it('reviews of an older commit, the author\'s own and dismissed ones do not count', async () => {
@@ -506,11 +544,7 @@ describe('decision comment and approvals', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     for (const bad of [() => ({ ...decision('pr-next-step', { action: 'approve' }), test: true }), () => 'not a decision']) {
       const gh = fakeApi();
-      const reviews: number[] = [];
-      const client = gh.github as unknown as Record<string, unknown>;
-      client.approve = async () => (reviews.push(77), 77);
-      client.ownApprovals = async () => reviews.map((id) => ({ id, commit: HEAD, marker: '' }));
-      client.dismissReview = async () => void reviews.pop();
+      const reviews = fakeApprovals(gh);
       const { api, answers, event } = setup(settings({ actions: { 'pr-next-step': { approve: { do: 'approve' } } } }), memoryStorage(), gh);
       answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });
       await event();
@@ -532,11 +566,7 @@ describe('decision comment with nothing to show', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     // Its only profile's approval is withdrawn (a test decision): no row is left.
     const gh = fakeApi();
-    const reviews: number[] = [];
-    const client = gh.github as unknown as Record<string, unknown>;
-    client.approve = async () => (reviews.push(77), 77);
-    client.ownApprovals = async () => reviews.map((id) => ({ id, commit: HEAD, marker: '' }));
-    client.dismissReview = async () => void reviews.pop();
+    fakeApprovals(gh);
     const s = settings({ comment: { profiles: ['pr-next-step'] }, actions: { 'pr-next-step': { approve: { do: 'approve' } } } });
     const { api, answers, event } = setup(s, memoryStorage(), gh);
     answers['pr-next-step'] = () => decision('pr-next-step', { action: 'approve', rule: 0 });

@@ -695,6 +695,10 @@ describe('actions (switched on per profile action)', () => {
       { id: 4, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks', type: 'User' } },
       { id: 5, state: 'DISMISSED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
       { id: 6, state: 'APPROVED', body: 'Looks good', commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
+      // A deleted account, with write access when it reviewed.
+      { id: 7, state: 'CHANGES_REQUESTED', body: 'x', commit_id: HEAD, user: null, author_association: 'MEMBER' },
+      { id: 8, state: 'APPROVED', body: 'x', commit_id: HEAD, user: { login: 'Bob', type: 'User' }, author_association: 'COLLABORATOR' },
+      { id: 9, state: 'APPROVED', body: 'x', commit_id: HEAD, user: { login: 'drive-by', type: 'User' }, author_association: 'NONE' },
     ];
     const fetchWith = (installation: Record<string, unknown>) => (async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -707,12 +711,15 @@ describe('actions (switched on per profile action)', () => {
     expect(await gh.ownApprovals(REPO, 7)).toEqual([{ id: 1, commit: HEAD, marker }]);
     // All reviews for the line: without their text; only its own bot's are its own.
     expect(await gh.reviews(REPO, 7)).toEqual([
-      { id: 1, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
-      { id: 2, state: 'APPROVED', commit: HEAD, login: 'other-app[bot]', own: false },
-      { id: 3, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: false },
-      { id: 4, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks', own: false },
-      { id: 5, state: 'DISMISSED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
-      { id: 6, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true },
+      { id: 1, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true, writer: false },
+      { id: 2, state: 'APPROVED', commit: HEAD, login: 'other-app[bot]', own: false, writer: false },
+      { id: 3, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: false, writer: false },
+      { id: 4, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks', own: false, writer: false },
+      { id: 5, state: 'DISMISSED', commit: HEAD, login: 'pointsman-checks[bot]', own: true, writer: false },
+      { id: 6, state: 'APPROVED', commit: HEAD, login: 'pointsman-checks[bot]', own: true, writer: false },
+      { id: 7, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'ghost:7', own: false, writer: true },
+      { id: 8, state: 'APPROVED', commit: HEAD, login: 'bob', own: false, writer: true },
+      { id: 9, state: 'APPROVED', commit: HEAD, login: 'drive-by', own: false, writer: false },
     ]);
     // GitHub did not name the app: none is taken for its own (an error, so nothing is approved or recorded on it).
     const unnamed = new AppGitHub(APP_ID, KEY, fetchWith({}), true);

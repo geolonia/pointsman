@@ -148,8 +148,8 @@ export class PullRequestWork {
   readonly #engine: EngineClient;
   /** The clock (tests set it). */
   now: () => number = () => Date.now();
-  /** This run's read of the reviews (one per run, made when the line is first drawn). */
-  #reviews: Promise<HeadReviews> | undefined;
+  /** This run's read of the reviews (made when the line is first drawn; again after an approval or a dismissal); undefined inside: not readable. */
+  #reviews: Promise<HeadReviews | undefined> | undefined;
 
   constructor(storage: ObjectStorage, settings: ConnectorSettings, github: ConnectorGitHub, engine: EngineClient) {
     this.#storage = storage;
@@ -278,30 +278,36 @@ export class PullRequestWork {
     return acts?.head === head && Object.entries(acts.done).some(([key, r]) => key.endsWith(':approve') && r.state === 'done');
   }
 
-  /** Where the train stands (comment.ts positionOf): GitHub's state, the reviews read once per run, and the app's own records. */
+  /**
+   * Where the train stands (comment.ts positionOf): GitHub's state and the
+   * reviews, read once per run and again after the run approved or dismissed.
+   * The app's own records count only when the reviews could not be read.
+   */
   async #position(target: PullRequestTarget, pr: PullRequestInfo): Promise<Position> {
-    const approvedByApp = await this.#approvedHere(pr.head);
-    if (!pr.open || pr.draft) return positionOf(pr, NO_REVIEWS, approvedByApp);
+    if (!pr.open || pr.draft) return positionOf(pr, NO_REVIEWS);
     this.#reviews ??= this.#readReviews(target, pr);
-    return positionOf(pr, await this.#reviews, approvedByApp);
+    const read = await this.#reviews;
+    return read ? positionOf(pr, read) : positionOf(pr, await this.#seenReviews(pr.head), await this.#approvedHere(pr.head));
   }
 
-  /**
-   * What the reviews say about this head. Not readable (any error, a rate
-   * limit too): logged, and what they said when last read on this head, else
-   * nothing; the run goes on (the train never moves on for a failed read).
-   */
-  async #readReviews(target: PullRequestTarget, pr: PullRequestInfo): Promise<HeadReviews> {
+  /** What the reviews say about this head; undefined when they cannot be read (any error, a rate limit too: logged, the run goes on). */
+  async #readReviews(target: PullRequestTarget, pr: PullRequestInfo): Promise<HeadReviews | undefined> {
+    let state: HeadReviews;
     try {
-      const state = reviewStateOf(await this.#github.reviews(target.repo, target.number), pr.head, pr.author);
-      const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
-      if (seen?.head !== pr.head || JSON.stringify(seen.state) !== JSON.stringify(state)) await this.#storage.put({ reviewsSeen: { head: pr.head, state } });
-      return state;
+      state = reviewStateOf(await this.#github.reviews(target.repo, target.number), pr.head, pr.author);
     } catch (err) {
       console.error(`github connector: ${target.repo}#${target.number} reading reviews for the line: ${err instanceof Error ? err.message : String(err)}`);
-      const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
-      return seen?.head === pr.head ? seen.state : NO_REVIEWS;
+      return undefined;
     }
+    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+    if (seen?.head !== pr.head || JSON.stringify(seen.state) !== JSON.stringify(state)) await this.#storage.put({ reviewsSeen: { head: pr.head, state } });
+    return state;
+  }
+
+  /** What the reviews said when last read on this head, else nothing: the train never moves on for a failed read. */
+  async #seenReviews(head: string): Promise<HeadReviews> {
+    const seen = await this.#storage.get<ReviewsSeen>('reviewsSeen');
+    return seen?.head === head ? seen.state : NO_REVIEWS;
   }
 
   /**
@@ -494,6 +500,7 @@ export class PullRequestWork {
       if (!which(a)) { kept.push(a); continue; }
       try {
         await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, message(a)));
+        this.#reviews = undefined;
       } catch (err) {
         if (err instanceof RetryError) throw err;
         console.error(`github connector: ${target.repo}#${target.number} dismissing review ${a.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -633,6 +640,7 @@ export class PullRequestWork {
         return this.#github.requestReviewers(repo, number, spec.reviewers);
       case 'approve': {
         const id = await this.#github.approve(repo, number, pr.head, `${markerOf(pr.head, profile, 'approve')}\nPointsman approved ${pr.head.slice(0, 7)} (decision \`${decision.decision_id}\`, profile \`${profile}\`).`);
+        this.#reviews = undefined;
         await this.#remember({ id, commit: pr.head, profile });
         return;
       }

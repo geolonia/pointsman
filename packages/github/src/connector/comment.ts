@@ -83,13 +83,15 @@ export interface ReviewRef {
   login: string;
   /** By the app's own bot account. */
   own: boolean;
+  /** By someone with write access (owner, member, collaborator): only their approvals count, as on GitHub. */
+  writer: boolean;
 }
 
 /** What the reviews say about this head. */
 export interface HeadReviews {
   /** A review (a comment, a change request or an approval) of this head by someone other than the author. */
   reviewed: boolean;
-  /** An approval of this head stands, by anyone. */
+  /** An approval of this head stands, by someone with write access or the app. */
   approved: boolean;
   /** One of the approvals of this head that stand is the app's own. */
   ownApproved: boolean;
@@ -104,17 +106,20 @@ const SUBMITTED = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED']);
 const VERDICT = new Set(['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED']);
 
 /**
- * What the reviews say about this head, as GitHub counts them: each
- * reviewer's latest approval, change request or dismissal is their verdict.
- * The author's own reviews do not count; a review of an older commit counts
- * only as a change request that still stands.
+ * What the reviews say about this head: each reviewer's latest approval,
+ * change request or dismissal is their verdict (a later comment leaves it).
+ * Approvals count only by someone with write access or the app itself, as
+ * GitHub counts them (anyone may approve in a public repository); a change
+ * request counts by anyone (it only holds the train back). The author's own
+ * reviews do not count; a review of an older commit counts only as a change
+ * request that still stands.
  */
 export function reviewStateOf(reviews: ReviewRef[], head: string, author: string): HeadReviews {
   const others = reviews.filter((r) => r.login !== '' && r.login !== author.toLowerCase()).sort((a, b) => a.id - b.id);
   const verdicts = new Map<string, ReviewRef>();
   for (const r of others) if (VERDICT.has(r.state)) verdicts.set(r.login, r);
   const standing = [...verdicts.values()];
-  const approvals = standing.filter((r) => r.state === 'APPROVED' && r.commit === head);
+  const approvals = standing.filter((r) => r.state === 'APPROVED' && r.commit === head && (r.writer || r.own));
   return {
     reviewed: others.some((r) => SUBMITTED.has(r.state) && r.commit === head),
     approved: approvals.length > 0,
@@ -125,12 +130,13 @@ export function reviewStateOf(reviews: ReviewRef[], head: string, author: string
 
 /**
  * Where the pull request is, from GitHub's state: merged, or closed without
- * merging; a draft; approved while an approval of this head stands (the
- * app's own by its records, or anyone's by the reviews) and no change request
- * does; reviewed once someone other than the author reviewed this head (an
- * approval is a review); else ready.
+ * merging; a draft; approved while an approval of this head stands and no
+ * change request does; reviewed once someone other than the author reviewed
+ * this head (an approval is a review); else ready. `approvedByApp`: the app's
+ * own approval of this head stands by its records (used only when the
+ * reviews could not be read).
  */
-export function positionOf(pr: { open: boolean; merged: boolean; draft: boolean }, reviews: HeadReviews, approvedByApp: boolean): Position {
+export function positionOf(pr: { open: boolean; merged: boolean; draft: boolean }, reviews: HeadReviews, approvedByApp = false): Position {
   if (!pr.open) return { at: pr.merged ? 'merged' : 'closed' };
   if (pr.draft) return { at: 'draft' };
   if ((reviews.approved || approvedByApp) && !reviews.changesRequested) return { at: 'approved', ownApproval: approvedByApp || reviews.ownApproved };
