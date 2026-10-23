@@ -341,6 +341,12 @@ describe('github_bump', () => {
     expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,2 +1,2 @@\n-        version: 4.1.11\n+        version: evil@1.0.0').sourceChanged).toBe(true);
     expect(lockfileChanges('pnpm-lock.yaml', "@@ -1,1 +1,2 @@\n+  '@vitest/runner@4.1.12':\n+  vite@8.3.3(esbuild@0.28.2): {}").versions)
       .toEqual([{ name: '@vitest/runner', version: '4.1.12' }, { name: 'vite', version: '8.3.3' }]);
+    // Lockfile v6 (pnpm 8): keys start with "/", scoped or not, with peers.
+    expect(lockfileChanges('pnpm-lock.yaml', "@@ -1,1 +1,3 @@\n+  /vitest@4.1.12:\n+  /@vitest/runner@4.1.12:\n+  /vite@8.3.3(esbuild@0.28.2):"))
+      .toEqual({ sourceChanged: false, versions: [{ name: 'vitest', version: '4.1.12' }, { name: '@vitest/runner', version: '4.1.12' }, { name: 'vite', version: '8.3.3' }] });
+    // Lockfile v5 (/name/version) and other block keys are not understood: a change of source.
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,1 +1,1 @@\n+  /vitest/4.1.12:').sourceChanged).toBe(true);
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,1 +1,1 @@\n+  packages/new:').sourceChanged).toBe(true);
   });
 
   it('a transitive version in the lockfile counts for the age; a bundled dependency is not dev only', async () => {

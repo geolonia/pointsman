@@ -234,8 +234,13 @@ export function changesSource(line: string): boolean {
 
 /** A version as a lockfile pins it: no range, no alias. */
 const PINNED = /^\d{1,10}\.\d{1,10}\.\d{1,10}(?:-[0-9A-Za-z.-]{1,60})?$/;
-/** A pnpm-lock.yaml package key (packages, snapshots): name@version, then peers in parentheses. */
-const PNPM_KEY = /^ {2}'?((?:@[^@/'\s]+\/)?[^@/'\s]+)@([^'(:\s]+)(?:\(.*\))?'?:(?:\s*\{\})?\s*$/;
+/**
+ * A pnpm-lock.yaml package key (packages, snapshots): name@version, then
+ * peers in parentheses; with a leading "/" in lockfile v6 (pnpm 8).
+ */
+const PNPM_KEY = /^ {2}'?\/?((?:@[^@/'\s]+\/)?[^@/'\s]+)@([^'(:\s]+)(?:\(.*\))?'?:(?:\s*\{\})?\s*$/;
+/** Any key two spaces deep that opens a block, such as a lockfile v5 key (/name/1.0.0:). */
+const PNPM_BLOCK_KEY = /^ {2}[^\s#][^:]*:(?:\s*\{\})?\s*$/;
 /** A package-lock.json entry key: "node_modules/<name>", maybe nested. */
 const LOCK_KEY = /^\s*"(?:[^"]*\/)?node_modules\/((?:@[^/"]+\/)?[^/"]+)":\s*\{/;
 
@@ -243,7 +248,9 @@ const LOCK_KEY = /^\s*"(?:[^"]*\/)?node_modules\/((?:@[^/"]+\/)?[^/"]+)":\s*\{/;
  * A lockfile's patch: whether it may change where a package comes from, and
  * the versions it adds (each one's age counts, transitive ones too). In a
  * pnpm-lock.yaml, a changed `version:` must be a pinned version (peers in
- * parentheses aside), not an alias such as other@1.0.0. In a
+ * parentheses aside), not an alias such as other@1.0.0, and a changed key
+ * that is not name@version (lockfile v5, a new importer) counts as a change
+ * of source, so no version escapes the age check. In a
  * package-lock.json, a changed "resolved" must be the npm registry's
  * tarball of the entry's own package, and a changed "link" is a change of
  * source; an entry whose key the patch does not show cannot be checked, so
@@ -270,6 +277,7 @@ export function lockfileChanges(file: string, patch: string): { sourceChanged: b
       }
       const key = PNPM_KEY.exec(text);
       if (key && mark === '+') add(key[1]!, key[2]!);
+      else if (!key && PNPM_BLOCK_KEY.test(text)) sourceChanged = true;
     }
     return { sourceChanged, versions };
   }
