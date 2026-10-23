@@ -212,9 +212,20 @@ downstream (an automatic approval).
   (about 1,300 lines) and re-checking every citation after the move of
   `packages/facts-github` to `packages/github` and of the bridge to
   `packages/fiware`.
-- **Questions**: four, Q28 to Q31, one wave, each with a proposed answer;
-  the claims that wait for them carry an assumption tag, and the status is
-  *under maintainer review* for this amendment only. From the Geolonia
+- **Questions**: four, Q28 to Q31, one wave, each with a proposed answer.
+  The maintainer answered all four on 2026-10-23 as proposed (Q28 to Q31
+  below), so the claims carry *(maintainer, 2026-10)* and the model is
+  *accepted* again:
+  - Q28: disclaim the connector's trust in the engine's answer
+    (`D-CONNECTOR-TRUSTS-ENGINE`); checking `test` and the decision's
+    shape is a hardening candidate.
+  - Q29: disclaim the reach of the connector app's key
+    (`D-CONNECTOR-KEY-REACH`); the key stays only in the connector Worker.
+  - Q30: disclaim trust in the npm registry (`D-NPM-REGISTRY-TRUSTED`);
+    integrators pair `github_bump` with `github_pr` and an age margin.
+  - Q31: disclaim a person's review behind an approval
+    (`D-APPROVAL-ON-FACTS`) and prompt injection through the pull request
+    for the connector; the integrator's rules are the control. From the Geolonia
   question bank: Q46 (acting on test results, Q28), Q48 (trusted for
   content, checked for shape, Q30), Q51 (a connector as its own family),
   Q52 (settings outside the repository: the ruleset that dismisses stale
@@ -246,7 +257,8 @@ downstream (an automatic approval).
 Candidate issues kept out of the model:
 
 1. Connector: check the engine's answer (its shape, and refuse
-   `test: true`) before acting on it (Q28). Hardening.
+   `test: true`) before acting on it (Q28, recorded as a hardening
+   candidate by the maintainer on 2026-10-23).
 2. Connector: `ownApprovals` takes any bot's approving review that starts
    with the connector's marker; only reviews whose ids the connector
    recorded are dismissed, but while an action record is open, another

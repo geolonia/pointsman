@@ -87,7 +87,8 @@
   `D-APPROVAL-ON-FACTS`; the obligations `R-GITHUB-BUMP-PAIR`,
   `R-INTERNAL-CALL`, `R-CONNECTOR-APPS` and `R-CONNECTOR-APPROVE`; seven
   misuse patterns; `KNF-INTERNAL-CALL-NO-TOKEN`; the operational state of
-  2026-10-23 in §1.2; and four questions, Q28 to Q31 (§1.18). The other
+  2026-10-23 in §1.2; and four questions, Q28 to Q31, which the
+  maintainer answered on 2026-10-23 as proposed (§1.18). The other
   changes between `v0.5.0` and `v0.12.0` are listed in §1.16 as not
   covered.
   Each re-binding also updated the code citations that had moved; the rest
@@ -119,23 +120,22 @@
   property is reported through GitHub's private vulnerability reporting for
   this repository, as `SECURITY.md` says. A finding that lands in §1.3 or §1.12 is closed
   citing this document.
-- **Status**: under maintainer review, 2026-10-23, for the amendment of
-  that day only: its four questions (Q28 to Q31, §1.18) are open, and the
-  claims that wait for them carry an assumption tag naming the question. Everything else was
-  accepted on 2026-10-16. The maintainer answered all 24 questions
-  of the first draft in one wave on 2026-10-16, and the three questions of
+- **Status**: accepted, 2026-10-16; the amendment of 2026-10-23 accepted
+  the same day. The maintainer answered all 24 questions
+  of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
+  and the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23,
   accepting every proposed answer; the matching claims carry
-  *(maintainer, 2026-10)*; no **inferred** tag remains, and the only
-  **assumption** tags are those of Q28 to Q31. Closure constraint: an
+  *(maintainer, 2026-10)* and no **inferred** or **assumption** tag
+  remains. Closure constraint: an
   **inferred** claim may escalate a report but never close it, and an
   **assumption** closes only what the triage policy below permits. The
   changes between `v0.5.0` and `v0.12.0` that this model does not cover
   are listed in §1.16: a report about them routes to `MODEL-GAP`, which
   never closes a report.
-- **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). The
-  **assumption** tags of Q28 to Q31 therefore escalate and never close
-  until the maintainer answers. See §1.17.
+- **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). Should an
+  **assumption** be added in a later revision, it escalates and never closes.
+  See §1.17.
 - **Provenance legend**: *(documented, source)* = stated in the named public
   source of this repository; *(maintainer, YYYY-MM)* = confirmed by the
   maintainer in answer to this process; *(assumption, QN)* = a conservative
@@ -144,7 +144,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 371 documented / 71 maintainer / 0 inferred / 7 assumption.
+- **Draft confidence**: 371 documented / 78 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -237,11 +237,13 @@ Alpha-Omega sense is the owner of that private repository. A shared,
 multi-tenant hosted Pointsman is not a deployment the project describes;
 this model treats it as unsupported *(maintainer, 2026-10)*.
 
-Operational state that matters for threats, as of 2026-10-23: in the
-maintainer's own deployment the GitHub connector's `approve` action is on,
-with rules on facts alone (no AI question), for three kinds of pull
-request: documentation-only changes, release pull requests, and Dependabot
-patch bumps of development dependencies *(maintainer, 2026-10)*. So an
+Operational state that matters for threats, as of 2026-10-23: the
+maintainer's deployment maps the GitHub connector's `approve` action for
+documentation, release and dependency-bump pull requests. Release pull
+requests and Dependabot patch bumps of development dependencies are
+approved on facts alone; documentation pull requests need the facts and,
+in addition, AI answers within thresholds, which can only stop an
+approval, never give one on their own *(maintainer, 2026-10)*. So an
 error in the GitHub facts (`P-FACTS-NEVER-GUESSED`,
 `P-GITHUB-FACTS-FOR-HEAD`, `P-GITHUB-REQUIRED-CHECKS`) or in the
 connector's approval rules (`P-CONNECTOR-APPROVE-HEAD`) can approve a
@@ -732,7 +734,7 @@ they are security-relevant.
 | `connector-github` `POST /webhook` | `X-GitHub-Delivery`, `X-GitHub-Event` and the payload (repository, pull-request number, action, the check suite's app) | only GitHub, once the signature holds; GitHub signs only the body | data, resource-name | none — a delivery id and a body hash seen in the last 7 days are dropped as a replay (at most the 500 newest entries per pull request); events for other repositories and the connector's own check suites are ignored; the event is only a hint: the pull request is read again with the connector's own token | *(documented, docs/github-connector.md "Safety"; `packages/github/src/connector/webhook.ts` header comment)* |
 | `connector-github` GitHub reads | the pull request (head, draft, base, title, description, fork or not, labels, requested reviewers) and, with `diff`, its diff | yes (pull-request author: title, description, diff, commits) | data, size, x-prompt-text | none — title cut to 300 and description to 8,000 characters, CodeRabbit's whole summary blocks left out; the diff read only up to its limit, `diff_truncated` when cut or refused; the head is a 40-character SHA, else the run fails | *(documented, docs/github-connector.md "How it works", "Chains")* |
 | `connector-github` GitHub reads | comments, reviews and check runs, read as traces of the connector's own actions | partly — anyone who may comment or review writes them; a comment counts only when the connector's app made it; an approval only when a bot wrote it with the connector's marker; only reviews whose ids the connector recorded are dismissed, but while an action record is open (a run stopped mid-action), any bot's approval with the connector's marker for that head and profile is recorded as the connector's own | data | none — a bot that can write such an approval already has write access to the repository | *(documented, `packages/github/src/connector/github.ts` `findComment`, `ownApprovals`; docs/github-connector.md "Actions": "It dismisses only approvals it recorded giving")* |
-| `connector-github` engine answer | the decision (`decision_id`, `action`, `review`) | no — the engine is the connector's trusted collaborator (`D-CONNECTOR-TRUSTS-ENGINE`) | data | none — only the status is checked (and, through the binding, that the answer is an object); 5xx and 429 are retried, another 4xx is logged and nothing is shown | *(assumption, Q28)* |
+| `connector-github` engine answer | the decision (`decision_id`, `action`, `review`) | no — the engine is the connector's trusted collaborator (`D-CONNECTOR-TRUSTS-ENGINE`) | data | none — only the status is checked (and, through the binding, that the answer is an object); 5xx and 429 are retried, another 4xx is logged and nothing is shown | *(maintainer, 2026-10)* |
 | `connector-github` configuration | `GITHUB_CONNECTOR` (`repos`, `profiles`, `actions`, `runs`), `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `POINTSMAN_URL`, `POINTSMAN_TOKEN`, the `POINTSMAN` binding | no — operator | serialized-state | unknown keys refused; labels, logins, action names and comment text checked; the webhook secret at least 20 characters, the key a PEM key; `POINTSMAN_URL` https (http only for loopback) | *(documented, docs/github-connector.md "Settings"; `packages/github/src/connector/settings.ts`)* |
 | `config-repo` Validate / Deploy workflows | `profiles/*.yaml` | no — pull-request authors are the integrator's own contributors; `main` is protected | serialized-state, x-policy-rules | protect `main`; require the Validate check | *(documented, template/config-repo/README.md "Protect `main`")* |
 | `config-repo` workflows | `engine.json` `modules` | no — the config repository's own contributors; `main` is protected | resource-name | none — names outside this repository's module catalog, a module listed twice or a pinned version that differs fail the config check and the build | *(documented, docs/modules.md "Choosing modules"; docs/deployment.md "Set up")* |
@@ -871,11 +873,11 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | connector-github | failure atomicity | claimed | the record of a check run or an action is written before it is made; a stopped run is settled by the trace on GitHub, or done again only after 10 minutes; a refused action is not tried again for that commit | §1.11 `P-CONNECTOR-ACTIONS-MAPPED` | *(documented, docs/github-connector.md "Actions": "The record is written before the action and closed after it")* |
 | connector-github | recursive/cyclic topology | claimed | events of its own check suites are ignored, so its check runs do not start the next run | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED` | *(documented, docs/github-connector.md "Safety": "Its own check runs' events are ignored too")* |
 | connector-github | callback execution | N/A — no caller code runs; the action kinds are a fixed list in the connector | — | — | *(documented, docs/github-connector.md "Actions": "a deployment can switch actions on, never add one")* |
-| connector-github | serialization/reconstruction | claimed | webhook bodies are parsed only after the signature check; GitHub answers are checked field by field; the engine's answer is taken as the engine's | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED`; §1.12 `D-CONNECTOR-TRUSTS-ENGINE` | *(documented, docs/github-connector.md "Safety"; assumption, Q28)* |
+| connector-github | serialization/reconstruction | claimed | webhook bodies are parsed only after the signature check; GitHub answers are checked field by field; the engine's answer is taken as the engine's | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED`; §1.12 `D-CONNECTOR-TRUSTS-ENGINE` | *(documented, docs/github-connector.md "Safety"; maintainer, 2026-10)* |
 | connector-github | reference lifecycle | claimed | its approvals stand only for the commit they were given on: after a push they are dismissed on every run, and an approval of the same commit is withdrawn when a later decision no longer approves | §1.11 `P-CONNECTOR-APPROVE-HEAD` | *(documented, docs/github-connector.md "Actions", For `approve` also)* |
 | connector-github | concurrency/reentrancy | claimed | one Durable Object per pull request runs one run at a time; a burst of events becomes one run; a run handles up to 5 rounds of new events, and a later event's alarm picks up the rest | §1.11 `P-CONNECTOR-ACTIONS-MAPPED` | *(documented, docs/github-connector.md "How it works"; `packages/github/src/connector/pull-request.ts` `run` comment)* |
 | connector-github | resource complexity | claimed | 2 MB per webhook; one run per pull request at a time, 20 s after the last event; each profile asked once per run; lists read up to 10 pages; a recheck at most `max` times per commit | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED` | *(documented, docs/github-connector.md "How it works", "Chains")* |
-| connector-github | x-prompt-injection | disclaimed | the pull-request author writes the title, description and diff that the profile's model reads; a steered answer can produce any action the profile's policy allows for those answers, and an approval where the policy allows it on those answers | §1.12 `D-APPROVAL-ON-FACTS`; §1.13 `R-CONNECTOR-APPROVE` | *(assumption, Q31)* |
+| connector-github | x-prompt-injection | disclaimed | the pull-request author writes the title, description and diff that the profile's model reads; a steered answer can produce any action the profile's policy allows for those answers, and an approval where the policy allows it on those answers | §1.12 `D-APPROVAL-ON-FACTS`; §1.13 `R-CONNECTOR-APPROVE` | *(maintainer, 2026-10)* |
 | connector-github | x-probabilistic-result | N/A — the connector maps the decision's action; probabilities are shown, not used | — | — | *(documented, docs/github-connector.md "Actions")* |
 | config-repo | numeric domain | claimed | `engine.json` `ref` must be a 40-character SHA; profile `version` is a positive integer that must increase | §1.11 `P-PROFILE-VERSION-IMMUTABLE` | *(documented, docs/deployment.md "Profile versions"; template deploy workflow "Read engine.json")* |
 | config-repo | failure atomicity | claimed | the deploy stops before any Cloudflare change when config, profiles or the dry run fail; a changed published version stops the publish and writes nothing | §1.11 `P-PROFILE-VERSION-IMMUTABLE` | *(documented, docs/deployment.md "What the workflows do")* |
@@ -1002,7 +1004,7 @@ docs/deployment.md)*. A hosted multi-tenant Pointsman is not in this list
 | **Public data sources** (GSI, Valhalla/OSM) | yes, as collaborators | serve tiles and routes | cannot inject anything but fact values of the documented types | wrong facts | *(maintainer, 2026-10)* |
 | **Pull-request author** (anyone who can open or push to a pull request that a GitHub fact reads) | yes | choose the changed files and their names, the title, the commits and their signatures; push at any time; in a pull request from the same repository, change its workflows and so the check runs they report | cannot change the base branch's rules or protection, the workflows a ruleset requires, the base branch's `CODEOWNERS` (it is read from the base branch, not from the pull request), GitHub's record of who pushed, or the repository's custom properties; cannot choose the profile, the rules or the `head` the client names | make an allowing rule match: a "docs only" change that is not, a green check that is not the intended job, a decision for a commit other than the one acted on | *(documented, docs/profile-format.md "GitHub pull requests": "The client names only the pull request"; "One snapshot": "a pull request can change that one"; the `github_pr` row: "by the `CODEOWNERS` file of the base branch")* |
 | **Pull-request author against the GitHub connector** | yes | everything above; write the title, description and diff the connector sends to the profile's model; trigger runs with events (push, edit, ready for review); close or convert to draft at any time | cannot reach the connector without GitHub's signature; cannot choose the connector's profiles, `actions` or `runs`; cannot make the connector write text from the pull request into a comment; cannot get an approval for a draft, a fork, or a commit other than the decided head | an approval, label or review request the change should not get; a run of AI questions on every event (cost) | *(documented, docs/github-connector.md "Safety", "Actions")* |
-| **npm package publisher and the npm registry** (`github_bump`) | the publisher yes; the registry as a collaborator | the publisher chooses what to publish and when, and so the version a bump pull request moves to; the registry records the publish time | the publisher cannot set the recorded time; a registry answer cannot change any field but `release_age_days`, and a malformed one makes the fact missing | a malicious release that is old enough for a profile's age rule (`D-NPM-REGISTRY-TRUSTED`) | *(assumption, Q30)* |
+| **npm package publisher and the npm registry** (`github_bump`) | the publisher yes; the registry as a collaborator | the publisher chooses what to publish and when, and so the version a bump pull request moves to; the registry records the publish time | the publisher cannot set the recorded time; a registry answer cannot change any field but `release_age_days`, and a malformed one makes the fact missing | a malicious release that is old enough for a profile's age rule (`D-NPM-REGISTRY-TRUSTED`) | *(maintainer, 2026-10)* |
 | **Worker deployer in the engine's Cloudflare account** | no — the operator; has already won | deploy a Worker with a binding to `InternalEngine` and decide as `INTERNAL_CLIENT` without a token; also change the engine Worker itself | — | — | *(documented, docs/adapters.md "Internal calls": "the entrypoint gives no one more than they have")* |
 | **GitHub** (pull-request facts) | yes, as a collaborator | answer the reads; rate-limit; redirect | cannot make the engine write to a repository or follow a redirect; cannot inject anything but fact values of the documented types | wrong or missing facts | *(documented, docs/profile-format.md "Missing GitHub facts")* |
 | **Broker entity writer** (bridge) | yes | create and change entities, Decision and Task entities within the broker's access control | cannot reach the bridge without the shared secret except through the broker | trigger decisions, resolve reviews under a chosen `reviewedBy`, create loops | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control"; maintainer, 2026-10)* |
@@ -1365,11 +1367,11 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-GITHUB-CREDENTIAL-REACH` | a list of allowed repositories per profile or per token: a GitHub fact reads the pull request the state names, in any repository the deployment's GitHub credential can read, and the decision returns facts about it (booleans, numbers, a custom property value); the members of a team named in that repository's `CODEOWNERS` are read the same way | `engine-facts`; the credential's reach (a fine-grained token's repositories, a GitHub App's installations) is the boundary (`R-GITHUB-REPOSITORIES`); the API token's profile scope still applies (`P-TOKEN-SCOPE`). Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
 | `D-GITHUB-RATE-LIMIT` | a GitHub request budget per client or per profile: with `FACTS_GITHUB: token`, every decision of a deployment uses the same token and its rate limit, and when it is used up, GitHub facts are `error` for every client until it resets; with `FACTS_GITHUB: app`, each installation (one per repository owner) has its own installation token and limit, so a used-up installation affects the repositories of that owner, for every client | `engine-facts`; a missing fact never matches a rule (`P-FACTS-NEVER-GUESSED`), so this blocks only where the rules are written as `R-GITHUB-POSITIVE-RULES` asks, and a missing fact that stops an earlier blocking rule can let a later allowing rule match; limiting clients is `R-RATE-LIMIT`. Basis: a maintainer ruling (2026-10) | correctness-only | no | *(maintainer, 2026-10)* |
 | `D-BUMP-PNPM9-DEV-ONLY` | a full dev-only check for packages that change only in a `pnpm-lock.yaml` v9: such a lockfile has no dev marks, so `dev_only` checks only that no `package.json` lists the changed package, or a package whose dependency line on it changes, outside `devDependencies`; a runtime dependency that reaches the package through more packages than that is not seen | `engine-facts`, `github_bump`; `package-lock.json` and pnpm v6 lockfiles carry dev marks and are checked by them. Basis: stated | security-critical | yes | *(documented, docs/profile-format.md `github_bump` row: "it does not check whether a runtime dependency reaches it through more packages than that")* |
-| `D-NPM-REGISTRY-TRUSTED` | a check of the npm registry's answer beyond its shape, or of what a new version contains: `release_age_days` is the registry's record of when the youngest bumped version was published; a registry that answers wrongly (compromised, or a spoofed answer, which needs a broken TLS connection to `registry.npmjs.org`) can make a new release look old, and an old-enough release can still be malicious; the fact reads no signatures, provenance or advisories | `engine-facts`, `github_bump`; only `release_age_days` comes from the registry, and a malformed or missing answer makes the fact missing (`P-FACTS-NEVER-GUESSED`). A deployment that approves on the age alone accepts what the registry says (`R-GITHUB-BUMP-PAIR`). Basis: a proposed ruling (Q30) | security-critical | yes | *(assumption, Q30)* |
+| `D-NPM-REGISTRY-TRUSTED` | a check of the npm registry's answer beyond its shape, or of what a new version contains: `release_age_days` is the registry's record of when the youngest bumped version was published; a registry that answers wrongly (compromised, or a spoofed answer, which needs a broken TLS connection to `registry.npmjs.org`) can make a new release look old, and an old-enough release can still be malicious; the fact reads no signatures, provenance or advisories | `engine-facts`, `github_bump`; only `release_age_days` comes from the registry, and a malformed or missing answer makes the fact missing (`P-FACTS-NEVER-GUESSED`). A deployment that approves on the age alone accepts what the registry says (`R-GITHUB-BUMP-PAIR`). Basis: a maintainer ruling (2026-10-23, Q30) | security-critical | yes | *(maintainer, 2026-10)* |
 | `D-INTERNAL-ACCOUNT-TRUST` | per-caller control of internal calls: every Worker in the engine's Cloudflare account with a binding to `InternalEngine` decides as the `INTERNAL_CLIENT` client, without a token and without expiry; all of them share one decision history and one idempotency space; one caller cannot be revoked alone, and revoking the connector's old token does not stop internal calls; edge rules (a firewall, rate limits) on `/v1/` do not see them | `engine-api`, `connector-github`; the account is the boundary, and whoever can deploy a Worker there can already change the engine Worker (§1.3). Turning it off: remove `INTERNAL_CLIENT` and deploy. Basis: stated | security-critical | no | *(documented, docs/adapters.md "Internal calls"; docs/github-connector.md "Internal call", What that means)* |
-| `D-CONNECTOR-TRUSTS-ENGINE` | a check of the engine's answer in the connector beyond its status: the connector maps the decision's `action` as the engine gives it, does not check the decision's shape, and does not refuse a decision marked `test: true` (a test token for the connector would make it act on unlogged decisions) | `connector-github`; over HTTPS the answer comes from `POINTSMAN_URL` with the connector's token, through the binding from the bound engine Worker; the engine is the connector's trusted collaborator. Basis: a proposed ruling (Q28) | security-critical | no | *(assumption, Q28)* |
-| `D-CONNECTOR-KEY-REACH` | a limit on what the connector app's private key can do: the down-scoped tokens (`P-CONNECTOR-TOKEN-SCOPED`) limit what the connector's code asks for, not what the key can mint; with the permissions that make an approval count (Contents: Read and write, Pull requests: Read and write), a leaked key can push to and approve pull requests in every repository the app is installed on | `connector-github`; the key is a Worker secret of the connector Worker only. Basis: a proposed ruling (Q29) | security-critical | no | *(assumption, Q29)* |
-| `D-APPROVAL-ON-FACTS` | a person's review behind an approval: where a deployment maps `approve`, the approval is the profile's decision on that commit and nothing more; a profile that approves on facts alone (no AI question) is exactly as strong as its rules and the facts (`P-FACTS-NEVER-GUESSED`, `P-GITHUB-FACTS-FOR-HEAD`, `P-GITHUB-REQUIRED-CHECKS`); a profile that approves on AI answers about the title, description or diff can be steered by the pull-request author (`D-PROMPT-INJECTION`) | `connector-github`, `engine-facts`; contained by the rules the integrator writes (`R-CONNECTOR-APPROVE`, `R-GITHUB-POSITIVE-RULES`). Basis: a proposed ruling (Q31) | security-critical | yes | *(assumption, Q31)* |
+| `D-CONNECTOR-TRUSTS-ENGINE` | a check of the engine's answer in the connector beyond its status: the connector maps the decision's `action` as the engine gives it, does not check the decision's shape, and does not refuse a decision marked `test: true` (a test token for the connector would make it act on unlogged decisions) | `connector-github`; over HTTPS the answer comes from `POINTSMAN_URL` with the connector's token, through the binding from the bound engine Worker; the engine is the connector's trusted collaborator. Basis: a maintainer ruling (2026-10-23, Q28) | security-critical | no | *(maintainer, 2026-10)* |
+| `D-CONNECTOR-KEY-REACH` | a limit on what the connector app's private key can do: the down-scoped tokens (`P-CONNECTOR-TOKEN-SCOPED`) limit what the connector's code asks for, not what the key can mint; with the permissions that make an approval count (Contents: Read and write, Pull requests: Read and write), a leaked key can push to and approve pull requests in every repository the app is installed on | `connector-github`; the key is a Worker secret of the connector Worker only. Basis: a maintainer ruling (2026-10-23, Q29) | security-critical | no | *(maintainer, 2026-10)* |
+| `D-APPROVAL-ON-FACTS` | a person's review behind an approval: where a deployment maps `approve`, the approval is the profile's decision on that commit and nothing more; a profile that approves on facts alone (no AI question) is exactly as strong as its rules and the facts (`P-FACTS-NEVER-GUESSED`, `P-GITHUB-FACTS-FOR-HEAD`, `P-GITHUB-REQUIRED-CHECKS`); a profile whose approval rests on AI answers about the title, description or diff can be steered by the pull-request author (`D-PROMPT-INJECTION`); where AI answers only add conditions to rules that already require the facts, a steered answer can at most remove that extra check, not approve a change the facts do not allow | `connector-github`, `engine-facts`; contained by the rules the integrator writes (`R-CONNECTOR-APPROVE`, `R-GITHUB-POSITIVE-RULES`). Basis: a maintainer ruling (2026-10-23, Q31) | security-critical | yes | *(maintainer, 2026-10)* |
 | `D-EXACTLY-ONCE` | exactly-once callback delivery: a callback can arrive more than once when a 2xx answer is lost | `engine-callbacks`. Basis: stated | correctness-only | no | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
 | `D-BRIDGE-BROKER-ACCESS-CONTROL` | its own access control for the broker side: whoever may write entities, Decision entities or completed Task entities in the tenant can trigger decisions, resolve reviews and name `reviewedBy`; the broker's access control owns this | `bridge`. Basis: stated | security-critical | no | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control")* |
 | `D-BRIDGE-RACE-WINDOWS` | atomicity across broker writes: NGSI-LD has no conditional update, so a new decision written between a read and a write can be overwritten with an older result, and two simultaneous notifications can send the same feedback twice | `bridge`. Basis: stated | correctness-only | no | *(documented, bridge/README.md "NGSI-LD has no conditional update, so there is a short window")* |
@@ -1507,10 +1509,10 @@ the receivers must do for §1.5–§1.11 to hold.
   skip a review), check for missing facts first and write every condition as
   a known, positive value instead of counting on an earlier blocking rule
   *(documented, docs/profile-format.md "GitHub pull requests", "Safety")*.
-- **`R-GITHUB-BUMP-PAIR`** — in a profile that allows a dependency bump on `github_bump`, pair it with `github_pr` (`author_dependabot`, `all_commits_verified`, `pushed_by_author`), check `missing` first, and require `registry_changed` false and a `release_age_days` margin you chose; do not treat an old-enough release as a reviewed one (`D-NPM-REGISTRY-TRUSTED`, `D-BUMP-PNPM9-DEV-ONLY`) *(documented, docs/profile-format.md `github_bump` row: "pair it with `github_pr`"; assumption, Q30)*.
+- **`R-GITHUB-BUMP-PAIR`** — in a profile that allows a dependency bump on `github_bump`, pair it with `github_pr` (`author_dependabot`, `all_commits_verified`, `pushed_by_author`), check `missing` first, and require `registry_changed` false and a `release_age_days` margin you chose; do not treat an old-enough release as a reviewed one (`D-NPM-REGISTRY-TRUSTED`, `D-BUMP-PNPM9-DEV-ONLY`) *(documented, docs/profile-format.md `github_bump` row: "pair it with `github_pr`"; maintainer, 2026-10)*.
 - **`R-INTERNAL-CALL`** — for internal calls: keep the permission to deploy Workers in the engine's Cloudflare account (and Cloudflare API tokens with Workers Scripts: Edit) to the people who deploy the engine; list in `INTERNAL_CLIENT` only the connector's profiles, under the client name of its current token; once internal calls work, revoke the connector's token and delete its secret; to switch internal calls off, remove `INTERNAL_CLIENT` and deploy; do not count on edge rules for this path *(documented, docs/adapters.md "Internal calls": "Keep that permission to the people who deploy the engine"; docs/github-connector.md "Internal call")*.
-- **`R-CONNECTOR-APPS`** — for the GitHub connector: two GitHub Apps, the read-only facts app for the engine and the connector app for the connector Worker only; install both only on the repositories the connector handles; give the connector app only the permissions its settings need; put the key and the webhook secret (made with `openssl rand -hex 32`) only into wrangler; give the connector its own token limited to its profiles, never a test token *(documented, docs/github-connector.md "The two GitHub apps": "Install both apps only on the repositories the connector handles"; "Setting it up"; assumption, Q28)*.
-- **`R-CONNECTOR-APPROVE`** — before mapping a decision to `approve`: turn on "Dismiss stale pull request approvals when new commits are pushed" in the branch's ruleset or protection; keep a person's review where `CODEOWNERS` and the ruleset require one (an app cannot be a code owner); map `approve` only from profiles whose allowing rules follow `R-GITHUB-POSITIVE-RULES` and do not rest on AI answers about text the author wrote (`D-APPROVAL-ON-FACTS`) *(documented, docs/github-connector.md "Actions": "Required"; "Code owners"; assumption, Q31)*.
+- **`R-CONNECTOR-APPS`** — for the GitHub connector: two GitHub Apps, the read-only facts app for the engine and the connector app for the connector Worker only; install both only on the repositories the connector handles; give the connector app only the permissions its settings need; put the key and the webhook secret (made with `openssl rand -hex 32`) only into wrangler; give the connector its own token limited to its profiles, never a test token *(documented, docs/github-connector.md "The two GitHub apps": "Install both apps only on the repositories the connector handles"; "Setting it up"; maintainer, 2026-10)*.
+- **`R-CONNECTOR-APPROVE`** — before mapping a decision to `approve`: turn on "Dismiss stale pull request approvals when new commits are pushed" in the branch's ruleset or protection; keep a person's review where `CODEOWNERS` and the ruleset require one (an app cannot be a code owner); map `approve` only from profiles whose allowing rules follow `R-GITHUB-POSITIVE-RULES` and require the facts; AI answers about text the author wrote may add conditions, never be the basis (`D-APPROVAL-ON-FACTS`) *(documented, docs/github-connector.md "Actions": "Required"; "Code owners"; maintainer, 2026-10)*.
 - **`R-DEPLOY-TOOLING`** — run `tokens.mjs` with `--remote` only on purpose
   and keep the printed token out of shell history and logs; deploy only
   through the template's workflows so profile versions stay immutable
@@ -1550,7 +1552,8 @@ One line each in this draft; expand before publication.
   approvals, so an approval of an older commit counts after a push until
   the connector's next run (`R-CONNECTOR-APPROVE`).
 - Mapping `approve` from a profile whose allowing rule rests on AI answers
-  about the title, description or diff, which the author writes
+  about the title, description or diff, which the author writes, instead
+  of requiring the facts and using the answers only as extra conditions
   (`D-APPROVAL-ON-FACTS`, `R-CONNECTOR-APPROVE`).
 - Approving a dependency bump on `github_bump` alone, without `github_pr`
   saying who made the commits, or on a `release_age_days` of 0
@@ -1707,43 +1710,7 @@ Report both, as `DISPOSITION (status)`. An escalated finding is not a
 
 ## 1.18 Open questions for the maintainers
 
-The 24 questions of the first draft (2026-10-16) and the three of the
-GitHub-facts amendment (Q25 to Q27, 2026-10-21) are answered and retired;
-the claims they ratified carry *(maintainer, 2026-10)*. The amendment of
-2026-10-23 asks four, in one wave. Each claim that waits for an answer
-carries an assumption tag that names its question and, under `strict`,
-escalates until it is answered.
-
-**Wave 5 — the GitHub connector and `github_bump` (2026-10-23)**
-
-- **Q28** — We believe the connector may trust the engine's answer as the
-  engine's, checking only its status, and that the deployment, not the
-  connector, keeps test tokens away from it (a test token makes it act on
-  decisions that are not logged). Proposed answer: yes; disclaim it, and
-  record a check of `test` in the connector as a hardening candidate.
-  Lands in: §1.12 `D-CONNECTOR-TRUSTS-ENGINE`, §1.13 `R-CONNECTOR-APPS`, §1.7.
-- **Q29** — We believe the connector app's key is the boundary of the
-  connector: the down-scoped tokens limit what its code asks for, but a
-  leaked key reaches everything the app may do, including Contents: write
-  where approvals must count. Proposed answer: yes; disclaim it, keep the
-  key only in the connector Worker.
-  Lands in: §1.12 `D-CONNECTOR-KEY-REACH`.
-- **Q30** — We believe the npm registry is a trusted collaborator for
-  `release_age_days`: its record of publish times is taken as it is, and
-  the fact checks neither what a new version contains nor signatures or
-  provenance. Proposed answer: yes; disclaim it, and tell integrators to
-  pair the fact with `github_pr` and an age margin.
-  Lands in: §1.12 `D-NPM-REGISTRY-TRUSTED`, §1.13 `R-GITHUB-BUMP-PAIR`, §1.10.
-- **Q31** — We believe prompt injection through the pull request's title,
-  description and diff is accepted for the connector as it is for the
-  other families (the ruling of 2026-10 did not cover the connector), and
-  that an approval by the connector is by design the
-  profile's decision and nothing more: approvals on facts alone (as for
-  docs, release and dependency-bump pull requests) are as strong as the
-  rules and facts, and a profile that approves on AI answers about the
-  author's text can be steered. Proposed answer: yes; disclaim a person's
-  review behind it, and make the integrator's rules the control.
-  Lands in: §1.12 `D-APPROVAL-ON-FACTS`, §1.13 `R-CONNECTOR-APPROVE`.
+Not applicable — the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, the three questions of the GitHub-facts amendment on 2026-10-21 (Q25: disclaim required checks matched by name; Q26: no repository allow-list, the GitHub credential's reach is the boundary; Q27: disclaim the shared GitHub rate limit), and the four questions of the amendment of 2026-10-23 on 2026-10-23 (Q28: disclaim the connector's trust in the engine's answer, a check of `test` and of the decision's shape is a hardening candidate; Q29: disclaim the reach of the connector app's key, which stays only in the connector Worker; Q30: disclaim trust in the npm registry, integrators pair `github_bump` with `github_pr` and an age margin; Q31: disclaim a person's review behind a connector approval and prompt injection through the pull request, the integrator's rules are the control), accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires.
 
 ## 1.19 Machine-readable companions
 

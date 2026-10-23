@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:beaa449ce18485c60199c9ab3cf6aee24d0861aba8efd6160d3c3eecb6a7282b"
-model_status: under-review
+prose_version: "threat-model.md@sha256:0290dbade9fccfbd06f300c1361c35ca301472275ae1d1c9d51c77e3ce25f274"
+model_status: accepted
 triage_policy: strict
-confidence: {documented: 371, maintainer: 71, inferred: 0, assumption: 7}
+confidence: {documented: 371, maintainer: 78, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, and the amendment of 2026-10-23 with re-binding to v0.12.0: Claude Opus 5.5 (claude-opus-5-5)"
@@ -618,7 +618,7 @@ entry_points:
         attacker_controllable: false
         control_kinds: [data, collaborator-implementation]
         caller_must_enforce: "none — D-CONNECTOR-TRUSTS-ENGINE"
-        provenance: {kind: assumption, question_id: Q28}
+        provenance: {kind: maintainer, date: "2026-10"}
       - name: connector-configuration
         attacker_controllable: false
         control_kinds: [serialized-state]
@@ -749,7 +749,7 @@ contract_dimensions:
   - {component: connector-github, dimension: reference-lifecycle, status: claimed, conditions: "its approvals stand only for the commit they were given on; dismissed after a push, withdrawn when a later decision on that commit no longer approves", property_id: P-CONNECTOR-APPROVE-HEAD, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
   - {component: connector-github, dimension: concurrency-reentrancy, status: claimed, conditions: "one Durable Object per pull request, one run at a time; a burst of events becomes one run", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\""}}
   - {component: connector-github, dimension: resource-complexity, status: claimed, conditions: "2 MB per webhook; one run at a time per pull request, 20 s after the last event; lists up to 10 pages; recheck at most max times per commit", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\", \"Chains\""}}
-  - {component: connector-github, dimension: x-prompt-injection, status: disclaimed, conditions: "the pull-request author writes the title, description and diff the profile's model reads; a steered answer gets any action the policy allows for those answers", property_id: D-APPROVAL-ON-FACTS, provenance: {kind: assumption, question_id: Q31}}
+  - {component: connector-github, dimension: x-prompt-injection, status: disclaimed, conditions: "the pull-request author writes the title, description and diff the profile's model reads; a steered answer gets any action the policy allows for those answers", property_id: D-APPROVAL-ON-FACTS, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: connector-github, dimension: x-probabilistic-result, status: not-applicable, conditions: "the connector maps the decision's action; probabilities are not used", provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
   # config-repo
   - {component: config-repo, dimension: numeric-domain, status: claimed, conditions: "engine.json ref is a 40-character SHA; profile version is a positive integer that must increase", property_id: P-PROFILE-VERSION-IMMUTABLE, provenance: {kind: documented, source: "docs/deployment.md \"Profile versions\"; template deploy workflow \"Read engine.json\""}}
@@ -977,7 +977,7 @@ outputs:
     downstream_must_not_assume:
       - id: approval-is-a-person-review
         statement: "that the approval rests on a person's review, or counts for merging without a ruleset that dismisses stale approvals"
-        provenance: {kind: assumption, question_id: Q31}
+        provenance: {kind: maintainer, date: "2026-10"}
   - component: connector-github
     channel: engine-request
     taint: same-as-input
@@ -1035,7 +1035,7 @@ adversaries:
     capabilities: [publish-a-version-at-a-chosen-time, registry-records-publish-time]
     excluded_capabilities: [set-the-recorded-time, change-fields-other-than-release-age-days]
     goals: [malicious-release-old-enough-for-an-age-rule]
-    provenance: {kind: assumption, question_id: Q30}
+    provenance: {kind: maintainer, date: "2026-10"}
   - name: worker-deployer-in-engine-account
     scope: out
     capabilities: [bind-internal-engine, decide-as-internal-client, change-the-engine-worker]
@@ -1803,10 +1803,10 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/profile-format.md github_bump row: \"it does not check whether a runtime dependency reaches it through more packages than that\""}
   - id: D-NPM-REGISTRY-TRUSTED
     components: [engine-facts]
-    conditions: "github_bump release_age_days is the registry's record of publish times; a wrong registry answer can make a new release look old; an old-enough release can be malicious; no signatures, provenance or advisories read; basis: a proposed ruling (Q30)"
+    conditions: "github_bump release_age_days is the registry's record of publish times; a wrong registry answer can make a new release look old; an old-enough release can be malicious; no signatures, provenance or advisories read; basis: a maintainer ruling (2026-10-23, Q30)"
     tier: security-critical
     false_friend: true
-    provenance: {kind: assumption, question_id: Q30}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-INTERNAL-ACCOUNT-TRUST
     components: [engine-api, connector-github]
     conditions: "every Worker in the engine's account with a binding decides as INTERNAL_CLIENT, without a token or expiry; one history and idempotency space; no per-caller revocation; edge rules do not see internal calls; off by removing INTERNAL_CLIENT; basis: stated"
@@ -1815,22 +1815,22 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; docs/github-connector.md \"Internal call\""}
   - id: D-CONNECTOR-TRUSTS-ENGINE
     components: [connector-github]
-    conditions: "the connector checks only the status of the engine's answer, maps its action as given, and does not refuse test: true decisions; basis: a proposed ruling (Q28)"
+    conditions: "the connector checks only the status of the engine's answer, maps its action as given, and does not refuse test: true decisions; basis: a maintainer ruling (2026-10-23, Q28)"
     tier: security-critical
     false_friend: false
-    provenance: {kind: assumption, question_id: Q28}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CONNECTOR-KEY-REACH
     components: [connector-github]
-    conditions: "down-scoped tokens limit what the code asks for, not what the key can mint; with Contents and Pull requests write a leaked key can push and approve in every repository the app is installed on; basis: a proposed ruling (Q29)"
+    conditions: "down-scoped tokens limit what the code asks for, not what the key can mint; with Contents and Pull requests write a leaked key can push and approve in every repository the app is installed on; basis: a maintainer ruling (2026-10-23, Q29)"
     tier: security-critical
     false_friend: false
-    provenance: {kind: assumption, question_id: Q29}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-APPROVAL-ON-FACTS
     components: [connector-github, engine-facts]
-    conditions: "an approval is the profile's decision on that commit and nothing more; on facts alone as strong as the rules and facts; on AI answers about the author's text it can be steered; basis: a proposed ruling (Q31)"
+    conditions: "an approval is the profile's decision on that commit and nothing more; on facts alone as strong as the rules and facts; resting on AI answers about the author's text it can be steered, while AI answers that only add conditions to fact rules can at most remove that check; basis: a maintainer ruling (2026-10-23, Q31)"
     tier: security-critical
     false_friend: true
-    provenance: {kind: assumption, question_id: Q31}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-EXACTLY-ONCE
     components: [engine-callbacks]
     conditions: "a callback can arrive more than once when a 2xx is lost; basis: stated"
@@ -1969,7 +1969,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/github-connector.md \"The two GitHub apps\"; \"Setting it up\""}
   - id: R-CONNECTOR-APPROVE
     component: connector-github
-    statement: "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that do not rest on AI answers about the author's text"
+    statement: "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis"
     enforces: [P-CONNECTOR-APPROVE-HEAD, github-rules-known-positive]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"Required\"; \"Code owners\""}
   - id: R-DEPLOY-TOOLING
@@ -2068,7 +2068,7 @@ known_misuses:
     components: [connector-github]
     pattern: "mapping approve from a profile whose allowing rule rests on AI answers about the title, description or diff"
     safer_alternative: "approve only on facts, with positive rules"
-    provenance: {kind: assumption, question_id: Q31}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: bump-without-author-facts
     components: [engine-facts]
     pattern: "approving a dependency bump on github_bump alone, or with release_age_days 0"
@@ -2078,7 +2078,7 @@ known_misuses:
     components: [connector-github]
     pattern: "giving the GitHub connector a test token, so it acts on decisions that are not logged"
     safer_alternative: "its own normal token limited to its profiles, or the internal call"
-    provenance: {kind: assumption, question_id: Q28}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: one-app-for-facts-and-connector
     components: [connector-github, engine-facts]
     pattern: "one GitHub App for the facts and the connector, so the Worker that sends pull-request text to a model holds a key that can write"

@@ -6,8 +6,8 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted. The `github_workflows` fact (since 0.4.0) is not covered by this model yet; a report about it is a MODEL-GAP.",
   "confidence": {
-    "documented": 442,
-    "inferred": 7
+    "documented": 449,
+    "inferred": 0
   },
   "components": [
     {
@@ -878,8 +878,8 @@
       "attacker_controllable": "no",
       "component": "connector-github",
       "caller_must_enforce": "none — D-CONNECTOR-TRUSTS-ENGINE",
-      "provenance": "inferred",
-      "source": "open question Q28"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "entry_point": "connector-github run",
@@ -1185,7 +1185,7 @@
       "workflow-author",
       "platform-cotenants-network-observers-github"
     ],
-    "provenance": "inferred"
+    "provenance": "documented"
   },
   "properties_provided": [
     {
@@ -1595,10 +1595,10 @@
     },
     {
       "property": "D-NPM-REGISTRY-TRUSTED",
-      "reason": "github_bump release_age_days is the registry's record of publish times; a wrong registry answer can make a new release look old; an old-enough release can be malicious; no signatures, provenance or advisories read; basis: a proposed ruling (Q30)",
+      "reason": "github_bump release_age_days is the registry's record of publish times; a wrong registry answer can make a new release look old; an old-enough release can be malicious; no signatures, provenance or advisories read; basis: a maintainer ruling (2026-10-23, Q30)",
       "false_friend": true,
-      "provenance": "inferred",
-      "source": "open question Q30"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-INTERNAL-ACCOUNT-TRUST",
@@ -1609,24 +1609,24 @@
     },
     {
       "property": "D-CONNECTOR-TRUSTS-ENGINE",
-      "reason": "the connector checks only the status of the engine's answer, maps its action as given, and does not refuse test: true decisions; basis: a proposed ruling (Q28)",
+      "reason": "the connector checks only the status of the engine's answer, maps its action as given, and does not refuse test: true decisions; basis: a maintainer ruling (2026-10-23, Q28)",
       "false_friend": false,
-      "provenance": "inferred",
-      "source": "open question Q28"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-CONNECTOR-KEY-REACH",
-      "reason": "down-scoped tokens limit what the code asks for, not what the key can mint; with Contents and Pull requests write a leaked key can push and approve in every repository the app is installed on; basis: a proposed ruling (Q29)",
+      "reason": "down-scoped tokens limit what the code asks for, not what the key can mint; with Contents and Pull requests write a leaked key can push and approve in every repository the app is installed on; basis: a maintainer ruling (2026-10-23, Q29)",
       "false_friend": false,
-      "provenance": "inferred",
-      "source": "open question Q29"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-APPROVAL-ON-FACTS",
-      "reason": "an approval is the profile's decision on that commit and nothing more; on facts alone as strong as the rules and facts; on AI answers about the author's text it can be steered; basis: a proposed ruling (Q31)",
+      "reason": "an approval is the profile's decision on that commit and nothing more; on facts alone as strong as the rules and facts; resting on AI answers about the author's text it can be steered, while AI answers that only add conditions to fact rules can at most remove that check; basis: a maintainer ruling (2026-10-23, Q31)",
       "false_friend": true,
-      "provenance": "inferred",
-      "source": "open question Q31"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-EXACTLY-ONCE",
@@ -1710,7 +1710,7 @@
     "pair github_bump with github_pr, check missing first, require registry_changed false and a release_age_days margin; an old-enough release is not a reviewed one",
     "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; revoke the old token; remove the setting to switch off; no reliance on edge rules",
     "two GitHub Apps, the connector app only in the connector Worker; install only on the connector's repositories; only the permissions its settings need; secrets only in wrangler; its own token, never a test token",
-    "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that do not rest on AI answers about the author's text",
+    "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis",
     "run tokens.mjs with --remote only on purpose and keep the printed token out of history and logs; deploy only through the template's workflows"
   ],
   "known_misuse": [
@@ -1801,7 +1801,7 @@
     },
     {
       "pattern": "mapping approve from a profile whose allowing rule rests on AI answers about the title, description or diff",
-      "why_unsafe": "Mapping `approve` from a profile whose allowing rule rests on AI answers about the title, description or diff, which the author writes (`D-APPROVAL-ON-FACTS`, `R-CONNECTOR-APPROVE`).",
+      "why_unsafe": "Mapping `approve` from a profile whose allowing rule rests on AI answers about the title, description or diff, which the author writes, instead of requiring the facts and using the answers only as extra conditions (`D-APPROVAL-ON-FACTS`, `R-CONNECTOR-APPROVE`).",
       "instead": "approve only on facts, with positive rules"
     },
     {
@@ -1897,22 +1897,5 @@
     "known_non_finding",
     "model_gap"
   ],
-  "open_questions": [
-    {
-      "claim": "Q28: We believe the connector may trust the engine's answer as the engine's, checking only its status, and that the deployment, not the connector, keeps test tokens away from it (a test token makes it act on decisions that are not logged). Proposed answer: yes; disclaim it, and record a check of `test` in the connector as a hardening candidate.",
-      "field": "properties_not_provided"
-    },
-    {
-      "claim": "Q29: We believe the connector app's key is the boundary of the connector: the down-scoped tokens limit what its code asks for, but a leaked key reaches everything the app may do, including Contents: write where approvals must count. Proposed answer: yes; disclaim it, keep the key only in the connector Worker.",
-      "field": "properties_not_provided"
-    },
-    {
-      "claim": "Q30: We believe the npm registry is a trusted collaborator for `release_age_days`: its record of publish times is taken as it is, and the fact checks neither what a new version contains nor signatures or provenance. Proposed answer: yes; disclaim it, and tell integrators to pair the fact with `github_pr` and an age margin.",
-      "field": "properties_not_provided"
-    },
-    {
-      "claim": "Q31: We believe prompt injection through the pull request's title, description and diff is accepted for the connector as it is for the other families (the ruling of 2026-10 did not cover the connector), and that an approval by the connector is by design the profile's decision and nothing more: approvals on facts alone (as for docs, release and dependency-bump pull requests) are as strong as the rules and facts, and a profile that approves on AI answers about the author's text can be steered. Proposed answer: yes; disclaim a person's review behind it, and make the integrator's rules the control.",
-      "field": "properties_not_provided"
-    }
-  ]
+  "open_questions": []
 }
