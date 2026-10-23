@@ -4,3 +4,4 @@ generated/
 worker-configuration.d.ts
 .dev.vars
 .threat-model/
+_site/

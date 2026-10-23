@@ -1,0 +1,4 @@
+# Made by scripts/sync.mjs from docs/ before every build.
+src/content/docs/
+dist/
+.astro/

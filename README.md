@@ -3,7 +3,7 @@
 Pointsman sets the switches. Your systems ask a question, Pointsman decides
 which track it goes on, or calls a human when it is not sure.
 
-Website: https://geolonia.github.io/pointsman/
+Website: https://pointsman.net/
 
 Status: 0.x (not 1.0 yet). The API and the profile format may still change
 between 0.x releases. See

@@ -1,0 +1,18 @@
+{
+  "name": "@pointsman/docs-site",
+  "private": true,
+  "description": "The Pointsman documentation site (Astro Starlight), built from docs/.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "dev": "node scripts/sync.mjs && astro dev",
+    "build": "node scripts/sync.mjs && astro build && node scripts/check-links.mjs",
+    "preview": "astro preview"
+  },
+  "devDependencies": {
+    "@astrojs/markdown-remark": "7.3.2",
+    "@astrojs/starlight": "0.42.6",
+    "astro": "7.3.8"
+  }
+}

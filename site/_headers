@@ -1,0 +1,9 @@
+# Response headers for https://pointsman.net (Cloudflare Workers static
+# assets read this file; it is not served). The documentation is meant to be
+# read by people and by AI tools, so nothing here blocks crawlers.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000

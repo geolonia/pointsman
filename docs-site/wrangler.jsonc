@@ -1,0 +1,22 @@
+// The website https://pointsman.net: the landing page (site/) at the root and
+// the documentation (this folder's build) under /docs/. A Worker with static
+// assets only, no code. Cloudflare's GitHub app (Workers Builds) builds it
+// with `pnpm site:build`, which puts the files together in _site/, and deploys
+// it from main; other branches get a preview URL. The account is the one the
+// app is connected to, not set in this public file.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "pointsman-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "../_site",
+    // /docs/x and /docs/x/ both serve docs/x/index.html.
+    "html_handling": "auto-trailing-slash",
+    // A missing page gets /404.html (the docs' 404 page) with status 404.
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "pointsman.net", "custom_domain": true }],
+  "workers_dev": false,
+  // Preview URLs for the builds of other branches than main.
+  "preview_urls": true
+}
