@@ -99,7 +99,7 @@ export interface ConnectorGitHub {
   createComment(repo: string, number: number, body: string): Promise<void>;
   addLabels(repo: string, number: number, labels: string[]): Promise<void>;
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
-  /** Bot approvals still standing (not dismissed) that carry the marker; the caller matches them with the ids it recorded. */
+  /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
   /** The unified diff, cut to `max` characters; empty and cut when GitHub does not give one (too large). */
   diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }>;
@@ -223,11 +223,24 @@ export class AppGitHub implements ConnectorGitHub {
     await this.#call(repo, 'POST', `/pulls/${number}/requested_reviewers`, 'review request', { reviewers });
   }
 
+  /** The app's bot login, "<slug>[bot]" (lower case), from the installation's answer. */
+  async #botLogin(repo: string): Promise<string> {
+    const [owner, name] = repo.split('/') as [string, string];
+    try {
+      return `${await this.#auth.slug({ owner, repo: name, number: 0, head: '' }, this.#fetch)}[bot]`;
+    } catch (err) {
+      throw new GitHubError(`GitHub app token: ${err instanceof Error ? err.message : String(err)}`, tokenRetry(err));
+    }
+  }
+
   async ownApprovals(repo: string, number: number): Promise<OwnApproval[]> {
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    // Only this app's bot: another app's review with the same marker is not its own.
+    const bot = await this.#botLogin(repo);
     return reviews
       .filter((r) => r.state === 'APPROVED' && typeof r.body === 'string' && r.body.startsWith(MARKER)
-        && isObject(r.user) && r.user.type === 'Bot' && typeof r.id === 'number' && typeof r.commit_id === 'string')
+        && isObject(r.user) && r.user.type === 'Bot' && typeof r.user.login === 'string' && r.user.login.toLowerCase() === bot
+        && typeof r.id === 'number' && typeof r.commit_id === 'string')
       .map((r) => ({ id: r.id as number, commit: r.commit_id as string, marker: (r.body as string).split('\n', 1)[0]! }));
   }
 

@@ -51,9 +51,15 @@ export type ActionSpec =
   /** Ask these people for a review. */
   | { do: 'request_reviewer'; reviewers: string[] }
   /** Approve the head commit the decision was made on. */
-  | { do: 'approve' };
+  | { do: 'approve' }
+  /**
+   * Nothing on GitHub; the app's approval of this head stands (it is not
+   * withdrawn). For a decision that says "already approved". Only in a
+   * profile that also maps an action to approve.
+   */
+  | { do: 'keep_approval' };
 
-export const ACTION_KINDS = ['comment', 'label', 'request_reviewer', 'approve'] as const;
+export const ACTION_KINDS = ['comment', 'label', 'request_reviewer', 'approve', 'keep_approval'] as const;
 
 const LABEL = /^\S(?:.{0,48}\S)?$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
@@ -87,6 +93,9 @@ function actionSpec(v: unknown, where: string): ActionSpec {
     case 'approve':
       only([]);
       return { do: 'approve' };
+    case 'keep_approval':
+      only([]);
+      return { do: 'keep_approval' };
     default:
       throw new ConfigError(`${where}: "do" must be one of ${ACTION_KINDS.join(', ')}`);
   }
@@ -103,6 +112,10 @@ function actionsOf(v: unknown, profiles: string[]): Record<string, Record<string
     for (const [action, spec] of Object.entries(byAction)) {
       if (!ACTION.test(action)) throw new ConfigError(`GITHUB_CONNECTOR: actions.${profile}: "${action}" is not an action name`);
       out[profile][action] = actionSpec(spec, `GITHUB_CONNECTOR: actions.${profile}.${action}`);
+    }
+    const kinds = Object.values(out[profile]).map((a) => a.do);
+    if (kinds.includes('keep_approval') && !kinds.includes('approve')) {
+      throw new ConfigError(`GITHUB_CONNECTOR: actions.${profile}: keep_approval needs an action of the same profile mapped to approve`);
     }
   }
   return out;

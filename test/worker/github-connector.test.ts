@@ -537,6 +537,169 @@ describe('actions (switched on per profile action)', () => {
     expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
   });
 
+  it('keeps its approval when a later decision on the same commit says it is already approved (keep_approval)', async () => {
+    let action = 'light';
+    const KEEP = { 'pr-docs-check': { light: { do: 'approve' as const }, done: { do: 'keep_approval' as const } } };
+    const { work, gh, mem, event } = await acting(KEEP, (p) => Response.json(decision(p, { action })));
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(1);
+    // CodeRabbit reviewed since: the profile now says done (already approved). The approval stands.
+    action = 'done';
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(1);
+    expect(ops(gh.calls)).toEqual(['approve']);
+    const kept = gh.calls.filter((c) => c.output).at(-1)!.output!;
+    expect(kept.title).toBe('done');
+    expect(kept.summary).toContain('Done: approval of this commit kept');
+    expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    // Approving again on the same commit: no second approval.
+    action = 'light';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('already done for this commit');
+    // A later decision that neither approves nor keeps (a person must look, a review, a paid review, a split): withdrawn.
+    for (const other of ['ask-person', 'review', 'pay', 'split']) {
+      action = 'light';
+      await event();
+      await work.run();
+      action = other;
+      await event();
+      await work.run();
+      expect(gh.github.approvals, other).toHaveLength(0);
+    }
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve', 'dismiss', 'approve', 'dismiss', 'approve', 'dismiss']);
+  });
+
+  it('keep_approval withdraws while a person checks the decision, keeps nothing on a new head, and approves nothing itself', async () => {
+    let action = 'light';
+    let review: Decision['review'];
+    const KEEP = { 'pr-docs-check': { light: { do: 'approve' as const }, done: { do: 'keep_approval' as const } } };
+    const { work, gh, event } = await acting(KEEP, (p) => Response.json(decision(p, { action, ...(review && { review }) })));
+    // Never approved: keep_approval approves nothing.
+    action = 'done';
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('no approval of this commit to keep');
+    action = 'light';
+    await event();
+    await work.run();
+    // Still done, but a person checks it first: fail-safe, withdrawn.
+    action = 'done';
+    review = { status: 'pending' };
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(0);
+    review = undefined;
+    // An edit changed the class: pr-risk is no longer approvable, so the next step asks a person. Withdrawn too.
+    action = 'light';
+    await event();
+    await work.run();
+    gh.github.state.title = 'Now touches the workflows';
+    action = 'ask-person';
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(0);
+    // A push: the approval of the old head is dismissed, and done on the new head keeps nothing.
+    action = 'light';
+    await event();
+    await work.run();
+    gh.github.state.head = HEAD2;
+    action = 'done';
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(0);
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve', 'dismiss', 'approve', 'dismiss']);
+  });
+
+  it('withdraws an approval whose run stopped before its id was kept, and says so when it cannot withdraw', async () => {
+    let action = 'review';
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    // The approval is on GitHub, its record still pending, its id not kept.
+    gh.github.approvals.push({ id: 555, commit: HEAD, marker: `<!-- pointsman approve pr-docs-check ${HEAD} -->` });
+    mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:approve': { decision: 'd', state: 'pending', at: Date.now() } } });
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'dismiss').map((c) => c.id)).toEqual([555]);
+    expect(gh.github.approvals).toHaveLength(0);
+
+    // Approved again; then dismissing fails: the check run says so, and the record stays for the next run.
+    action = 'light';
+    await event();
+    await work.run();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismissal: 422', false, 422); };
+    action = 'review';
+    await event();
+    await work.run();
+    const last = gh.calls.filter((c) => c.output).at(-1)!.output!;
+    expect(last.summary).toContain('could not be withdrawn');
+    expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    errors.mockRestore();
+  });
+
+  it('an open approve record: kept when its trace is found, and a trace that cannot be read leaves it open and is shown', async () => {
+    let action = 'done';
+    const KEEP = { 'pr-docs-check': { light: { do: 'approve' as const }, done: { do: 'keep_approval' as const } } };
+    const { work, gh, mem, event } = await acting(KEEP, (p) => Response.json(decision(p, { action })));
+    const open = () => mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:approve': { decision: 'd', state: 'pending', at: Date.now() } } });
+    const state = () => (mem.data.get('acts') as any).done['pr-docs-check:approve']?.state;
+    const lastSummary = () => gh.calls.filter((c) => c.output).at(-1)!.output!.summary;
+    // keep_approval: the approval is on GitHub, its record still open: found, closed and kept.
+    gh.github.approvals.push({ id: 556, commit: HEAD, marker: `<!-- pointsman approve pr-docs-check ${HEAD} -->` });
+    open();
+    await work.run();
+    expect(state()).toBe('done');
+    expect(lastSummary()).toContain('approval of this commit kept');
+    expect(ops(gh.calls)).toEqual([]);
+
+    // The reviews cannot be read (an error that does not pass): the record stays open, the check run says so.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.ownApprovals = async () => { throw new GitHubError('GitHub app token: GitHub installation: no app slug', false); };
+    for (const [next, text] of [['done', 'unclear, the record stays open'], ['light', 'result unclear, the record stays open'], ['review', 'could not be withdrawn']] as const) {
+      open();
+      action = next;
+      await event();
+      await work.run();
+      expect(state(), next).toBe('pending');
+      expect(lastSummary(), next).toContain(text);
+    }
+    expect(ops(gh.calls)).toEqual([]);
+    errors.mockRestore();
+  });
+
+  it('settings: keep_approval only next to approve, without settings', () => {
+    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
+    const conf = (actions: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p'], actions }) });
+    expect(connectorSettings(conf({ p: { light: { do: 'approve' }, done: { do: 'keep_approval' } } }))!.actions).toEqual({ p: { light: { do: 'approve' }, done: { do: 'keep_approval' } } });
+    expect(() => connectorSettings(conf({ p: { done: { do: 'keep_approval' } } }))).toThrow(/keep_approval needs an action of the same profile mapped to approve/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'approve' }, done: { do: 'keep_approval', for: 'x' } } }))).toThrow(/unknown key for/);
+  });
+
+  it('counts only its own bot\'s approvals as its own (the app\'s slug from the installation), never another bot\'s', async () => {
+    const marker = `<!-- pointsman approve pr-docs-check ${HEAD} -->`;
+    const reviewList = [
+      { id: 1, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
+      { id: 2, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'other-app[bot]', type: 'Bot' } },
+      { id: 3, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'User' } },
+      { id: 4, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks', type: 'User' } },
+      { id: 5, state: 'DISMISSED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
+      { id: 6, state: 'APPROVED', body: 'Looks good', commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } },
+    ];
+    const fetchWith = (installation: Record<string, unknown>) => (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/installation')) return Response.json({ id: 9, permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' }, ...installation });
+      if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+      if (url.includes('/pulls/7/reviews')) return Response.json(reviewList);
+      throw new Error(`unexpected ${url}`);
+    }) as typeof fetch;
+    const gh = new AppGitHub(APP_ID, KEY, fetchWith({ app_slug: 'pointsman-checks' }), true);
+    expect(await gh.ownApprovals(REPO, 7)).toEqual([{ id: 1, commit: HEAD, marker }]);
+    // GitHub did not name the app: none is taken for its own (an error, so nothing is approved or recorded on it).
+    const unnamed = new AppGitHub(APP_ID, KEY, fetchWith({}), true);
+    await expect(unnamed.ownApprovals(REPO, 7)).rejects.toMatchObject({ retry: false, message: expect.stringContaining('no app slug') });
+  });
+
   it('dismisses only approvals it recorded giving, and approves nothing while an old one cannot be dismissed', async () => {
     const light = (p: string) => Response.json(decision(p, { action: 'light' }));
     const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, light);

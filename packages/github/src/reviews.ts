@@ -221,3 +221,37 @@ export function copilotFacts(all: Review[], state: ReviewState, head: string): {
     reviews: own.length,
   };
 }
+
+/**
+ * A GitHub App's bot account, as a profile names it (`github_app_approval`):
+ * the app's slug and, if given, the bot's account id. REST names the bot
+ * "<slug>[bot]"; a person's login cannot hold "[", so with the account type
+ * Bot only the app with that slug matches. The id also guards against a
+ * deleted app whose slug someone takes again.
+ */
+export interface AppBot {
+  slug: string;
+  id?: number;
+}
+
+/** Whether an account is this app's bot: type Bot, login "<slug>[bot]", and the id when one is set. */
+export function isAppBot(a: Account, app: AppBot): boolean {
+  if (!a.bot || a.login.toLowerCase() !== `${app.slug.toLowerCase()}[bot]`) return false;
+  return app.id === undefined || a.id === app.id;
+}
+
+/**
+ * The values of a `github_app_approval` fact: whether the app's latest
+ * review that decides (approve, request changes, or a dismissed one)
+ * approves the head commit, or any commit. A dismissed approval has the
+ * state DISMISSED, so it never counts.
+ */
+export function appApprovalFacts(all: Review[], app: AppBot, head: string): { approved_head: boolean; approved_any: boolean; reviews: number } {
+  const own = all.filter((r) => r.state !== 'PENDING' && isAppBot(r.by, app));
+  const verdict = latestVerdict(own);
+  return {
+    approved_head: verdict?.state === 'APPROVED' && verdict.commit === head,
+    approved_any: verdict?.state === 'APPROVED',
+    reviews: own.length,
+  };
+}

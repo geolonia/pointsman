@@ -1,0 +1,12 @@
+# expect: /facts/0: must have required property 'app'
+id: facts-github-app-approval-no-app
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: clef-flash
+questions:
+  - { name: ok, type: noul, instructions: "Is it ok?" }
+facts:
+  - { name: pointsman, type: github_app_approval, at: $.pr }
+policy:
+  default: review
