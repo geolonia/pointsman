@@ -36,10 +36,8 @@ export function bindingEngine(binding: EngineBinding, timeoutMs = TIMEOUT_MS): E
       if (a === null || typeof a !== 'object' || a instanceof Response || typeof a.status !== 'number' || !Number.isInteger(a.status) || a.status < 100 || a.status > 599) {
         throw new Error(`the ${ENGINE_BINDING} binding gave no engine answer (is "entrypoint": "InternalEngine" set?)`);
       }
-      if (a.status >= 200 && a.status < 300) {
-        if (a.body === null || typeof a.body !== 'object') throw new Error(`the ${ENGINE_BINDING} binding gave no decision`);
-        return { status: a.status, body: a.body };
-      }
+      // Passed on as it came: the connector checks it (checkDecision), as over HTTP.
+      if (a.status >= 200 && a.status < 300) return { status: a.status, body: a.body };
       // Only the error code is passed on, for the log (the engine's message stays there).
       const code = (a.body as { error?: { code?: unknown } } | undefined)?.error?.code;
       return typeof code === 'string' && /^[a-z_]{1,40}$/.test(code) ? { status: a.status, code } : { status: a.status };

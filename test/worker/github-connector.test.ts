@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -83,8 +83,13 @@ function fakeEngine(answer: (profile: string) => Response = (p) => Response.json
     fetch: async (url, init) => {
       const profile = decodeURIComponent(url.split('/v1/decide/')[1]!);
       const headers = new Headers(init.headers);
-      calls.push({ profile, key: headers.get('idempotency-key')!, body: JSON.parse(String(init.body)), auth: headers.get('authorization')! });
-      return answer(profile);
+      const sent = JSON.parse(String(init.body));
+      calls.push({ profile, key: headers.get('idempotency-key')!, body: sent, auth: headers.get('authorization')! });
+      const res = answer(profile);
+      // As the engine does: a decision echoes the ref it was sent (one that sets its own ref keeps it).
+      if (!res.ok) return res;
+      const out = await res.clone().json().catch(() => undefined);
+      return out !== null && typeof out === 'object' && !Array.isArray(out) && !('ref' in out) ? Response.json({ ...out, ref: sent.ref }, { status: res.status }) : res;
     },
   };
   // The HTTP adapter, as the connector Worker builds it.
@@ -1135,5 +1140,195 @@ describe('chains: profiles that build on each other', () => {
     expect(await tooLarge.diff(REPO, 7, 1000)).toEqual({ diff: '', truncated: true });
     const busy = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 502 })));
     await expect(busy.diff(REPO, 7, 1000)).rejects.toMatchObject({ retry: true });
+  });
+});
+
+describe('the engine\'s answer: checked before anything is done (checkDecision)', () => {
+  const PROFILE = 'pr-docs-check';
+  const REF = `github:${REPO}#7@${HEAD}`;
+  const asked = { profile: PROFILE, ref: REF };
+  /** A decision as the engine gives it, with the fields the connector does not read. */
+  const full = () => ({
+    decision_id: crypto.randomUUID(), ref: REF, answers: { kind: 'docs' }, action: 'light', profile: PROFILE, profile_version: 3, model: 'none',
+    created_at: '2026-10-23T00:00:00.000Z', rule: null, facts: { ci: { missing: false, values: { green: true }, source: 'github' }, owners: { missing: true, reason: 'not found' } },
+    review: { status: 'pending' }, replaces: crypto.randomUUID(), versions: { engine: '0.13.0', modules: { '@pointsman/github': '0.13.0' } }, requires: {}, later_field: [1, 2],
+  });
+
+  it('passes a valid decision on unchanged, extra fields and all', () => {
+    const d = full();
+    expect(checkDecision(d, asked)).toEqual({ kind: 'decision', decision: d });
+    expect((checkDecision(d, asked) as { decision: unknown }).decision).toBe(d);
+    // The fields that may be missing: facts, review, test (false is not a test decision).
+    const { facts: _f, review: _v, ...lean } = d;
+    expect(checkDecision({ ...lean, rule: 0 }, asked).kind).toBe('decision');
+    expect(checkDecision({ ...lean, test: false }, asked).kind).toBe('decision');
+    // Every action name a profile can give, at its longest.
+    expect(checkDecision({ ...lean, action: `a${'b'.repeat(62)}` }, asked).kind).toBe('decision');
+  });
+
+  it('refuses an answer that is not a decision, naming the field and never its value', () => {
+    const big = `ZQ${crypto.randomUUID()}`.repeat(100);
+    const cases: [string, unknown][] = [
+      ['not an object', null], ['not an object', 'light'], ['not an object', [full()]], ['not an object', 42],
+      ['"decision_id"', { ...full(), decision_id: undefined }], ['"decision_id"', { ...full(), decision_id: 7 }], ['"decision_id"', { ...full(), decision_id: big }],
+      ['"action"', { ...full(), action: undefined }], ['"action"', { ...full(), action: 1 }], ['"action"', { ...full(), action: '' }],
+      ['"action"', { ...full(), action: { do: 'approve' } }], ['"action"', { ...full(), action: 'a'.repeat(65) }], ['"action"', { ...full(), action: big }],
+      ['"action"', { ...full(), action: 'Light' }], ['"action"', { ...full(), action: 'light\n' }],
+      ['"profile"', { ...full(), profile: 'other' }], ['"profile"', { ...full(), profile: undefined }],
+      ['"ref"', { ...full(), ref: `github:${REPO}#7@${HEAD2}` }], ['"ref"', { ...full(), ref: undefined }],
+      ['"review"', { ...full(), review: { status: 'resolved' } }], ['"review"', { ...full(), review: { status: 'Pending' } }],
+      ['"facts"', { ...full(), facts: { 'a`b': { missing: true, reason: 'r' } } }], ['"facts"', { ...full(), facts: { '': { missing: true } } }],
+      ['"profile_version"', { ...full(), profile_version: 0 }], ['"profile_version"', { ...full(), profile_version: '3' }],
+      ['"rule"', { ...full(), rule: undefined }], ['"rule"', { ...full(), rule: -1 }], ['"rule"', { ...full(), rule: 1.5 }],
+      ['"review"', { ...full(), review: 'pending' }], ['"review"', { ...full(), review: null }], ['"review"', { ...full(), review: {} }], ['"review"', { ...full(), review: [] }],
+      ['"facts"', { ...full(), facts: [] }], ['"facts"', { ...full(), facts: { ci: null } }], ['"facts"', { ...full(), facts: { ci: { missing: 'yes' } } }], ['"facts"', { ...full(), facts: { ci: { missing: true, reason: 3 } } }],
+      ['"test"', { ...full(), test: 'true' }], ['"test"', { ...full(), test: 1 }],
+    ];
+    for (const [field, body] of cases) {
+      const checked = checkDecision(body, asked);
+      expect(checked.kind, JSON.stringify(body)?.slice(0, 80)).toBe('invalid');
+      const reason = (checked as { reason: string }).reason;
+      expect(reason).toContain(field);
+      expect(reason.length).toBeLessThan(80);
+      expect(reason).not.toContain('ZQ');
+    }
+  });
+
+  it('marks a test decision as one', () => {
+    const d = { ...full(), test: true };
+    expect(checkDecision(d, asked)).toEqual({ kind: 'test', decision: d });
+    // A test decision of the wrong shape is invalid first.
+    expect(checkDecision({ ...d, action: '' }, asked).kind).toBe('invalid');
+  });
+
+  const ACT = { [PROFILE]: { light: { do: 'label' as const, labels: ['docs-only'] }, review: { do: 'request_reviewer' as const, reviewers: ['octocat'] } } };
+  async function acting(actions: ConnectorSettings['actions'], answer: (p: string) => Response, runs: ConnectorSettings['runs'] = {}) {
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    const pm = fakeEngine(answer);
+    const work = pullRequestWork(settings({ profiles: [PROFILE], actions, runs }), mem.storage, pm.engine, gh.github);
+    const event = () => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await event();
+    return { work, mem, gh, pm, event };
+  }
+  const ops = (calls: { op: string }[]) => calls.map((c) => c.op).filter((o) => !['get', 'find', 'create', 'update', 'approvals'].includes(o));
+  const lastOutput = (calls: { output?: CheckRunOutput }[]) => calls.filter((c) => c.output).at(-1)!.output!;
+
+  it('an invalid answer: nothing done, logged without its content, shown on the check run, not tried again, not kept', async () => {
+    // Not an action name (upper case), so it must not be echoed anywhere.
+    const secretish = `PM_${crypto.randomUUID()}`;
+    for (const body of [{ ...decision(PROFILE), decision_id: undefined }, { ...decision(PROFILE), action: 7 }, { ...decision(PROFILE), action: '' }, { ...decision(PROFILE), review: 'pending' }, 'light', [decision(PROFILE)], { ...decision(PROFILE), action: secretish }]) {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { work, gh, mem, pm, event } = await acting(ACT, () => Response.json(body), { [PROFILE]: { oncePerHead: { rerun: [] } } });
+      await expect(work.run()).resolves.toBeUndefined();
+      expect(ops(gh.calls)).toEqual([]);
+      const out = lastOutput(gh.calls);
+      expect(out.title).toBe('invalid answer: nothing done');
+      expect(out.conclusion).toBe('neutral');
+      expect(out.summary).toContain('Nothing was done');
+      expect(out.summary + errors.mock.calls.join(' ')).not.toContain(secretish);
+      expect(errors.mock.calls.join(' ')).toContain('not a decision');
+      expect(mem.data.get('kept')).toBeUndefined();
+      // Asked again on the next event (once_per_head kept nothing), not before.
+      await work.run();
+      expect(pm.calls).toHaveLength(1);
+      await event();
+      await work.run();
+      expect(pm.calls).toHaveLength(2);
+      errors.mockRestore();
+    }
+  });
+
+  it('a test decision: nothing done, and the check run says it was a test decision', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let test = true;
+    const { work, gh, mem, event } = await acting(ACT, (p) => Response.json({ ...decision(p, { action: 'light' }), ...(test && { test }) }), { [PROFILE]: { oncePerHead: { rerun: [] } } });
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    const out = lastOutput(gh.calls);
+    expect(out.title).toBe('test decision: nothing done');
+    expect(out.summary).toContain('test decision');
+    expect(out.summary).toContain('nothing was done');
+    expect(errors.mock.calls.join(' ')).toContain('a test decision');
+    expect(mem.data.get('kept')).toBeUndefined();
+    // The same decision without test: acted on and kept (the settings keep a valid one).
+    test = false;
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['label']);
+    expect((mem.data.get('kept') as any).byProfile[PROFILE]).toBeDefined();
+    errors.mockRestore();
+  });
+
+  it('a kept decision is checked again: one kept before the check (a test decision) is asked anew', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { work, mem, pm, event } = await acting(ACT, (p) => Response.json(decision(p, { action: 'wait' })), { [PROFILE]: { oncePerHead: { rerun: [] } } });
+    await work.run();
+    await event();
+    await work.run();
+    expect(pm.calls).toHaveLength(1);
+    const kept = mem.data.get('kept') as any;
+    kept.byProfile[PROFILE].decision.test = true;
+    mem.data.set('kept', kept);
+    await event();
+    await work.run();
+    expect(pm.calls).toHaveLength(2);
+    errors.mockRestore();
+  });
+
+  it('a 2xx that is not JSON is an invalid answer over HTTP too, not tried again', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { work, gh } = await acting(ACT, () => new Response('<html>', { status: 200 }));
+    await expect(work.run()).resolves.toBeUndefined();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(lastOutput(gh.calls).summary).toContain('not an object');
+    errors.mockRestore();
+  });
+
+  it('a test decision is never sent on to the profiles that require it', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    const pm = fakeEngine((p) => Response.json(p === 'pr-risk' ? { ...decision(p), test: true } : decision(p)));
+    const s = settings({ profiles: ['pr-risk', 'pr-next'], runs: { 'pr-next': { requires: { risk: 'pr-risk' } } } });
+    const work = pullRequestWork(s, mem.storage, pm.engine, gh.github);
+    await work.accept({ target: { repo: REPO, number: 7 }, delivery: 'd1', digest: 'x1' }, Date.now());
+    await work.run();
+    expect(pm.calls.map((c) => c.body.decisions)).toEqual([undefined, undefined]);
+    // pr-next was still asked and shown.
+    expect(gh.calls.filter((c) => c.op === 'create').map((c) => c.name)).toEqual(['Pointsman: pr-risk', 'Pointsman: pr-next']);
+    errors.mockRestore();
+  });
+
+  it('an invalid answer or a test decision after an approval: the approval is withdrawn, never kept', async () => {
+    const KEEP = { [PROFILE]: { light: { do: 'approve' as const }, done: { do: 'keep_approval' as const } } };
+    for (const bad of [
+      (p: string) => ({ ...decision(p, { action: 'done' }), test: true }),
+      (p: string) => ({ ...decision(p, { action: 'done' }), profile_version: 'x' }),
+      (p: string) => ({ ...decision(p, { action: 'light' }), action: 'light'.repeat(20) }),
+      () => [],
+    ]) {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let answer: (p: string) => unknown = (p) => decision(p, { action: 'light' });
+      const { work, gh, event } = await acting(KEEP, (p) => Response.json(answer(p)));
+      await work.run();
+      expect(gh.github.approvals).toHaveLength(1);
+      answer = bad;
+      await event();
+      await work.run();
+      expect(gh.github.approvals).toHaveLength(0);
+      expect(ops(gh.calls)).toEqual(['approve', 'dismiss']);
+      expect(lastOutput(gh.calls).title).toMatch(/nothing done$/);
+      // When it cannot be withdrawn, the check run says so.
+      answer = (p) => decision(p, { action: 'light' });
+      await event();
+      await work.run();
+      gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismissal: 422', false, 422); };
+      answer = bad;
+      await event();
+      await work.run();
+      expect(lastOutput(gh.calls).summary).toContain('could not be withdrawn');
+      errors.mockRestore();
+    }
   });
 });

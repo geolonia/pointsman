@@ -5,7 +5,7 @@
 import { ConfigError } from '@pointsman/module-api';
 import { definition } from '../definition.ts';
 import { privateKeyDer } from '../provider.ts';
-import { engineSetting, type EngineSetting } from './engine.ts';
+import { ACTION, engineSetting, type EngineSetting } from './engine.ts';
 
 /** The settings it reads (in the module's definition). */
 export const CONNECTOR_SETTINGS = definition.connector!.settings;
@@ -63,7 +63,6 @@ export const ACTION_KINDS = ['comment', 'label', 'request_reviewer', 'approve', 
 
 const LABEL = /^\S(?:.{0,48}\S)?$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-const ACTION = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 function actionSpec(v: unknown, where: string): ActionSpec {
   const o = (v ?? {}) as Record<string, unknown>;

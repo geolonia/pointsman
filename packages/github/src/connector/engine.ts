@@ -33,9 +33,73 @@ export interface EngineAnswer {
 export interface EngineClient {
   /**
    * POST /v1/decide/{profile}. Throws when the engine cannot be reached or
-   * does not answer in time; the run is then tried again.
+   * does not answer in time; the run is then tried again. A 2xx body is
+   * passed on as it came: the connector checks it (checkDecision), the same
+   * way for every adapter.
    */
   decide(profile: string, body: DecideBody, options: { idempotencyKey: string }): Promise<EngineAnswer>;
+}
+
+/**
+ * The decision, as far as the connector reads it (openapi.yaml `Decision`).
+ * checkDecision checks these fields before anything is done with an answer.
+ */
+export interface Decision {
+  decision_id: string;
+  action: string;
+  profile: string;
+  profile_version: number;
+  rule: number | null;
+  facts?: Record<string, { missing?: boolean; reason?: string }>;
+  review?: { status: string };
+  /** Only on a test token's decision, which is not logged: never acted on. */
+  test?: true;
+}
+
+/** What the connector makes of a 2xx answer: a decision, a test decision (not acted on), or an answer that is not a decision. */
+export type CheckedAnswer =
+  | { kind: 'decision'; decision: Decision }
+  | { kind: 'test'; decision: Decision }
+  | { kind: 'invalid'; reason: string };
+
+/** An action name, as settings.ts maps it; every action a profile can give (schema/profile-v1.schema.json) fits it. */
+export const ACTION = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** A fact's name in a profile (schema/profile-v1.schema.json). */
+const FACT_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const plain = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+const count = (v: unknown, min: number): boolean => typeof v === 'number' && Number.isSafeInteger(v) && v >= min;
+
+/**
+ * Checks the body of a 2xx answer for one profile and ref, for both adapters
+ * (docs/github-connector.md#safety). Every field the connector reads must be
+ * there with its type; other fields are not looked at. `reason` names the
+ * field, never its value, so it can be logged and shown.
+ */
+export function checkDecision(body: unknown, asked: { profile: string; ref: string }): CheckedAnswer {
+  const invalid = (reason: string): CheckedAnswer => ({ kind: 'invalid', reason });
+  if (!plain(body)) return invalid('not an object');
+  const d = body;
+  if (typeof d.decision_id !== 'string' || !UUID.test(d.decision_id)) return invalid('"decision_id" is not a decision id');
+  if (typeof d.action !== 'string' || !ACTION.test(d.action)) return invalid('"action" is not an action name');
+  if (d.profile !== asked.profile) return invalid('"profile" is not the profile asked');
+  // The engine echoes the ref it was sent (also on an idempotent repeat); the connector always sends one.
+  if (d.ref !== asked.ref) return invalid('"ref" is not the ref asked');
+  if (!count(d.profile_version, 1)) return invalid('"profile_version" is not a positive integer');
+  if (d.rule !== null && !count(d.rule, 0)) return invalid('"rule" is neither null nor a rule index');
+  // The engine gives review only while a person checks the decision; another status is not known here, so not acted on.
+  if (d.review !== undefined && !(plain(d.review) && d.review.status === 'pending')) return invalid('"review" is not a pending review');
+  if (d.facts !== undefined) {
+    if (!plain(d.facts)) return invalid('"facts" is not an object');
+    for (const [name, f] of Object.entries(d.facts)) {
+      if (!FACT_NAME.test(name) || !plain(f) || (f.missing !== undefined && typeof f.missing !== 'boolean') || (f.reason !== undefined && typeof f.reason !== 'string')) {
+        return invalid('a fact in "facts" is not a fact');
+      }
+    }
+  }
+  if (d.test !== undefined && typeof d.test !== 'boolean') return invalid('"test" is not a boolean');
+  const decision = d as unknown as Decision;
+  return d.test === true ? { kind: 'test', decision } : { kind: 'decision', decision };
 }
 
 /** Which adapter the settings choose. */
@@ -87,7 +151,8 @@ export function httpEngine(api: EngineApi, token: string): EngineClient {
         redirect: 'manual',
         signal: AbortSignal.timeout(60_000),
       });
-      if (res.ok) return { status: res.status, body: await res.json() };
+      // A body that is not JSON is passed on as none: the connector's check refuses it like any other non-decision.
+      if (res.ok) return { status: res.status, body: await res.json().catch(() => undefined) };
       await res.body?.cancel();
       return { status: res.status };
     },

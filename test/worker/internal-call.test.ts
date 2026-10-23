@@ -15,7 +15,7 @@ import type { Profile } from '../../src/types';
 import bundled from '../../generated/profiles.json';
 import { InternalEngine } from '../../src/index';
 import { bindingEngine, type EngineBinding } from '../../connectors/github/src/engine-binding';
-import { connectorSettings, engineSetting, pullRequestWork, RetryError, type ObjectStorage } from '@pointsman/github';
+import { checkDecision, connectorSettings, engineSetting, pullRequestWork, RetryError, type CheckRunOutput, type ObjectStorage } from '@pointsman/github';
 import { ConfigError } from '@pointsman/module-api';
 
 const CLIENT = JSON.stringify({ client: 'github-connector', profiles: ['deploy-progress'] });
@@ -181,7 +181,9 @@ describe('the connector: binding adapter', () => {
     await expect(bindingEngine(binding(async () => { throw new Error('down'); })).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow('down');
     await expect(bindingEngine(binding(async () => new Response('x'))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no engine answer/);
     await expect(bindingEngine(binding(async () => ({ status: 'ok' }))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no engine answer/);
-    await expect(bindingEngine(binding(async () => ({ status: 200 }))).decide('p', req, { idempotencyKey: 'k' })).rejects.toThrow(/no decision/);
+    // A 2xx without a decision is passed on as it came: the connector's check refuses it (not tried again), as over HTTP.
+    expect(await bindingEngine(binding(async () => ({ status: 200 }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 200, body: undefined });
+    expect(await bindingEngine(binding(async () => ({ status: 200, body: 'light' }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 200, body: 'light' });
     // A fetch binding without the entrypoint: the runtime refuses the method; the error says what to set.
     await expect(bindingEngine(binding(() => { throw new TypeError('The RPC receiver does not implement the method "decide".'); })).decide('p', req, { idempotencyKey: 'k' }))
       .rejects.toThrow(/"entrypoint": "InternalEngine"/);
@@ -210,6 +212,57 @@ describe('the connector: binding adapter', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     await run(403, 'forbidden');
     expect(errors.mock.calls.join(' ')).toContain('Pointsman pr-docs-check for example/repo#1: 403 forbidden');
+    errors.mockRestore();
+  });
+});
+
+describe('the connector checks the answer the same way through both adapters', () => {
+  const store = new MemoryProfileStore(bundled as Profile[]);
+  const log: DecisionLog = fakeLog({ insert: async () => {} });
+  const tokens = new MemoryTokenStore();
+  const deps: Deps = { callbacks: noCallbacks, store, tokens, log, adapterFor: () => new MockAdapter() };
+  const ref = 'github:example/repo#1@abc';
+
+  it('the engine\'s own decision passes; a test token\'s decision is a test decision', async () => {
+    const internal = await decideInternal(deps, internalClient(CLIENT), 'deploy-progress', { ...body, ref }, { idempotencyKey: crypto.randomUUID() });
+    expect(checkDecision(internal.body, { profile: 'deploy-progress', ref })).toEqual({ kind: 'decision', decision: internal.body });
+    const TEST_TOKEN = newToken();
+    tokens.records.set(await hashToken(TEST_TOKEN), { client: 'examples-check', profiles: ['deploy-progress'], created_at: '2026-10-23T00:00:00Z', test: true });
+    const http = await createApp(() => deps).request('/v1/decide/deploy-progress', { method: 'POST', body: JSON.stringify({ ...body, ref }), headers: { authorization: `Bearer ${TEST_TOKEN}` } }, env);
+    const decided = await http.json();
+    expect(checkDecision(decided, { profile: 'deploy-progress', ref })).toEqual({ kind: 'test', decision: decided });
+  });
+
+  it('a pull request run through the binding: an invalid answer and a test decision do nothing and say so', async () => {
+    const data = new Map<string, unknown>();
+    const storage: ObjectStorage = {
+      get: async <T>(k: string) => structuredClone(data.get(k)) as T | undefined,
+      put: async (entries) => { for (const [k, v] of Object.entries(entries)) data.set(k, structuredClone(v)); },
+      setAlarm: async () => {},
+    };
+    const settings = connectorSettings({ ...base, POINTSMAN: binding() })!;
+    const outputs: CheckRunOutput[] = [];
+    const github = {
+      pullRequest: async () => ({ open: true, head: 'a'.repeat(40), draft: false, base: 'main', title: 'T', body: 'B', fork: false, labels: [], requestedReviewers: [] }),
+      findCheckRun: async () => undefined,
+      createCheckRun: async (_r: string, _h: string, _n: string, o: CheckRunOutput) => (outputs.push(o), 1),
+      updateCheckRun: async (_r: string, _i: number, o: CheckRunOutput) => void outputs.push(o),
+    } as unknown as Parameters<typeof pullRequestWork>[3];
+    const decision = { decision_id: crypto.randomUUID(), ref: `github:example/repo#1@${'a'.repeat(40)}`, action: 'light', profile: 'pr-docs-check', profile_version: 1, rule: null };
+    const run = async (answer: unknown) => {
+      const work = pullRequestWork(settings, storage, bindingEngine(binding(async () => ({ status: 200, body: answer }))), github);
+      await work.accept({ target: { repo: 'example/repo', number: 1 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+      await work.run();
+      return outputs.at(-1)!;
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await run(decision)).title).toBe('light (shadow)');
+    expect((await run({ ...decision, action: '' })).title).toBe('invalid answer: nothing done');
+    expect((await run([decision])).title).toBe('invalid answer: nothing done');
+    expect((await run('light')).title).toBe('invalid answer: nothing done');
+    expect((await run(undefined)).summary).toContain('not an object');
+    expect((await run({ ...decision, profile: 'other' })).summary).toContain('"profile" is not the profile asked');
+    expect((await run({ ...decision, test: true })).title).toBe('test decision: nothing done');
     errors.mockRestore();
   });
 });
