@@ -23,7 +23,7 @@ For deployments:
 
 What changed:
 
-- **`github_bump`** (module `@pointsman/github`): whether a pull request only bumps npm dependency versions, as a Dependabot pull request does, in `package.json`, `pnpm-lock.yaml` or `package-lock.json`. Fields: `applies`, `only_manifests`, `version_only`, `semver` (`major`, `minor`, `patch` or `none`; 0.x versions shifted one place, as npm's caret does), `dev_only`, `registry_changed`, `manifest_lines` and `release_age_days` (the youngest new release, transitive ones included). Anything it cannot read makes the fact missing; anything it does not understand gives the stricter value. See *Fact types* in `docs/profile-format.md`.
+- **`github_bump`** (module `@pointsman/github`): whether a pull request only bumps npm dependency versions, as a Dependabot pull request does, in `package.json`, `pnpm-lock.yaml` or `package-lock.json` (a changed `.npmrc` counts as a registry change). Fields: `applies`, `only_manifests`, `version_only`, `semver` (`major`, `minor`, `patch` or `none`; 0.x versions shifted one place, as npm's caret does), `dev_only`, `registry_changed`, `manifest_lines` and `release_age_days` (the youngest new release, transitive ones included). Anything it cannot read makes the fact missing; anything it does not understand gives the stricter value. See *Fact types* in `docs/profile-format.md`.
 - **`github_pr.all_commits_verified`** on a Dependabot pull request now also requires every commit to be authored by `dependabot[bot]` and signed by GitHub, so a person's commit on a Dependabot branch fails it.
 - **CodeRabbit** skips pull requests whose title contains `Release 0.` (this repository's `.coderabbit.yaml`), so a profile can approve release PRs on facts alone.
 
