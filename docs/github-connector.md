@@ -102,6 +102,7 @@ The connector carries out an action only where the deployment maps a profile's d
 | `label` | `labels` (1 to 10) | Adds the labels. GitHub creates a label that does not exist yet, so check the names. |
 | `request_reviewer` | `reviewers` (1 to 10 GitHub logins) | Asks them for a review. |
 | `approve` | none | Approves the head commit the decision was made on. |
+| `keep_approval` | none | Does nothing on GitHub: the app's approval of the head commit, if it gave one, is not withdrawn. For a decision that says "already approved". Only in a profile that also maps an action to `approve`. |
 
 This is the whole list: a deployment can switch actions on, never add one. A decision action that is not mapped gets only its check run, as in shadow mode, and the check run says which action was done or why not.
 
@@ -118,10 +119,46 @@ For `approve` also:
 - Only on the commit that was decided on: the pull request is read again right before, and nothing is done if its head changed, it is a draft or it was closed. The approval names that commit (`commit_id`).
 - Never for a pull request from a fork.
 - After a push, the connector dismisses its own approvals of older commits, on every run. It dismisses only approvals it recorded giving, never someone else's review.
-- When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again.
+- When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again. See [When the approval stays](#when-the-approval-stays).
 - If an old approval cannot be dismissed, it approves nothing in that run.
 - **Required:** the branch's ruleset (or branch protection) must have "Dismiss stale pull request approvals when new commits are pushed" on. Otherwise an approval of an older commit counts for merging until the connector's next run dismisses it.
+- Its own approvals are reviews by its own bot account (`<app slug>[bot]`, the slug from GitHub's answer for the app's installation) with its marker. Another app's review with the same marker is never taken for its own.
 - **Code owners:** an app cannot be a code owner (`CODEOWNERS` names users, teams and email addresses). Where the ruleset requires a code owner's review and `CODEOWNERS` covers a changed file, a person must still approve; the app's approval can still count toward the required number of approvals (with the app's "Contents: write" permission, see below).
+
+### When the approval stays
+
+The connector approves at most once per head commit. Each later decision on that commit either keeps the approval or withdraws it (dismisses the review):
+
+| Later decision on the same commit | The approval |
+| --- | --- |
+| An action mapped to `approve` | stays (no second approval: already done for this commit) |
+| An action mapped to `keep_approval` | stays |
+| Any other action, mapped or not (`ask-person`, `review`, `pay`, `split`, `wait` …) | withdrawn |
+| Any decision a person still checks (`review: pending`), also one mapped to `approve` or `keep_approval` | withdrawn |
+| A new head commit (a push) | the approval of the older commit is dismissed, whatever the decision |
+
+When unsure, the approval goes: only the two kinds above keep it. An edit of the title or description gives a new decision on the same commit; if the risk class changes, that decision is no longer `approve` or `keep_approval`, so the approval is withdrawn.
+
+Why `keep_approval` is needed: an approval changes what the profile sees. For example, CodeRabbit reviews after Pointsman approved, and the rule that approves requires that CodeRabbit has not reviewed. The next decision is then not `approve` any more, although nothing that matters changed. With the fact [`github_app_approval`](profile-format.md#github-pull-requests), the profile can see that the app already approved this commit, and answer with its own action for that, mapped to `keep_approval`. Place that rule before the rule that approves:
+
+```yaml
+facts:
+  - { name: pointsman, type: github_app_approval, at: $.pull_request, app: <the connector app's slug>, bot_id: <its bot's account id> }
+rules:
+  - when: "facts.pointsman.missing == true"
+    action: retry
+  - when: "facts.pointsman.approved_head == true and (decisions.risk.outcome == 'approvable' or decisions.risk.outcome == 'release' or decisions.risk.outcome == 'bump') and facts.coderabbit.changes_requested == false"
+    action: done
+  # … then the rule that approves
+```
+
+and in `GITHUB_CONNECTOR`:
+
+```json
+"actions": { "pr-next-step": { "approve": { "do": "approve" }, "done": { "do": "keep_approval" } } }
+```
+
+The connector cannot tell which rule gave the action. Map `keep_approval` only to an action that the profile gives when its approval should stand, as in the rule above. If the profile also gives that action in other cases (for example a merged pull request), those keep the approval too; then give the "already approved" rule an action of its own (for example `approved`) and map that one.
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run). For its approval to count toward a ruleset's required approvals, the app also needs **Contents: Read and write**: GitHub counts approvals only from reviewers with write access (tested on #174, 2026-10-23). The connector's tokens ask for contents only to read a diff (`contents: read`, [Chains](#chains)), never to write.
 

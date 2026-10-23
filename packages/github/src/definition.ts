@@ -28,6 +28,10 @@ export interface GitHubFactSpec extends FactSpec {
   version_text_files?: string[];
   /** For `github_release`: the changelog files (globs); default CHANGELOG.md. */
   changelogs?: string[];
+  /** For `github_app_approval`: the GitHub App's slug (its bot is "<slug>[bot]"). */
+  app?: string;
+  /** For `github_app_approval`: the account id of the app's bot, checked too when given. */
+  bot_id?: number;
   /** For `github_workflows`: entries added to the defaults (settings.ts, docs/profile-format.md#github-workflows). */
   privileged_triggers?: string[];
   inert_actions?: string[];
@@ -39,7 +43,7 @@ export interface GitHubFactSpec extends FactSpec {
 
 const gh = (spec: FactSpec) => spec as GitHubFactSpec;
 
-export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot' | 'github_release' | 'github_bump';
+export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot' | 'github_app_approval' | 'github_release' | 'github_bump';
 
 export interface GitHubFactQuery {
   type: GitHubFactType;
@@ -51,6 +55,8 @@ export interface GitHubFactQuery {
   property?: string;
   /** For `github_workflows`: entries added to the default settings. */
   workflows?: Partial<WorkflowSettings>;
+  /** For `github_app_approval`: the app's bot. */
+  app?: { slug: string; id?: number };
   /** For `github_release`: the version files, text files and changelog files (globs). */
   versionFiles?: string[];
   textFiles?: string[];
@@ -394,6 +400,62 @@ const github_copilot: FactTypeDef = {
   cases: { nullable: [], defaults: {} },
 };
 
+/** A GitHub App's slug, as GitHub makes it from the app's name (lower case, digits and hyphens). */
+const APP_SLUG = '^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$';
+
+/**
+ * Whether a GitHub App (by its slug, and its bot's account id when given)
+ * approved the head commit (reviews.ts): its latest review that decides
+ * approves the head and was not dismissed. Only that app's bot account
+ * counts, never another bot or a person. For the connector's own approval
+ * (docs/github-connector.md#actions).
+ */
+const github_app_approval: FactTypeDef = {
+  type: 'github_app_approval',
+  description: 'github_app_approval: whether a GitHub App approved the pull request.',
+  fields: { approved_head: { kind: 'boolean' }, approved_any: { kind: 'boolean' }, reviews: { kind: 'number' } },
+  input: pullRequest,
+  settings: {
+    app: {
+      description: 'For github_app_approval: the GitHub App\'s slug; its bot account is "<slug>[bot]".',
+      type: 'string',
+      pattern: APP_SLUG,
+    },
+    bot_id: {
+      description: 'For github_app_approval: the account id of the app\'s bot (GET /users/<slug>[bot]); when given, it must match too.',
+      type: 'integer',
+      minimum: 1,
+      maximum: 9007199254740991,
+    },
+  },
+  required: ['app'],
+  query: (spec: GitHubFactSpec, pr): GitHubFactQuery => ({
+    ...base(spec, pr),
+    ...(spec.app !== undefined && { app: { slug: spec.app, ...(spec.bot_id !== undefined && { id: spec.bot_id }) } }),
+  }),
+  timeoutMs: GITHUB_TIMEOUT_MS,
+  mock: { approved_head: false, approved_any: false, reviews: 0 },
+  words: {
+    en: {
+      describe: (f, s) => `${f}: the reviews of the GitHub App "${gh(s).app ?? ''}" on the pull request (${s.at}), read from GitHub: whether its approval of the head commit (or of any commit) stands, and how many reviews it made.`,
+      fields: {
+        approved_head: ['the app of % approved the head commit', 'the app of % did not approve the head commit'],
+        approved_any: ['an approval by the app of % stands', 'no approval by the app of % stands'],
+        reviews: 'the number of reviews by the app of %',
+      },
+    },
+    ja: {
+      describe: (f, s) => `${f}：GitHub から読むプルリクエスト（${s.at}）での GitHub App「${gh(s).app ?? ''}」のレビュー。head コミットへの承認（またはいずれかのコミットへの承認）が有効か、レビューの数。`,
+      fields: {
+        approved_head: ['%のアプリが head コミットを承認した', '%のアプリが head コミットを承認していない'],
+        approved_any: ['%のアプリの承認が有効', '%のアプリの有効な承認がない'],
+        reviews: '%のアプリのレビューの数',
+      },
+    },
+  },
+  cases: { nullable: [], defaults: {} },
+};
+
 /** The changelog of github_release when the fact names none. */
 export const RELEASE_CHANGELOGS = ['CHANGELOG.md'];
 
@@ -513,7 +575,7 @@ export const definition: FactModule = {
   // As in package.json (a test checks); released with the engine for now.
   version: '0.12.0',
   roles: ['facts', 'connector'],
-  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot, github_release, github_bump],
+  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot, github_app_approval, github_release, github_bump],
   reasons: { stale: STALE },
   settings: ['FACTS_GITHUB', 'FACTS_GITHUB_TOKEN', 'FACTS_GITHUB_APP_ID', 'FACTS_GITHUB_APP_PRIVATE_KEY', 'FACTS_GITHUB_IGNORE_CHECK'],
   // The connector (docs/github-connector.md): in its own Worker only, with the write app's key.

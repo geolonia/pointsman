@@ -369,12 +369,21 @@ export class PullRequestWork {
     let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
     if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
     const pending = decision.review?.status === 'pending';
-    // This profile can approve, but this decision does not (now): an approval of this head is withdrawn.
-    if (byAction && Object.values(byAction).some((a) => a.do === 'approve') && (spec?.do !== 'approve' || pending)) {
+    // This profile can approve, but this decision neither approves nor keeps the approval (now):
+    // an approval of this head is withdrawn. Fail-safe: every other action, an unmapped one, and
+    // a decision a person still checks withdraw it.
+    const keeps = spec?.do === 'approve' || spec?.do === 'keep_approval';
+    if (byAction && Object.values(byAction).some((a) => a.do === 'approve') && (!keeps || pending)) {
       await this.#withdraw(target, pr.head, profile, acts);
     }
     if (!spec) return { kind: 'none' };
     if (pending) return { kind: 'skipped', text: `${spec.do}: not done, a person checks this decision first` };
+    // Nothing to do on GitHub and nothing to record: the approval of this head (if any) stands.
+    if (spec.do === 'keep_approval') {
+      return acts.done[`${profile}:approve`]?.state === 'done'
+        ? { kind: 'done', text: 'approval of this commit kept' }
+        : { kind: 'skipped', text: 'keep_approval: no approval of this commit to keep' };
+    }
     if (spec.do === 'approve' && (pr.draft || pr.fork)) return { kind: 'skipped', text: 'approve: not done for a draft or a pull request from a fork' };
     if (spec.do === 'approve' && approveBlocked) return { kind: 'skipped', text: 'approve: not done, an older approval could not be dismissed' };
 
@@ -436,6 +445,8 @@ export class PullRequestWork {
         await this.#remember({ id, commit: pr.head, profile });
         return;
       }
+      case 'keep_approval':
+        return;
     }
   }
 
@@ -459,6 +470,8 @@ export class PullRequestWork {
         if (found) await this.#remember({ id: found.id, commit: found.commit, profile });
         return found !== undefined;
       }
+      case 'keep_approval':
+        return false;
     }
   }
 
@@ -539,6 +552,7 @@ function describe(spec: ActionSpec): string {
     case 'label': return `labels added: ${spec.labels.join(', ')}`;
     case 'request_reviewer': return `review requested from ${spec.reviewers.join(', ')}`;
     case 'approve': return 'approved this commit';
+    case 'keep_approval': return 'approval of this commit kept';
   }
 }
 

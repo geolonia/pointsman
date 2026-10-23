@@ -7,6 +7,8 @@
 //   github_workflows the GitHub Actions files it changes (workflows.ts)
 //   github_release   whether it only moves a version (release.ts)
 //   github_bump      whether it only bumps npm dependency versions (bump.ts)
+//   github_copilot   Copilot's code review (reviews.ts)
+//   github_app_approval whether a GitHub App's approval of the head stands (reviews.ts)
 //
 // Read-only: this file only sends GET requests to the GitHub API (and, for a
 // GitHub App, the one POST that creates an installation token); github_bump
@@ -31,7 +33,7 @@ import {
   type WorkflowFile, type WorkflowSettings,
 } from './workflows';
 import {
-  comments, copilotFacts, EDITORS_QUERY, editors, REVIEW_STATE_QUERY, reviews, reviewState, statusHistory,
+  appApprovalFacts, comments, copilotFacts, EDITORS_QUERY, editors, REVIEW_STATE_QUERY, reviews, reviewState, statusHistory,
   type Comment, type Editors, type Review, type ReviewState, type Status,
 } from './reviews';
 
@@ -60,6 +62,8 @@ export const MAX_MANIFEST_BYTES = 512 * 1024;
 /** The package.json files of a repository github_bump reads for dev_only; a repository with more fails the fact. */
 export const MAX_REPOSITORY_MANIFESTS = 50;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+/** A GitHub App's slug: lower case letters, digits and hyphens. */
+const APP_SLUG = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
 const PASSED = new Set(['success', 'neutral', 'skipped']);
 /** A repository as "owner/name"; "." and ".." are not names. */
 const FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
@@ -156,6 +160,8 @@ export class GitHubAppAuth implements GitHubAuth {
   private readonly perRepository: boolean;
   private key: Promise<CryptoKey> | undefined;
   private readonly tokens = new Map<string, { token: Promise<string>; until: number }>();
+  /** The app's slug, as each installation's answer names it. */
+  private readonly slugs = new Map<string, string>();
   /** The clock (tests set it). */
   now: () => number = () => Date.now();
 
@@ -203,12 +209,25 @@ export class GitHubAppAuth implements GitHubAuth {
     return entry.token;
   }
 
+  /**
+   * The app's slug, from the installation's answer (its bot is
+   * "<slug>[bot]"). Gets a token first when none was made yet; a FactError
+   * when GitHub did not name it.
+   */
+  async slug(pr: PullRequestRef, fetchFn: typeof fetch): Promise<string> {
+    await this.token(pr, fetchFn);
+    const slug = this.slugs.get(this.key_(pr));
+    if (!slug) throw new FactError('GitHub installation: no app slug');
+    return slug;
+  }
+
   private async create(pr: PullRequestRef, fetchFn: typeof fetch): Promise<string> {
     const jwt = await this.jwt();
     const signal = AbortSignal.timeout(GITHUB_TIMEOUT_MS);
     const installation = await getJson(fetchFn, `/repos/${pr.owner}/${pr.repo}/installation`, jwt, signal, 'installation');
-    const { id: installationId, permissions: granted } = installation as { id?: unknown; permissions?: unknown };
+    const { id: installationId, permissions: granted, app_slug: slug } = installation as { id?: unknown; permissions?: unknown; app_slug?: unknown };
     if (typeof installationId !== 'number') throw new FactError('GitHub installation: unexpected answer');
+    if (typeof slug === 'string' && APP_SLUG.test(slug)) this.slugs.set(this.key_(pr), slug.toLowerCase());
     const permissions = this.scope(isObject(granted) ? Object.fromEntries(Object.entries(granted).filter((e): e is [string, string] => typeof e[1] === 'string')) : {});
     if (Object.keys(permissions).length === 0) throw new FactError('GitHub installation: the app has none of the permissions needed');
     // The only request that is not a GET: it creates a token, it changes no repository.
@@ -1248,6 +1267,10 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       case 'github_copilot': {
         const [all, state] = await Promise.all([s.reviews(), s.reviewState()]);
         return { values: copilotFacts(all, state, query.pr.head), source };
+      }
+      case 'github_app_approval': {
+        if (!query.app) throw new FactError('no app');
+        return { values: appApprovalFacts(await s.reviews(), query.app, query.pr.head), source };
       }
       case 'github_release': {
         if (!query.versionFiles) throw new FactError('no version files');

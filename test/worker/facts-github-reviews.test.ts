@@ -236,3 +236,65 @@ describe('the GitHub settings other modules use', () => {
     expect(githubAuthFrom({ FACTS_GITHUB: 'mock' })).toBe('mock');
   });
 });
+
+describe('a GitHub App\'s approval (github_app_approval)', () => {
+  const BOT_ID = 4_242_001;
+  const appUser = { login: 'pointsman-checks[bot]', id: BOT_ID, type: 'Bot' };
+  const spec = (extra: Record<string, unknown> = { bot_id: BOT_ID }): FactSpec[] => [{ name: 'pointsman', type: 'github_app_approval', at: '$.pull_request', app: 'pointsman-checks', ...extra } as FactSpec];
+  const lookup = async (list: unknown[] | Handler, specs = spec()) => {
+    const server = fakeGitHub(routes({ [`${PR}/reviews`]: typeof list === 'function' ? list : () => list }));
+    return (await lookupFacts(specs, state, new GitHubFactProvider({ auth: new TokenAuth(TOKEN), fetch: server.fetchFn }))).pointsman!;
+  };
+  const appValues = async (list: unknown[], specs?: FactSpec[]) => {
+    const f = await lookup(list, specs);
+    if (f.missing) throw new Error(`missing: ${f.reason}`);
+    expect(resultError('github_app_approval', f)).toBeNull();
+    return f.values;
+  };
+
+  it('the app approved the head', async () => {
+    expect(await appValues([review('APPROVED', HEAD, appUser)])).toEqual({ approved_head: true, approved_any: true, reviews: 1 });
+    // A comment after it keeps it.
+    expect(await appValues([review('APPROVED', HEAD, appUser), review('COMMENTED', HEAD, appUser)])).toMatchObject({ approved_head: true, reviews: 2 });
+    // Without bot_id: the slug and the account type Bot.
+    expect(await appValues([review('APPROVED', HEAD, appUser)], spec({}))).toMatchObject({ approved_head: true });
+  });
+
+  it('an approval of an older commit is not one of the head', async () => {
+    expect(await appValues([review('APPROVED', OLD, appUser)])).toEqual({ approved_head: false, approved_any: true, reviews: 1 });
+  });
+
+  it('a dismissed approval does not count', async () => {
+    expect(await appValues([review('DISMISSED', HEAD, appUser)])).toEqual({ approved_head: false, approved_any: false, reviews: 1 });
+    // Its approval of the head was dismissed after it approved an older commit.
+    expect(await appValues([review('APPROVED', OLD, appUser), review('DISMISSED', HEAD, appUser)])).toMatchObject({ approved_head: false, approved_any: false });
+  });
+
+  it('only that app\'s bot account counts: another bot, a person, the same login with another id, a pending review', async () => {
+    const others = [
+      review('APPROVED', HEAD, { login: 'coderabbitai[bot]', id: 136622811, type: 'Bot' }),
+      review('APPROVED', HEAD, { login: 'pointsman-checks-2[bot]', id: BOT_ID, type: 'Bot' }),
+      review('APPROVED', HEAD, { login: 'dkastl', id: 1, type: 'User' }),
+      review('APPROVED', HEAD, { login: 'pointsman-checks', id: BOT_ID, type: 'User' }),
+      review('APPROVED', HEAD, { login: 'pointsman-checks[bot]', id: BOT_ID, type: 'User' }),
+      review('APPROVED', HEAD, { ...appUser, id: 7 }),
+      review('PENDING', HEAD, appUser),
+    ];
+    expect(await appValues(others)).toEqual({ approved_head: false, approved_any: false, reviews: 0 });
+    // Without bot_id, a bot with the app's exact login counts (only that app has it), the others still not.
+    expect(await appValues(others, spec({}))).toEqual({ approved_head: true, approved_any: true, reviews: 1 });
+  });
+
+  it('missing when the reviews cannot be read, the head moved, or there are more than are read', async () => {
+    expect(await lookup(() => new Response('{}', { status: 500 }))).toMatchObject({ missing: true, reason: 'error' });
+    expect(await lookup(() => new Response('{}', { status: 403 }))).toMatchObject({ missing: true, reason: 'unavailable' });
+    expect(await lookup(() => ({ not: 'a list' }))).toMatchObject({ missing: true, reason: 'error' });
+    const full = Array.from({ length: 100 }, () => review('COMMENTED', OLD, { login: 'bob', id: 5, type: 'User' }));
+    expect(await lookup(() => full)).toMatchObject({ missing: true, reason: 'error' });
+    let reads = 0;
+    const moving = () => (++reads === 1 ? pullRequest() : { ...pullRequest(), head: { sha: OLD, ref: 'docs', repo: { id: 1, full_name: 'octo-org/demo' } } });
+    const server = fakeGitHub(routes({ [PR]: moving, [`${PR}/reviews`]: () => [review('APPROVED', HEAD, appUser)] }));
+    const facts = await lookupFacts(spec(), state, new GitHubFactProvider({ auth: new TokenAuth(TOKEN), fetch: server.fetchFn }));
+    expect(facts.pointsman).toMatchObject({ missing: true, reason: 'stale' });
+  });
+});
