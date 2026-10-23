@@ -26,6 +26,17 @@ export interface ConnectorSettings {
   actions: Record<string, Record<string, ActionSpec>>;
   /** How each profile is asked, by profile; a profile that is not here is asked on every run, with title and body. */
   runs: Record<string, RunOptions>;
+  /** The signal for a decision action, by profile and action (docs/github-connector.md#signals); others get the defaults (comment.ts). */
+  signals?: Record<string, Record<string, SignalSpec>>;
+  /** The decision comment (docs/github-connector.md#the-decision-comment): off without it. */
+  comment?: { profiles: string[] };
+}
+
+export type SignalColour = 'red' | 'yellow' | 'green';
+/** A signal set by the deployment: its colour, and the word shown next to it (else the colour's default word). */
+export interface SignalSpec {
+  signal: SignalColour;
+  text?: string;
 }
 
 /** How the connector asks one profile (docs/github-connector.md#chains). */
@@ -187,6 +198,43 @@ function runsOf(v: unknown, profiles: string[]): Record<string, RunOptions> {
   return out;
 }
 
+const COLOURS = ['red', 'yellow', 'green'];
+/** A signal's word: letters, digits, spaces and a little punctuation, nothing markdown or HTML reads. */
+const SIGNAL_TEXT = /^[\p{L}\p{N}](?:[\p{L}\p{N} ,.:'/()-]{0,38}[\p{L}\p{N}.)])?$/u;
+
+function signalsOf(v: unknown, profiles: string[]): Record<string, Record<string, SignalSpec>> | undefined {
+  if (v === undefined) return undefined;
+  const out: Record<string, Record<string, SignalSpec>> = {};
+  for (const [profile, byAction] of Object.entries(plainObject(v, 'GITHUB_CONNECTOR: "signals"'))) {
+    const where = `GITHUB_CONNECTOR: signals.${profile}`;
+    if (!profiles.includes(profile)) throw new ConfigError(`${where}: not in "profiles"`);
+    out[profile] = {};
+    for (const [action, raw] of Object.entries(plainObject(byAction, where))) {
+      if (!ACTION.test(action)) throw new ConfigError(`${where}: "${action}" is not an action name`);
+      const spec = typeof raw === 'string' ? { signal: raw } : plainObject(raw, `${where}.${action}`);
+      const { signal, text, ...more } = spec as Record<string, unknown>;
+      if (Object.keys(more).length > 0) throw new ConfigError(`${where}.${action}: unknown key ${Object.keys(more)[0]}`);
+      if (typeof signal !== 'string' || !COLOURS.includes(signal)) throw new ConfigError(`${where}.${action}: the signal must be red, yellow or green`);
+      if (text !== undefined && (typeof text !== 'string' || !SIGNAL_TEXT.test(text))) {
+        throw new ConfigError(`${where}.${action}.text must be 1 to 40 letters, digits, spaces or , . : ' / ( ) -`);
+      }
+      out[profile][action] = { signal: signal as SignalColour, ...(text !== undefined && { text: text as string }) };
+    }
+  }
+  return out;
+}
+
+function commentOf(v: unknown, profiles: string[]): { profiles: string[] } | undefined {
+  if (v === undefined) return undefined;
+  const { profiles: shown, ...more } = plainObject(v, 'GITHUB_CONNECTOR: "comment"');
+  if (Object.keys(more).length > 0) throw new ConfigError(`GITHUB_CONNECTOR: comment: unknown key ${Object.keys(more)[0]}`);
+  if (!Array.isArray(shown) || shown.length === 0 || shown.length > 10 || !shown.every((p) => typeof p === 'string' && profiles.includes(p))) {
+    throw new ConfigError('GITHUB_CONNECTOR: comment.profiles must be a list of 1 to 10 profiles from "profiles"');
+  }
+  // In the order of "profiles", each once.
+  return { profiles: profiles.filter((p) => shown.includes(p)) };
+}
+
 const REPO = /^[a-z0-9-]{1,39}\/[a-z0-9._-]{1,100}$/;
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const text = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -206,7 +254,7 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
   } catch {
     throw new ConfigError('GITHUB_CONNECTOR is not valid JSON');
   }
-  const { repos, profiles, actions, runs, ...rest } = (config ?? {}) as { repos?: unknown; profiles?: unknown; actions?: unknown; runs?: unknown };
+  const { repos, profiles, actions, runs, signals, comment, ...rest } = (config ?? {}) as Record<string, unknown>;
   const unknown = Object.keys(rest);
   if (unknown.length > 0) throw new ConfigError(`GITHUB_CONNECTOR: unknown key ${unknown[0]}`);
   if (!Array.isArray(repos) || repos.length === 0 || !repos.every((r) => typeof r === 'string' && REPO.test(r.toLowerCase()))) {
@@ -225,14 +273,18 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
     profiles: profiles as string[],
     actions: actionsOf(actions, profiles as string[]),
     runs: runsOf(runs, profiles as string[]),
+    ...withValue('signals', signalsOf(signals, profiles as string[])),
+    ...withValue('comment', commentOf(comment, profiles as string[])),
   };
 }
 
 /** Whether a profile gets the diff: then the token may read contents (a private repository's diff needs it). */
 export const readsDiff = (s: ConnectorSettings) => Object.values(s.runs).some((r) => r.diff !== undefined);
 
-/** Whether any action is switched on: then the token may write pull requests. */
-export const actsOnGitHub = (s: ConnectorSettings) => Object.values(s.actions).some((a) => Object.keys(a).length > 0);
+const withValue = <K extends string, V>(key: K, v: V | undefined) => (v === undefined ? {} : { [key]: v } as Record<K, V>);
+
+/** Whether any action or the decision comment is switched on: then the token may write pull requests. */
+export const actsOnGitHub = (s: ConnectorSettings) => s.comment !== undefined || Object.values(s.actions).some((a) => Object.keys(a).length > 0);
 
 /** The check run's name for a profile. */
 export const checkName = (profile: string) => `Pointsman: ${profile}`;

@@ -52,6 +52,8 @@ export interface Decision {
   rule: number | null;
   facts?: Record<string, { missing?: boolean; reason?: string }>;
   review?: { status: string };
+  /** The AI answers, by question; not checked (comment.ts shows only values of the known shapes). */
+  answers?: unknown;
   /** Only on a test token's decision, which is not logged: never acted on. */
   test?: true;
 }

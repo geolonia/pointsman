@@ -256,7 +256,7 @@ describe('the connector checks the answer the same way through both adapters', (
       return outputs.at(-1)!;
     };
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect((await run(decision)).title).toBe('light (shadow)');
+    expect((await run(decision)).title).toBe('🟡 light (shadow)');
     expect((await run({ ...decision, action: '' })).title).toBe('invalid answer: nothing done');
     expect((await run([decision])).title).toBe('invalid answer: nothing done');
     expect((await run('light')).title).toBe('invalid answer: nothing done');
