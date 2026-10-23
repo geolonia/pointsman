@@ -86,6 +86,8 @@ export interface CheckRunOutput {
   conclusion: 'neutral' | 'success' | 'failure' | 'action_required';
   title: string;
   summary: string;
+  /** The check run's details (shown below the summary). */
+  text?: string;
 }
 
 export interface ConnectorGitHub {
@@ -96,7 +98,15 @@ export interface ConnectorGitHub {
   updateCheckRun(repo: string, id: number, output: CheckRunOutput): Promise<void>;
   /** Whether the app already wrote a comment with this marker. */
   findComment(repo: string, number: number, marker: string): Promise<boolean>;
-  createComment(repo: string, number: number, body: string): Promise<void>;
+  /** Writes a comment; its id. */
+  createComment(repo: string, number: number, body: string): Promise<number>;
+  /**
+   * The id of the oldest comment that starts with this marker and was written
+   * by the app's own bot account (`<app slug>[bot]`); a person's or another
+   * app's comment with the same marker is never taken for its own.
+   */
+  findOwnComment(repo: string, number: number, marker: string): Promise<number | undefined>;
+  updateComment(repo: string, id: number, body: string): Promise<void>;
   addLabels(repo: string, number: number, labels: string[]): Promise<void>;
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
   /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
@@ -211,8 +221,22 @@ export class AppGitHub implements ConnectorGitHub {
       && isObject(c.performed_via_github_app) && c.performed_via_github_app.id === this.#appId);
   }
 
-  async createComment(repo: string, number: number, body: string): Promise<void> {
-    await this.#call(repo, 'POST', `/issues/${number}/comments`, 'comment', { body });
+  async createComment(repo: string, number: number, body: string): Promise<number> {
+    const comment = await this.#call(repo, 'POST', `/issues/${number}/comments`, 'comment', { body });
+    if (!isObject(comment) || typeof comment.id !== 'number') throw new GitHubError('GitHub comment: unexpected answer', false);
+    return comment.id;
+  }
+
+  async findOwnComment(repo: string, number: number, marker: string): Promise<number | undefined> {
+    const comments = await this.#list(repo, `/issues/${number}/comments`, 'comments');
+    const bot = await this.#botLogin(repo);
+    const own = comments.filter((c) => typeof c.id === 'number' && typeof c.body === 'string' && c.body.startsWith(marker)
+      && isObject(c.user) && c.user.type === 'Bot' && typeof c.user.login === 'string' && c.user.login.toLowerCase() === bot);
+    return own.length === 0 ? undefined : Math.min(...own.map((c) => c.id as number));
+  }
+
+  async updateComment(repo: string, id: number, body: string): Promise<void> {
+    await this.#call(repo, 'PATCH', `/issues/comments/${id}`, 'comment', { body });
   }
 
   async addLabels(repo: string, number: number, labels: string[]): Promise<void> {
@@ -313,6 +337,6 @@ function checkRunBody(o: CheckRunOutput) {
     status: 'completed',
     conclusion: o.conclusion,
     external_id: o.externalId,
-    output: { title: o.title.slice(0, 255), summary: o.summary.slice(0, 60_000) },
+    output: { title: o.title.slice(0, 255), summary: o.summary.slice(0, 60_000), ...(o.text !== undefined && { text: o.text.slice(0, 60_000) }) },
   };
 }

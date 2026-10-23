@@ -586,7 +586,8 @@ export const definition: FactModule = {
       'GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR', 'POINTSMAN_URL', 'POINTSMAN_TOKEN', 'POINTSMAN', 'PULL_REQUESTS',
     ],
     // The check run always; the others only as the deployment maps decision
-    // actions to them (GITHUB_CONNECTOR "actions"); dismiss undoes its own approval after a push.
-    actions: ['check', 'comment', 'label', 'request_reviewer', 'approve', 'dismiss'],
+    // actions to them (GITHUB_CONNECTOR "actions"); dismiss undoes its own approval after a push;
+    // decision_comment is the one living comment per pull request (GITHUB_CONNECTOR "comment").
+    actions: ['check', 'comment', 'label', 'request_reviewer', 'approve', 'dismiss', 'decision_comment'],
   },
 };

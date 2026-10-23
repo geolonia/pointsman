@@ -13,7 +13,8 @@
 // for the check run first.
 
 import { type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
-import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
+import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
+import { checkText, COMMENT_MARKER, commentBody, signalMark, signalOf, type Station, stationOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { PullRequestTarget } from './webhook.ts';
 
@@ -103,6 +104,22 @@ interface Checks {
 interface Kept {
   head: string;
   byProfile: Record<string, { key: string; decision: Decision }>;
+}
+
+/**
+ * The decision comment (docs/github-connector.md#the-decision-comment): the
+ * latest decision shown for each profile on this head, and the comment's
+ * state. `pending` is the hash of a body being written (recorded before the
+ * write); `hash` the body last written; `failed` a body GitHub refused, not
+ * tried again.
+ */
+interface CommentRecord {
+  head: string;
+  entries: Record<string, Decision>;
+  id?: number;
+  hash?: string;
+  pending?: string;
+  failed?: string;
 }
 
 /** Rechecks scheduled for this head, by profile. */
@@ -199,8 +216,12 @@ export class PullRequestWork {
     }
     // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
     const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
-    // The decisions of this run (or kept for this head), for the profiles that require them.
+    // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
     const decided: Record<string, Decision> = {};
+    // The check runs written in this run, by profile (a failed comment is noted on them).
+    const shown: Record<string, CheckRunOutput> = {};
+    // Profiles whose approval of this head was withdrawn for an answer that is not a decision: their row in the comment no longer stands.
+    const withdrawn = new Set<string>();
     for (const profile of this.#settings.profiles) {
       const run = Object.hasOwn(this.#settings.runs, profile) ? this.#settings.runs[profile]! : {};
       if (run.skipDrafts && pr.draft) continue;
@@ -224,13 +245,13 @@ export class PullRequestWork {
       if (!answer) continue;
       if (answer.kind !== 'decision') {
         // Not a decision to act on: nothing is done, nothing is kept or sent on, and an approval of this head is withdrawn.
-        await this.#notActedOn(target, pr, profile, answer);
+        if (await this.#notActedOn(target, pr, profile, answer)) withdrawn.add(profile);
         continue;
       }
       const { decision } = answer;
       decided[profile] = decision;
       const outcome = await this.#act(target, pr, profile, decision, approveBlocked);
-      await this.#showCheck(target.repo, pr.head, profile, decision, outcome);
+      shown[profile] = await this.#showCheck(target.repo, pr, profile, decision, outcome);
       // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
       // Not kept when the diff was refused: once the app may read it, the next run asks with it.
       if (run.oncePerHead && outcome.kind !== 'skipped' && !refused) await this.#keep(profile, pr.head, keyOf, decision);
@@ -238,6 +259,94 @@ export class PullRequestWork {
       if (counted) await this.#countRecheck(profile, pr.head);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
+    if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown, withdrawn);
+  }
+
+  /** Whether the app's own approval of this head stands (by its records). */
+  async #approvedHere(head: string): Promise<boolean> {
+    const acts = await this.#storage.get<Acts>('acts');
+    return acts?.head === head && Object.entries(acts.done).some(([key, r]) => key.endsWith(':approve') && r.state === 'done');
+  }
+
+  async #station(pr: PullRequestInfo): Promise<Station> {
+    return stationOf(pr.draft, await this.#approvedHere(pr.head));
+  }
+
+  /**
+   * The one decision comment of the pull request, with the latest decision of
+   * each of its profiles on this head. Written only when its text changed, at
+   * most once per run; the record first, then the write. Found again by its
+   * marker and the app's own bot account. A failure is logged and noted on
+   * this run's check runs; it never stops the run.
+   */
+  async #updateComment(target: PullRequestTarget, pr: PullRequestInfo, decided: Record<string, Decision>, shown: Record<string, CheckRunOutput>, withdrawn: Set<string>): Promise<void> {
+    const profiles = this.#settings.comment!.profiles;
+    let record = (await this.#storage.get<CommentRecord>('comment')) ?? { head: pr.head, entries: {} };
+    // A new head starts with no decisions shown; the comment itself stays.
+    if (record.head !== pr.head) record = { ...record, head: pr.head, entries: {} };
+    for (const p of profiles) if (decided[p]) record.entries[p] = slim(decided[p]);
+    // Its approval is gone: its last decision (which approved) is not shown any more.
+    for (const p of withdrawn) delete record.entries[p];
+    const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
+    // Nothing to show and no comment yet: none is written. A comment that exists is updated to say so, never left stale.
+    if (decisions.length === 0 && record.id === undefined && record.hash === undefined && record.pending === undefined) return this.#storage.put({ comment: record });
+    const body = commentBody(decisions, this.#settings.signals, pr.head, await this.#station(pr));
+    const hash = await sha256(body);
+    // Unchanged (or refused before): no call to GitHub. A write left open is done again (it is found by its marker).
+    if (record.pending === undefined && (hash === record.hash || hash === record.failed)) return this.#storage.put({ comment: record });
+    record.pending = hash;
+    await this.#storage.put({ comment: record });
+    let note: string;
+    try {
+      record.id = await this.#writeComment(target, record.id, body);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const status = err instanceof GitHubError && err.status ? err.status : 'error';
+      console.error(`github connector: ${target.repo}#${target.number} decision comment: ${message}`);
+      if (err instanceof RetryError || (err instanceof GitHubError && err.retry)) {
+        // Busy or rate limited: the record stays open, the next run writes it.
+        note = `The decision comment could not be written (GitHub busy or rate limited, ${status}); the next run tries again.`;
+      } else {
+        // Refused (no permission): not tried again until the comment's text changes.
+        delete record.pending;
+        record.failed = hash;
+        note = `The decision comment could not be written (${status}); not tried again until it changes. Does the app have "Pull requests: Read and write"?`;
+      }
+      await this.#storage.put({ comment: record });
+      return this.#noteOnChecks(target, pr.head, shown, note);
+    }
+    // Outside the try: a storage failure here is not a refused write.
+    record.hash = hash;
+    delete record.pending;
+    delete record.failed;
+    await this.#storage.put({ comment: record });
+  }
+
+  /** A note on this run's check runs; only a hint, so a failure is logged, never retried. */
+  async #noteOnChecks(target: PullRequestTarget, head: string, shown: Record<string, CheckRunOutput>, note: string): Promise<void> {
+    for (const [profile, output] of Object.entries(shown)) {
+      try {
+        await this.#writeCheck(target.repo, head, profile, output.externalId, { ...output, summary: `${output.summary}\n\n${note}` });
+      } catch (err) {
+        console.error(`github connector: ${target.repo}#${target.number} ${profile} check run: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  /** Updates the comment (its id known or found by its trace), or writes it when there is none: its id. */
+  async #writeComment(target: PullRequestTarget, known: number | undefined, body: string): Promise<number> {
+    const { repo, number } = target;
+    const id = known ?? await retrying(() => this.#github.findOwnComment(repo, number, COMMENT_MARKER));
+    if (id !== undefined) {
+      try {
+        await retrying(() => this.#github.updateComment(repo, id, body));
+        return id;
+      } catch (err) {
+        // Deleted on GitHub: a new one.
+        if (!(err instanceof GitHubError && err.status === 404)) throw err;
+      }
+    }
+    return retrying(() => this.#github.createComment(repo, number, body));
   }
 
   /** The diff of this head: read the head again after it, and try again later when a push came in between. */
@@ -467,7 +576,8 @@ export class PullRequestWork {
     const { repo, number } = target;
     switch (spec.do) {
       case 'comment':
-        return this.#github.createComment(repo, number, `${markerOf(pr.head, profile, 'comment')}\n${spec.text}\n\n<sub>Pointsman, decision \`${decision.decision_id}\` on ${pr.head.slice(0, 7)}</sub>`);
+        await this.#github.createComment(repo, number, `${markerOf(pr.head, profile, 'comment')}\n${spec.text}\n\n<sub>Pointsman, decision \`${decision.decision_id}\` on ${pr.head.slice(0, 7)}</sub>`);
+        return;
       case 'label':
         return this.#github.addLabels(repo, number, spec.labels);
       case 'request_reviewer':
@@ -550,8 +660,11 @@ export class PullRequestWork {
     return null;
   }
 
-  async #showCheck(repo: string, head: string, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<void> {
-    return this.#writeCheck(repo, head, profile, decision.decision_id, checkOutput(decision, outcome));
+  /** Writes the decision's check run: its output. */
+  async #showCheck(repo: string, pr: PullRequestInfo, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<CheckRunOutput> {
+    const output = checkOutput(decision, outcome, { signals: this.#settings.signals, head: pr.head, station: await this.#station(pr) });
+    await this.#writeCheck(repo, pr.head, profile, decision.decision_id, output);
+    return output;
   }
 
   /**
@@ -559,15 +672,20 @@ export class PullRequestWork {
    * that the profile could have given is withdrawn (fail-safe, as for any decision that does not keep it).
    * Its check run says so.
    */
-  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>): Promise<void> {
+  /** Returns whether an approval of this head was withdrawn. */
+  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>): Promise<boolean> {
     const byAction = this.#settings.actions[profile];
     let note: string | undefined;
+    let withdrawn = false;
     if (byAction && Object.values(byAction).some((a) => a.do === 'approve')) {
       let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
       if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
+      const had = acts.done[`${profile}:approve`] !== undefined;
       if (!(await this.#withdraw(target, pr, profile, acts))) note = 'Its approval of this commit could not be withdrawn (logged; tried again on the next run).';
+      else withdrawn = had;
     }
     await this.#writeCheck(target.repo, pr.head, profile, answer.kind === 'test' ? answer.decision.decision_id : '', notActedOnOutput(profile, answer, note));
+    return withdrawn;
   }
 
   async #writeCheck(repo: string, head: string, profile: string, decisionId: string, output: CheckRunOutput): Promise<void> {
@@ -601,6 +719,30 @@ export class PullRequestWork {
   }
 }
 
+/** An AI answer as the comment keeps it: its type and a small value of a known shape, or nothing. */
+function slimAnswer(a: unknown): { type: string; value: boolean | string | number } | undefined {
+  if (a === null || typeof a !== 'object') return undefined;
+  const { type, value } = a as { type?: unknown; value?: unknown };
+  if (type === 'noul' && typeof value === 'boolean') return { type, value };
+  if (type === 'choice' && typeof value === 'string') return { type, value: value.slice(0, 65) };
+  if (type === 'score' && typeof value === 'number' && Number.isSafeInteger(value)) return { type, value };
+  return undefined;
+}
+
+/** What the comment keeps of a decision: what it shows, nothing more (no fact values), each part small. */
+function slim(d: Decision): Decision {
+  const answers = d.answers !== null && typeof d.answers === 'object' && !Array.isArray(d.answers)
+    ? Object.fromEntries(Object.entries(d.answers as Record<string, unknown>).filter(([k]) => k.length <= 64).slice(0, 20)
+      .map(([k, a]) => [k, slimAnswer(a)]).filter(([, a]) => a !== undefined))
+    : undefined;
+  return {
+    decision_id: d.decision_id, action: d.action, profile: d.profile, profile_version: d.profile_version, rule: d.rule,
+    ...(d.facts && { facts: Object.fromEntries(Object.entries(d.facts).slice(0, 50).map(([k, f]) => [k, { ...(f.missing !== undefined && { missing: f.missing }), ...(f.reason !== undefined && { reason: f.reason.slice(0, 100) }) }])) }),
+    ...(d.review && { review: { status: d.review.status } }),
+    ...(answers && { answers }),
+  };
+}
+
 /** A GitHub failure that may pass becomes a RetryError; others stay errors (logged by the caller, not retried). */
 async function retrying<T>(f: () => Promise<T>): Promise<T> {
   try {
@@ -631,7 +773,15 @@ function describe(spec: ActionSpec): string {
   }
 }
 
-export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }): CheckRunOutput {
+/** What the check run's title and details show besides the decision (comment.ts). */
+export interface CheckView {
+  signals?: Record<string, Record<string, SignalSpec>> | undefined;
+  /** With the head: the line and the switch in the details. */
+  head?: string;
+  station?: Station;
+}
+
+export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }, view: CheckView = {}): CheckRunOutput {
   const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${(f.reason ?? 'missing').slice(0, 300)})`);
   const lines = [
     `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
@@ -644,7 +794,13 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' })
     '',
     `Decision \`${d.decision_id}\``,
   ];
-  return { externalId: d.decision_id, conclusion: 'neutral', title: outcome.kind === 'none' ? `${d.action} (shadow)` : d.action, summary: lines.join('\n') };
+  // The signal and the action, as the comment shows them: "🟢 approve", "🔴 review (shadow)".
+  const signal = signalOf(view.signals, d);
+  const title = `${signalMark(signal)} ${d.action}${d.review?.status === 'pending' ? ': a person checks first' : ''}${outcome.kind === 'none' ? ' (shadow)' : ''}`;
+  return {
+    externalId: d.decision_id, conclusion: 'neutral', title, summary: lines.join('\n'),
+    ...(view.head !== undefined && { text: checkText(d, view.head, view.station) }),
+  };
 }
 
 /** The check run for a test decision or an answer that is not a decision: neutral, and nothing was done. */
@@ -668,5 +824,7 @@ export function notActedOnOutput(profile: string, answer: Exclude<CheckedAnswer,
     conclusion: 'neutral',
     title: answer.kind === 'test' ? 'test decision: nothing done' : 'invalid answer: nothing done',
     summary: lines.join('\n'),
+    // Replaces the details of an earlier decision on this check run.
+    text: 'No decision to show: nothing was done for this profile. The decision comment shows no decision from this answer.',
   };
 }

@@ -58,7 +58,9 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     createCheckRun: async (_r, head, name, output) => (calls.push({ op: 'create', head, name, output }), nextId++),
     updateCheckRun: async (_r, id, output) => void calls.push({ op: 'update', id, output }),
     findComment: async (_r, _n, marker) => (calls.push({ op: 'findComment' }), comments.some((c) => c.startsWith(marker))),
-    createComment: async (_r, _n, body) => { calls.push({ op: 'comment', body }); comments.push(body); },
+    createComment: async (_r, _n, body) => { calls.push({ op: 'comment', body }); comments.push(body); return nextId++; },
+    findOwnComment: async () => (calls.push({ op: 'findOwnComment' }), undefined),
+    updateComment: async (_r, id, body) => void calls.push({ op: 'updateComment', id, body }),
     addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
@@ -313,7 +315,7 @@ describe('the work of one pull request', () => {
   it('shows missing facts and the decision id; never blocks', () => {
     const d = decision('pr-docs-check', { action: 'retry', rule: null, facts: { ci: { missing: true, reason: 'unavailable' } } });
     const out = checkOutput(d);
-    expect(out).toMatchObject({ conclusion: 'neutral', externalId: d.decision_id, title: 'retry (shadow)' });
+    expect(out).toMatchObject({ conclusion: 'neutral', externalId: d.decision_id, title: '🟡 retry (shadow)' });
     expect(out.summary).toContain('`ci` (unavailable)');
     expect(out.summary).toContain('by its default');
     expect(out.summary).toContain(d.decision_id);
@@ -389,7 +391,7 @@ describe('actions (switched on per profile action)', () => {
     const { work, gh } = await acting(ACT, (p) => Response.json(decision(p, { action: 'wait' })));
     await work.run();
     expect(ops(gh.calls)).toEqual([]);
-    expect(gh.calls.find((c) => c.op === 'create')!.output!.title).toBe('wait (shadow)');
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.title).toBe('🟡 wait (shadow)');
   });
 
   it('carries out a mapped action once per head, and says so on the check run', async () => {
@@ -399,7 +401,7 @@ describe('actions (switched on per profile action)', () => {
     await work.run();
     expect(ops(gh.calls)).toEqual(['label']);
     const last = gh.calls.filter((c) => c.output).at(-1)!.output!;
-    expect(last.title).toBe('light');
+    expect(last.title).toBe('🟡 light');
     expect(last.conclusion).toBe('neutral');
     expect(last.summary).toContain('labels added: docs-only');
     expect((mem.data.get('acts') as any).done['pr-docs-check:label'].state).toBe('done');
@@ -431,7 +433,7 @@ describe('actions (switched on per profile action)', () => {
 
     // A real stop between record and action: pending, no trace, young: not done again yet.
     mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:comment': { decision: 'd', state: 'pending', at: t } } });
-    gh.github.createComment = async (_r, _n, body) => void gh.github.comments.push(body);
+    gh.github.createComment = async (_r, _n, body) => gh.github.comments.push(body);
     await event();
     await work.run();
     expect(gh.github.comments).toEqual([]);
@@ -555,7 +557,7 @@ describe('actions (switched on per profile action)', () => {
     expect(gh.github.approvals).toHaveLength(1);
     expect(ops(gh.calls)).toEqual(['approve']);
     const kept = gh.calls.filter((c) => c.output).at(-1)!.output!;
-    expect(kept.title).toBe('done');
+    expect(kept.title).toBe('🟢 done');
     expect(kept.summary).toContain('Done: approval of this commit kept');
     expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
     // Approving again on the same commit: no second approval.

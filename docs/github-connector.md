@@ -2,14 +2,14 @@
 
 The GitHub connector asks Pointsman about pull requests and shows each decision on the pull request as a check run. It is the connector role of the module `@pointsman/github` ([connectors.md](connectors.md)); the same module's fact role reads pull requests for the engine ([profile-format.md](profile-format.md#facts)).
 
-By default it runs in **shadow mode**: it only writes its check runs, with the conclusion `neutral`, so they never block a merge. A deployment can switch on [actions](#actions) for chosen decisions: a comment, labels, a review request or an approval. The check runs stay `neutral`.
+By default it runs in **shadow mode**: it only writes its check runs, with the conclusion `neutral`, so they never block a merge. A deployment can switch on [actions](#actions) for chosen decisions: a comment, labels, a review request or an approval; and [the decision comment](#the-decision-comment), one comment per pull request that shows the latest decisions. The check runs stay `neutral`.
 
 ## How it works
 
 1. GitHub sends a webhook for an event of a pull request (opened, new commits, ready for review, edited, a review, a finished check suite).
 2. The connector checks the webhook's signature, then hands the event to the pull request's own object (a Durable Object), one per pull request.
 3. That object runs the work for its pull request, one run at a time, 20 seconds after the event: a burst of events (several check suites finishing) becomes one run.
-4. A run reads the pull request again from GitHub, asks Pointsman with each configured profile, and writes one check run per profile and head commit, `Pointsman: <profile>`.
+4. A run reads the pull request again from GitHub, asks Pointsman with each configured profile, and writes one check run per profile and head commit, `Pointsman: <profile>`. Its title is the decision's [signal](#signals) and action, for example `🟢 approve` or `🔴 review (shadow)` (`(shadow)`: no action is mapped for it); its details show the [line and the switch](#the-decision-comment).
 
 What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token (or the same call as an [internal call](#internal-call), without a token), and
 
@@ -31,7 +31,7 @@ Title and body are cut to 300 and 8,000 characters. The body is the description 
 - **Retries.** When GitHub or Pointsman is busy, down or not reached (5xx, 429, a network error or timeout), the run is tried again later (the Durable Object's alarm, a few times with growing delays). When Pointsman refuses (another 4xx) or the app cannot do it (not installed, no permission, a broken key), it is a setting to fix: the error is logged without the token or key, and nothing is shown on the pull request. In both cases the next event of the pull request starts a new run; a redelivery of the same webhook from GitHub's settings is dropped as a replay.
 - **The engine's answer is checked.** Before anything is done with a decision, whichever way it came ([How it reaches Pointsman](#how-it-reaches-pointsman)), the connector checks the fields it reads: `decision_id` (a decision id), `action` (an action name: lower-case letters, digits, `_` and `-`, at most 64 characters), `profile` (the profile it asked), `ref` (the ref it sent), `profile_version`, `rule`, and when they are there `facts` (fact names and their `missing` and `reason`), `review` (only `pending` is known) and `test`. Other fields are not looked at. An answer that fails the check is logged (the field, never its value), shown on the check run as `invalid answer: nothing done`, and not tried again until the next event or recheck; nothing is done for it, nothing is kept or sent on to other profiles, and an approval of the head commit is withdrawn.
 - **No test decisions.** A decision with `test: true` (made with a test token, so not logged) is never acted on: no action, no `keep_approval` (an approval of the head commit is withdrawn), not kept and not sent on. Its check run is titled `test decision: nothing done`. Give the connector a token that is not a test token.
-- **Write access only here.** Only the connector has the key of the app that can write, and only in its own Worker. Its tokens are down-scoped to what it needs (read pull requests, write check runs; write pull requests only when actions are switched on) and to the one repository.
+- **Write access only here.** Only the connector has the key of the app that can write, and only in its own Worker. Its tokens are down-scoped to what it needs (read pull requests, write check runs; write pull requests only when actions or the decision comment are switched on) and to the one repository.
 - **Check runs deleted on GitHub** are made again on the next run.
 
 ## How it reaches Pointsman
@@ -170,6 +170,102 @@ A profile with `once_per_head` ([Chains](#chains)) is not asked again on the sam
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run). For its approval to count toward a ruleset's required approvals, the app also needs **Contents: Read and write**: GitHub counts approvals only from reviewers with write access (tested on #174, 2026-10-23). The connector's tokens ask for contents only to read a diff (`contents: read`, [Chains](#chains)), never to write.
 
+## The decision comment
+
+One comment per pull request shows the latest decision of each chosen profile, railway style. It is off by default; a deployment switches it on in `GITHUB_CONNECTOR`, with the profiles it shows:
+
+```json
+{
+  "repos": ["owner/name"],
+  "profiles": ["pr-risk", "pr-next-step"],
+  "comment": { "profiles": ["pr-risk", "pr-next-step"] },
+  "signals": {
+    "pr-risk": { "approvable": { "signal": "green", "text": "low risk" }, "release": "green", "risky": "red", "incomplete": "yellow" },
+    "pr-next-step": { "approve": "green", "done": "green", "ask-person": "red", "wait": "yellow", "queue": "yellow" }
+  }
+}
+```
+
+The comment for that pull request, when `pr-risk` decided `approvable` by its rule 3 and `pr-next-step` decided `ask-person` by its rule 8:
+
+````markdown
+<!-- pointsman decision-comment -->
+### 🚦 Pointsman
+
+| Profile | Signal | Decision | Set by |
+| --- | --- | --- | --- |
+| `pr-risk` | 🟢 low risk | `approvable` | rule 3 |
+| `pr-next-step` | 🔴 needs a person | `ask-person` | rule 8 |
+
+```text
+draft ─── ready ─── reviewed ─── approved ─── merged
+          🚆 ready for review
+```
+
+<details><summary><code>pr-risk</code>: why <code>approvable</code></summary>
+
+```text
+pr-risk @ 1a2b3c4
+  ║
+  ╠═ facts  ✓ 1 read
+  ╠═ AI     matches_title: yes
+  ║
+  ╚═▶ approvable   ← rule 3
+```
+
+</details>
+
+<details><summary><code>pr-next-step</code>: why <code>ask-person</code></summary>
+
+```text
+pr-next-step @ 1a2b3c4
+  ║
+  ╠═ facts  ✕ 1 of 3 missing: ci (timeout)
+  ╠═ AI     – none asked
+  ║
+  ╚═▶ ask-person   ← rule 8
+```
+
+</details>
+
+<sub>For commit 1a2b3c4. One comment, updated when a decision changes; the check runs `Pointsman: <profile>` have the decision ids.</sub>
+````
+
+The check run `Pointsman: pr-next-step` of the same decision is titled `🔴 ask-person (shadow)` (or `🔴 ask-person` with an action mapped), and has the line and its switch as details.
+
+What it shows:
+
+- **Signal**: one per profile, always with a word next to the colour (screen readers read the word). See [Signals](#signals).
+- **Line**: the pull request's progress, with the train where it is. The connector places the train only by what it knows for sure: `draft`; `approved` while its own approval of this commit stands; otherwise `ready`. It does not read other people's reviews, and closed pull requests get no run, so the train is never at `reviewed` or `merged`. A check run's line is drawn when that check run is written: if a later profile of the same run approves, an earlier profile's check run still shows `ready` until the next run, while the comment shows `approved`.
+- **Switch**: why the decision took its track, from the decision itself: how many facts were read and which are missing (with the engine's reason), the AI answers' values (yes/no, the chosen option, a level; not the probabilities), the rule that set it (or the profile's default), and whether a person still checks it. The same as the check run shows; no fact values, no text of the pull request.
+
+Rules:
+
+- **One comment, updated in place**, never a new one per decision. The connector finds it by its first line, the hidden marker `<!-- pointsman decision-comment -->`, and only among comments by its own bot account (`<app slug>[bot]`, as for [its approvals](#actions)). A person's or another app's comment with the same marker is never read or edited. If the comment was deleted, the next change writes a new one.
+- **Only when it changed**: the comment holds no decision ids or times, so a new decision with the same action, rule, facts and answers changes nothing and makes no call to GitHub. At most one write per run (the update, or the first comment).
+- **Recorded before the write**, like the actions: a run that stops while writing leaves the record open, and the next run writes it again (it finds the comment by its marker first, so there is never a second one).
+- **A new head commit** starts with no decisions shown; profiles not asked on it (a draft with `skip_drafts`) are left out until they decide.
+- **Test decisions and invalid answers** ([Safety](#safety)) never put anything in the comment: it keeps the profile's last real decision on this commit. One exception: when such an answer made the connector withdraw the profile's approval of this commit ([When the approval stays](#when-the-approval-stays)), that profile's row is removed (its last decision no longer stands) and the train moves back to `ready`.
+- **Nothing left to show** (every row removed, or no profile has decided on a new commit yet, for example a draft with `skip_drafts`): an existing comment is updated to a short neutral text, "No decision to show for commit `<commit>`", with the line; it is not deleted, so the pull request keeps one comment in one place. Without a comment yet, none is written.
+- **Failures** never stop the run or the actions. Refused by GitHub (no permission): logged, noted on the run's check runs, and not tried again until the comment's text changes. Busy or rate limited: noted on the check runs, and the next run writes it.
+- **Nothing from the pull request**: the comment never shows the title, the description or the diff. Profile and action names are checked names; the engine's fact reasons are cut to 40 characters of letters, digits and plain punctuation; an AI answer's option is shown only when it is a plain name; and all of it is in code blocks. So text in the pull request cannot add markdown, HTML, links or mentions to the comment.
+
+`comment.profiles`: 1 to 10 profiles of `profiles`, shown in the order of `profiles`. The comment needs the connector app's permission **Pull requests: Read and write** (comments on a pull request are issue comments); the connector's tokens then ask for it, still only for the one repository.
+
+### Signals
+
+Each decision gets a signal: red (a person or a review is needed), yellow (waiting) or green (go). A deployment sets them per profile and action in `signals`: either the colour (`"red"`), or the colour and the word shown next to it (`{ "signal": "red", "text": "look at the code" }`; 1 to 40 letters, digits, spaces and `, . ' ( ) -`, so no link or emoji code). The signals are used in the comment and in every check run's title, also without the comment.
+
+Without one, these defaults apply:
+
+| Action | Signal |
+| --- | --- |
+| `review`, `ask-person` | 🔴 needs a person |
+| `wait`, `in-progress`, `queue`, `retry` | 🟡 waiting |
+| `approve`, `pass`, `done` | 🟢 go |
+| any other | 🟡 decided: `<action>` |
+| any decision a person still checks (`review: pending`) | 🔴 a person checks first |
+
 ## Chains
 
 Profiles can build on each other ([decision-chains.md](decision-chains.md)): for example a first profile sorts the pull request into a risk class with AI questions, and a second one, rules only, decides the next step from that class and the review state. The connector runs such a chain when `GITHUB_CONNECTOR` has `runs`, by profile:
@@ -202,7 +298,7 @@ The part that reads pull-request text (the engine, with its AI questions) never 
 | App | Used by | Permissions (repository) | Webhook |
 | --- | --- | --- | --- |
 | Facts (read-only) | the Pointsman Worker, for its GitHub facts (`FACTS_GITHUB: app`) | Read: Metadata, Contents, Pull requests, Checks, Commit statuses, Actions, Custom properties. Organization: Members (read) | none |
-| Connector | the connector Worker | Read and write: Checks. Read: Pull requests (read and write for [actions](#actions)), Metadata; Contents read for a profile with `diff` in a private repository ([Chains](#chains)); Contents read and write for an approval that counts ([Actions](#actions)) | on: Pull request, Pull request review, Check suite |
+| Connector | the connector Worker | Read and write: Checks. Read: Pull requests (read and write for [actions](#actions) and [the decision comment](#the-decision-comment)), Metadata; Contents read for a profile with `diff` in a private repository ([Chains](#chains)); Contents read and write for an approval that counts ([Actions](#actions)) | on: Pull request, Pull request review, Check suite |
 
 Notes:
 
@@ -220,7 +316,7 @@ The connector Worker ([connectors/github/wrangler.jsonc](../connectors/github/wr
 | `GITHUB_APP_ID` | The connector app's id (a number) |
 | `GITHUB_APP_PRIVATE_KEY` | Secret: the connector app's private key (PEM, as GitHub gives it) |
 | `GITHUB_WEBHOOK_SECRET` | Secret: the webhook secret set in the app (at least 20 characters) |
-| `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)) and `"runs"` ([Chains](#chains)) |
+| `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)), `"runs"` ([Chains](#chains)), `"comment"` ([The decision comment](#the-decision-comment)) and `"signals"` ([Signals](#signals)) |
 | `POINTSMAN_URL` | Pointsman's base URL (https). Not with `POINTSMAN` |
 | `POINTSMAN_TOKEN` | Secret: a Pointsman API token for the connector's client, limited to its profiles. Not needed with `POINTSMAN` |
 | `POINTSMAN` | Instead of the two above: a service binding to the engine Worker's entrypoint `InternalEngine` ([Internal call](#internal-call)) |

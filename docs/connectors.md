@@ -5,7 +5,7 @@ A **connector** connects Pointsman to another system. It brings cases in (webhoo
 | Module | Role | What it does |
 | --- | --- | --- |
 | `@pointsman/fiware` | connector | The [FIWARE bridge](../bridge/README.md): NGSI-LD notifications in, the result back on the entity |
-| `@pointsman/github` | facts and connector | [GitHub connector](github-connector.md): pull-request webhooks in, a check run with the decision out, and actions a deployment switches on (comment, label, review request, approve); in its own Worker |
+| `@pointsman/github` | facts and connector | [GitHub connector](github-connector.md): pull-request webhooks in, a check run with the decision out, and actions a deployment switches on (comment, label, review request, approve), and one decision comment per pull request; in its own Worker |
 
 `actions/triage` and `actions/deploy-watch` are connectors too, as GitHub Actions; they are not modules yet.
 
