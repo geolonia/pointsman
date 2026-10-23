@@ -6,7 +6,8 @@
 // event is about to that pull request's object (PullRequestWork), which
 // drops replays and runs one event at a time. Everything else: 404.
 
-import { ConfigError, type Connector, type EngineApi } from '@pointsman/module-api';
+import { ConfigError, type Connector } from '@pointsman/module-api';
+import type { EngineClient } from './engine.ts';
 import { AppGitHub, type ConnectorGitHub } from './github.ts';
 import { type Accepted, type ObjectStorage, PullRequestWork } from './pull-request.ts';
 import { actsOnGitHub, connectorSettings, readsDiff, type ConnectorSettings } from './settings.ts';
@@ -91,7 +92,7 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
 }
 
 /** The work of one pull request's object, from the same settings. */
-export function pullRequestWork(settings: ConnectorSettings, storage: ObjectStorage, engine: EngineApi, github?: ConnectorGitHub): PullRequestWork {
+export function pullRequestWork(settings: ConnectorSettings, storage: ObjectStorage, engine: EngineClient, github?: ConnectorGitHub): PullRequestWork {
   return new PullRequestWork(storage, settings, github ?? new AppGitHub(settings.appId, settings.privateKey, undefined, actsOnGitHub(settings), readsDiff(settings)), engine);
 }
 
@@ -105,6 +106,7 @@ export function settingsWithObjects(env: Record<string, unknown>): { settings: C
 }
 
 export { actsOnGitHub, readsDiff, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
+export { engineSetting, httpEngine, ENGINE_BINDING, type DecideBody, type EngineAnswer, type EngineClient, type EngineSetting } from './engine.ts';
 export { PullRequestWork, RetryError, authorText, checkOutput, UNCLEAR_MS, type ActOutcome, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
 export { AppGitHub, GitHubError, actingScope, connectorScope, scopeFor, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, DIFF_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
 export { targetsOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';

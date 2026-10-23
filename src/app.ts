@@ -3,14 +3,14 @@
 import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord } from './auth';
-import { connected, deliver, makeDecision, makeReplay, publicRecord, type Deps } from './decide';
+import { connected, deliver, makeReplay, publicRecord, type Deps } from './decide';
+import { decideAnswer } from './internal';
 import { parseFeedback, parseResolution } from './feedback';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
 import { decisionGraph, toDmn, toSvg } from './graph';
 import { explainProfile, explanationText } from './explain';
 import type { DecisionLog, FinalAnswer } from './log';
-import { visibleRequires } from './chains';
 import { peopleAnswers } from './policy';
 import type { Profile } from './types';
 
@@ -133,29 +133,11 @@ export function createApp(deps: (env: Env) => Deps) {
     return c.json(result.replay);
   });
 
+  // The work after the token check is shared with internal calls (src/internal.ts).
   app.post('/v1/decide/:profile', async (c) => {
-    const versionParam = c.req.query('version');
-    let version: number | undefined;
-    if (versionParam !== undefined) {
-      if (!/^[1-9][0-9]{0,8}$/.test(versionParam)) {
-        return error(400, 'invalid_request', '"version" must be a positive integer');
-      }
-      version = Number(versionParam);
-    }
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return error(400, 'invalid_request', 'body must be valid JSON');
-    }
-    const idempotencyKey = c.req.header('Idempotency-Key');
-    const result = await makeDecision(deps(c.env), c.get('client'), c.req.param('profile'), raw, version,
-      idempotencyKey === undefined ? {} : { idempotencyKey });
-    if (!result.ok) return error(result.status, result.code, result.message);
-    // A repeated request returns the logged decision: hide what the token may no longer see.
-    const client = c.get('client');
-    const requires = visibleRequires(result.decision.requires, (profile) => canUse(client, profile));
-    return c.json(requires ? { ...result.decision, requires } : result.decision);
+    const answer = await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => c.req.json(),
+      c.req.query('version'), c.req.header('Idempotency-Key'));
+    return Response.json(answer.body, { status: answer.status });
   });
 
   // A decision is visible only to tokens that may use its profile; for others

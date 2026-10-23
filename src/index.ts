@@ -1,7 +1,9 @@
 // Worker entry point: picks the profile store and model adapters from the
 // environment (see wrangler.jsonc) and serves the API.
 
+import { WorkerEntrypoint } from 'cloudflare:workers';
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
+import { decideInternal, internalClient, type ApiAnswer } from './internal';
 import { KvTokenStore } from './auth-kv';
 import { ModuleRouter, type FactProvider } from './facts';
 import type { Connector, ConnectorEntry, ConnectorMessage, FactModuleEntry } from '@pointsman/module-api';
@@ -60,6 +62,8 @@ interface PointsmanEnv {
   /** Worker secret; sent as a bearer token. */
   MODEL_SERVER_API_KEY?: string | undefined;
   MODEL_SERVER_TIMEOUT_MS?: string | undefined;
+  /** JSON: the client and profiles of internal calls (InternalEngine below, src/internal.ts). */
+  INTERNAL_CLIENT?: string | undefined;
 }
 
 const OAUTH_SETTINGS = ['PUBLIC_URL', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'ALLOWED_GITHUB_ORGS', 'OAUTH_KV'] as const;
@@ -280,6 +284,40 @@ export function worker(entries?: readonly ConnectorEntry[]) {
 }
 
 const served = worker();
+
+/**
+ * Internal calls (docs/adapters.md#internal-calls): a Worker of the same
+ * deployment, for example the GitHub connector, binds this entrypoint
+ * (`"services": [{ "binding": "POINTSMAN", "service": "<this Worker>",
+ * "entrypoint": "InternalEngine" }]`) and calls `decide` without a token.
+ *
+ * A named entrypoint is not reachable from the internet: the Worker's URL and
+ * routes reach only the default export. Only a Worker in the same Cloudflare
+ * account with a binding to it can call it. The engine, not the caller,
+ * decides who the caller is: every call is made as the client in
+ * INTERNAL_CLIENT, with its profiles, through the same code as
+ * POST /v1/decide/{profile} after the token check. Without INTERNAL_CLIENT
+ * every call is refused.
+ */
+export class InternalEngine extends WorkerEntrypoint<Env> {
+  /** As POST /v1/decide/{profile}: the status and the JSON body. */
+  async decide(profile: unknown, request: unknown, options?: unknown): Promise<ApiAnswer> {
+    try {
+      const env = this.env as unknown as PointsmanEnv;
+      const client = internalClient(env.INTERNAL_CLIENT);
+      return await decideInternal(depsFor(env), client, profile, request, options);
+    } catch (err) {
+      if (err instanceof ConfigError) {
+        // The message names the setting, never its value.
+        console.error(`internal call configuration: ${err.message}`);
+        return { status: 500, body: { error: { code: 'not_configured', message: 'internal calls are not configured' } } };
+      }
+      // As the HTTP routes: logged here, not passed to the caller.
+      console.error(err);
+      return { status: 500, body: { error: { code: 'internal_error', message: 'internal error' } } };
+    }
+  }
+}
 
 export default {
   fetch: served.fetch,

@@ -11,7 +11,7 @@ By default it runs in **shadow mode**: it only writes its check runs, with the c
 3. That object runs the work for its pull request, one run at a time, 20 seconds after the event: a burst of events (several check suites finishing) becomes one run.
 4. A run reads the pull request again from GitHub, asks Pointsman with each configured profile, and writes one check run per profile and head commit, `Pointsman: <profile>`.
 
-What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token, and
+What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token (or the same call as an [internal call](#internal-call), without a token), and
 
 ```json
 {
@@ -31,6 +31,53 @@ Title and body are cut to 300 and 8,000 characters. The body is the description 
 - **Retries.** When GitHub or Pointsman is busy, down or not reached (5xx, 429, a network error or timeout), the run is tried again later (the Durable Object's alarm, a few times with growing delays). When Pointsman refuses (another 4xx) or the app cannot do it (not installed, no permission, a broken key), it is a setting to fix: the error is logged without the token or key, and nothing is shown on the pull request. In both cases the next event of the pull request starts a new run; a redelivery of the same webhook from GitHub's settings is dropped as a replay.
 - **Write access only here.** Only the connector has the key of the app that can write, and only in its own Worker. Its tokens are down-scoped to what it needs (read pull requests, write check runs; write pull requests only when actions are switched on) and to the one repository.
 - **Check runs deleted on GitHub** are made again on the next run.
+
+## How it reaches Pointsman
+
+The connector reaches Pointsman in one of two ways; the deployment chooses by its settings ([adapters.md](adapters.md#engine-client-a-connectors-way-to-the-engine)).
+
+- **HTTPS with a token** (the default; any setup): `POINTSMAN_URL` and the secret `POINTSMAN_TOKEN`, a Pointsman API token for the connector's client. The token has its profiles, can expire, and is rotated with `scripts/tokens.mjs`.
+- **Internal call** (when the engine Worker is in the same Cloudflare account): a service binding named `POINTSMAN` to the engine Worker's entrypoint `InternalEngine`. No token, no URL.
+
+With the binding there, the connector makes internal calls. Without it, it needs `POINTSMAN_URL` and `POINTSMAN_TOKEN`. Without either, or with the binding and `POINTSMAN_URL` both set, the connector answers 500 and logs which setting is wrong. A `POINTSMAN_TOKEN` left next to the binding is not used; the connector logs a warning until it is deleted.
+
+### Internal call
+
+The connector Worker's config:
+
+```jsonc
+"services": [{ "binding": "POINTSMAN", "service": "<engine Worker name>", "entrypoint": "InternalEngine" }]
+```
+
+The engine Worker's config names the client the calls are made as, and its profiles:
+
+```jsonc
+"vars": {
+  "INTERNAL_CLIENT": "{\"client\":\"github-connector\",\"profiles\":[\"pr-docs-check\",\"workflow-check\"]}"
+}
+```
+
+Use the client name the connector's token has today: its decisions are logged under the same client, so idempotency, chains and facts from the decision log go on where they left off. The profiles are those in `GITHUB_CONNECTOR` (`"*"` is not allowed).
+
+Why no token is needed: `InternalEngine` has no URL. Only a Worker in the same Cloudflare account with a binding to it can call it, and the engine, not the caller, says who the caller is (`INTERNAL_CLIENT`). After that, the call runs the same code as `POST /v1/decide` after the token check: the same profile scope, idempotency and decision log ([adapters.md](adapters.md#internal-calls)). Edge rules on the engine's `/v1/` paths (a firewall, rate limits) do not see internal calls.
+
+What that means: anyone who can deploy a Worker in this Cloudflare account can bind `InternalEngine` and decide as the `INTERNAL_CLIENT` client, with its profiles, without a token and without an expiry. Every bound Worker is the same client (one decision history, one idempotency space). It cannot be revoked per caller, and revoking the old token does not stop it: to turn internal calls off, remove `INTERNAL_CLIENT` from the engine's config and deploy.
+
+To switch an existing deployment from the token to the internal call:
+
+1. Deploy the engine Worker with `INTERNAL_CLIENT` (the client name and profiles of the connector's token).
+2. In the connector's config, remove `POINTSMAN_URL`, add the `services` binding, and deploy the connector.
+3. Check that new check runs appear (the connector's log shows a warning while `POINTSMAN_TOKEN` is still set). Then find the token's hash, revoke the token and delete the secret:
+
+   ```sh
+   node engine/scripts/tokens.mjs list --remote --config wrangler.jsonc
+   node engine/scripts/tokens.mjs revoke --hash <hash of the github-connector token> --remote --config wrangler.jsonc
+   wrangler secret delete POINTSMAN_TOKEN --config github-connector.jsonc
+   ```
+
+   These are the paths in a config repository (`engine/` is the engine checkout, `github-connector.jsonc` the connector's config). In this repository: `node scripts/tokens.mjs` and `--config connectors/github/wrangler.jsonc`.
+
+To go back, set `POINTSMAN_URL` and a new token, and remove the binding.
 
 ## Actions
 
@@ -129,17 +176,18 @@ The connector Worker ([connectors/github/wrangler.jsonc](../connectors/github/wr
 | `GITHUB_APP_PRIVATE_KEY` | Secret: the connector app's private key (PEM, as GitHub gives it) |
 | `GITHUB_WEBHOOK_SECRET` | Secret: the webhook secret set in the app (at least 20 characters) |
 | `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)) and `"runs"` ([Chains](#chains)) |
-| `POINTSMAN_URL` | Pointsman's base URL (https) |
-| `POINTSMAN_TOKEN` | Secret: a Pointsman API token for the connector's client, limited to its profiles |
+| `POINTSMAN_URL` | Pointsman's base URL (https). Not with `POINTSMAN` |
+| `POINTSMAN_TOKEN` | Secret: a Pointsman API token for the connector's client, limited to its profiles. Not needed with `POINTSMAN` |
+| `POINTSMAN` | Instead of the two above: a service binding to the engine Worker's entrypoint `InternalEngine` ([Internal call](#internal-call)) |
 | `PULL_REQUESTS` | The Durable Object binding (class `PullRequest`) |
 
-The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `FACTS_GITHUB_APP_ID`, and the secret `FACTS_GITHUB_APP_PRIVATE_KEY`.
+The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `FACTS_GITHUB_APP_ID`, and the secret `FACTS_GITHUB_APP_PRIVATE_KEY`. For the internal call: `INTERNAL_CLIENT`, JSON `{"client": "github-connector", "profiles": ["pr-docs-check", …]}`.
 
 ## Setting it up
 
 1. Create the two apps (GitHub: your organization's Settings → Developer settings → GitHub Apps → New GitHub App), with the permissions above, "Only on this account". The facts app has no webhook ("Active" off). The connector app's webhook URL is `https://<connector Worker>/webhook`, with a secret made by `openssl rand -hex 32`.
 2. Generate a private key for each app, and install each app on the repositories.
-3. Make a Pointsman token for the connector: `node scripts/tokens.mjs create --client github-connector --profiles pr-docs-check,workflow-check --remote`.
+3. Make a Pointsman token for the connector: `node scripts/tokens.mjs create --client github-connector --profiles pr-docs-check,workflow-check --remote`. Or, with the engine Worker in the same account, use an [internal call](#internal-call) instead: no token.
 4. Put the secrets in with `wrangler secret put <NAME>` (for the connector: `--config connectors/github/wrangler.jsonc`). Paste them only into wrangler, never into a file or a chat.
 5. Deploy the connector Worker with `wrangler deploy --config connectors/github/wrangler.jsonc`, then the Pointsman Worker with `FACTS_GITHUB: "app"`.
 6. Open or update a pull request: the check runs `Pointsman: <profile>` appear with the conclusion `neutral`.

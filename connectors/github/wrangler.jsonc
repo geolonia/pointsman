@@ -2,12 +2,18 @@
 // here are examples; a deployment keeps its own copy of this file. Secrets
 // (GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, POINTSMAN_TOKEN) are set with
 // `wrangler secret put <NAME> --config connectors/github/wrangler.jsonc`.
+//
+// It reaches Pointsman in one of two ways (docs/github-connector.md#how-it-reaches-pointsman):
+// - over HTTPS with a token: POINTSMAN_URL and the secret POINTSMAN_TOKEN (below);
+// - by an internal call, when the engine Worker is in the same Cloudflare
+//   account: the "services" binding POINTSMAN below, instead of POINTSMAN_URL
+//   and POINTSMAN_TOKEN. The engine then needs INTERNAL_CLIENT.
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "pointsman-github",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  // It only calls GitHub and Pointsman on public addresses.
+  // It only calls GitHub and Pointsman on public addresses (a service binding is not a fetch).
   "compatibility_flags": ["global_fetch_strictly_public"],
   "observability": { "enabled": true },
   "vars": {
@@ -15,6 +21,8 @@
     "GITHUB_CONNECTOR": "{\"repos\":[\"example/repo\"],\"profiles\":[\"pr-docs-check\"]}",
     "POINTSMAN_URL": "https://pointsman.example.org"
   },
+  // Internal call: remove POINTSMAN_URL above and set the engine Worker's name.
+  // "services": [{ "binding": "POINTSMAN", "service": "pointsman", "entrypoint": "InternalEngine" }],
   "durable_objects": {
     "bindings": [{ "name": "PULL_REQUESTS", "class_name": "PullRequest" }]
   },

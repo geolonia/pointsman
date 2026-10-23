@@ -1,12 +1,14 @@
 // The GitHub connector as its own Worker (docs/github-connector.md): the
-// connector role of @pointsman/github, next to Pointsman, which it calls at
-// POINTSMAN_URL with its own token. It holds the write app's key; the
+// connector role of @pointsman/github, next to Pointsman, which it calls
+// through the POINTSMAN binding (internal call, no token) or at POINTSMAN_URL
+// with its own token. It holds the write app's key; the
 // Pointsman Worker never does. Cloudflare adapter: the Durable Object
 // PullRequest runs one pull request's work at a time.
 
 import { DurableObject } from 'cloudflare:workers';
-import githubModule, { pullRequestWork, RetryError, settingsWithObjects, type Accepted, type PullRequestWork } from '@pointsman/github';
+import githubModule, { httpEngine, pullRequestWork, RetryError, settingsWithObjects, type Accepted, type ConnectorSettings, type EngineClient, type PullRequestWork } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
+import { bindingEngine, type EngineBinding } from './engine-binding.ts';
 
 export interface Env {
   GITHUB_APP_ID?: string;
@@ -19,19 +21,22 @@ export interface Env {
   POINTSMAN_URL?: string;
   /** Secret: a Pointsman API token for this connector's client. */
   POINTSMAN_TOKEN?: string;
+  /** Internal call: a service binding to the engine Worker's InternalEngine entrypoint; replaces POINTSMAN_URL and POINTSMAN_TOKEN. */
+  POINTSMAN?: EngineBinding;
   PULL_REQUESTS?: DurableObjectNamespace<PullRequest>;
 }
 
-const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
-
-/** Pointsman's API at POINTSMAN_URL; https only (the token is a bearer token), http only on loopback. */
-function engineOf(env: Env): EngineApi {
-  const u = URL.parse(env.POINTSMAN_URL ?? '');
-  if (!u || (u.protocol !== 'https:' && !LOOPBACK.includes(u.hostname)) || u.search || u.hash || u.username) {
-    throw new ConfigError('POINTSMAN_URL must be an https URL (http only for localhost)');
-  }
-  return { url: env.POINTSMAN_URL!.replace(/\/+$/, ''), fetch: (url, init) => fetch(url, init) };
+/** The adapter the settings chose (engine.ts in @pointsman/github checked them). */
+function engineFor(settings: ConnectorSettings, env: Env): EngineClient {
+  if (settings.engine.kind === 'internal') return bindingEngine(env.POINTSMAN!);
+  return httpEngine({ url: settings.engine.url, fetch: (url, init) => fetch(url, init) }, settings.engine.token);
 }
+
+/** The webhook handler reaches the engine only through the pull requests' objects. */
+const NO_ENGINE: EngineApi = {
+  url: 'https://engine.invalid',
+  fetch: () => Promise.reject(new Error('the GitHub connector calls Pointsman from its pull requests\' objects')),
+};
 
 function unconfigured(err: unknown): Response {
   // The message names the setting, never its value.
@@ -42,7 +47,7 @@ function unconfigured(err: unknown): Response {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
-      const connector = githubModule.connect(env as Record<string, unknown>, { engine: engineOf(env) }, 'own');
+      const connector = githubModule.connect(env as Record<string, unknown>, { engine: NO_ENGINE }, 'own');
       if (!connector) throw new ConfigError('no setting is set');
       return await connector.fetch(request);
     } catch (err) {
@@ -57,7 +62,7 @@ export class PullRequest extends DurableObject<Env> {
   #work(): PullRequestWork {
     const found = settingsWithObjects(this.env as Record<string, unknown>);
     if (!found) throw new ConfigError('no setting is set');
-    return pullRequestWork(found.settings, this.ctx.storage, engineOf(this.env));
+    return pullRequestWork(found.settings, this.ctx.storage, engineFor(found.settings, this.env));
   }
 
   override async fetch(request: Request): Promise<Response> {

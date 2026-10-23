@@ -24,6 +24,10 @@
     // "PUBLIC_URL": "https://pointsman.example.workers.dev",
     // "GITHUB_CLIENT_ID": "Iv23li...",
     // "ALLOWED_GITHUB_ORGS": "example-org"
+    // Internal calls (engine/docs/github-connector.md#internal-call): a
+    // connector Worker in the same account binds the entrypoint InternalEngine
+    // and calls without a token, as this client with these profiles.
+    // "INTERNAL_CLIENT": "{\"client\":\"github-connector\",\"profiles\":[\"pr-docs-check\"]}"
   },
   "ai": { "binding": "AI" },
   "kv_namespaces": [

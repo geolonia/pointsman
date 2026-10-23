@@ -5,6 +5,7 @@
 import { ConfigError } from '@pointsman/module-api';
 import { definition } from '../definition.ts';
 import { privateKeyDer } from '../provider.ts';
+import { engineSetting, type EngineSetting } from './engine.ts';
 
 /** The settings it reads (in the module's definition). */
 export const CONNECTOR_SETTINGS = definition.connector!.settings;
@@ -13,7 +14,8 @@ export interface ConnectorSettings {
   appId: number;
   privateKey: string;
   webhookSecret: string;
-  pointsmanToken: string;
+  /** How it reaches Pointsman (engine.ts). */
+  engine: EngineSetting;
   /** Repositories (owner/name, lower case) and the profiles asked for each pull request. */
   repos: Set<string>;
   profiles: string[];
@@ -180,7 +182,7 @@ const text = (v: unknown): string | undefined => (typeof v === 'string' && v !==
 /** The settings, or undefined when none is set (the connector is off). Throws ConfigError on missing or wrong ones. */
 export function connectorSettings(env: Record<string, unknown>): ConnectorSettings | undefined {
   if (CONNECTOR_SETTINGS.every((name) => env[name] === undefined || env[name] === '')) return undefined;
-  for (const name of ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR', 'POINTSMAN_TOKEN']) {
+  for (const name of ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR']) {
     if (!text(env[name])) throw new ConfigError(`${name} is not set`);
   }
   if (!/^[0-9]{1,12}$/.test(env.GITHUB_APP_ID as string)) throw new ConfigError('GITHUB_APP_ID must be a number');
@@ -206,7 +208,7 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
     appId: Number(env.GITHUB_APP_ID),
     privateKey: env.GITHUB_APP_PRIVATE_KEY as string,
     webhookSecret: env.GITHUB_WEBHOOK_SECRET as string,
-    pointsmanToken: env.POINTSMAN_TOKEN as string,
+    engine: engineSetting(env),
     repos: new Set((repos as string[]).map((r) => r.toLowerCase())),
     profiles: profiles as string[],
     actions: actionsOf(actions, profiles as string[]),

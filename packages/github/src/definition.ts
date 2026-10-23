@@ -521,7 +521,7 @@ export const definition: FactModule = {
     id: 'github',
     placements: ['own'],
     settings: [
-      'GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR', 'POINTSMAN_URL', 'POINTSMAN_TOKEN', 'PULL_REQUESTS',
+      'GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'GITHUB_CONNECTOR', 'POINTSMAN_URL', 'POINTSMAN_TOKEN', 'POINTSMAN', 'PULL_REQUESTS',
     ],
     // The check run always; the others only as the deployment maps decision
     // actions to them (GITHUB_CONNECTOR "actions"); dismiss undoes its own approval after a push.
