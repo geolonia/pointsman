@@ -6,8 +6,8 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted. The `github_workflows` fact (since 0.4.0) is not covered by this model yet; a report about it is a MODEL-GAP.",
   "confidence": {
-    "documented": 445,
-    "inferred": 4
+    "documented": 442,
+    "inferred": 7
   },
   "components": [
     {
@@ -850,7 +850,7 @@
       "parameter": "delivery-event-payload",
       "attacker_controllable": "no",
       "component": "connector-github",
-      "caller_must_enforce": "none — replays dropped for 7 days; other repositories and own check suites ignored; the event is only a hint",
+      "caller_must_enforce": "none — replays dropped for 7 days (at most 500 entries per pull request); other repositories and own check suites ignored; the event is only a hint",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Safety\"; packages/github/src/connector/webhook.ts header comment"
     },
@@ -868,7 +868,7 @@
       "parameter": "comments-reviews-check-runs",
       "attacker_controllable": "yes",
       "component": "connector-github",
-      "caller_must_enforce": "none — only the connector app's comments and recorded approval ids count as its own",
+      "caller_must_enforce": "none — only the connector app's comments and recorded approval ids count as its own; while an action record is open, a bot approval with its marker is recorded as its own",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\"; packages/github/src/connector/github.ts findComment, ownApprovals"
     },
@@ -1322,7 +1322,7 @@
       "severity_tier": "security",
       "conditions": "GET requests to the fixed host api.github.com and, with a GitHub App, one POST that creates a read-only, down-scoped installation token; github_bump also GET requests to registry.npmjs.org without any credential; no write to a repository, pull request or check; redirects not followed; source names only the pull request; the GraphQL queries of github_copilot and the CodeRabbit module are not covered",
       "provenance": "documented",
-      "source": "packages/github/src/provider.ts header: \"this file only sends GET requests to the GitHub API\"; docs/profile-format.md \"Settings\""
+      "source": "docs/profile-format.md \"Settings\": \"Making the token is the only request that is not a read\"; packages/github/src/npm.ts header comment"
     },
     {
       "property": "P-GITHUB-FACTS-FOR-HEAD",
@@ -1352,7 +1352,7 @@
       "property": "P-CONNECTOR-WEBHOOK-SIGNED",
       "violation_symptom": "x-authentication-bypass, x-replay",
       "severity_tier": "security",
-      "conditions": "a valid X-Hub-Signature-256 over the body before anything is read from it; bodies over 2 MB refused while read; delivery ids and body hashes kept 7 days against replays; other repositories and own check suites ignored; the pull request read again with the connector's token; voided by a leaked webhook secret",
+      "conditions": "a valid X-Hub-Signature-256 over the body before anything is read from it; bodies over 2 MB refused while read; delivery ids and body hashes kept 7 days against replays, at most the 500 newest per pull request; other repositories and own check suites ignored; the pull request read again with the connector's token; voided by a leaked webhook secret",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Safety\""
     },
@@ -1911,7 +1911,7 @@
       "field": "properties_not_provided"
     },
     {
-      "claim": "Q31: We believe an approval by the connector is by design the profile's decision and nothing more: approvals on facts alone (as for docs, release and dependency-bump pull requests) are as strong as the rules and facts, and a profile that approves on AI answers about the author's text can be steered. Proposed answer: yes; disclaim a person's review behind it, and make the integrator's rules the control.",
+      "claim": "Q31: We believe prompt injection through the pull request's title, description and diff is accepted for the connector as it is for the other families (the ruling of 2026-10 did not cover the connector), and that an approval by the connector is by design the profile's decision and nothing more: approvals on facts alone (as for docs, release and dependency-bump pull requests) are as strong as the rules and facts, and a profile that approves on AI answers about the author's text can be steered. Proposed answer: yes; disclaim a person's review behind it, and make the integrator's rules the control.",
       "field": "properties_not_provided"
     }
   ]

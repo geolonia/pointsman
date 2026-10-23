@@ -229,11 +229,14 @@ downstream (an automatic approval).
   authenticates (a service binding, an internal network) is trusted as the
   account is; the service names the client itself. Proposed: a property
   for who the service says the caller is, a disclaimer for who may call."
-- **Re-binding lesson, again**: seven releases landed between `v0.5.0` and
-  `v0.12.0` in one day. The validator caught the moved files (its citation
+- **Re-binding lesson, again**: nine releases (`v0.6.0` to `v0.12.0`) landed
+  within a day. The validator caught the moved files (its citation
   check fails on a path that no longer exists), but not a line that moved
   inside an unmoved file; a small script compared every cited line at the
-  old binding with the new tree and found 22 to fix. Everything between the
+  old binding with the new tree and found 22 to fix; the self-review found
+  four more that were cited in words ("lines 318 and 320 of `src/app.ts`"),
+  which the script did not see, and two bridge citations that were already
+  wrong before. Everything between the
   bindings that this amendment does not cover is listed in §1.16 as a
   `MODEL-GAP`.
 - **Length**: the model grew from about 23,700 to about 31,000 words. The
