@@ -39,7 +39,7 @@ export interface GitHubFactSpec extends FactSpec {
 
 const gh = (spec: FactSpec) => spec as GitHubFactSpec;
 
-export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot' | 'github_release';
+export type GitHubFactType = 'github_pr' | 'github_paths' | 'github_checks' | 'github_property' | 'github_workflows' | 'github_copilot' | 'github_release' | 'github_bump';
 
 export interface GitHubFactQuery {
   type: GitHubFactType;
@@ -132,6 +132,7 @@ const github_pr: FactTypeDef = {
         author_member: ['the author of % is a member of the owner', 'the author of % is not a member of the owner'],
         author_dependabot: ['% is by Dependabot', '% is not by Dependabot'],
         fork: ['% comes from a fork', '% does not come from a fork'],
+        // For a pull request by Dependabot, also Dependabot's own commits (provider.ts, allVerified).
         all_commits_verified: ['every commit of % has a verified signature', 'not every commit of % has a verified signature'],
         pushed_by_author: 'the answer to "did the author of % push every commit"',
         author_sole_code_owner: ['the author of % is the only code owner of every changed file', 'the author of % is not the only code owner of every changed file'],
@@ -454,6 +455,57 @@ const github_release: FactTypeDef = {
   cases: { nullable: [], defaults: {} },
 };
 
+/** github_bump reads GitHub, then the npm registry: a longer limit than the other GitHub facts. */
+export const BUMP_TIMEOUT_MS = 10_000;
+
+/**
+ * Whether the pull request only bumps npm dependency versions, as a
+ * Dependabot pull request does (bump.ts). Not such a pull request (another
+ * ecosystem, code, docs): applies false and every other field at its
+ * strictest value.
+ */
+const github_bump: FactTypeDef = {
+  type: 'github_bump',
+  description: 'github_bump: whether the pull request only bumps npm dependency versions.',
+  fields: {
+    applies: { kind: 'boolean' }, only_manifests: { kind: 'boolean' }, version_only: { kind: 'boolean' }, semver: { kind: 'string' },
+    dev_only: { kind: 'boolean' }, registry_changed: { kind: 'boolean' }, manifest_lines: { kind: 'number' }, release_age_days: { kind: 'number' },
+  },
+  input: pullRequest,
+  query: base,
+  timeoutMs: BUMP_TIMEOUT_MS,
+  mock: { applies: false, only_manifests: false, version_only: false, semver: 'none', dev_only: false, registry_changed: true, manifest_lines: 0, release_age_days: 0 },
+  words: {
+    en: {
+      describe: (f, s) => `${f}: whether the pull request (${s.at}) only bumps npm dependency versions (package.json, pnpm-lock.yaml, package-lock.json), read from GitHub, with the publish times from the npm registry.`,
+      fields: {
+        applies: ['% is an npm dependency bump', '% is not an npm dependency bump'],
+        only_manifests: ['% only changes package.json and lockfiles', '% changes more than package.json and lockfiles'],
+        version_only: ['% only changes dependency versions', '% changes more than dependency versions'],
+        semver: 'the largest version step of % (major, minor, patch or none)',
+        dev_only: ['% only bumps dev dependencies', '% bumps more than dev dependencies'],
+        registry_changed: ['% may change where a package comes from', '% does not change where a package comes from'],
+        manifest_lines: 'the number of changed lines in the package.json files of %',
+        release_age_days: { subject: 'the age of the youngest release that % bumps to', unit: 'days' },
+      },
+    },
+    ja: {
+      describe: (f, s) => `${f}：プルリクエスト（${s.at}）が npm の依存のバージョンだけを上げるか（package.json、pnpm-lock.yaml、package-lock.json）。GitHub から読み、公開日時は npm レジストリから読む。`,
+      fields: {
+        applies: ['%が npm の依存の更新', '%が npm の依存の更新でない'],
+        only_manifests: ['%が package.json とロックファイルだけを変える', '%が package.json とロックファイル以外も変える'],
+        version_only: ['%が依存のバージョンだけを変える', '%が依存のバージョン以外も変える'],
+        semver: '%の最大のバージョンの上げ方（major・minor・patch・none）',
+        dev_only: ['%が開発用の依存だけを上げる', '%が開発用以外の依存も上げる'],
+        registry_changed: ['%がパッケージの取得元を変えうる', '%がパッケージの取得元を変えない'],
+        manifest_lines: '%の package.json の変更行数',
+        release_age_days: { subject: '%が上げる先のいちばん新しいリリースの公開からの日数', unit: '日' },
+      },
+    },
+  },
+  cases: { nullable: [], defaults: {} },
+};
+
 const STALE: Bilingual = { en: 'the pull request has a newer commit', ja: 'プルリクエストに新しいコミットがある' };
 
 export const definition: FactModule = {
@@ -461,7 +513,7 @@ export const definition: FactModule = {
   // As in package.json (a test checks); released with the engine for now.
   version: '0.9.2',
   roles: ['facts', 'connector'],
-  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot, github_release],
+  types: [github_pr, github_paths, github_checks, github_property, github_workflows, github_copilot, github_release, github_bump],
   reasons: { stale: STALE },
   settings: ['FACTS_GITHUB', 'FACTS_GITHUB_TOKEN', 'FACTS_GITHUB_APP_ID', 'FACTS_GITHUB_APP_PRIVATE_KEY', 'FACTS_GITHUB_IGNORE_CHECK'],
   // The connector (docs/github-connector.md): in its own Worker only, with the write app's key.
