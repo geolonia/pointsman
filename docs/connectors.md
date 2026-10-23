@@ -11,7 +11,7 @@ A **connector** connects Pointsman to another system. It brings cases in (webhoo
 
 ## The rule: through the public API
 
-A connector asks the engine only through its public API ([openapi.yaml](../openapi.yaml)), with its own client token. So each of its decisions passes the same checks as any other client's: the token and the profiles it may use, the profile's rules, idempotency, and the decision log, where the decision shows the connector's client name. A connector never calls the engine's code around that.
+A connector asks the engine only through its public API ([openapi.yaml](../openapi.yaml)), with its own client token. So each of its decisions passes the same checks as any other client's: the token and the profiles it may use, the profile's rules, idempotency, and the decision log, where the decision shows the connector's client name. A connector never calls the engine's code around that. The GitHub connector can instead use an [internal call](adapters.md#internal-calls) when it runs in the same Cloudflare account: no token, but the same checks, as the client the engine names.
 
 A connector says which actions it can carry out, a fixed list (`actions` in its definition), so a review sees everything it may do to the other system. The bridge's are its writes to the context broker. A connector that acts on its own judgement, like the GitHub connector (#147), carries out only the actions a deployment switched on from that list.
 

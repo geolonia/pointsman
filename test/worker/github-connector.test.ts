@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -25,7 +25,7 @@ async function pemKey(): Promise<string> {
 const KEY = await pemKey();
 
 const settings = (extra: Partial<ConnectorSettings> = {}): ConnectorSettings => ({
-  appId: APP_ID, privateKey: KEY, webhookSecret: SECRET, pointsmanToken: `pm_${crypto.randomUUID()}`,
+  appId: APP_ID, privateKey: KEY, webhookSecret: SECRET, engine: { kind: 'http', url: 'https://pointsman.example.org', token: `pm_${crypto.randomUUID()}` },
   repos: new Set([REPO]), profiles: ['pr-docs-check', 'workflow-check'], actions: {}, runs: {}, ...extra,
 });
 
@@ -78,7 +78,7 @@ const decision = (profile: string, extra: Partial<Decision> = {}): Decision => (
 
 function fakeEngine(answer: (profile: string) => Response = (p) => Response.json(decision(p))) {
   const calls: { profile: string; key: string; body: any; auth: string }[] = [];
-  const engine: EngineApi = {
+  const api: EngineApi = {
     url: 'https://pointsman.example.org',
     fetch: async (url, init) => {
       const profile = decodeURIComponent(url.split('/v1/decide/')[1]!);
@@ -87,7 +87,8 @@ function fakeEngine(answer: (profile: string) => Response = (p) => Response.json
       return answer(profile);
     },
   };
-  return { engine, calls };
+  // The HTTP adapter, as the connector Worker builds it.
+  return { engine: httpEngine(api, `pm_${crypto.randomUUID()}`), api, calls };
 }
 
 async function sign(body: string, secret = SECRET): Promise<string> {
@@ -315,7 +316,7 @@ describe('the work of one pull request', () => {
 });
 
 describe('settings and tokens', () => {
-  const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x', GITHUB_CONNECTOR: JSON.stringify({ repos: ['Example/Repo'], profiles: ['pr-docs-check'] }) };
+  const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x', GITHUB_CONNECTOR: JSON.stringify({ repos: ['Example/Repo'], profiles: ['pr-docs-check'] }) };
 
   it('is off without settings, and refuses missing or wrong ones', () => {
     expect(connectorSettings({})).toBeUndefined();
@@ -329,11 +330,11 @@ describe('settings and tokens', () => {
   });
 
   it('runs only in its own Worker, with its objects', () => {
-    expect(githubModule.connect({}, { engine: fakeEngine().engine }, 'own')).toBeUndefined();
-    expect(() => githubModule.connect(env, { engine: fakeEngine().engine }, 'own')).toThrow(ConfigError);
+    expect(githubModule.connect({}, { engine: fakeEngine().api }, 'own')).toBeUndefined();
+    expect(() => githubModule.connect(env, { engine: fakeEngine().api }, 'own')).toThrow(ConfigError);
     const objects = { idFromName: () => 1, get: () => ({ fetch: async () => new Response() }) };
-    expect(() => githubModule.connect({ ...env, PULL_REQUESTS: objects }, { engine: fakeEngine().engine }, 'engine')).toThrow(/own Worker/);
-    expect(githubModule.connect({ ...env, PULL_REQUESTS: objects }, { engine: fakeEngine().engine }, 'own')).toBeDefined();
+    expect(() => githubModule.connect({ ...env, PULL_REQUESTS: objects }, { engine: fakeEngine().api }, 'engine')).toThrow(/own Worker/);
+    expect(githubModule.connect({ ...env, PULL_REQUESTS: objects }, { engine: fakeEngine().api }, 'own')).toBeDefined();
   });
 
   it('asks GitHub for a token that can only read pull requests and write check runs', async () => {
@@ -500,7 +501,7 @@ describe('actions (switched on per profile action)', () => {
   });
 
   it('settings: actions only for listed profiles, from the fixed list, with checked values', () => {
-    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x' };
+    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
     const conf = (actions: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p'], actions }) });
     expect(connectorSettings(conf({ p: { light: { do: 'label', labels: ['x'] } } }))!.actions).toEqual({ p: { light: { do: 'label', labels: ['x'] } } });
     expect(actsOnGitHub(connectorSettings(conf({ p: {} }))!)).toBe(false);
@@ -934,7 +935,7 @@ describe('chains: profiles that build on each other', () => {
   });
 
   it('settings: runs only for listed profiles, requires only earlier ones, checked values', () => {
-    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x' };
+    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
     const parse = (runs: unknown) => connectorSettings({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: [RISK, NEXT], runs }) })!.runs;
     expect(parse(undefined)).toEqual({});
     expect(parse({ [RISK]: { skip_drafts: true, once_per_head: { rerun: ['incomplete'] }, diff: 30000 }, [NEXT]: { requires: { risk: RISK }, recheck: { actions: ['wait', 'queue'], minutes: 10 } } })).toEqual({
