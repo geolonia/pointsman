@@ -29,6 +29,8 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/geolonia/pointsman' }],
       customCss: ['./src/styles/custom.css'],
       sidebar,
+      // A link back to the landing page in the header.
+      components: { SocialIcons: './src/components/SocialIcons.astro' },
     }),
   ],
 });
