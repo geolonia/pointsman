@@ -6,11 +6,14 @@
 // at the head commit, and its earlier text is the head text with the patch
 // taken back, so both sides are the pull request's own (the merge base, not
 // a newer base branch). Lockfiles are only read through their patch, for
-// changed sources and the versions they add (lockfileChanges). Whatever is not understood gives the stricter answer;
+// changed sources and the versions they add (lockfileChanges), and for the
+// version steps they make and their dev marks (lockfile.ts). Whatever is not
+// understood gives the stricter answer;
 // what cannot be read (no patch, a patch that does not fit the file) fails
 // the fact, so it is missing rather than wrong.
 
 import { FactError } from '@pointsman/module-api';
+import { lockfileSteps } from './lockfile';
 
 /** A changed file as the pull-request files API lists it. */
 export interface BumpFile {
@@ -330,7 +333,7 @@ export function manifestsToRead(files: BumpFile[]): string[] | null {
  * needed. `heads` has the text at the head commit of each package.json
  * that manifestsToRead named.
  */
-export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { facts: Omit<BumpFacts, 'release_age_days'>; versions: BumpedVersion[] } | null {
+export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { facts: Omit<BumpFacts, 'release_age_days'>; versions: BumpedVersion[]; devNames: string[] } | null {
   if (manifestsToRead(files) === null) return null;
   let onlyManifests = true;
   let onlySpecs = true;
@@ -339,6 +342,9 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
   const bumps: Bump[] = [];
   const sides: Record<string, unknown>[] = [];
   const locked: BumpedVersion[] = [];
+  let lockSemver: string | null = null;
+  const lockNames = new Set<string>();
+  let lockRuntime = false;
   for (const f of files) {
     const name = f.names[0]!;
     const kind = bumpKindOf(name)!;
@@ -353,6 +359,10 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
       const lock = lockfileChanges(name, f.patch);
       if (lock.sourceChanged) registryChanged = true;
       locked.push(...lock.versions);
+      const steps = lockfileSteps(name, f.patch);
+      if (steps.semver !== null) lockSemver = lockSemver === null ? steps.semver : larger(lockSemver, steps.semver);
+      for (const n of steps.names) lockNames.add(n);
+      if (steps.runtime) lockRuntime = true;
       continue;
     }
     manifestLines += changedLines(f.patch).length;
@@ -378,16 +388,16 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
     if (SOURCE_SPEC.test(b.from) || SOURCE_SPEC.test(b.to)) registryChanged = true;
     if (to) versions.set(`${b.name}@${to.version}`, { name: b.name, version: to.version });
   }
+  // Every version a lockfile changes counts too, transitive ones included.
+  if (lockSemver !== null) semver = larger(semver, lockSemver);
   for (const v of locked) versions.set(`${v.name}@${v.version}`, v);
   if (versions.size > MAX_BUMPED_PACKAGES) throw new FactError(`more than ${MAX_BUMPED_PACKAGES} bumped packages`);
   // Dev only: bumped in devDependencies, and in no other section of any changed package.json, before or after,
-  // and not bundled (a bundled package ships with the package).
-  const names = new Set(bumps.map((b) => b.name));
-  const bundled = (side: Record<string, unknown>) => [side.bundleDependencies, side.bundledDependencies]
-    .some((list) => list !== undefined && (!Array.isArray(list) || list.some((n) => names.has(n as string))));
-  const devOnly = bumps.every((b) => b.section === 'devDependencies')
-    && sides.every((side) => !bundled(side) && DEPENDENCY_SECTIONS.filter((s) => s !== 'devDependencies')
-      .every((s) => !isObject(side[s]) || [...names].every((n) => !Object.hasOwn(side[s] as Record<string, unknown>, n))));
+  // and not bundled (a bundled package ships with the package); the same for every package a lockfile changes,
+  // and no lockfile line showing one outside development. The other package.json files of the repository
+  // are checked after this (listedOutsideDev), when this is still true.
+  const names = new Set([...bumps.map((b) => b.name), ...lockNames]);
+  const devOnly = bumps.every((b) => b.section === 'devDependencies') && !lockRuntime && sides.every((side) => !listedOutsideDev(side, names));
   return {
     facts: {
       applies: true,
@@ -401,7 +411,43 @@ export function bumpFacts(files: BumpFile[], heads: Map<string, string>): { fact
     },
     // Only understood specs have a version to look up; any other makes semver "none" already.
     versions: [...versions.values()],
+    devNames: [...names],
   };
+}
+
+/**
+ * Whether a package.json lists one of `names` outside devDependencies (in
+ * dependencies, optionalDependencies or peerDependencies, or bundled), or
+ * cannot tell: a bundle list that is not a list of names.
+ */
+export function listedOutsideDev(manifest: Record<string, unknown>, names: Set<string>): boolean {
+  for (const list of [manifest.bundleDependencies, manifest.bundledDependencies]) {
+    if (list !== undefined && (!Array.isArray(list) || list.some((n) => typeof n !== 'string' || names.has(n)))) return true;
+  }
+  return DEPENDENCY_SECTIONS.filter((s) => s !== 'devDependencies').some((s) => {
+    const section = manifest[s];
+    if (section === undefined) return false;
+    if (!isObject(section)) return true;
+    return [...names].some((n) => Object.hasOwn(section, n));
+  });
+}
+
+/**
+ * Whether no package.json of the repository (their texts at the head) lists
+ * one of `names` outside devDependencies. A text that is not a JSON object
+ * cannot tell: false.
+ */
+export function devOnlyInRepository(texts: (string | null)[], names: Set<string>): boolean {
+  return texts.every((text) => {
+    if (text === null) return false;
+    let v: unknown;
+    try {
+      v = JSON.parse(text);
+    } catch {
+      return false;
+    }
+    return isObject(v) && !listedOutsideDev(v, names);
+  });
 }
 
 /** Whole days from a release to now; 0 for a release in the future (clocks differ). */

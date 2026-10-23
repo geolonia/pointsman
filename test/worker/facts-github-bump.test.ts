@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { lookupFacts } from '../../src/facts';
 import {
-  changesSource, GitHubFactProvider, lockfileChanges, NO_BUMP, stepOf, textBefore, TimeScanner, TokenAuth,
+  changesSource, GitHubFactProvider, lockfileChanges, lockfileSteps, NO_BUMP, stepOf, textBefore, TimeScanner, TokenAuth,
 } from '@pointsman/github';
 import type { FactSpec } from '../../src/types';
 
@@ -61,9 +61,9 @@ const lockPatch = (name: string, from: string, to: string, resolution = `{integr
   const q = (k: string) => (name.startsWith('@') ? `'${k}'` : k);
   return [
   '@@ -192,8 +192,8 @@ importers:',
-  '  .:',
-  '    devDependencies:',
-  `      ${q(name)}:`,
+  '   .:',
+  '     devDependencies:',
+  `       ${q(name)}:`,
   `-        specifier: ^${from}`,
   `-        version: ${from}`,
   `+        specifier: ^${to}`,
@@ -88,6 +88,10 @@ interface Scenario {
   commits?: unknown[];
   /** The registry: package name to its answer. */
   registry?: Record<string, () => Response>;
+  /** The other files of the repository at the head (unchanged package.json files and others), by path. */
+  repository?: Record<string, string>;
+  /** The answer for the repository tree, instead of one made from `heads` and `repository`. */
+  tree?: () => Response;
 }
 
 /** A package document as the registry sends it: the versions first, then "time" (as for large packages), in small pieces. */
@@ -106,6 +110,13 @@ function document(name: string, times: Record<string, string>): Response {
     },
   }), { headers: { 'content-type': 'application/json' } });
 }
+
+/** A blob sha for a path in the fake tree: five 32-bit FNV-1a hashes of it, 40 hex characters. */
+const shaOf = (path: string) => [1, 2, 3, 4, 5].map((seed) => {
+  let h = 0x811c9dc5 ^ seed;
+  for (const c of `${seed}:${path}`) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
+  return (h >>> 0).toString(16).padStart(8, '0');
+}).join('');
 
 const daysAgo = (d: number) => new Date(NOW - d * DAY - 3600_000).toISOString();
 
@@ -136,6 +147,18 @@ function fake(s: Scenario) {
       if (text === undefined) return new Response('{"message":"Not Found"}', { status: 404 });
       expect(url.searchParams.get('ref')).toBe(HEAD);
       return Response.json({ type: 'file', encoding: 'base64', size: text.length, content: btoa(text) });
+    }
+    const all = { ...s.repository, ...s.heads };
+    if (url.pathname === `${REPO}/git/trees/${HEAD}`) {
+      expect(url.searchParams.get('recursive')).toBe('1');
+      if (s.tree) return s.tree();
+      const tree = [{ path: 'src', type: 'tree', sha: OTHER }, ...Object.entries(all).map(([path, text]) => ({ path, type: 'blob', sha: shaOf(path), size: text.length }))];
+      return Response.json({ sha: HEAD, truncated: false, tree });
+    }
+    if (url.pathname.startsWith(`${REPO}/git/blobs/`)) {
+      const path = Object.keys(all).find((p) => shaOf(p) === url.pathname.slice(`${REPO}/git/blobs/`.length));
+      if (path === undefined) return new Response('{"message":"Not Found"}', { status: 404 });
+      return Response.json({ encoding: 'base64', content: btoa(all[path]!) });
     }
     if (url.pathname === `${REPO}/activity`) return Response.json([]);
     if (url.pathname === '/orgs/octo-org/members/dependabot[bot]') return new Response(null, { status: 404 });
@@ -351,7 +374,7 @@ describe('github_bump', () => {
 
   it('a transitive version in the lockfile counts for the age; a bundled dependency is not dev only', async () => {
     const base = vitestBump();
-    const lock = `${lockPatch('vitest', '4.1.11', '4.1.12')}\n@@ -400,1 +400,2 @@\n+  '@vitest/runner@4.1.12':`;
+    const lock = `${lockPatch('vitest', '4.1.11', '4.1.12')}\n@@ -400,1 +400,1 @@ packages:\n-  '@vitest/runner@4.1.11':\n+  '@vitest/runner@4.1.12':`;
     const young = { ...base, files: [base.files[0]!, { filename: 'pnpm-lock.yaml', patch: lock }],
       registry: { ...base.registry, '@vitest/runner': () => document('@vitest/runner', { '4.1.12': daysAgo(1) }) } };
     expect(await values(young)).toMatchObject({ semver: 'patch', release_age_days: 1 });
@@ -444,6 +467,198 @@ describe('github_bump', () => {
       expect([...scanner.times]).toEqual([['1.0.0', '2026-01-01T00:00:00.000Z']]);
     }
     expect(() => new TimeScanner(['1.0.0']).push('["time"]')).toThrow();
+  });
+});
+
+/** A pnpm-lock.yaml v9 hunk in `section` that moves one package key from one version to another (or adds or removes it, with null). */
+const keyHunk = (section: string, name: string, from: string | null, to: string | null, at = 500) => {
+  const q = (k: string) => (name.startsWith('@') ? `'${k}'` : k);
+  return [
+    `@@ -${at},3 +${at},3 @@ ${section}:`,
+    ' ',
+    ...(from ? [`-  ${q(`${name}@${from}`)}:`, `-    resolution: {integrity: ${integrity()}}`] : []),
+    ...(to ? [`+  ${q(`${name}@${to}`)}:`, `+    resolution: {integrity: ${integrity()}}`] : []),
+    ' ',
+  ].join('\n');
+};
+
+/** The vitest bump with more lockfile hunks after its own. */
+function withLock(extra: string[], registry: Record<string, () => Response> = {}, over: Partial<Scenario> = {}): Scenario {
+  const base = vitestBump();
+  return {
+    ...base,
+    files: [base.files[0]!, { filename: 'pnpm-lock.yaml', patch: [lockPatch('vitest', '4.1.11', '4.1.12'), ...extra].join('\n') }],
+    registry: { ...base.registry, ...registry },
+    ...over,
+  };
+}
+
+const runner = (versions: Record<string, number>) => ({ '@vitest/runner': () => document('@vitest/runner', Object.fromEntries(Object.entries(versions).map(([v, d]) => [v, daysAgo(d)]))) });
+
+describe('github_bump: every version a lockfile changes', () => {
+  it('a transitive patch step, in packages, snapshots and a dependency line: patch', async () => {
+    const snapshot = [
+      '@@ -900,6 +900,6 @@ snapshots:',
+      "-  '@vitest/runner@4.1.11':",
+      "+  '@vitest/runner@4.1.12':",
+      '     dependencies:',
+      "-      '@vitest/utils': 4.1.11",
+      "+      '@vitest/utils': 4.1.12",
+      '       pathe: 2.0.3',
+    ].join('\n');
+    const v = await values(withLock([keyHunk('packages', '@vitest/runner', '4.1.11', '4.1.12'), snapshot], runner({ '4.1.12': 4 })));
+    expect(v).toEqual({ ...APPROVABLE, release_age_days: 4 });
+  });
+
+  it('a transitive minor or major step: not patch', async () => {
+    expect(await values(withLock([keyHunk('packages', '@vitest/runner', '4.1.11', '4.2.0')], runner({ '4.2.0': 9 })))).toMatchObject({ semver: 'minor', dev_only: true });
+    expect(await values(withLock([keyHunk('packages', '@vitest/runner', '4.1.11', '5.0.0')], runner({ '5.0.0': 9 })))).toMatchObject({ semver: 'major' });
+    // 0.x as for the caret: a patch step counts as minor.
+    expect(await values(withLock([keyHunk('packages', 'pathe', '0.2.3', '0.2.4')], { pathe: () => document('pathe', { '0.2.4': daysAgo(9) }) })))
+      .toMatchObject({ semver: 'minor' });
+    // A dependency of a package moves to another version that was in the lockfile already: its step counts.
+    const edge = ['@@ -900,4 +900,4 @@ snapshots:', "   '@vitest/runner@4.1.12':", '     dependencies:', '-      pathe: 1.1.2', '+      pathe: 2.0.3'].join('\n');
+    expect(await values(withLock([edge]))).toMatchObject({ semver: 'major' });
+  });
+
+  it('a new transitive package, or one removed: none', async () => {
+    expect(await values(withLock([keyHunk('packages', 'tinyexec', null, '1.0.1')], { tinyexec: () => document('tinyexec', { '1.0.1': daysAgo(9) }) })))
+      .toMatchObject({ applies: true, semver: 'none', registry_changed: false, release_age_days: 5 });
+    expect(await values(withLock([keyHunk('packages', 'tinyexec', '1.0.1', null)]))).toMatchObject({ semver: 'none' });
+    // A dependency line added to a package is no step by itself (the package keys say what is installed).
+    const edge = ['@@ -900,3 +900,4 @@ snapshots:', "   '@vitest/runner@4.1.12':", '     dependencies:', '+      pathe: 2.0.3', '       tinyrainbow: 3.0.3'].join('\n');
+    expect(await values(withLock([edge]))).toMatchObject({ semver: 'patch' });
+  });
+
+  it('more than one version of a package on a side, or a downgrade: none', async () => {
+    const two = [
+      '@@ -500,8 +500,8 @@ packages:',
+      '-  debug@3.2.7:', `-    resolution: {integrity: ${integrity()}}`, '-  debug@4.4.0:', `-    resolution: {integrity: ${integrity()}}`,
+      '+  debug@3.2.8:', `+    resolution: {integrity: ${integrity()}}`, '+  debug@4.4.1:', `+    resolution: {integrity: ${integrity()}}`,
+    ].join('\n');
+    const debug = { debug: () => document('debug', { '3.2.8': daysAgo(9), '4.4.1': daysAgo(9) }) };
+    expect(await values(withLock([two], debug))).toMatchObject({ semver: 'none' });
+    expect(await values(withLock([keyHunk('packages', '@vitest/runner', '4.1.12', '4.1.11')], runner({ '4.1.11': 30 })))).toMatchObject({ semver: 'none' });
+    // Peers only (the same version on both sides): no step.
+    const peers = ['@@ -900,2 +900,2 @@ snapshots:', '-  vite-node@3.2.4(esbuild@0.28.1):', '+  vite-node@3.2.4(esbuild@0.28.2):'].join('\n');
+    expect(await values(withLock([peers], { 'vite-node': () => document('vite-node', { '3.2.4': daysAgo(90) }) }))).toMatchObject({ semver: 'patch' });
+  });
+
+  it('lockfileSteps: places it cannot see, and what is strict', () => {
+    // No section in the hunk header and none in the hunk: not placed.
+    expect(lockfileSteps('pnpm-lock.yaml', '@@ -1,2 +1,2 @@\n-  debug@4.4.0:\n+  debug@4.4.1:')).toMatchObject({ semver: 'none', runtime: true });
+    // A version line of an importer whose dependency the patch does not show.
+    expect(lockfileSteps('pnpm-lock.yaml', '@@ -1,2 +1,2 @@ importers:\n-        version: 4.4.0\n+        version: 4.4.1').semver).toBe('none');
+    // An importer outside devDependencies: may be used at run time.
+    expect(lockfileSteps('pnpm-lock.yaml', '@@ -1,4 +1,4 @@ importers:\n   .:\n     dependencies:\n       hono:\n-        version: 4.13.13\n+        version: 4.13.14'))
+      .toEqual({ semver: 'patch', names: ['hono'], runtime: true });
+    // The importer and section above the hunk (as GitHub often shows it): the step by name, the section left to the package.json check.
+    expect(lockfileSteps('pnpm-lock.yaml', '@@ -201,6 +201,6 @@ importers:\n         version: 4.13.13\n       zod:\n-        specifier: ^4.6.6\n-        version: 4.6.6\n+        specifier: ^4.6.7\n+        version: 4.6.7'))
+      .toEqual({ semver: 'patch', names: ['zod'], runtime: false });
+    // Another section (lockfileVersion, overrides): not understood.
+    expect(lockfileSteps('pnpm-lock.yaml', "@@ -1 +1 @@\n-lockfileVersion: '6.0'\n+lockfileVersion: '9.0'").semver).toBe('none');
+    // A version that is not a pinned one.
+    expect(lockfileSteps('pnpm-lock.yaml', '@@ -1,4 +1,4 @@ importers:\n   .:\n     devDependencies:\n       x:\n-        version: 1.0.0\n+        version: link:../x').semver).toBe('none');
+    // Nothing about versions: null.
+    expect(lockfileSteps('pnpm-lock.yaml', `@@ -1,2 +1,2 @@ packages:\n   debug@4.4.1:\n-    resolution: {integrity: ${integrity()}}\n+    resolution: {integrity: ${integrity()}}`))
+      .toEqual({ semver: null, names: [], runtime: false });
+  });
+
+  it('pnpm-lock.yaml v6: a changed package must show "dev: true"', () => {
+    const v6 = (dev: string[]) => [
+      '@@ -300,6 +300,6 @@ packages:',
+      '-  /debug@4.4.0:',
+      '+  /debug@4.4.1:',
+      `-    resolution: {integrity: ${integrity()}}`,
+      `+    resolution: {integrity: ${integrity()}}`,
+      '     dependencies:',
+      '       ms: 2.1.3',
+      ...dev,
+    ].join('\n');
+    expect(lockfileSteps('pnpm-lock.yaml', v6(['     dev: true']))).toEqual({ semver: 'patch', names: ['debug'], runtime: false });
+    expect(lockfileSteps('pnpm-lock.yaml', v6(['     dev: false'])).runtime).toBe(true);
+    // The mark is not in the patch: not known, so not dev.
+    expect(lockfileSteps('pnpm-lock.yaml', v6([])).runtime).toBe(true);
+    // The mark taken away.
+    expect(lockfileSteps('pnpm-lock.yaml', v6(['-    dev: true'])).runtime).toBe(true);
+  });
+
+  it('package-lock.json: entries by place, their dev marks', () => {
+    const entry = (key: string, from: string | null, to: string | null, dev = ['       "dev": true,']) => [
+      `@@ -10,6 +10,6 @@`,
+      ...(from && to ? [`     "${key}": {`] : []),
+      ...(from ? [...(to ? [] : [`-    "${key}": {`]), `-      "version": "${from}",`, `-      "resolved": "https://registry.npmjs.org/${key.split('node_modules/').pop()}/-/x-${from}.tgz",`] : []),
+      ...(to ? [...(from ? [] : [`+    "${key}": {`]), `+      "version": "${to}",`, `+      "resolved": "https://registry.npmjs.org/${key.split('node_modules/').pop()}/-/x-${to}.tgz",`] : []),
+      `       "integrity": "${integrity()}",`,
+      ...dev,
+    ].join('\n');
+    expect(lockfileSteps('package-lock.json', entry('node_modules/debug', '4.4.0', '4.4.1'))).toEqual({ semver: 'patch', names: ['debug'], runtime: false });
+    expect(lockfileSteps('package-lock.json', entry('node_modules/debug', '4.4.0', '5.0.0')).semver).toBe('major');
+    expect(lockfileSteps('package-lock.json', entry('node_modules/debug', '4.4.1', '4.4.0')).semver).toBe('none');
+    // No dev mark, or one not shown: may be used at run time.
+    expect(lockfileSteps('package-lock.json', entry('node_modules/debug', '4.4.0', '4.4.1', ['       "devOptional": true,'])).runtime).toBe(true);
+    expect(lockfileSteps('package-lock.json', entry('node_modules/debug', '4.4.0', '4.4.1', [])).runtime).toBe(true);
+    // A new entry, a removed one: none. The same version moved to another place: no step.
+    expect(lockfileSteps('package-lock.json', entry('node_modules/a/node_modules/debug', null, '3.2.7')).semver).toBe('none');
+    expect(lockfileSteps('package-lock.json', entry('node_modules/debug', '4.4.0', null)).semver).toBe('none');
+    const moved = `${entry('node_modules/debug', '4.4.0', null)}\n${entry('node_modules/a/node_modules/debug', null, '4.4.0').replace('@@ -10,6 +10,6 @@', '@@ -90,6 +90,6 @@')}`;
+    expect(lockfileSteps('package-lock.json', moved).semver).toBeNull();
+    // A version line whose entry the patch does not show, or the root's own: none.
+    expect(lockfileSteps('package-lock.json', '@@ -10,2 +10,2 @@\n-      "version": "4.4.0",\n+      "version": "4.4.1",').semver).toBe('none');
+    expect(lockfileSteps('package-lock.json', '@@ -5,3 +5,3 @@\n     "": {\n-      "version": "1.0.0",\n+      "version": "1.0.1",').semver).toBe('none');
+  });
+});
+
+describe('github_bump: dev_only over every package.json of the repository', () => {
+  it('a runtime dependency in a workspace the pull request does not change: not dev only', async () => {
+    const app = manifest({}, { vitest: '^4.0.0' });
+    expect(await values({ ...vitestBump(), repository: { 'app/package.json': app, 'README.md': '# demo' } })).toMatchObject({ semver: 'patch', dev_only: false });
+    // A transitive package that a workspace has as a dependency, a peer, or bundles.
+    const lock = withLock([keyHunk('packages', '@vitest/runner', '4.1.11', '4.1.12')], runner({ '4.1.12': 9 }));
+    expect(await values({ ...lock, repository: { 'app/package.json': manifest({}, { '@vitest/runner': '^4.1.0' }) } })).toMatchObject({ dev_only: false });
+    expect(await values({ ...lock, repository: { 'app/package.json': manifest({}, {}, { peerDependencies: { '@vitest/runner': '*' } }) } })).toMatchObject({ dev_only: false });
+    expect(await values({ ...lock, repository: { 'app/package.json': manifest({}, {}, { bundleDependencies: ['@vitest/runner'] }) } })).toMatchObject({ dev_only: false });
+    // A package.json that is not JSON cannot tell: not dev only.
+    expect(await values({ ...vitestBump(), repository: { 'fixtures/package.json': '{ not json' } })).toMatchObject({ dev_only: false });
+  });
+
+  it('other workspaces with the package as a dev dependency, or without it: dev only, one tree read and one blob read each', async () => {
+    const { facts, calls } = await bumpOf({
+      ...vitestBump(),
+      repository: { 'packages/a/package.json': manifest({ vitest: '~4.1.11' }), 'packages/b/package.json': manifest({}, { other: '^1.0.0' }), 'src/index.ts': 'export {}' },
+    });
+    expect(facts.bump).toMatchObject({ missing: false, values: APPROVABLE });
+    const paths = calls.map((c) => c.url.pathname);
+    expect(paths.filter((p) => p.includes('/git/trees/'))).toHaveLength(1);
+    // The changed package.json is not read again; src/index.ts is not read at all.
+    expect(paths.filter((p) => p.includes('/git/blobs/')).sort()).toEqual([shaOf('packages/a/package.json'), shaOf('packages/b/package.json')].map((s) => `${REPO}/git/blobs/${s}`).sort());
+  });
+
+  it('not dev only already: the tree is not read', async () => {
+    const before = manifest({}, { hono: '^4.13.13' });
+    const after = manifest({}, { hono: '^4.13.14' });
+    const { facts, calls } = await bumpOf({
+      files: [{ filename: 'package.json', patch: patchOf(before, after) }],
+      heads: { 'package.json': after },
+      registry: { hono: () => document('hono', { '4.13.14': daysAgo(10) }) },
+      tree: () => new Response('{"message":"Server Error"}', { status: 500 }),
+    });
+    expect(facts.bump).toMatchObject({ missing: false, values: { dev_only: false } });
+    expect(calls.some((c) => c.url.pathname.includes('/git/'))).toBe(false);
+  });
+
+  it('a tree cut short, too many package.json files, one too large, one that cannot be read: missing', async () => {
+    const cut = () => Response.json({ sha: HEAD, truncated: true, tree: [] });
+    expect((await bumpOf({ ...vitestBump(), tree: cut })).facts.bump).toEqual({ missing: true, reason: 'error' });
+    const many = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`packages/p${i}/package.json`, manifest({})]));
+    expect((await bumpOf({ ...vitestBump(), repository: many })).facts.bump).toEqual({ missing: true, reason: 'error' });
+    // 49 more (50 in all) is still within the limit.
+    const fewer = Object.fromEntries(Object.entries(many).slice(1));
+    expect((await bumpOf({ ...vitestBump(), repository: fewer })).facts.bump).toMatchObject({ missing: false, values: { dev_only: true } });
+    const large = { 'big/package.json': `{"x":"${'x'.repeat(512 * 1024)}"}` };
+    expect((await bumpOf({ ...vitestBump(), repository: large })).facts.bump).toEqual({ missing: true, reason: 'error' });
+    const gone = () => Response.json({ sha: HEAD, truncated: false, tree: [{ path: 'app/package.json', type: 'blob', sha: 'f'.repeat(40), size: 10 }] });
+    expect((await bumpOf({ ...vitestBump(), tree: gone })).facts.bump).toMatchObject({ missing: true });
   });
 });
 
