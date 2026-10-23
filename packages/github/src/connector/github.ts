@@ -96,6 +96,8 @@ export interface ConnectorGitHub {
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
   /** Bot approvals still standing (not dismissed) that carry the marker; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
+  /** The unified diff, cut to `max` characters; empty and cut when GitHub does not give one (too large). */
+  diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }>;
   approve(repo: string, number: number, head: string, body: string): Promise<number>;
   dismissReview(repo: string, number: number, id: number, message: string): Promise<void>;
 }
@@ -120,7 +122,18 @@ export class AppGitHub implements ConnectorGitHub {
     this.#fetch = fetchFn;
   }
 
-  async #call(repo: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, what: string, body?: unknown): Promise<unknown> {
+  async #call(repo: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, what: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<unknown> {
+    const res = await this.#send(repo, method, path, what, body, accept);
+    if (res.status === 204) return null;
+    try {
+      return await res.json();
+    } catch {
+      throw new GitHubError(`GitHub ${what}: not JSON`, true);
+    }
+  }
+
+  /** A successful answer (2xx), or a GitHubError. */
+  async #send(repo: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, what: string, body: unknown, accept: string): Promise<Response> {
     const [owner, name] = repo.split('/') as [string, string];
     let token: string;
     try {
@@ -134,7 +147,7 @@ export class AppGitHub implements ConnectorGitHub {
       method,
       headers: {
         authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
+        accept,
         'x-github-api-version': '2022-11-28',
         'user-agent': USER_AGENT,
         ...(body !== undefined && { 'content-type': 'application/json' }),
@@ -147,14 +160,7 @@ export class AppGitHub implements ConnectorGitHub {
       // Not reached, or too slow: later.
       throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
     }
-    if (res.status === 204) return null;
-    if (res.status >= 200 && res.status < 300) {
-      try {
-        return await res.json();
-      } catch {
-        throw new GitHubError(`GitHub ${what}: not JSON`, true);
-      }
-    }
+    if (res.status >= 200 && res.status < 300) return res;
     await res.body?.cancel();
     // Busy, down or rate limited: later. Anything else (no permission, not found) needs a person.
     const retry = res.status >= 500 || res.status === 429 || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')));
@@ -216,6 +222,34 @@ export class AppGitHub implements ConnectorGitHub {
       .filter((r) => r.state === 'APPROVED' && typeof r.body === 'string' && r.body.startsWith(MARKER)
         && isObject(r.user) && r.user.type === 'Bot' && typeof r.id === 'number' && typeof r.commit_id === 'string')
       .map((r) => ({ id: r.id as number, commit: r.commit_id as string, marker: (r.body as string).split('\n', 1)[0]! }));
+  }
+
+  async diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }> {
+    let res: Response;
+    try {
+      res = await this.#send(repo, 'GET', `/pulls/${number}`, 'diff', undefined, 'application/vnd.github.diff');
+    } catch (err) {
+      // 406: GitHub gives no diff for a very large pull request.
+      if (err instanceof GitHubError && err.status === 406) return { diff: '', truncated: true };
+      throw err;
+    }
+    // Read only up to the limit, however large the diff is.
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let text = '';
+    let more = false;
+    try {
+      while (text.length <= max) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += value;
+      }
+      more = text.length > max;
+    } catch (err) {
+      throw new GitHubError(`GitHub diff: ${err instanceof Error ? err.name : 'error'}`, true);
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+    return { diff: text.slice(0, max), truncated: more };
   }
 
   async approve(repo: string, number: number, head: string, body: string): Promise<number> {

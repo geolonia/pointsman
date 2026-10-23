@@ -104,7 +104,7 @@ export function settingsWithObjects(env: Record<string, unknown>): { settings: C
   return { settings, objects };
 }
 
-export { actsOnGitHub, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type ConnectorSettings } from './settings.ts';
+export { actsOnGitHub, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
 export { PullRequestWork, RetryError, checkOutput, UNCLEAR_MS, type ActOutcome, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
 export { AppGitHub, GitHubError, actingScope, connectorScope, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
 export { targetsOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';

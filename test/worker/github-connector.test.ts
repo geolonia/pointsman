@@ -26,7 +26,7 @@ const KEY = await pemKey();
 
 const settings = (extra: Partial<ConnectorSettings> = {}): ConnectorSettings => ({
   appId: APP_ID, privateKey: KEY, webhookSecret: SECRET, pointsmanToken: `pm_${crypto.randomUUID()}`,
-  repos: new Set([REPO]), profiles: ['pr-docs-check', 'workflow-check'], actions: {}, ...extra,
+  repos: new Set([REPO]), profiles: ['pr-docs-check', 'workflow-check'], actions: {}, runs: {}, ...extra,
 });
 
 function memoryStorage() {
@@ -48,8 +48,9 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
   };
   const approvals: OwnApproval[] = [];
   const comments: string[] = [];
-  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[] } = {
+  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string } = {
     state,
+    diffText: 'diff --git a/README.md b/README.md\n+one line\n',
     approvals,
     comments,
     pullRequest: async () => (calls.push({ op: 'get' }), { ...github.state, labels: [...github.state.labels], requestedReviewers: [...github.state.requestedReviewers] }),
@@ -61,6 +62,7 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
+    diff: async (_r, _n, max) => (calls.push({ op: 'diff' }), { diff: github.diffText.slice(0, max), truncated: github.diffText.length > max }),
     approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head, marker: body.split('\n')[0]! }); return nextId++; },
     dismissReview: async (_r, _n, id) => {
       calls.push({ op: 'dismiss', id });
@@ -583,5 +585,157 @@ describe('actions (switched on per profile action)', () => {
     gh.github.findComment = findComment;
     await work.run();
     expect(gh.github.comments).toHaveLength(1);
+  });
+});
+
+describe('chains: profiles that build on each other', () => {
+  const RISK = 'pr-risk';
+  const NEXT = 'pr-next-step';
+  const chain = (runs: ConnectorSettings['runs'] = {
+    [RISK]: { skipDrafts: true, oncePerHead: { rerun: ['incomplete'] }, diff: 2000 },
+    [NEXT]: { requires: { risk: RISK }, recheck: { actions: ['wait'], minutes: 10, max: 2 } },
+  }) => settings({ profiles: [RISK, NEXT], runs });
+
+  async function chained(s = chain(), pr: Partial<PullRequestInfo> = {}, answer?: (p: string) => Response) {
+    const mem = memoryStorage();
+    const gh = fakeGitHub(pr);
+    const pm = fakeEngine(answer ?? ((p) => Response.json(decision(p, { action: p === RISK ? 'normal' : 'wait' }))));
+    const work = pullRequestWork(s, mem.storage, pm.engine, gh.github);
+    let t = 5_000_000;
+    work.now = () => t;
+    const event = () => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, t);
+    await event();
+    return { work, mem, gh, pm, event, later: (ms: number) => { t += ms; } };
+  }
+
+  it('sends the decision of the required profile from the same run, and the diff where asked', async () => {
+    const { work, pm } = await chained();
+    await work.run();
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT]);
+    expect(pm.calls[0]!.body.state.pull_request).toMatchObject({ diff: 'diff --git a/README.md b/README.md\n+one line\n', diff_truncated: false });
+    expect(pm.calls[0]!.body.decisions).toBeUndefined();
+    expect(pm.calls[1]!.body.state.pull_request.diff).toBeUndefined();
+    const risk = pm.calls[0]!;
+    expect(pm.calls[1]!.body.decisions).toEqual({ risk: expect.any(String) });
+    expect(pm.calls[1]!.key).not.toBe(risk.key);
+  });
+
+  it('cuts a long diff and says so', async () => {
+    const { work, pm, gh } = await chained();
+    gh.github.diffText = 'x'.repeat(5000);
+    await work.run();
+    expect(pm.calls[0]!.body.state.pull_request.diff).toHaveLength(2000);
+    expect(pm.calls[0]!.body.state.pull_request.diff_truncated).toBe(true);
+  });
+
+  it('does not ask a skipped profile for a draft; the next one is asked without it', async () => {
+    const { work, pm, gh } = await chained(chain(), { draft: true });
+    await work.run();
+    expect(pm.calls.map((c) => c.profile)).toEqual([NEXT]);
+    expect(pm.calls[0]!.body.decisions).toBeUndefined();
+    expect(gh.calls.filter((c) => c.op === 'diff')).toHaveLength(0);
+  });
+
+  it('asks a once-per-head profile again only for a new head, title, body or base, or after a rerun action', async () => {
+    const ids: string[] = [];
+    let riskAction = 'normal';
+    const { work, pm, gh, event } = await chained(chain(), {}, (p) => {
+      const d = decision(p, { action: p === RISK ? riskAction : 'wait' });
+      if (p === RISK) ids.push(d.decision_id);
+      return Response.json(d);
+    });
+    await work.run();
+    await event();
+    await work.run();
+    // pr-risk once, pr-next-step twice, both times with the same pr-risk decision.
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, NEXT]);
+    expect(pm.calls[2]!.body.decisions).toEqual({ risk: ids[0] });
+    expect(gh.calls.filter((c) => c.op === 'diff')).toHaveLength(1);
+    // An edited title: asked again.
+    gh.github.state.title = 'Docs: another title';
+    await event();
+    await work.run();
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(2);
+    // A rerun action (facts were missing): asked again on the next run.
+    riskAction = 'incomplete';
+    gh.github.state.body = 'edited';
+    await event();
+    await work.run();
+    await event();
+    await work.run();
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(4);
+    // A new head: asked again.
+    riskAction = 'normal';
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(5);
+    expect(pm.calls.at(-1)!.body.decisions).toEqual({ risk: ids.at(-1) });
+  });
+
+  it('asks a waiting profile again after its minutes, without an event, at most max times per head', async () => {
+    const { work, pm, mem, later, event } = await chained();
+    await work.run();
+    expect(mem.data.get('recheckAt')).toBe(5_000_000 + 10 * 60_000);
+    // Not due yet: nothing; the alarm for it stays set.
+    later(60_000);
+    await work.run();
+    expect(pm.calls).toHaveLength(2);
+    expect(mem.alarms.at(-1)).toBe(5_000_000 + 10 * 60_000);
+    later(9 * 60_000);
+    await work.run();
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, NEXT]);
+    later(10 * 60_000);
+    await work.run();
+    expect(pm.calls).toHaveLength(4);
+    // max 2 per head: no third recheck.
+    later(10 * 60_000);
+    await work.run();
+    expect(pm.calls).toHaveLength(4);
+    // An event still asks.
+    await event();
+    await work.run();
+    expect(pm.calls).toHaveLength(5);
+  });
+
+  it('does not schedule a recheck for an action that does not wait', async () => {
+    const { work, mem } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'done' })));
+    await work.run();
+    expect(mem.data.get('recheckAt')).toBeUndefined();
+  });
+
+  it('settings: runs only for listed profiles, requires only earlier ones, checked values', () => {
+    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_TOKEN: 'pm_x' };
+    const parse = (runs: unknown) => connectorSettings({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: [RISK, NEXT], runs }) })!.runs;
+    expect(parse(undefined)).toEqual({});
+    expect(parse({ [RISK]: { skip_drafts: true, once_per_head: { rerun: ['incomplete'] }, diff: 30000 }, [NEXT]: { requires: { risk: RISK }, recheck: { actions: ['wait', 'queue'], minutes: 10 } } })).toEqual({
+      [RISK]: { skipDrafts: true, oncePerHead: { rerun: ['incomplete'] }, diff: 30000 },
+      [NEXT]: { requires: { risk: RISK }, recheck: { actions: ['wait', 'queue'], minutes: 10, max: 12 } },
+    });
+    expect(() => parse({ other: {} })).toThrow(/not in "profiles"/);
+    expect(() => parse({ [RISK]: { requires: { next: NEXT } } })).toThrow(/listed before/);
+    expect(() => parse({ [NEXT]: { requires: { Risk: RISK } } })).toThrow(/not a name/);
+    expect(() => parse({ [RISK]: { diff: 10 } })).toThrow(/diff must be a whole number/);
+    expect(() => parse({ [RISK]: { recheck: { actions: ['wait'], minutes: 1 } } })).toThrow(/minutes/);
+    expect(() => parse({ [RISK]: { recheck: { actions: [], minutes: 10 } } })).toThrow(/actions/);
+    expect(() => parse({ [RISK]: { skip: true } })).toThrow(/unknown key skip/);
+  });
+
+  it('reads the diff from GitHub, up to the limit, and none for a very large pull request', async () => {
+    const answer = (res: () => Response) => (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/installation')) return Response.json({ id: 9, permissions: { metadata: 'read', pull_requests: 'read', checks: 'write' } });
+      if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+      expect(new Headers(init?.headers).get('accept')).toBe('application/vnd.github.diff');
+      return res();
+    }) as typeof fetch;
+    const small = new AppGitHub(APP_ID, KEY, answer(() => new Response('diff --git a/x b/x\n')));
+    expect(await small.diff(REPO, 7, 1000)).toEqual({ diff: 'diff --git a/x b/x\n', truncated: false });
+    const large = new AppGitHub(APP_ID, KEY, answer(() => new Response('y'.repeat(70_000))));
+    expect(await large.diff(REPO, 7, 1000)).toEqual({ diff: 'y'.repeat(1000), truncated: true });
+    const tooLarge = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 406 })));
+    expect(await tooLarge.diff(REPO, 7, 1000)).toEqual({ diff: '', truncated: true });
+    const busy = new AppGitHub(APP_ID, KEY, answer(() => new Response(null, { status: 502 })));
+    await expect(busy.diff(REPO, 7, 1000)).rejects.toMatchObject({ retry: true });
   });
 });
