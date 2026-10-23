@@ -20,7 +20,7 @@ What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token, and
 }
 ```
 
-Title and body are cut to 300 and 8,000 characters. The body is the description as the author wrote it: CodeRabbit's summary block (between its `auto-generated comment: release notes by coderabbit.ai` markers) is left out, so a bot's edit neither reaches the model nor counts as a new description for `once_per_head`. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's runs, so every run asks anew (a retry too): an action never rests on an older answer, and each new event (for example finished CI) gets a new decision.
+Title and body are cut to 300 and 8,000 characters. The body is the description as the author wrote it: CodeRabbit's summary blocks (between its `auto-generated comment: release notes by coderabbit.ai` start and end markers, whole blocks only) are left out, so a bot's edit neither reaches the model nor counts as a new description for `once_per_head`. Other bots' text in the description is not left out. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's runs, so every run asks anew (a retry too): an action never rests on an older answer, and each new event (for example finished CI) gets a new decision.
 
 ### Safety
 

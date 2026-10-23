@@ -913,13 +913,21 @@ describe('chains: profiles that build on each other', () => {
     expect(pm.calls.filter((c) => c.profile === RISK).map((c) => c.body.state.pull_request.body)).toEqual(['A body', 'A body, edited']);
   });
 
-  it('authorText leaves out CodeRabbit\'s blocks, also one without its end marker', () => {
+  it('authorText leaves out CodeRabbit\'s whole blocks only', () => {
     const start = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
     const end = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
     expect(authorText('Fix the docs.')).toBe('Fix the docs.');
     expect(authorText(`Fix the docs.\n${start}\nbot\n${end}\nMore by the author.`)).toBe('Fix the docs.\n\nMore by the author.');
     expect(authorText(`${start}a${end}x${start}b${end}`)).toBe('x');
-    expect(authorText(`Fix.\n${start}\nno end`)).toBe('Fix.');
+    // Only whole blocks: a start marker without an end stays text (quoted in prose, or a broken edit).
+    expect(authorText(`Fix.\n${start}\nno end`)).toBe(`Fix.\n${start}\nno end`);
+    // Nested: the first end closes the block; the rest is text.
+    expect(authorText(`${start}a${start}b${end}c${end}`)).toBe(`c${end}`);
+    // Reversed: no whole block.
+    expect(authorText(`${end}x${start}`)).toBe(`${end}x${start}`);
+    // CRLF, and a body that is only a block.
+    expect(authorText(`A\r\n${start}\r\nbot\r\n${end}\r\nB`)).toBe('A\r\n\r\nB');
+    expect(authorText(`${start}\nbot\n${end}`)).toBe('');
     expect(authorText(`${end} only an end marker`)).toBe(`${end} only an end marker`);
   });
 

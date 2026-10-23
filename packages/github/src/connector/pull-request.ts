@@ -43,18 +43,21 @@ const BOT_BLOCK_START = '<!-- This is an auto-generated comment: release notes b
 const BOT_BLOCK_END = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
 
 /**
- * The description as the author wrote it: CodeRabbit's summary block left
- * out (a block without its end marker: to the end). So its edits neither
- * ask a once_per_head profile again nor reach the model. Leaving text out
- * can only make an answer about the description stricter.
+ * The description as the author wrote it: CodeRabbit's summary blocks left
+ * out, only whole ones (a start marker without an end marker after it stays
+ * text). So its edits neither ask a once_per_head profile again nor reach
+ * the model. The author cannot claim more than they wrote this way: they
+ * control the description anyway, and the facts come from GitHub.
  */
 export function authorText(body: string): string {
   let out = '';
   let rest = body;
-  for (let i = rest.indexOf(BOT_BLOCK_START); i >= 0; i = rest.indexOf(BOT_BLOCK_START)) {
+  for (;;) {
+    const i = rest.indexOf(BOT_BLOCK_START);
+    const end = i < 0 ? -1 : rest.indexOf(BOT_BLOCK_END, i + BOT_BLOCK_START.length);
+    if (end < 0) break;
     out += rest.slice(0, i);
-    const end = rest.indexOf(BOT_BLOCK_END, i + BOT_BLOCK_START.length);
-    rest = end < 0 ? '' : rest.slice(end + BOT_BLOCK_END.length);
+    rest = rest.slice(end + BOT_BLOCK_END.length);
   }
   return (out + rest).trim();
 }
