@@ -12,6 +12,20 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.14.2 (2026-10-24)
+
+A fix for the token script (#202), and the documentation site at https://pointsman.net (#168, #169, #203).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.14.2`. No migration, no new secrets, no new permissions. No change in behaviour in the engine or the connectors (the MCP tool definitions moved to `src/mcp-tools.ts`, so the site can list them).
+
+What changed:
+
+- **`tokens.mjs rotate --keep-old`** printed a revoke command without `--config` and with `scripts/tokens.mjs` as the path. Run as printed in a config repository, it used the default configuration (and could revoke in another KV namespace, so the old token stayed valid) and a path that does not exist there. It now prints the path it was started with, `--local` or `--remote`, and `--config` as given, quoted for the shell.
+- **Documentation site:** https://pointsman.net, with the docs under `/docs/` in English and Japanese (Starlight), a reference generated from the code (the engine version is added when the site is built, so a release changes no committed page), an AI and agents page with `llms.txt` and `llms-full.txt`, and an "About this site" page. Several pages are still short planned pages. The old address `geolonia.github.io/pointsman/` redirects there, keeping the path.
+- **Repository:** `pnpm docs:check` and `pnpm site:build`, a required CI job "Build the docs", the site as a workspace package (`docs-site/`), and the GitHub Pages workflow now only runs by hand to publish the redirect.
+
 ## 0.14.1 (2026-10-23)
 
 The decision comment's train shows where the pull request really is (#200).

@@ -9,7 +9,7 @@ import { SETTINGS } from './settings.ts';
 export const definition: FactModule = {
   name: '@pointsman/fiware',
   // As in package.json (a test checks); released with the engine for now.
-  version: '0.14.1',
+  version: '0.14.2',
   roles: ['connector'],
   settings: [],
   connector: {
