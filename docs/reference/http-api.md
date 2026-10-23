@@ -334,7 +334,7 @@ A required decision of a profile the reader may not see.
 | `created_at` | string | yes | When the decision was made. |
 | `rule` | integer \| null | yes | Index of the policy rule that matched (from 0); null when the default action applied. |
 | `facts` | `Facts` | no | Only for profiles with facts (docs/profile-format.md#facts): each fact the profile asked for, by name, as looked up for this decision, or why it is missing. A rule that needs a missing fact does not match. |
-| `test` | boolean | no | Present (true) only for a test token's decision, which is not logged. |
+| `test` | true | no | Present (true) only for a test token's decision, which is not logged. |
 | `requires` | object | no | For a profile with `requires`, by name. A required decision of a profile the token may no longer use is hidden. |
 | `replaces` | string | no | The earlier decision of the same profile, ref and client that this one replaces. |
 | `review` | object | no | Present when a person checks the decision before it counts (the profile's people_check). |
@@ -464,13 +464,13 @@ Type: object | object.
 
 ### Answer
 
-Type:  |  | .
+Type: `NoulAnswer` | `ChoiceAnswer` | `ScoreAnswer`.
 
 ### NoulAnswer
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` |   | yes |   |
+| `type` | "noul" | yes |   |
 | `value` | boolean | yes | true when P(yes) >= 0.5 |
 | `p` | `Probability` | yes |   |
 | `yes` | `Probability` | yes |   |
@@ -479,7 +479,7 @@ Type:  |  | .
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` |   | yes |   |
+| `type` | "choice" | yes |   |
 | `value` | string | yes | The most likely option. |
 | `p` | `Probability` | yes |   |
 | `probabilities` | `Probabilities` | yes |   |
@@ -488,7 +488,7 @@ Type:  |  | .
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` |   | yes |   |
+| `type` | "score" | yes |   |
 | `value` | integer | yes | The most likely level |
 | `p` | `Probability` | yes |   |
 | `score` | number | yes | Probability-weighted level; can fall between levels. |

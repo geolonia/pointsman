@@ -97,6 +97,9 @@ function meaning(words, lang) {
 /** A JSON Schema in a few words. */
 function schemaType(s) {
   if (!s || typeof s !== 'object') return '';
+  // A named schema by its name, a constant by its value.
+  if (s.$ref) return code(s.$ref.split('/').pop());
+  if (Object.hasOwn(s, 'const')) return JSON.stringify(s.const);
   if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(' | ');
   if (s.type === 'array') return schemaType(s.items) ? `${schemaType(s.items)}[]` : 'array';
   if (Array.isArray(s.type)) return s.type.join(' | ');

@@ -63,3 +63,10 @@ test('the committed reference pages do not name the engine version, so a release
     }
   }
 });
+
+test('the HTTP API page names referenced schemas and constants in types', () => {
+  const text = readFileSync(join(root, 'docs/reference/http-api.md'), 'utf8');
+  assert.match(text, /^### Answer\n\nType: `NoulAnswer` \| `ChoiceAnswer` \| `ScoreAnswer`\./m);
+  assert.doesNotMatch(text, /Type: +\|/);
+  assert.doesNotMatch(text, /\| `status` \| +\|/);
+});

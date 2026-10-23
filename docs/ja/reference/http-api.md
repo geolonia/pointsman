@@ -336,7 +336,7 @@ A required decision of a profile the reader may not see.
 | `created_at` | string | はい | When the decision was made. |
 | `rule` | integer \| null | はい | Index of the policy rule that matched (from 0); null when the default action applied. |
 | `facts` | `Facts` | いいえ | Only for profiles with facts (docs/profile-format.md#facts): each fact the profile asked for, by name, as looked up for this decision, or why it is missing. A rule that needs a missing fact does not match. |
-| `test` | boolean | いいえ | Present (true) only for a test token's decision, which is not logged. |
+| `test` | true | いいえ | Present (true) only for a test token's decision, which is not logged. |
 | `requires` | object | いいえ | For a profile with `requires`, by name. A required decision of a profile the token may no longer use is hidden. |
 | `replaces` | string | いいえ | The earlier decision of the same profile, ref and client that this one replaces. |
 | `review` | object | いいえ | Present when a person checks the decision before it counts (the profile's people_check). |
@@ -466,13 +466,13 @@ Only for profiles with facts (docs/profile-format.md#facts): each fact the profi
 
 ### Answer
 
-型:  |  | 
+型: `NoulAnswer` | `ChoiceAnswer` | `ScoreAnswer`
 
 ### NoulAnswer
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `type` |   | はい |   |
+| `type` | "noul" | はい |   |
 | `value` | boolean | はい | true when P(yes) >= 0.5 |
 | `p` | `Probability` | はい |   |
 | `yes` | `Probability` | はい |   |
@@ -481,7 +481,7 @@ Only for profiles with facts (docs/profile-format.md#facts): each fact the profi
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `type` |   | はい |   |
+| `type` | "choice" | はい |   |
 | `value` | string | はい | The most likely option. |
 | `p` | `Probability` | はい |   |
 | `probabilities` | `Probabilities` | はい |   |
@@ -490,7 +490,7 @@ Only for profiles with facts (docs/profile-format.md#facts): each fact the profi
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `type` |   | はい |   |
+| `type` | "score" | はい |   |
 | `value` | integer | はい | The most likely level |
 | `p` | `Probability` | はい |   |
 | `score` | number | はい | Probability-weighted level; can fall between levels. |
