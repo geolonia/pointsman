@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 
 // The structure of the documentation site, in one place.
 //
@@ -66,14 +65,12 @@ export const REPO_ONLY = [
 
 /**
  * The Starlight sidebar: one group per folder, its pages ordered by
- * `sidebar.order`. A folder's own index page (docs/about/index.md) has the
- * folder's slug, which Starlight's autogenerate leaves out, so it is listed
- * first by hand.
+ * `sidebar.order`. Autogenerate includes a folder's own index page
+ * (docs/about/index.md) too, so it is not listed again by hand.
  */
-const hasIndex = (dir) => ['index.md', 'index.mdx'].some((f) => existsSync(new URL(`../docs/${dir}/${f}`, import.meta.url)));
 export const sidebar = GROUPS.map((g) => ({
   label: g.en,
   translations: { ja: g.ja },
   collapsed: g.collapsed ?? false,
-  items: [...(hasIndex(g.dir) ? [{ slug: g.dir }] : []), { autogenerate: { directory: g.dir } }],
+  items: [{ autogenerate: { directory: g.dir } }],
 }));

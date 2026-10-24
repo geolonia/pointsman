@@ -77,8 +77,13 @@
   .page > .header {
     padding-inline: calc(max(0px, (100% - var(--ps-max-width)) / 2) + var(--sl-nav-pad-x));
   }
+  /* The sidebar's colour reaches the window's edge, as on datamodels.jp:
+     the pane starts at 0 and the empty space becomes its own padding, so
+     its entries still start at the content's left edge. */
   .sidebar-pane {
-    inset-inline-start: max(0px, (100% - var(--ps-max-width)) / 2);
+    inset-inline-start: 0;
+    width: calc(var(--sl-sidebar-width) + max(0px, (100% - var(--ps-max-width)) / 2));
+    padding-inline-start: max(0px, (100% - var(--ps-max-width)) / 2);
   }
   .main-frame {
     padding-inline-start: calc(var(--sl-content-inline-start, 0rem) + max(0px, (100% - var(--ps-max-width)) / 2));
