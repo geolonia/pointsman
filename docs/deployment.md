@@ -118,3 +118,90 @@ The engine repository itself is fixed in the workflows (`ENGINE_REPOSITORY`),
 not taken from `engine.json`: the workflows run the engine's code, the deploy
 workflow with the Cloudflare credentials, so a pull request that only edits
 `engine.json` cannot point them at other code.
+
+## Rotate an API token
+
+Every client that calls Pointsman over its API has its own API token (the
+GitHub connector's internal call has none, so there is nothing to rotate for
+it). Rotate a token when it is about to expire, when someone who knew it
+leaves, or when it may have leaked. These steps replace it without downtime: the old token keeps working
+until you revoke it in step 3, unless it expires first. `--keep-old` does
+not extend it, so check its expiry with `list` before you start, and finish
+before that time.
+
+Run the commands in a checkout of the Pointsman engine, with access to the
+deployment's Cloudflare account. In a configuration repository made from the
+template, the engine is in `engine/`: run `node engine/scripts/tokens.mjs`
+instead. The examples use `--local`, the development Worker on
+your computer; for a deployed Worker use `--remote --config <your wrangler config>`.
+
+### 1. Make the new token
+
+```sh
+node scripts/tokens.mjs rotate --client github-triage --expires 90d --keep-old --local
+```
+
+```text
+client:  github-triage
+profiles: issue-triage
+hash:    53d466bb…
+expires: 2027-01-20T15:44:39.807Z
+
+token (shown once, store it as a secret):
+pm_…
+
+old token kept; revoke it once the new one is in place:
+  node scripts/tokens.mjs revoke --hash 3138a1cc… --local
+```
+
+The new token has the same profiles as the old one. It is shown only once:
+copy it now. Pointsman stores only a hash of it. (In the output above, the
+hashes and the token are shortened.)
+
+`--expires` takes a duration from now (`12h`, `90d`, `2w`) or a date
+(`2027-01-31`, the end of that day in UTC), at least one hour away. When the old token had an expiry,
+the new one needs `--expires` too, or `--no-expiry`, so that a token never
+loses its expiry by accident.
+
+### 2. Give the client the new token
+
+Put the new token into the client's secret store, for example a GitHub
+Actions secret, and check that the client still works. Until you finish
+step 3, `list` shows the client's name on the new token and on every old
+one: two tokens if there was one old token, more if there were several.
+That is expected here.
+
+```sh
+node scripts/tokens.mjs list --local
+```
+
+### 3. Revoke the old token
+
+Run the command that step 1 printed, as it is: it has the same `--local` or
+`--remote` and `--config` as step 1. For a deployed Worker it looks like the
+second line:
+
+```sh
+node scripts/tokens.mjs revoke --hash <old hash> --local
+node scripts/tokens.mjs revoke --hash <old hash> --remote --config=<your wrangler config>
+```
+
+```text
+revoked 3138a1cc…
+```
+
+It can take up to about 60 seconds until the old token stops working
+everywhere.
+
+### If something goes wrong
+
+- **The client fails with the new token:** the old one still works until
+  step 3. Check the secret's name and value, then try again.
+- **You lost the new token before step 2:** revoke it with the hash from
+  step 1 and start again.
+- **The token may have leaked:** skip `--keep-old`. Then the old token is
+  revoked at once (it can still take up to about 60 seconds to stop working
+  everywhere), and the client fails until it has the new one.
+
+All options of the token script are in the README:
+[API tokens](../README.md#api-tokens).

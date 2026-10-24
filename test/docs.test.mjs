@@ -80,8 +80,8 @@ test('llms.txt lists every English page, and llms-full.txt has the text of every
   const full = llmsFull(pages);
   for (const p of pages) assert.ok(index.includes(`](${p.url})`), `${p.slug || 'the start page'} is not in llms.txt`);
   assert.match(index, /\[AI and agents\]\(https:\/\/pointsman\.net\/docs\/about\/ai\/\)/);
-  assert.match(index, /first-profile\/\): .*\(planned/);
+  assert.doesNotMatch(index, /\(planned/, 'no planned pages on the site');
   assert.ok(full.includes('Source: https://pointsman.net/docs/explanation/decision-model/'));
-  assert.ok(!full.includes('Source: https://pointsman.net/docs/tutorials/first-profile/'), 'planned pages are left out of llms-full.txt');
+  assert.ok(full.includes('Source: https://pointsman.net/docs/tutorials/first-profile/'));
   assert.doesNotMatch(full, /<svg|<!--|\]\(\/docs\//);
 });

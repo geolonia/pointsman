@@ -189,7 +189,7 @@ marks expired tokens. When the old token had an expiry, `rotate` needs
 expiry by accident.
 
 To rotate a token without downtime, see
-[Rotate an API token](https://pointsman.net/docs/how-to/rotate-api-tokens/).
+[Rotate an API token](https://pointsman.net/docs/how-to/deploy/#rotate-an-api-token).
 
 A **test token** (`--test`) is for checking profiles and their examples
 against the real model, for example in a scheduled job. Its decisions are

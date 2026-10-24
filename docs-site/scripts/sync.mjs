@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BASE, GROUPS, LEGACY } from '../pages.mjs';
+import { BASE, GROUPS, LEGACY, REPO_ONLY } from '../pages.mjs';
 
 const site = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = join(site, '..');
@@ -56,9 +56,9 @@ for (const [file, { slug }] of Object.entries(LEGACY)) {
   pages.set(file, slug);
 }
 if (new Set(pages.values()).size !== pages.size) throw new Error('two files in docs/ have the same slug (see pages.mjs)');
-// Every Markdown file in docs/ is on the site, so none is forgotten.
-const unplaced = walk('docs').filter((f) => !pages.has(f));
-if (unplaced.length) throw new Error(`not on the site: ${unplaced.join(', ')}. Put each in a group folder (docs/<group>/, docs/ja/<group>/) or in LEGACY in docs-site/pages.mjs`);
+// Every Markdown file in docs/ is on the site or listed as repository-only, so none is forgotten.
+const unplaced = walk('docs').filter((f) => !pages.has(f) && !REPO_ONLY.includes(f));
+if (unplaced.length) throw new Error(`not on the site: ${unplaced.join(', ')}. Put each in a group folder (docs/<group>/, docs/ja/<group>/), or in LEGACY or REPO_ONLY in docs-site/pages.mjs`);
 
 /** The site URL or GitHub URL for a relative link from `from` (a repository path), or null to leave it. */
 function rewrite(target, from, ja) {
@@ -114,7 +114,10 @@ const yaml = (value) => JSON.stringify(value);
 
 function write(slug, file, text) {
   const ext = file.endsWith('.mdx') ? '.mdx' : '.md';
-  const dest = join(out, (slug === '' ? 'index' : slug === 'ja' ? 'ja/index' : slug) + ext);
+  // An index file stays an index inside its folder, so that a group's own
+  // page (docs/about/index.md) is part of that group in the sidebar.
+  const index = /(^|\/)index\.mdx?$/.test(file);
+  const dest = join(out, (slug === '' ? 'index' : slug === 'ja' ? 'ja/index' : index ? `${slug}/index` : slug) + ext);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, text);
 }

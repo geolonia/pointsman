@@ -8,6 +8,54 @@ turns the answers into an action.
 - Examples: [`examples/profiles/`](../examples/profiles/)
 - Validate: `node scripts/validate-profiles.mjs <file-or-directory>...`
 
+## At a glance
+
+This is the example profile
+[`issue-triage`](../examples/profiles/issue-triage.yaml), shortened (the real
+file also has an `effort` question and makes the profile visible to AI agents
+over MCP). It sends a new issue to a team, or to a person when the AI is not
+sure which team. `$.issue.title` is a path into the request (JSONPath), and
+`noul` is a yes-or-no question.
+
+```yaml
+id: issue-triage
+version: 1
+title:
+  en: Issue triage
+  ja: Issue の振り分け
+description:
+  en: Route a new issue to the right team and flag issues that block work today.
+  ja: 新しい Issue を担当チームに振り分け、今日の作業を止めている Issue に印を付ける。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: title, path: $.issue.title }
+  - { name: body, path: $.issue.body }
+questions:
+  - name: team
+    type: choice
+    instructions: Which team should handle this issue?
+    criteria:
+      - { value: backend, description: "APIs, databases, background jobs" }
+      - { value: frontend, description: "Web pages, styles, browser behaviour" }
+      - { value: docs, description: "Documentation, tutorials, examples" }
+  - name: urgent
+    type: noul
+    instructions: Does this issue block someone's work today?
+    criteria:
+      true: Someone cannot continue their work until this is fixed.
+      false: Work can continue; this can wait for normal planning.
+policy:
+  rules:
+    - when: "team.p >= 0.85"
+      action: auto
+  default: review
+```
+
+`node scripts/explain-profile.mjs <file>` reads a profile as plain sentences,
+in English or Japanese (`--lang ja`); see [Explain](#explain). The rest of
+this page describes every field.
+
 Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
 
 To write a profile with an AI assistant, and check it, see

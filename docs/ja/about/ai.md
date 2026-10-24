@@ -13,7 +13,7 @@ Pointsman のコードとこのドキュメントの多くは、AI の助けを�
 ## このサイトを読む AI のツール向け
 
 - **最初に読むもの:** [llms.txt](https://pointsman.net/llms.txt)。ドキュメントの全ページを 1 行ずつ説明した短い索引です(英語)。
-- **すべてを 1 つのファイルで:** [llms-full.txt](https://pointsman.net/llms-full.txt)。英語のページのうち、書き終えたページの本文です。今後書く内容だけを示す準備中のページは含みません。
+- **すべてを 1 つのファイルで:** [llms-full.txt](https://pointsman.net/llms-full.txt)。英語の全ページの本文です。
 - **API:** コードから生成した [HTTP API](../reference/http-api.md) と [MCP ツール](../reference/mcp-tools.md)。
 - このサイトの `robots.txt` では、検索、AI の回答、AI の学習のどれにも使ってよいとしています。
 
@@ -22,7 +22,7 @@ Pointsman のコードとこのドキュメントの多くは、AI の助けを�
 Pointsman のデプロイは、どれも `/mcp` で MCP(Model Context Protocol。AI アシスタントがツールを呼び出すための仕組み)を提供します。
 
 - **人**は GitHub でサインインします。入れるのは、そのデプロイが許可した GitHub の組織のメンバーだけです。組織に属しているかはサインインのときに確かめるため、組織を離れた人も最大 7 日間は使えます([詳細](../../mcp.md#authentication)、英語)。Geolonia 自身のデプロイは `https://mcp.pointsman.net/mcp` にあり、Geolonia のチームが使っています。ご自身で Pointsman を使うときは、[デプロイ](../../deployment.md)(英語)して、そのアドレスを使ってください。
-- **スクリプトや CI** は、API トークン(`Authorization: Bearer <token>`)で MCP か HTTP API を使います。トークンはクライアントごとにあり、使えるプロファイルを限定できます。[API トークンを入れ替える](../how-to/rotate-api-tokens.md)も参照してください。
+- **スクリプトや CI** は、API トークン(`Authorization: Bearer <token>`)で MCP か HTTP API を使います。トークンはクライアントごとにあり、使えるプロファイルを限定できます。[API トークンの入れ替え](../../deployment.md#rotate-an-api-token)(英語)も参照してください。
 
 Claude Code では、次のコマンドでサーバーを追加します。
 
@@ -50,7 +50,7 @@ Claude Desktop と claude.ai では、コネクターの設定で、同じ URL �
 
   ただし HTTP API では、そのプロファイルを使えるトークンを持つクライアントならレビューを決められます([レビューとコールバック](../../reviews.md)、英語)。誰が決めたかとして送る名前も確かめられません。そのようなトークンは、レビューする人が使うツールにだけ渡し、エージェントには渡さないでください。
 
-外部の人が書いた入力を扱うプロファイルでは、AI の回答は判定を厳しくする方向にしか使いません。[その理由](../explanation/stricter-only.md)も参照してください。
+外部の人が書いた入力を扱うプロファイルでは、AI の回答は判定を厳しくする方向にしか使いません。[その理由](../explanation/decision-model.md#ai-の回答は判定を厳しくする方向にしか使わない)も参照してください。
 
 ## アシスタントとプロファイルを書く
 

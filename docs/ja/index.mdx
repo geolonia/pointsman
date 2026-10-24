@@ -3,50 +3,34 @@ title: Pointsman ドキュメント
 description: Pointsman は、ケースをどちらに進めるかを判定し、確信がないときは人に確認を求めます。使い方、詳しい仕様、仕組みの理由を説明します。
 ---
 
-Pointsman は、オープンソースの判定サービスです。ほかのシステムから、判定してほしいもの(ケース)を受け取ります。たとえば、道路が通れないという報告や、新しいプルリクエストです。Pointsman は決まった質問をし、人が書いたルールを当てはめ、アクションを返します。確信がないときは、人がケースを確認します。
+Pointsman は、オープンソースの判定サービスです。ほかのシステムから、判定してほしいもの(ケース)を受け取ります。たとえば、道路が通れないという報告や、新しいプルリクエストです。Pointsman は AI モデルに決まった質問をし、データからファクトを調べ、人が書いたルールを当てはめて、アクションを返します。確信がないときは、人がケースを確認します。判定はすべて記録されます。
 
-はじめての方は、まず[判定のモデル](explanation/decision-model.md)を、次に[プロファイルの概要](reference/profiles.md)を読んでください。
+はじめての方は、まず[判定のしくみ](explanation/decision-model.md)を読み、次に[はじめてのプロファイル](tutorials/first-profile.md)を試してください。
 
 ## チュートリアル
 
-手を動かしながら、順に学びます。
-
-- [はじめてのプロファイル](tutorials/first-profile.md)
-- [プルリクエストを判定する](tutorials/pull-request-facts.md)
-- [地図データで道路の通行止めを判定する](tutorials/road-closure.md)
+- [はじめてのプロファイル](tutorials/first-profile.md): 自分のコンピューターで Pointsman を動かし、プロファイルを書いて判定させます。
 
 ## ハウツーガイド
 
-1 つの目的を達成する手順です。
-
-- [AI アシスタントとプロファイルを書く](../authoring.md)
-- [デプロイで使うモジュールを選ぶ](how-to/choose-modules.md)
-- [Pointsman をデプロイする](../deployment.md)
+- [AI アシスタントとプロファイルを書く](../authoring.md)(英語)
+- [Pointsman をデプロイする](../deployment.md)(英語)。API トークンの入れ替えも含みます。
 - [Pointsman でプルリクエストをレビューする](how-to/review-pull-requests.md)
-- [API トークンを入れ替える](how-to/rotate-api-tokens.md)
-- [レビューに答える](how-to/answer-reviews.md)
-- [判定ログを読み、再生する](how-to/read-the-decision-log.md)
 
 ## リファレンス
 
-詳しい仕様を調べます。
-
-- [プロファイルの概要](reference/profiles.md)と[プロファイルの形式の全体](../profile-format.md)
-- [ファクトの型](reference/fact-types.md)と[コネクター](reference/connectors.md)
-- [HTTP API](reference/http-api.md) と [MCP ツール](reference/mcp-tools.md)
+- [プロファイルの形式](../profile-format.md)(英語)
+- コードから生成した[ファクトの型](reference/fact-types.md)、[HTTP API](reference/http-api.md)、[MCP ツール](reference/mcp-tools.md)
+- [GitHub コネクター](../github-connector.md)(英語)
 
 ## 解説
 
-Pointsman がなぜそのように動くのかを説明します。
-
-- [判定のモデル](explanation/decision-model.md)
-- [AI の回答は判定を厳しくする方向にしか使わない理由](explanation/stricter-only.md)
-- [欠けたファクト](explanation/missing-facts.md)
-- [Pointsman の構成](explanation/architecture.md)
+- [判定のしくみ](explanation/decision-model.md): 質問、ファクト、ルール、人の関わり方、欠けたファクト、Pointsman の構成
+- [セキュリティ](explanation/security.md): Pointsman が何を、誰から守るか
 
 ## このサイトについて
 
 - [このサイトについて](about/index.md): 運営者、ライセンス、プライバシー
 - [AI とエージェント](about/ai.md): AI アシスタントからの Pointsman の使い方と `llms.txt`
 
-サイドバーで「準備中」と表示されたページには、今後書く内容と、現在参考になるページへのリンクがあります。以前のメモやスパイクの報告は「背景資料」にあります。英語だけのページは、日本語版ができるまで英語で表示します。
+エンジンを開発する人向けのメモ、設計メモ、計画は、このサイトではなく[リポジトリ](https://github.com/geolonia/pointsman/tree/main/docs)にあります。

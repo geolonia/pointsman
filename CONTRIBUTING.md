@@ -43,8 +43,12 @@ from `docs/` with Astro Starlight (`docs-site/`):
   `docs/ja/<group>/` in Japanese, with the same headings and code blocks.
   Write each language natively; do not translate sentence by sentence.
 - Link to other files with relative paths, as on GitHub; the build turns
-  them into site links. Where the older files in `docs/` appear on the site
-  is set in `docs-site/pages.mjs`.
+  them into site links. Which older files in `docs/` are site pages, and
+  which stay in the repository only (notes, design notes, plans), is set in
+  `docs-site/pages.mjs`.
+- A page goes on the site only when someone needs it now; there are no
+  "planned" pages. When a page is removed or merged, add its old URL to
+  `site/_redirects`; the build checks every line.
 - The pages in `docs/reference/` marked as generated come from the code:
   after changing a fact module, `openapi.yaml` or the MCP tools, run
   `pnpm docs:reference` and commit the result.
