@@ -6,7 +6,7 @@ By default it runs in **shadow mode**: it only writes its check runs, with the c
 
 ## How it works
 
-1. GitHub sends a webhook for an event of a pull request (opened, new commits, ready for review, edited, a review, a finished check suite). The connector's own check suites start no run, and neither do its own approvals and their dismissal: the run that made them already showed them.
+1. GitHub sends a webhook for an event of a pull request (opened, new commits, ready for review, edited, a review, a finished check suite). The connector's own check suites start no run, and neither do its own approvals and their dismissal: the run that made them reads the reviews again afterwards and draws the decision comment from them. A person's dismissal of its approval, and other apps' reviews, start a run.
 2. The connector checks the webhook's signature, then hands the event to the pull request's own object (a Durable Object), one per pull request.
 3. That object runs the work for its pull request, one run at a time, 20 seconds after the event: a burst of events (several check suites finishing) becomes one run.
 4. A run reads the pull request again from GitHub, asks Pointsman with each configured profile, and writes one check run per profile and head commit, `Pointsman: <profile>`. Its title is the decision's [signal](#signals) and action, for example `🟢 approve` or `🔴 review (shadow)` (`(shadow)`: no action is mapped for it); its details show the [line and the switch](#the-decision-comment).
