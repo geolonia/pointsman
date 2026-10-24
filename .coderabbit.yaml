@@ -7,7 +7,15 @@
 inheritance: true
 
 reviews:
+  # No review, summary or status comment on its own: CodeRabbit reviews only
+  # when asked (`@coderabbitai review`, or a paid review), so a draft, a push
+  # or a ready PR spends nothing and adds no notice. The reviews are asked
+  # for through the pr-review-flow skill's review-next for now; later
+  # Pointsman itself may ask (a connector action, not built yet).
+  review_status: false
   auto_review:
+    enabled: false
+    # Only matters if automatic reviews are switched on again.
     # Release PRs only move the version and add the changelog entry, yet
     # touch many files; Pointsman approves them on facts alone (the release
     # class, geolonia/pointsman#149), which needs CodeRabbit not to have
