@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:d5b270f509a81ab186d01d4468018366c71e7dfba13132fb9cc8d1e444f92366"
-model_status: under-review
+prose_version: "threat-model.md@sha256:e525ecd034de946f1047ee316f771042527bb13296f689a307cb01b9fbeea2c3"
+model_status: accepted
 triage_policy: strict
-confidence: {documented: 424, maintainer: 76, inferred: 0, assumption: 5}
+confidence: {documented: 424, maintainer: 82, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2: Claude Opus 5.5 (claude-opus-5-5)"
@@ -1038,7 +1038,7 @@ outputs:
     downstream_must_not_assume:
       - id: decision-hidden-from-readers
         statement: "that the action, rule and AI answers it shows are hidden from the pull-request author or the public"
-        provenance: {kind: assumption, question_id: Q32}
+        provenance: {kind: maintainer, date: "2026-10"}
   - component: connector-github
     channel: comments-labels-review-requests
     taint: constrained
@@ -2027,22 +2027,22 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/profile-format.md \"CodeRabbit reviews\""}
   - id: D-LOG-FACTS-NOT-ATOMIC
     components: [engine-facts]
-    conditions: "a log read is not a snapshot; two decisions at the same moment can miss each other, so a queue or spend limit can be passed; basis: stated, tier pending Q35"
+    conditions: "a log read is not a snapshot; two decisions at the same moment can miss each other, so a queue or spend limit can be passed; basis: stated; correctness only by a maintainer ruling (2026-10-24, Q35)"
     tier: correctness-only
     false_friend: true
-    provenance: {kind: assumption, question_id: Q35}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CONNECTOR-SHOWS-DECISION
     components: [connector-github]
     conditions: "every check run and the decision comment show the action, rule, facts' state and the AI answers' values to everyone who may read the pull request"
     tier: security-critical
     false_friend: false
-    provenance: {kind: assumption, question_id: Q32}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CONNECTOR-OWN-REVIEW-EVENTS
     components: [connector-github]
     conditions: "its own approvals and dismissals start one more run each; a profile that depends on its own approval without keep_approval can approve and withdraw in turn"
     tier: correctness-only
     false_friend: false
-    provenance: {kind: assumption, question_id: Q33}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: D-EXACTLY-ONCE
     components: [engine-callbacks]
     conditions: "a callback can arrive more than once when a 2xx is lost; basis: stated"
@@ -2203,7 +2203,7 @@ downstream_responsibilities:
     component: connector-github
     statement: "accept that check runs and the comment show decisions and AI answers to the pull request's readers, or do not ask that profile there"
     enforces: [D-CONNECTOR-SHOWS-DECISION]
-    provenance: {kind: assumption, question_id: Q32}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: R-CONNECTORS-IN-ENGINE
     component: engine-api
     statement: "choose connectors for the engine Worker only after review; their own token, never a test token; their secrets as engine Worker secrets; edge limits on /connectors/; write keys only in an own Worker"
@@ -2345,7 +2345,7 @@ known_misuses:
     components: [connector-github]
     pattern: "an approving decision that changes because of the connector's own approval, without keep_approval"
     safer_alternative: "github_app_approval with a keep_approval rule"
-    provenance: {kind: assumption, question_id: Q33}
+    provenance: {kind: maintainer, date: "2026-10"}
   - id: app-approval-without-bot-id
     components: [engine-facts]
     pattern: "github_app_approval without bot_id"
@@ -2375,7 +2375,7 @@ known_misuses:
     components: [connector-github]
     pattern: "using the connector with AI questions on a public repository while counting on the author not seeing the answers"
     safer_alternative: "accept it or do not ask that profile there"
-    provenance: {kind: assumption, question_id: Q32}
+    provenance: {kind: maintainer, date: "2026-10"}
 
 known_non_findings:
   - id: KNF-TOKEN-FAST-HASH

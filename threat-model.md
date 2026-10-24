@@ -134,8 +134,8 @@
   `D-CONNECTOR-TRUSTS-ENGINE`; the obligations `R-APP-APPROVAL-BOT`,
   `R-WORKFLOWS-TO-PERSON`, `R-RELEASE-PAIR`, `R-CONNECTOR-PUBLIC-DECISIONS`
   and `R-CONNECTORS-IN-ENGINE`, and a wider `R-CONNECTOR-APPROVE`; nine
-  misuse patterns; and four questions, Q32 to Q35 (§1.18), open at the time
-  of writing.
+  misuse patterns; and four questions, Q32 to Q35, which the maintainer
+  answered on 2026-10-24 as proposed (§1.18).
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -174,24 +174,20 @@
   reporting for this repository or by email to `security@pointsman.net`,
   as `SECURITY.md` says; only the latest release gets fixes. A finding that lands in §1.3 or §1.12 is closed
   citing this document.
-- **Status**: under maintainer review since 2026-10-24: the amendment of
-  2026-10-24 asks four questions (Q32 to Q35, §1.18), and the claims they
-  cover carry *(assumption, QN)* until they are answered; under the
-  `strict` policy those claims escalate and never close. Before it: accepted,
-  2026-10-16; the amendment of 2026-10-23 accepted
-  the same day. The maintainer answered all 24 questions
+- **Status**: accepted, 2026-10-16; the amendment of 2026-10-23 and the
+  amendment of 2026-10-24 accepted the same day each. The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
-  and the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23,
+  the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
+  the four of the amendment of 2026-10-24 (Q32 to Q35) on 2026-10-24,
   accepting every proposed answer; the matching claims carry
-  *(maintainer, 2026-10)*. No **inferred** tag remains; the
-  **assumption** tags are those of Q32 to Q35. Closure constraint: an
+  *(maintainer, 2026-10)* and no **inferred** or **assumption** tag
+  remains. Closure constraint: an
   **inferred** claim may escalate a report but never close it, and an
   **assumption** closes only what the triage policy below permits. Nothing
   shipped at `v0.14.2` is listed as not covered any more (§1.16).
-- **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). The
-  **assumption** claims of the amendment of 2026-10-24 escalate and never
-  close.
+- **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). Should an
+  **assumption** be added in a later revision, it escalates and never closes.
   See §1.17.
 - **Provenance legend**: *(documented, source)* = stated in the named public
   source of this repository; *(maintainer, YYYY-MM)* = confirmed by the
@@ -201,7 +197,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 424 documented / 76 maintainer / 0 inferred / 5 assumption.
+- **Draft confidence**: 424 documented / 82 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -302,11 +298,11 @@ requests and Dependabot patch bumps of development dependencies are
 approved on facts alone; documentation pull requests need the facts and,
 in addition, AI answers within thresholds, which can only stop an
 approval, never give one on their own *(maintainer, 2026-10)*. As of
-2026-10-24 this is taken to hold unchanged at `v0.14.2`, with
+2026-10-24 this holds unchanged at `v0.14.2`, with
 `keep_approval` mapped for the "already approved" decision, the decision
 comment switched on, release pull requests recognised by `github_release`
 and bumps by `github_bump`, and no approval resting on `github_workflows`,
-`github_copilot` or the CodeRabbit facts *(assumption, Q34)*. So an
+`github_copilot` or the CodeRabbit facts *(maintainer, 2026-10)*. So an
 error in the GitHub facts (`P-FACTS-NEVER-GUESSED`,
 `P-GITHUB-FACTS-FOR-HEAD`, `P-GITHUB-REQUIRED-CHECKS`) or in the
 connector's approval rules (`P-CONNECTOR-APPROVE-HEAD`) can approve a
@@ -1048,7 +1044,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | action-deploy-watch | x-probabilistic-result | disclaimed | the profile's policy threshold decides `cancel` | §1.12 `D-MODEL-ACCURACY` | *(documented, actions/deploy-watch/README.md "Pointsman for unclear cases")* |
 | connector-github | numeric domain | claimed | a pull-request `number` is a positive whole number, the head a 40-character SHA, the app id a number; `diff` 1,000 to 100,000, `recheck` 5 to 120 minutes | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED` | *(documented, docs/github-connector.md "Chains", "Settings")* |
 | connector-github | failure atomicity | claimed | the record of a check run or an action is written before it is made; a stopped run is settled by the trace on GitHub, or done again only after 10 minutes; a refused action is not tried again for that commit | §1.11 `P-CONNECTOR-ACTIONS-MAPPED` | *(documented, docs/github-connector.md "Actions": "The record is written before the action and closed after it")* |
-| connector-github | recursive/cyclic topology | claimed | events of its own check suites are ignored, so its check runs do not start the next run; events of its own reviews (an approval, a dismissal) are not ignored and start one more run each (`D-CONNECTOR-OWN-REVIEW-EVENTS`) | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED`; §1.12 `D-CONNECTOR-OWN-REVIEW-EVENTS` | *(documented, docs/github-connector.md "Safety": "Its own check runs' events are ignored too"; assumption, Q33)* |
+| connector-github | recursive/cyclic topology | claimed | events of its own check suites are ignored, so its check runs do not start the next run; events of its own reviews (an approval, a dismissal) are not ignored and start one more run each (`D-CONNECTOR-OWN-REVIEW-EVENTS`) | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED`; §1.12 `D-CONNECTOR-OWN-REVIEW-EVENTS` | *(documented, docs/github-connector.md "Safety": "Its own check runs' events are ignored too"; maintainer, 2026-10)* |
 | connector-github | callback execution | N/A — no caller code runs; the action kinds are a fixed list in the connector | — | — | *(documented, docs/github-connector.md "Actions": "a deployment can switch actions on, never add one")* |
 | connector-github | serialization/reconstruction | claimed | webhook bodies are parsed only after the signature check; GitHub answers are checked field by field; every field of the engine's answer that the connector reads is checked, and a test decision is never acted on; what it writes into the decision comment and the check runs is checked names, cleaned reasons and answers of known shapes, in code blocks | §1.11 `P-CONNECTOR-WEBHOOK-SIGNED`, `P-CONNECTOR-ANSWER-CHECKED`, `P-CONNECTOR-COMMENT-NO-PR-TEXT`; §1.12 `D-CONNECTOR-TRUSTS-ENGINE` | *(documented, docs/github-connector.md "Safety"; "The decision comment", Rules)* |
 | connector-github | reference lifecycle | claimed | its approvals stand only for the commit they were given on: after a push they are dismissed on every run, and an approval of the same commit is withdrawn when a later decision neither approves nor keeps it (`keep_approval`), waits for a person, is a test decision or is not a valid answer; the decision comment is one per pull request, found again only among its own bot's comments | §1.11 `P-CONNECTOR-APPROVE-HEAD`, `P-CONNECTOR-COMMENT-NO-PR-TEXT` | *(documented, docs/github-connector.md "Actions", "When the approval stays", "The decision comment")* |
@@ -1191,7 +1187,7 @@ docs/deployment.md)*. A hosted multi-tenant Pointsman is not in this list
 | **Model backend** (Workers AI, AI Gateway, model server) | yes, as a collaborator | see every state and question; answer anything | cannot name an action; cannot change the stored model name (HTTP adapter) | with a malformed answer: nothing; with a well-formed wrong answer: a wrong action (`D-MODEL-ACCURACY`) | *(maintainer, 2026-10)* |
 | **Public data sources** (GSI, Valhalla/OSM) | yes, as collaborators | serve tiles and routes | cannot inject anything but fact values of the documented types | wrong facts | *(maintainer, 2026-10)* |
 | **Pull-request author** (anyone who can open or push to a pull request that a GitHub fact reads) | yes | choose the changed files and their names, the title, the commits and their signatures; push at any time; in a pull request from the same repository, change its workflows and so the check runs they report | cannot change the base branch's rules or protection, the workflows a ruleset requires, the base branch's `CODEOWNERS` (it is read from the base branch, not from the pull request), GitHub's record of who pushed, or the repository's custom properties; cannot choose the profile, the rules or the `head` the client names | make an allowing rule match: a "docs only" change that is not, a green check that is not the intended job, a decision for a commit other than the one acted on | *(documented, docs/profile-format.md "GitHub pull requests": "The client names only the pull request"; "One snapshot": "a pull request can change that one"; the `github_pr` row: "by the `CODEOWNERS` file of the base branch")* |
-| **Pull-request author against the GitHub connector** | yes | everything above; write the title, description and diff the connector sends to the profile's model; trigger runs with events (push, edit, ready for review, a review); close or convert to draft at any time; read every check run and the decision comment, so see the AI answers' values and the rule each decision took, and try again with a new edit | cannot reach the connector without GitHub's signature; cannot choose the connector's profiles, `actions`, `runs`, `comment` or `signals`; cannot make the connector write text from the pull request into a comment or a check run; cannot get an approval for a draft, a fork, or a commit other than the decided head | an approval, label or review request the change should not get; a run of AI questions on every event (cost); tuning text against the shown answers (`D-CONNECTOR-SHOWS-DECISION`) | *(documented, docs/github-connector.md "Safety", "Actions", "The decision comment"; assumption, Q32)* |
+| **Pull-request author against the GitHub connector** | yes | everything above; write the title, description and diff the connector sends to the profile's model; trigger runs with events (push, edit, ready for review, a review); close or convert to draft at any time; read every check run and the decision comment, so see the AI answers' values and the rule each decision took, and try again with a new edit | cannot reach the connector without GitHub's signature; cannot choose the connector's profiles, `actions`, `runs`, `comment` or `signals`; cannot make the connector write text from the pull request into a comment or a check run; cannot get an approval for a draft, a fork, or a commit other than the decided head | an approval, label or review request the change should not get; a run of AI questions on every event (cost); tuning text against the shown answers (`D-CONNECTOR-SHOWS-DECISION`) | *(documented, docs/github-connector.md "Safety", "Actions", "The decision comment"; maintainer, 2026-10)* |
 | **Commenter** (anyone who may comment on or review the pull request) | yes | write comments, commands to CodeRabbit and reviews; edit their own comments; with write access, edit a bot's comment | cannot write as CodeRabbit's, Copilot's or the connector's bot account; cannot make a command count for the author's budget or a paid review unless they are the author, an organization owner or member, or a listed app | make a CodeRabbit or Copilot fact say the service reviewed, approved or stated a budget when it did not; make the connector take a comment or review for its own | *(documented, docs/profile-format.md "CodeRabbit reviews"; docs/modules.md "Facts from reviews and comments")* |
 | **Review services** (CodeRabbit, Copilot) | yes, as collaborators | review, comment and set statuses through their own accounts; state budgets and prices in their own words | cannot change any field but the values the facts derive from what they wrote | wrong review state, budget or price (`D-SERVICE-STATE-AS-STATED`) | *(documented, docs/profile-format.md "CodeRabbit reviews")* |
 | **npm package publisher and the npm registry** (`github_bump`) | the publisher yes; the registry as a collaborator | the publisher chooses what to publish and when, and so the version a bump pull request moves to; the registry records the publish time | the publisher cannot set the recorded time; a registry answer cannot change any field but `release_age_days`, and a malformed one makes the fact missing | a malicious release that is old enough for a profile's age rule (`D-NPM-REGISTRY-TRUSTED`) | *(maintainer, 2026-10)* |
@@ -1592,9 +1588,9 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-WORKFLOWS-BEST-EFFORT` | that a `github_workflows` count of zero means a workflow change is safe: it counts known unsafe patterns in the files it parses; whether a script fetches code is read from a word list, values that reach a script through files are not counted, the code of local actions and the callers of reusable workflows are not read, and the defaults of the repository (a job without `permissions`) are not seen | `engine-facts`, `github_workflows`; every file it cannot read is `unparsed`, never skipped (`P-FACTS-NEVER-GUESSED`); send every `privileged` change to a person (`R-WORKFLOWS-TO-PERSON`). Basis: stated | security-critical | yes: "no finding" ≠ "safe to merge" | *(documented, docs/profile-format.md "GitHub workflows": "This part is best effort: a script can fetch code in ways no word list sees, so send every `privileged` change to a person")* |
 | `D-RELEASE-NOT-WHO` | that a pull request with `github_release.version_only` true is a real release, or who made it: it checks only that every changed line is a version step or a changelog addition; the added changelog lines are not read; in `version_text_files` any line may carry the version | `engine-facts`, `github_release`; pair it with `github_pr` (`R-RELEASE-PAIR`). Basis: stated | security-critical | yes: "only a version moved" ≠ "a release by the maintainer" | *(documented, docs/profile-format.md `github_release` row: "It says nothing about who made the change: pair it with `github_pr`")* |
 | `D-SERVICE-STATE-AS-STATED` | that a review service's state is true: `github_copilot`, `github_app_approval` and the CodeRabbit facts are what the services' accounts did and wrote on GitHub; CodeRabbit's budget, wait, price and billable count are read from its own words with fixed patterns, so a change of its wording makes them unknown (or, where nothing is stated, the strict default); `installed` from other pull requests' statuses; `ignored` is the author's own line in the description | `engine-facts`; who may write as the service is `P-SERVICE-ACCOUNT-ONLY`. Basis: stated | correctness-only | no | *(documented, docs/profile-format.md "CodeRabbit reviews"; docs/modules.md "Facts from reviews and comments")* |
-| `D-LOG-FACTS-NOT-ATOMIC` | a consistent view of the decision log for facts that read it: a read is not a snapshot from the start of the decision, the decision itself is not in it yet, and two decisions made at the same moment can both miss each other; so `coderabbit_queue` can count two pull requests as first, and `coderabbit_spend` can let two pay decisions made at the same moment each stay under a limit that both together pass; a pay decision counts as paid whether or not it was carried out | `engine-facts`, the three CodeRabbit facts that read the log; the client's own decisions only (`P-LOG-FACTS-OWN-CLIENT`). Basis: stated; its tier (a cost limit, not a security control) awaits Q35 *(assumption, Q35)* | correctness-only | yes: "per_window_usd_after" ≠ a hard cap | *(documented, docs/modules.md "Facts from the decision log": "two decisions made at the same time can both miss each other"; assumption, Q35)* |
-| `D-CONNECTOR-SHOWS-DECISION` | confidentiality of a decision from the pull request's readers: every check run shows the decision's action, rule, version, facts read and missing with their reasons, and the AI answers' values, and the decision comment shows the same for its profiles, to everyone who may read the pull request (in a public repository, anyone); so the author can see how the model answered their text and edit it again | `connector-github`; the probabilities and the decision's other fields are not shown; no text from the pull request is shown (`P-CONNECTOR-COMMENT-NO-PR-TEXT`). Basis: an assumption pending Q32 | security-critical | no | *(assumption, Q32)* |
-| `D-CONNECTOR-OWN-REVIEW-EVENTS` | ignoring the connector's own review events: its approvals and dismissals send `pull_request_review` events like anyone's, and each starts one more run 20 s later that asks every profile not kept by `once_per_head` again (model calls); a profile whose decision changes because of the connector's own approval (without `keep_approval`) can make it approve and withdraw in turn on every run | `connector-github`; its own check suites are ignored (`P-CONNECTOR-WEBHOOK-SIGNED`); `keep_approval` with `github_app_approval` is the documented way to keep a decision stable (`R-CONNECTOR-APPROVE`). Basis: an assumption pending Q33 | correctness-only | no | *(assumption, Q33)* |
+| `D-LOG-FACTS-NOT-ATOMIC` | a consistent view of the decision log for facts that read it: a read is not a snapshot from the start of the decision, the decision itself is not in it yet, and two decisions made at the same moment can both miss each other; so `coderabbit_queue` can count two pull requests as first, and `coderabbit_spend` can let two pay decisions made at the same moment each stay under a limit that both together pass; a pay decision counts as paid whether or not it was carried out | `engine-facts`, the three CodeRabbit facts that read the log; the client's own decisions only (`P-LOG-FACTS-OWN-CLIENT`). Basis: stated; its tier (a cost limit, not a security control) is a maintainer ruling (2026-10-24, Q35) *(maintainer, 2026-10)* | correctness-only | yes: "per_window_usd_after" ≠ a hard cap | *(documented, docs/modules.md "Facts from the decision log": "two decisions made at the same time can both miss each other"; maintainer, 2026-10)* |
+| `D-CONNECTOR-SHOWS-DECISION` | confidentiality of a decision from the pull request's readers: every check run shows the decision's action, rule, version, facts read and missing with their reasons, and the AI answers' values, and the decision comment shows the same for its profiles, to everyone who may read the pull request (in a public repository, anyone); so the author can see how the model answered their text and edit it again | `connector-github`; the probabilities and the decision's other fields are not shown; no text from the pull request is shown (`P-CONNECTOR-COMMENT-NO-PR-TEXT`). Basis: a maintainer ruling (2026-10-24, Q32) | security-critical | no | *(maintainer, 2026-10)* |
+| `D-CONNECTOR-OWN-REVIEW-EVENTS` | ignoring the connector's own review events: its approvals and dismissals send `pull_request_review` events like anyone's, and each starts one more run 20 s later that asks every profile not kept by `once_per_head` again (model calls); a profile whose decision changes because of the connector's own approval (without `keep_approval`) can make it approve and withdraw in turn on every run | `connector-github`; its own check suites are ignored (`P-CONNECTOR-WEBHOOK-SIGNED`); `keep_approval` with `github_app_approval` is the documented way to keep a decision stable (`R-CONNECTOR-APPROVE`). Basis: a maintainer ruling (2026-10-24, Q33); ignoring its own review events is a hardening candidate (pointsman#213) | correctness-only | no | *(maintainer, 2026-10)* |
 | `D-EXACTLY-ONCE` | exactly-once callback delivery: a callback can arrive more than once when a 2xx answer is lost | `engine-callbacks`. Basis: stated | correctness-only | no | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
 | `D-BRIDGE-BROKER-ACCESS-CONTROL` | its own access control for the broker side: whoever may write entities, Decision entities or completed Task entities in the tenant can trigger decisions, resolve reviews and name `reviewedBy`; the broker's access control owns this | `bridge`. Basis: stated | security-critical | no | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control")* |
 | `D-BRIDGE-RACE-WINDOWS` | atomicity across broker writes: NGSI-LD has no conditional update, so a new decision written between a read and a write can be overwritten with an older result, and two simultaneous notifications can send the same feedback twice | `bridge`. Basis: stated | correctness-only | no | *(documented, bridge/README.md "NGSI-LD has no conditional update, so there is a short window")* |
@@ -1753,7 +1749,7 @@ the receivers must do for §1.5–§1.11 to hold.
 - **`R-APP-APPROVAL-BOT`** — in a `github_app_approval` fact, set `bot_id` to the account id of the app's bot (`gh api '/users/<slug>[bot]' --jq .id`), so that an app that takes over a deleted app's slug does not count *(documented, docs/profile-format.md "GitHub pull requests" settings table, `bot_id`)*.
 - **`R-WORKFLOWS-TO-PERSON`** — in a profile with `github_workflows`, send every change with `privileged`, `unparsed` or `local_unresolved` above zero to a person, and do not approve a workflow change on zero counts alone (`D-WORKFLOWS-BEST-EFFORT`) *(documented, docs/profile-format.md "GitHub workflows": "send every `privileged` change to a person"; "Parser limits": "so a profile can send it to a person")*.
 - **`R-RELEASE-PAIR`** — in a profile that allows a release pull request on `github_release`, pair it with `github_pr` (author, signatures, pushes), name the exact version and changelog files, and never list files that run in `version_text_files` (`D-RELEASE-NOT-WHO`) *(documented, docs/profile-format.md `github_release` row and its settings: "Never files that run"; "Name the exact files")*.
-- **`R-CONNECTOR-PUBLIC-DECISIONS`** — before using the GitHub connector on a repository whose readers must not see a profile's answers (a public repository, or one with outside contributors), accept that every check run and the decision comment show the action, the rule, the facts' state and the AI answers' values (`D-CONNECTOR-SHOWS-DECISION`), or do not ask that profile there *(assumption, Q32)*.
+- **`R-CONNECTOR-PUBLIC-DECISIONS`** — before using the GitHub connector on a repository whose readers must not see a profile's answers (a public repository, or one with outside contributors), accept that every check run and the decision comment show the action, the rule, the facts' state and the AI answers' values (`D-CONNECTOR-SHOWS-DECISION`), or do not ask that profile there *(maintainer, 2026-10)*.
 - **`R-CONNECTORS-IN-ENGINE`** — choose a connector for the engine Worker (`engine.json` `modules.connectors`) only after reviewing its module, since it runs next to the engine's secrets; give it its own token limited to its profiles, never a test token; put its secrets in as Worker secrets of the engine; limit `/connectors/…` at the edge, because edge rules on `/v1/` do not see its calls; run a connector that holds a key that can write to another system in its own Worker *(documented, docs/connectors.md "Where it runs", "Trust")*.
 - **`R-DEPLOY-TOOLING`** — run `tokens.mjs` with `--remote` only on purpose
   and keep the printed token out of shell history and logs; deploy only
@@ -1980,55 +1976,7 @@ Report both, as `DISPOSITION (status)`. An escalated finding is not a
 
 ## 1.18 Open questions for the maintainers
 
-The amendment of 2026-10-24 asks one wave of four questions. Each claim
-that rests on one carries an assumption tag naming it; under `strict` it escalates
-and never closes until the answer is recorded.
-
-- **Q32** — The GitHub connector shows every decision's action, rule,
-  facts (read, missing and why) and the AI answers' values in each check
-  run, and in the decision comment, to everyone who may read the pull
-  request; so the author of a pull request in a public repository sees how
-  the model answered their text and can edit it and try again. Is that
-  disclaimed, with the integrator deciding which profiles the connector
-  asks on such repositories?
-  Proposed answer: yes; disclaim it
-  (`D-CONNECTOR-SHOWS-DECISION`), make it the integrator's obligation
-  (`R-CONNECTOR-PUBLIC-DECISIONS`), and keep the probabilities and any
-  pull-request text out, as now.
-  Lands in: §1.12
-  `D-CONNECTOR-SHOWS-DECISION`, §1.13 `R-CONNECTOR-PUBLIC-DECISIONS`, §1.10.
-- **Q33** — The connector ignores its own check suites' events, but not
-  its own reviews: each approval or dismissal starts one more run, which
-  asks every profile again (model calls), and a profile whose decision
-  depends on the connector's own approval without `keep_approval` can make
-  it approve and withdraw in turn. Is that a disclaimed cost and a misuse,
-  rather than a property that the connector ignores its own review events?
-  Proposed answer: disclaim it (`D-CONNECTOR-OWN-REVIEW-EVENTS`, correctness
-  only), list the cycle in §1.14, and record ignoring the connector's own
-  review events as a hardening candidate.
-  Lands in: §1.12
-  `D-CONNECTOR-OWN-REVIEW-EVENTS`, §1.7 matrix (recursive topology), §1.14.
-- **Q34** — The operational state recorded on 2026-10-23 (the maintainer's
-  deployment approves documentation, release and dependency-bump pull
-  requests) is taken to hold at `v0.14.2`, now with `keep_approval` for
-  the "already approved" decision, the decision comment on, release pull
-  requests recognised by `github_release` and bumps by `github_bump`, and
-  no approval resting on `github_workflows`, `github_copilot` or the
-  CodeRabbit facts. Is that right?
-  Proposed answer: yes, as stated.
-  Lands in: §1.2 operational state.
-- **Q35** — `coderabbit_spend` and `coderabbit_queue` read the decision
-  log without a snapshot, so two decisions at the same moment can both stay
-  under a spending limit that together they pass. The connector has no
-  `pay` action, so a person carries out a paid review. Is the spend a cost
-  guide (correctness only) rather than a security control?
-  Proposed answer:
-  yes; `D-LOG-FACTS-NOT-ATOMIC` stays correctness-only, and a deployment
-  that needs a hard cap sets it at CodeRabbit.
-  Lands in: §1.12
-  `D-LOG-FACTS-NOT-ATOMIC`, §1.14.
-
-Earlier waves: the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, the three questions of the GitHub-facts amendment on 2026-10-21 (Q25: disclaim required checks matched by name; Q26: no repository allow-list, the GitHub credential's reach is the boundary; Q27: disclaim the shared GitHub rate limit), and the four questions of the amendment of 2026-10-23 on 2026-10-23 (Q28: disclaim the connector's trust in the engine's answer, a check of `test` and of the decision's shape is a hardening candidate; Q29: disclaim the reach of the connector app's key, which stays only in the connector Worker; Q30: disclaim trust in the npm registry, integrators pair `github_bump` with `github_pr` and an age margin; Q31: disclaim a person's review behind a connector approval and prompt injection through the pull request, the integrator's rules are the control), accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires. Q28's hardening candidate (check the engine's answer and refuse test decisions) shipped in pointsman#193 (`v0.13.1`) and is now `P-CONNECTOR-ANSWER-CHECKED`; `D-CONNECTOR-TRUSTS-ENGINE` is narrowed to what that check does not cover.
+Not applicable — the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, the three questions of the GitHub-facts amendment on 2026-10-21 (Q25: disclaim required checks matched by name; Q26: no repository allow-list, the GitHub credential's reach is the boundary; Q27: disclaim the shared GitHub rate limit), and the four questions of the amendment of 2026-10-23 on 2026-10-23 (Q28: disclaim the connector's trust in the engine's answer, a check of `test` and of the decision's shape is a hardening candidate; Q29: disclaim the reach of the connector app's key, which stays only in the connector Worker; Q30: disclaim trust in the npm registry, integrators pair `github_bump` with `github_pr` and an age margin; Q31: disclaim a person's review behind a connector approval and prompt injection through the pull request, the integrator's rules are the control), accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires. The four questions of the amendment of 2026-10-24 were answered on 2026-10-24 as proposed (Q32: disclaim that check runs and the decision comment show the decision and the AI answers to the pull request's readers, the integrator chooses where; Q33: disclaim the runs the connector's own review events start and the approve-and-withdraw cycle, ignoring those events is a hardening candidate, pointsman#213; Q34: the operational state of 2026-10-23 holds at `v0.14.2`, with `keep_approval`, the decision comment, `github_release` and `github_bump`; Q35: the CodeRabbit spend and queue are a cost guide, correctness only, a hard cap belongs at CodeRabbit), and the claims they ratified carry *(maintainer, 2026-10)*. Q28's hardening candidate (check the engine's answer and refuse test decisions) shipped in pointsman#193 (`v0.13.1`) and is now `P-CONNECTOR-ANSWER-CHECKED`; `D-CONNECTOR-TRUSTS-ENGINE` is narrowed to what that check does not cover.
 
 ## 1.19 Machine-readable companions
 
@@ -2046,8 +1994,8 @@ plugin's exporter and the same hand completion (`description` and
 `trust_boundaries`, by a short script), and so it was after the amendment
 of 2026-10-24. The JSON's `confidence` has no maintainer or assumption
 count: the exporter folds maintainer claims into documented and
-assumption claims into inferred, so it reads 500 documented and 5
-inferred while §1.1 counts 424, 76, 0 and 5.
+assumption claims into inferred, so it reads 506 documented and 0
+inferred while §1.1 counts 424, 82, 0 and 0.
 
 ## Appendix: prior security-policy back-map
 

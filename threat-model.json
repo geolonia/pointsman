@@ -6,8 +6,8 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted. The `github_workflows` fact (since 0.4.0) is not covered by this model yet; a report about it is a MODEL-GAP.",
   "confidence": {
-    "documented": 500,
-    "inferred": 5
+    "documented": 506,
+    "inferred": 0
   },
   "components": [
     {
@@ -1838,24 +1838,24 @@
     },
     {
       "property": "D-LOG-FACTS-NOT-ATOMIC",
-      "reason": "a log read is not a snapshot; two decisions at the same moment can miss each other, so a queue or spend limit can be passed; basis: stated, tier pending Q35",
+      "reason": "a log read is not a snapshot; two decisions at the same moment can miss each other, so a queue or spend limit can be passed; basis: stated; correctness only by a maintainer ruling (2026-10-24, Q35)",
       "false_friend": true,
-      "provenance": "inferred",
-      "source": "open question Q35"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-CONNECTOR-SHOWS-DECISION",
       "reason": "every check run and the decision comment show the action, rule, facts' state and the AI answers' values to everyone who may read the pull request",
       "false_friend": false,
-      "provenance": "inferred",
-      "source": "open question Q32"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-CONNECTOR-OWN-REVIEW-EVENTS",
       "reason": "its own approvals and dismissals start one more run each; a profile that depends on its own approval without keep_approval can approve and withdraw in turn",
       "false_friend": false,
-      "provenance": "inferred",
-      "source": "open question Q33"
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-EXACTLY-ONCE",
@@ -2179,26 +2179,5 @@
     "known_non_finding",
     "model_gap"
   ],
-  "open_questions": [
-    {
-      "claim": "Q32: The GitHub connector shows every decision's action, rule, facts (read, missing and why) and the AI answers' values in each check run, and in the decision comment, to everyone who may read the pull request; so the author of a pull request in a public repository sees how the model answered their text and can edit it and try again. Is that disclaimed, with the integrator deciding which profiles the connector asks on such repositories?",
-      "field": "properties_not_provided",
-      "proposed": "yes; disclaim it (`D-CONNECTOR-SHOWS-DECISION`), make it the integrator's obligation (`R-CONNECTOR-PUBLIC-DECISIONS`), and keep the probabilities and any pull-request text out, as now."
-    },
-    {
-      "claim": "Q33: The connector ignores its own check suites' events, but not its own reviews: each approval or dismissal starts one more run, which asks every profile again (model calls), and a profile whose decision depends on the connector's own approval without `keep_approval` can make it approve and withdraw in turn. Is that a disclaimed cost and a misuse, rather than a property that the connector ignores its own review events?",
-      "field": "properties_not_provided",
-      "proposed": "disclaim it (`D-CONNECTOR-OWN-REVIEW-EVENTS`, correctness only), list the cycle in §1.14, and record ignoring the connector's own review events as a hardening candidate."
-    },
-    {
-      "claim": "Q34: The operational state recorded on 2026-10-23 (the maintainer's deployment approves documentation, release and dependency-bump pull requests) is taken to hold at `v0.14.2`, now with `keep_approval` for the \"already approved\" decision, the decision comment on, release pull requests recognised by `github_release` and bumps by `github_bump`, and no approval resting on `github_workflows`, `github_copilot` or the CodeRabbit facts. Is that right?",
-      "field": "description",
-      "proposed": "yes, as stated."
-    },
-    {
-      "claim": "Q35: `coderabbit_spend` and `coderabbit_queue` read the decision log without a snapshot, so two decisions at the same moment can both stay under a spending limit that together they pass. The connector has no `pay` action, so a person carries out a paid review. Is the spend a cost guide (correctness only) rather than a security control?",
-      "field": "properties_not_provided",
-      "proposed": "yes; `D-LOG-FACTS-NOT-ATOMIC` stays correctness-only, and a deployment that needs a hard cap sets it at CodeRabbit."
-    }
-  ]
+  "open_questions": []
 }
