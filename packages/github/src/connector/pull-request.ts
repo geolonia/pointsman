@@ -16,7 +16,7 @@ import { type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, ty
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
 import { checkText, clean, COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
-import type { PullRequestTarget } from './webhook.ts';
+import type { BotReview, PullRequestTarget } from './webhook.ts';
 
 /** What a run needs of the object's storage (a Durable Object's storage has it). */
 export interface ObjectStorage {
@@ -34,8 +34,8 @@ export interface Accepted {
   delivery: string;
   /** SHA-256 of the body. */
   digest: string;
-  /** A review event sent by a bot account: the review's id (webhook.ts botReviewOf). */
-  botReview?: number;
+  /** A review event sent by a bot account: the review's id and the bot's login (webhook.ts botReviewOf). */
+  botReview?: BotReview;
 }
 
 /** Same as the shadow poller: enough for the AI questions, keeps a very long description out of the model. */
@@ -172,8 +172,12 @@ export class PullRequestWork {
     const seen = (await this.#storage.get<Record<string, number>>('seen')) ?? {};
     const keys = [`d:${event.delivery}`, `b:${event.digest}`];
     if (keys.some((k) => seen[k] !== undefined && now - seen[k]! < SEEN_MS)) return 'replay';
-    // Only reviews it recorded giving: an event that comes before the record (its own approval, while the run still goes on) starts a run, as before.
-    if (event.botReview !== undefined && ((await this.#storage.get<number[]>('ownReviews')) ?? []).includes(event.botReview)) return 'own';
+    // Only reviews it recorded giving, sent by its own bot: an event that comes before the record (its own approval,
+    // while the run still goes on), another bot's dismissal of its approval, or a failed read of its login starts a run, as before.
+    if (event.botReview !== undefined && ((await this.#storage.get<number[]>('ownReviews')) ?? []).includes(event.botReview.id)) {
+      const own = await this.#github.botLogin(event.target.repo).catch(() => undefined);
+      if (own !== undefined && own === event.botReview.login) return 'own';
+    }
     const kept = Object.entries(seen).filter(([, t]) => now - t < SEEN_MS).sort((a, b) => b[1] - a[1]).slice(0, SEEN_MAX - keys.length);
     const generation = ((await this.#storage.get<number>('generation')) ?? 0) + 1;
     // Each accepted event is a new generation; a run ends only when it has handled the newest.

@@ -111,4 +111,4 @@ export { checkDecision, engineSetting, httpEngine, ENGINE_BINDING, type CheckedA
 export { COMMENT_MARKER, DEFAULT_SIGNALS, MAX_COLUMNS, SIGNAL_WORDS, STATIONS, answersOf, checkText, clean, columns, commentBody, CLOSED_TEXT, NO_REVIEWS, lineArt, positionOf, reviewStateOf, signalOf, switchArt, type Position, type ReviewRef, type ReviewSummary, type HeadReviews, type Signal, type Station } from './comment.ts';
 export { PullRequestWork, RetryError, authorText, checkOutput, notActedOnOutput, UNCLEAR_MS, type ActOutcome, type CheckView, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
 export { AppGitHub, GitHubError, actingScope, connectorScope, scopeFor, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, DIFF_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
-export { targetsOf, botReviewOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';
+export { targetsOf, botReviewOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type BotReview, type PullRequestTarget } from './webhook.ts';

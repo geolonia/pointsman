@@ -64,6 +64,7 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     updateComment: async (_r, id, body) => void calls.push({ op: 'updateComment', id, body }),
     addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
+    botLogin: async () => 'pointsman-test[bot]',
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
     // Read for the line on every run that draws it: not in `calls`, which follows what the connector decides and does.
     reviewSummary: async () => structuredClone(github.summary),
@@ -203,7 +204,7 @@ describe('webhook', () => {
 
   it('names the review of a review event only when a bot account sent it', () => {
     const review = (sender: unknown) => ({ action: 'submitted', repository: { full_name: REPO }, pull_request: { number: 3 }, review: { id: 42 }, sender });
-    expect(botReviewOf('pull_request_review', review({ login: 'pointsman[bot]', type: 'Bot' }))).toBe(42);
+    expect(botReviewOf('pull_request_review', review({ login: 'Pointsman[bot]', type: 'Bot' }))).toEqual({ id: 42, login: 'pointsman[bot]' });
     expect(botReviewOf('pull_request_review', review({ login: 'someone', type: 'User' }))).toBeUndefined();
     expect(botReviewOf('pull_request_review', review(undefined))).toBeUndefined();
     expect(botReviewOf('pull_request', review({ login: 'pointsman[bot]', type: 'Bot' }))).toBeUndefined();
@@ -498,17 +499,25 @@ describe('actions (switched on per profile action)', () => {
     const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' as const } } }, (p) => Response.json(decision(p, { action: 'light' })));
     await work.run();
     const own = gh.github.approvals[0]!.id;
-    const review = (botReview?: number) => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID(), ...(botReview !== undefined && { botReview }) }, Date.now());
-    expect(await review(own)).toBe('own');
-    expect(await review(own + 1000)).toBe('accepted');
+    const BOT = 'pointsman-test[bot]';
+    const review = (botReview?: { id: number; login: string }) => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID(), ...(botReview !== undefined && { botReview }) }, Date.now());
+    expect(await review({ id: own, login: BOT })).toBe('own');
+    // Another review, another bot dismissing its approval, or a person: a run.
+    expect(await review({ id: own + 1000, login: BOT })).toBe('accepted');
+    expect(await review({ id: own, login: 'other-app[bot]' })).toBe('accepted');
     expect(await review()).toBe('accepted');
+    // Its own login cannot be read: a run, as before.
+    const botLogin = gh.github.botLogin;
+    gh.github.botLogin = async () => { throw new Error('no slug'); };
+    expect(await review({ id: own, login: BOT })).toBe('accepted');
+    gh.github.botLogin = botLogin;
     await work.run();
     // A push dismisses the approval: the event about that dismissal is its own too.
     gh.github.state.head = HEAD2;
     await event();
     await work.run();
     expect(ops(gh.calls)).toContain('dismiss');
-    expect(await review(own)).toBe('own');
+    expect(await review({ id: own, login: BOT })).toBe('own');
   });
 
   it('does not approve when the head moved between the decision and the approval', async () => {

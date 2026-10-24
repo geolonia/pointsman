@@ -114,6 +114,8 @@ export interface ConnectorGitHub {
   updateComment(repo: string, id: number, body: string): Promise<void>;
   addLabels(repo: string, number: number, labels: string[]): Promise<void>;
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
+  /** The app's bot login, "<app slug>[bot]", lower case. */
+  botLogin(repo: string): Promise<string>;
   /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
   /** GitHub's review decision and the newest 100 reviews, without their text (one GraphQL query): where the train stands (comment.ts). */
@@ -267,6 +269,10 @@ export class AppGitHub implements ConnectorGitHub {
 
   async requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void> {
     await this.#call(repo, 'POST', `/pulls/${number}/requested_reviewers`, 'review request', { reviewers });
+  }
+
+  async botLogin(repo: string): Promise<string> {
+    return (await this.#botLogin(repo)).toLowerCase();
   }
 
   /** The app's bot login, "<slug>[bot]" (lower case), from the installation's answer. */
