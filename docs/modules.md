@@ -142,7 +142,9 @@ facts write the pull request and its author into their own values (display
 fields, not for rules), and read them back from the client's decisions of
 the same profile: the queue and the spend under the same fact name, the
 budget readings by their fields under any fact name (so a profile that
-renames its budget fact keeps the readings it logged).
+renames its budget fact keeps the readings it logged, though not which
+reviews other pull requests took, `taken_by_other_pr`, which is read by
+fact name).
 
 ### Not yet
 

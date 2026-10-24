@@ -543,7 +543,7 @@ facts:
 | フィールド | 意味 |
 |---|---|
 | `installed` | CodeRabbit がリポジトリで動いています。このプルリクエストにレビュー、コメント、ステータスを残したか、ほかの新しい 5 つのプルリクエストのどれかの head にステータスを残しています。判断できないとき(ほかのプルリクエストがない)は値がありません。 |
-| `ignored` | 説明文に `@coderabbitai ignore` があります。説明文の中の CodeRabbit 自身の要約ブロックの外にあるものだけを数えます(開始から終了のマーカーまでのブロック全体です。開始のマーカーだけでは何も除きません)。 |
+| `ignored` | 説明文に `@coderabbitai ignore` があります。説明文の中の CodeRabbit 自身の要約ブロックの外にあるものだけを数えます(除くのは、開始から終了のマーカーまでのブロック全体だけです。開始のマーカーだけがあっても、その後ろの文章は数えます)。 |
 | `reviewed_any`, `reviewed_head` | CodeRabbit がプルリクエストのどれかのコミットをレビューしました。head コミットをレビューしました(head へのレビュー、またはレビューしたことを示す head への CodeRabbit のステータス: "Review completed"、"Review approved"、または承認コマンドによるもの)。 |
 | `in_progress` | head への CodeRabbit の最新のステータスが "Review in progress" です。 |
 | `approved_head`, `changes_requested` | CodeRabbit の、結論を出した最新のレビュー(承認、変更の要求、または却下されたもの)が head コミットを承認しています。変更を求めています。 |
