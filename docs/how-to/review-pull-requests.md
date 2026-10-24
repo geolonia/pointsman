@@ -37,6 +37,7 @@ GitHub facts, such as the changed files, the checks and who pushed
 
 Map a profile's decision actions to what the connector does, in
 `GITHUB_CONNECTOR`. An action that is not mapped stays a check run only.
+Here the action `light` adds a label:
 
 ```json
 {
@@ -44,8 +45,7 @@ Map a profile's decision actions to what the connector does, in
   "profiles": ["pr-docs-check"],
   "actions": {
     "pr-docs-check": {
-      "light": { "do": "label", "labels": ["docs-only"] },
-      "review": { "do": "request_reviewer", "reviewers": ["octocat"] }
+      "light": { "do": "label", "labels": ["docs-only"] }
     }
   }
 }
@@ -54,6 +54,8 @@ Map a profile's decision actions to what the connector does, in
 The connector can comment, add labels, request reviewers, approve, and keep
 an approval. It does each at most once per commit, and nothing while a
 person still checks the decision ([Actions](../github-connector.md#actions)).
+So do not map an action that a person checks first (by default `review`):
+nothing would happen until the person is done.
 
 ## 4. Let Pointsman approve
 
@@ -98,7 +100,11 @@ If an AI review service also reviews these pull requests, its review changes
 what the profile sees. Let it skip them. For CodeRabbit, give release pull
 requests a title that starts with `Release 0.` and ignore that title in the
 repository's `.coderabbit.yaml` (the keyword matches anywhere in the title,
-so do not use just `Release`; from version 1.0, use `Release 1.`):
+so do not use just `Release`; from version 1.0, use `Release 1.`). This
+skips every pull request whose title contains the keyword, not only release
+pull requests: an author can put it into another title to avoid the AI
+review. The profile's rules still decide; only the AI review is lost for
+that pull request. The setting:
 
 ```yaml
 reviews:

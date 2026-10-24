@@ -125,7 +125,9 @@ Every client that calls Pointsman over its API has its own API token (the
 GitHub connector's internal call has none, so there is nothing to rotate for
 it). Rotate a token when it is about to expire, when someone who knew it
 leaves, or when it may have leaked. These steps replace it without downtime: the old token keeps working
-until you revoke it in step 3.
+until you revoke it in step 3, unless it expires first. `--keep-old` does
+not extend it, so check its expiry with `list` before you start, and finish
+before that time.
 
 Run the commands in a checkout of the Pointsman engine, with access to the
 deployment's Cloudflare account. In a configuration repository made from the
@@ -165,7 +167,9 @@ loses its expiry by accident.
 
 Put the new token into the client's secret store, for example a GitHub
 Actions secret, and check that the client still works. Until you finish
-step 3, `list` shows the client's name on two tokens. That is expected here.
+step 3, `list` shows the client's name on the new token and on every old
+one: two tokens if there was one old token, more if there were several.
+That is expected here.
 
 ```sh
 node scripts/tokens.mjs list --local
