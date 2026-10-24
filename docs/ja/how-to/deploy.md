@@ -91,7 +91,7 @@ engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrang
 
 ## GitHub のコネクターをつなぐ {#connect-the-github-connector}
 
-[GitHub のコネクター](../../github-connector.md)は、エンジンとは別の Worker です。エンジンと同じ Cloudflare アカウントにあれば、内部呼び出しを使えます。この場合、トークンは要りません。それ以外の場合は、API トークンが要ります([準備する](#set-up)の手順 8)。設定と、コネクターをトークンから内部呼び出しに切り替える手順は、[Pointsman へのつなぎ方](../../github-connector.md#how-it-reaches-pointsman)にあります。
+[GitHub のコネクター](../../github-connector.md)は、エンジンとは別の Worker です。エンジンと同じ Cloudflare アカウントにあれば、内部呼び出しを使えます。内部呼び出しには、エンジンの `InternalEngine` へのサービスバインディング `POINTSMAN` と、エンジンの設定の `INTERNAL_CLIENT` が要ります。この場合、トークンは要りません。バインディングがなければ、`POINTSMAN_URL` と API トークンが要ります([準備する](#set-up)の手順 8)。設定と、コネクターをトークンから内部呼び出しに切り替える手順は、[Pointsman へのつなぎ方](../../github-connector.md#how-it-reaches-pointsman)にあります。
 
 ## API トークンを入れ替える {#rotate-an-api-token}
 

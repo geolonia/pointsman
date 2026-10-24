@@ -95,9 +95,10 @@ Some pull requests need no AI answer at all:
 Pair either fact with `github_pr` (author, signatures, who pushed), because
 neither says who made the change. To make the dependency case common, group
 Dependabot's development patch bumps into their own pull requests. A
-dependency goes to the first group it matches, so this group comes first,
-and everything else goes into a second pull request that gets a normal
-review:
+dependency goes to the first group it matches, so this group comes first.
+The other minor and patch bumps go into a second pull request that gets a
+normal review; major bumps and security updates come in pull requests of
+their own:
 
 ```yaml
 # .github/dependabot.yml

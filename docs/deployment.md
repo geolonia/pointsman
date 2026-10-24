@@ -135,7 +135,9 @@ workflow with the Cloudflare credentials, so a pull request that only edits
 
 The [GitHub connector](github-connector.md) is a Worker of its own. In the
 same Cloudflare account as the engine it can use an internal call, with no
-token; otherwise it needs an API token (step 8 of [Set up](#set-up)). The
+token: a service binding `POINTSMAN` to the engine's `InternalEngine`, and
+`INTERNAL_CLIENT` in the engine's config. Without the binding it needs
+`POINTSMAN_URL` and an API token (step 8 of [Set up](#set-up)). The
 settings, and the steps that switch a connector from its token to the
 internal call, are in
 [How it reaches Pointsman](github-connector.md#how-it-reaches-pointsman).
