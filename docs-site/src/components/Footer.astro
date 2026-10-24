@@ -1,7 +1,6 @@
 ---
-// Starlight's footer, with a short credit: who runs the site, and the page
-// that says more. Pointsman itself is an open-source project; the credit is
-// for the site.
+// Starlight's footer, with a short credit: Pointsman is an open-source
+// project by Geolonia, and the page that says more about the site.
 import Default from '@astrojs/starlight/components/Footer.astro';
 import { BASE } from '../../pages.mjs';
 
@@ -11,7 +10,7 @@ const about = `${BASE}${ja ? 'ja/' : ''}about/`;
 
 <Default />
 <p class="credit">
-  {ja ? '運営: ' : 'Operated by '}<a href="https://www.geolonia.com/">Geolonia</a>{' · '}<a href={about}
+  {ja ? <><a href="https://www.geolonia.com/">Geolonia</a> のオープンソースプロジェクト</> : <>An open-source project by <a href="https://www.geolonia.com/">Geolonia</a></>}{' · '}<a href={about}
     >{ja ? 'このサイトについて' : 'About this site'}</a
   >
 </p>

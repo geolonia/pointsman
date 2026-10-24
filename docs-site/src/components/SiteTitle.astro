@@ -1,0 +1,10 @@
+---
+// Starlight's site title (logo and name), linking to the site's start page
+// (the landing page, / or /ja/) instead of the first docs page.
+import Default from '@astrojs/starlight/components/SiteTitle.astro';
+
+const route = Astro.locals.starlightRoute;
+route.siteTitleHref = route.locale === 'ja' ? '/ja/' : '/';
+---
+
+<Default />
