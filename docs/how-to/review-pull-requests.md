@@ -97,8 +97,7 @@ neither says who made the change. To make the dependency case common, group
 Dependabot's development patch bumps into their own pull requests. A
 dependency goes to the first group it matches, so this group comes first.
 The other minor and patch bumps go into a second pull request that gets a
-normal review; major bumps and security updates come in pull requests of
-their own:
+normal review; major bumps come in pull requests of their own:
 
 ```yaml
 # .github/dependabot.yml

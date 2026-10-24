@@ -29,11 +29,12 @@ for (const [en, { slug }] of Object.entries(LEGACY)) {
     // A commit that changes the translation too brought it up to date with
     // that change, so only commits that change the English page alone count.
     // (A squash merge gives the pull request's commit a new id, so
-    // translatedFrom cannot name it.) --full-history, so that a merge
-    // commit is listed for both files alike.
+    // translatedFrom cannot name it.) --full-history --simplify-merges, so
+    // that a merge commit is listed for both files alike, and only when it
+    // changes them.
     const git = (args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    const both = new Set(git(['log', '--full-history', '--format=%H', `${from}..HEAD`, '--', ja]).split('\n').filter(Boolean));
-    log = git(['log', '--full-history', '--format=%H %h %s', `${from}..HEAD`, '--', en]).split('\n').filter(Boolean)
+    const both = new Set(git(['log', '--full-history', '--simplify-merges', '--format=%H', `${from}..HEAD`, '--', ja]).split('\n').filter(Boolean));
+    log = git(['log', '--full-history', '--simplify-merges', '--format=%H %h %s', `${from}..HEAD`, '--', en]).split('\n').filter(Boolean)
       .filter((line) => !both.has(line.slice(0, line.indexOf(' '))))
       .map((line) => line.slice(line.indexOf(' ') + 1)).join('\n');
   } catch (error) {
