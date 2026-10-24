@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "ef2f822dd52a6f070feb90c6454950080b8af230",
-  "date": "2026-10-23",
+  "commit": "a5cf423c6d340cb0ff24ab4d80563d739c6978ce",
+  "date": "2026-10-24",
   "scope_subpath": null,
-  "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted. The `github_workflows` fact (since 0.4.0) is not covered by this model yet; a report about it is a MODEL-GAP.",
+  "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 449,
+    "documented": 506,
     "inferred": 0
   },
   "components": [
@@ -22,6 +22,7 @@
         "GET /v1/stats/{profile}",
         "GET /v1/reviews",
         "POST /v1/reviews/{id}/resolve",
+        "/connectors/<id>/ (connectors inside the engine Worker)",
         "InternalEngine.decide"
       ],
       "touches": [
@@ -38,6 +39,9 @@
         "GSI tile fetch",
         "Valhalla route request",
         "GitHub API reads",
+        "engine-facts github_workflows, github_release",
+        "engine-facts review-service facts",
+        "engine-facts decision-log context",
         "engine-facts github_bump"
       ],
       "touches": [
@@ -170,17 +174,17 @@
   "trust_boundaries": [
     {
       "component": "engine-api",
-      "boundary": "`engine-api`: a finding matters if it is reachable from a request that carries a valid token, or from the `state`, `ref` or `callback_url` such a request carries, or from a model backend's response; the internal call (`InternalEngine.decide`) only from a Worker in the same Cloudflare account with a service binding, and only with `INTERNAL_CLIENT` set. A finding that needs an invalid or missing token on an HTTP route is a finding against `P-AUTH-REQUIRED` (§1.11).",
+      "boundary": "`engine-api`: a finding matters if it is reachable from a request that carries a valid token, or from the `state`, `ref` or `callback_url` such a request carries, or from a model backend's response; the internal call (`InternalEngine.decide`) only from a Worker in the same Cloudflare account with a service binding, and only with `INTERNAL_CLIENT` set; `/connectors/<id>/` from any request, under the connector's own authentication, its in-process engine only through `/v1/` with its own token, and the queue consumer from the Worker's queue. A finding that needs an invalid or missing token on an HTTP route is a finding against `P-AUTH-REQUIRED` (§1.11).",
       "provenance": "documented",
-      "reachability_precondition": "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response; the internal call (InternalEngine) only from a Worker in the same Cloudflare account with a binding, and only with INTERNAL_CLIENT set",
-      "source": "threat-model.md §1.4, maintainer ruling 2026-10; docs/adapters.md \"Internal calls\""
+      "reachability_precondition": "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response; the internal call (InternalEngine) only from a Worker in the same Cloudflare account with a binding, and only with INTERNAL_CLIENT set; /connectors/<id>/ from any request, under the connector's own authentication, and the queue consumer from the Worker's queue",
+      "source": "threat-model.md §1.4, maintainer ruling 2026-10; docs/adapters.md \"Internal calls\"; docs/connectors.md \"Where it runs\""
     },
     {
       "component": "engine-facts",
-      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response.",
+      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including the workflow files, patches, comments, reviews and statuses those responses carry, the head statuses of other pull requests, and the asking client's own earlier decisions.",
       "provenance": "documented",
-      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response",
-      "source": "threat-model.md §1.4; docs/profile-format.md \"Facts\", \"GitHub pull requests\""
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
+      "source": "threat-model.md §1.4; docs/profile-format.md \"Facts\", \"GitHub pull requests\", \"CodeRabbit reviews\"; docs/modules.md \"Facts from the decision log\""
     },
     {
       "component": "engine-callbacks",
@@ -198,17 +202,17 @@
     },
     {
       "component": "bridge",
-      "boundary": "`bridge`: reachable from a notification that carries the shared secret, from the entity bodies in it, from a queue message, or from a broker or Pointsman response; the broker's entity writers are the untrusted side, the broker itself and Pointsman are trusted collaborators",
+      "boundary": "`bridge`: reachable from a notification that carries the shared secret, from the entity bodies in it, from a queue message, or from a broker or Pointsman response, in its own Worker or under `/connectors/fiware/` inside the engine Worker.",
       "provenance": "documented",
-      "reachability_precondition": "reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response",
-      "source": "threat-model.md §1.4, maintainer ruling 2026-10"
+      "reachability_precondition": "reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response, in its own Worker or under /connectors/fiware/ inside the engine Worker",
+      "source": "threat-model.md §1.4; bridge/README.md \"Configuration\"; docs/connectors.md \"Where it runs\""
     },
     {
       "component": "connector-github",
-      "boundary": "`connector-github`: reachable from a webhook that carries a valid `X-Hub-Signature-256`, from the pull request the connector then reads from GitHub (its title, description and diff, written by the pull-request author), from a GitHub API response, or from the engine's answer. A webhook without a valid signature is a finding against `P-CONNECTOR-WEBHOOK-SIGNED` (§1.11).",
+      "boundary": "`connector-github`: reachable from a webhook that carries a valid `X-Hub-Signature-256` (pull-request, review and check-suite events; `closed` only with the decision comment), from the pull request the connector then reads from GitHub (its title, description and diff, written by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer. A webhook without a valid signature is a finding against `P-CONNECTOR-WEBHOOK-SIGNED` (§1.11).",
       "provenance": "documented",
-      "reachability_precondition": "reachable from a webhook with a valid X-Hub-Signature-256, from the pull request it then reads (title, description, diff by the pull-request author), from a GitHub API response, or from the engine's answer",
-      "source": "threat-model.md §1.4; docs/github-connector.md \"Safety\""
+      "reachability_precondition": "reachable from a webhook with a valid X-Hub-Signature-256 (pull-request, review and check-suite events; closed only with the decision comment), from the pull request it then reads (title, description, diff by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer",
+      "source": "threat-model.md §1.4; docs/github-connector.md \"Safety\", \"The decision comment\""
     },
     {
       "component": "action-triage",
@@ -549,6 +553,69 @@
       "source": "docs/profile-format.md \"Settings\": \"The token is kept until 5 minutes before it expires\""
     },
     {
+      "entry_point": "engine-facts github_workflows, github_release",
+      "parameter": "workflow-files-head-and-base",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACT-LOOKUP-BOUNDED; YAML 1.2 core with limits, unparsed never skipped, nothing run",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub workflows\", \"Parser limits\""
+    },
+    {
+      "entry_point": "engine-facts github_workflows, github_release",
+      "parameter": "changed-file-patches",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED; anything not a version step gives version_only false",
+      "provenance": "documented",
+      "source": "docs/profile-format.md github_release row"
+    },
+    {
+      "entry_point": "engine-facts review-service facts",
+      "parameter": "reviews-requests-threads",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-SERVICE-ACCOUNT-ONLY",
+      "provenance": "documented",
+      "source": "docs/profile-format.md github_copilot and github_app_approval rows"
+    },
+    {
+      "entry_point": "engine-facts review-service facts",
+      "parameter": "app-slug-and-bot-id",
+      "attacker_controllable": "no",
+      "component": "engine-facts",
+      "caller_must_enforce": "set bot_id so a taken-over slug does not count",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub pull requests\" settings table, bot_id"
+    },
+    {
+      "entry_point": "engine-facts review-service facts",
+      "parameter": "coderabbit-comments-reviews-statuses-editors",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-SERVICE-ACCOUNT-ONLY; an edit by anyone else makes the fact missing",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"CodeRabbit reviews\""
+    },
+    {
+      "entry_point": "engine-facts review-service facts",
+      "parameter": "description-and-commands",
+      "attacker_controllable": "yes",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — D-SERVICE-STATE-AS-STATED; commands count only from the author, organization owners or members, or listed apps",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"CodeRabbit reviews\", coderabbit_budget, paid_for_head"
+    },
+    {
+      "entry_point": "engine-facts decision-log context",
+      "parameter": "own-earlier-decisions",
+      "attacker_controllable": "no",
+      "component": "engine-facts",
+      "caller_must_enforce": "none — P-LOG-FACTS-OWN-CLIENT",
+      "provenance": "documented",
+      "source": "docs/modules.md \"Facts from the decision log\""
+    },
+    {
       "entry_point": "/mcp",
       "parameter": "authorization-header",
       "attacker_controllable": "yes",
@@ -637,6 +704,42 @@
       "caller_must_enforce": "none — P-OAUTH-ORG-MEMBERSHIP",
       "provenance": "documented",
       "source": "docs/mcp.md \"GitHub is only the login step\""
+    },
+    {
+      "entry_point": "/connectors/<id>/ (connectors inside the engine Worker)",
+      "parameter": "connector-request",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-CONNECTORS-IN-ENGINE-API-ONLY; the connector's own authentication applies (P-BRIDGE-NOTIFY-SECRET)",
+      "provenance": "documented",
+      "source": "docs/connectors.md \"Where it runs\""
+    },
+    {
+      "entry_point": "/connectors/<id>/ (connectors inside the engine Worker)",
+      "parameter": "connector-settings",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "choose a connector only after reviewing its module; its secrets as engine Worker secrets; its own token, never a test token",
+      "provenance": "documented",
+      "source": "docs/connectors.md \"Where it runs\", \"Trust\""
+    },
+    {
+      "entry_point": "/connectors/<id>/ (connectors inside the engine Worker)",
+      "parameter": "in-process-engine-request",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-CONNECTORS-IN-ENGINE-API-ONLY; only /v1/ of its own origin, with its token",
+      "provenance": "documented",
+      "source": "docs/connectors.md \"Where it runs\""
+    },
+    {
+      "entry_point": "/connectors/<id>/ (connectors inside the engine Worker)",
+      "parameter": "queue-batch",
+      "attacker_controllable": "no",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-CONNECTORS-IN-ENGINE-API-ONLY; only one connector with a queue, else retried",
+      "provenance": "documented",
+      "source": "docs/connectors.md \"Where it runs\""
     },
     {
       "entry_point": "bridge POST /notify",
@@ -868,18 +971,27 @@
       "parameter": "comments-reviews-check-runs",
       "attacker_controllable": "yes",
       "component": "connector-github",
-      "caller_must_enforce": "none — only the connector app's comments and recorded approval ids count as its own; while an action record is open, a bot approval with its marker is recorded as its own",
+      "caller_must_enforce": "none — only the connector app's comments, and reviews and the decision comment by its own bot account, count as its own; only recorded approval ids are dismissed",
       "provenance": "documented",
-      "source": "docs/github-connector.md \"Actions\"; packages/github/src/connector/github.ts findComment, ownApprovals"
+      "source": "docs/github-connector.md \"Actions\"; \"The decision comment\"; packages/github/src/connector/github.ts findComment, findOwnComment, ownApprovals"
+    },
+    {
+      "entry_point": "connector-github run",
+      "parameter": "review-decision-and-reviews",
+      "attacker_controllable": "yes",
+      "component": "connector-github",
+      "caller_must_enforce": "none — P-CONNECTOR-COMMENT-NO-PR-TEXT; only where the train stands; logins compared, never shown",
+      "provenance": "documented",
+      "source": "docs/github-connector.md \"The decision comment\", Line"
     },
     {
       "entry_point": "connector-github run",
       "parameter": "engine-answer",
       "attacker_controllable": "no",
       "component": "connector-github",
-      "caller_must_enforce": "none — D-CONNECTOR-TRUSTS-ENGINE",
+      "caller_must_enforce": "none — P-CONNECTOR-ANSWER-CHECKED; D-CONNECTOR-TRUSTS-ENGINE for which action",
       "provenance": "documented",
-      "source": "maintainer ruling, 2026-10"
+      "source": "docs/github-connector.md \"Safety\": \"The engine's answer is checked\""
     },
     {
       "entry_point": "connector-github run",
@@ -944,14 +1056,15 @@
       "the Worker's clock for created_at, callback timestamps and retries",
       "global_fetch_strictly_public limits every outbound fetch to public addresses",
       "a named Worker entrypoint (InternalEngine) has no URL: only a Worker in the same Cloudflare account with a service binding can call it",
-      "the GitHub connector's Durable Objects run one event at a time per pull request"
+      "the GitHub connector's Durable Objects run one event at a time per pull request",
+      "every GitHub and CodeRabbit fact of one decision shares one snapshot of the pull request; a fact that reads the decision log reads it as it is, not as a snapshot"
     ],
     "does_not": [
       "spawn child processes (engine, bridge and GitHub connector; the deploy-watch Action does: bash and the aws CLI)",
       "read environment variables beyond Worker bindings and vars (the Actions read INPUT_* and GITHUB_*)",
       "hand a fact module bindings or secrets other than its own FACTS_* settings (the module still runs in the same isolate)",
       "touch a filesystem (the Actions append to GITHUB_OUTPUT and the step summary)",
-      "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub facts: GET only plus one installation-token POST), registry.npmjs.org (github_bump: GET only, no credential) and OAuth client-ID metadata URLs (engine), the broker and Pointsman (bridge), or api.github.com with the connector app and Pointsman (GitHub connector)",
+      "fetch any host other than the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub and CodeRabbit facts: REST GET, two fixed GraphQL queries, one installation-token POST), registry.npmjs.org (github_bump: GET only, no credential) and OAuth client-ID metadata URLs (engine), the broker and Pointsman (bridge), or api.github.com with the connector app and Pointsman (GitHub connector)",
       "follow redirects on outbound calls that carry a key, a token or the state (engine, bridge and GitHub connector)",
       "write to the TOKENS or PROFILES namespaces (only the operator's scripts do)",
       "log the state, a token, an API key or a model response"
@@ -1007,6 +1120,30 @@
       "discouraged": false,
       "provenance": "documented",
       "source": "docs/profile-format.md \"Settings\": \"fixed answers for development and tests\""
+    },
+    {
+      "name": "FACTS_CODERABBIT",
+      "default": "off",
+      "effect": "preserves P-SERVICE-ACCOUNT-ONLY; preserves P-LOG-FACTS-OWN-CLIENT",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"CodeRabbit reviews\", Settings"
+    },
+    {
+      "name": "FACTS_CODERABBIT=mock",
+      "default": "off",
+      "effect": "no effect on claimed properties",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"CodeRabbit reviews\", Settings"
+    },
+    {
+      "name": "engine-json-modules-connectors",
+      "default": "with modules but without connectors: none",
+      "effect": "preserves P-CONNECTORS-IN-ENGINE-API-ONLY",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/connectors.md \"Choosing connectors\""
     },
     {
       "name": "FACTS_GITHUB_IGNORE_CHECK",
@@ -1145,6 +1282,14 @@
       "source": "docs/github-connector.md \"Chains\""
     },
     {
+      "name": "connector-comment-and-signals",
+      "default": "unset (no decision comment; default signals)",
+      "effect": "preserves P-CONNECTOR-COMMENT-NO-PR-TEXT; narrows P-CONNECTOR-TOKEN-SCOPED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/github-connector.md \"The decision comment\", \"Signals\""
+    },
+    {
       "name": "connector-app-permissions",
       "default": "Checks write; Pull requests and Metadata read",
       "effect": "narrows P-CONNECTOR-TOKEN-SCOPED",
@@ -1165,6 +1310,8 @@
     "in_scope": [
       "pull-request-author",
       "pull-request-author-against-connector",
+      "commenter",
+      "review-services",
       "npm-package-publisher-and-registry",
       "github-facts-collaborator",
       "state-author",
@@ -1360,7 +1507,7 @@
       "property": "P-CONNECTOR-ACTIONS-MAPPED",
       "violation_symptom": "x-unauthorized-write, wrong-output",
       "severity_tier": "security",
-      "conditions": "neutral check runs, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve; fixed comment text, never pull-request text; at most once per head, profile and kind with the record written first; nothing while a person checks the decision; refused actions not retried for that commit",
+      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval; fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision; refused actions not retried for that commit",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""
     },
@@ -1376,9 +1523,49 @@
       "property": "P-CONNECTOR-TOKEN-SCOPED",
       "violation_symptom": "x-privilege-escalation, x-unauthorized-write",
       "severity_tier": "security",
-      "conditions": "installation tokens for the one repository, with Metadata and Pull requests read and Checks write; Pull requests write only with actions; Contents read only with diff; never Contents write, never more than the app has; the key only in the connector Worker",
+      "conditions": "installation tokens for the one repository, with Metadata and Pull requests read and Checks write; Pull requests write only with actions or the decision comment; Contents read only with diff; never Contents write, never more than the app has; the key only in the connector Worker",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Safety\"; \"The two GitHub apps\""
+    },
+    {
+      "property": "P-CONNECTOR-ANSWER-CHECKED",
+      "violation_symptom": "x-unlogged-decision-acted-on, bad-data-accepted, x-unauthorized-write",
+      "severity_tier": "security",
+      "conditions": "every field the connector reads of a 2xx engine answer is checked before anything is done; an invalid answer or a test decision is not acted on, kept or sent on, and an approval of the head is withdrawn",
+      "provenance": "documented",
+      "source": "docs/github-connector.md \"Safety\": \"The engine's answer is checked\"; \"No test decisions\""
+    },
+    {
+      "property": "P-CONNECTOR-COMMENT-NO-PR-TEXT",
+      "violation_symptom": "x-markup-injection, x-spoofing",
+      "severity_tier": "security",
+      "conditions": "the decision comment and the check runs carry no pull-request text; checked names, cleaned reasons, answers of known shapes, code blocks; the comment found and edited only among its own bot's comments",
+      "provenance": "documented",
+      "source": "docs/github-connector.md \"The decision comment\", Rules: \"Nothing from the pull request\""
+    },
+    {
+      "property": "P-LOG-FACTS-OWN-CLIENT",
+      "violation_symptom": "info-leak, x-authorization-bypass, x-unlogged-decision-acted-on",
+      "severity_tier": "security",
+      "conditions": "facts read only the asking client's non-discarded decisions of profiles in its scope, read only, at most 1,000 per read, no answers or state; none for a test token",
+      "provenance": "documented",
+      "source": "docs/modules.md \"Facts from the decision log\""
+    },
+    {
+      "property": "P-SERVICE-ACCOUNT-ONLY",
+      "violation_symptom": "x-spoofing, wrong-output",
+      "severity_tier": "security",
+      "conditions": "review-service facts count only the service's own account (login and account id; CodeRabbit comments through its app; github_app_approval by Bot type, slug and optional bot_id); an edit by anyone else makes the CodeRabbit facts missing",
+      "provenance": "documented",
+      "source": "docs/modules.md \"Facts from reviews and comments\"; docs/profile-format.md \"CodeRabbit reviews\""
+    },
+    {
+      "property": "P-CONNECTORS-IN-ENGINE-API-ONLY",
+      "violation_symptom": "x-authorization-bypass, x-unlogged-decision",
+      "severity_tier": "security",
+      "conditions": "a connector inside the engine Worker reaches only the engine's own /v1/ routes, in process, with its own token; it is handed only the settings its module lists; the queue goes to a connector only when exactly one has a queue, else the batch is retried",
+      "provenance": "documented",
+      "source": "docs/connectors.md \"The rule: through the public API\", \"Where it runs\""
     },
     {
       "property": "P-OUTBOUND-PUBLIC-ONLY",
@@ -1609,7 +1796,7 @@
     },
     {
       "property": "D-CONNECTOR-TRUSTS-ENGINE",
-      "reason": "the connector checks only the status of the engine's answer, maps its action as given, and does not refuse test: true decisions; basis: a maintainer ruling (2026-10-23, Q28)",
+      "reason": "the connector checks the fields it reads and refuses test decisions (P-CONNECTOR-ANSWER-CHECKED), but maps the action and takes the rule, facts and answers as the engine gives them; basis: a maintainer ruling (2026-10-23, Q28), narrowed by pointsman#193",
       "false_friend": false,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
@@ -1625,6 +1812,48 @@
       "property": "D-APPROVAL-ON-FACTS",
       "reason": "an approval is the profile's decision on that commit and nothing more; on facts alone as strong as the rules and facts; resting on AI answers about the author's text it can be steered, while AI answers that only add conditions to fact rules can at most remove that check; basis: a maintainer ruling (2026-10-23, Q31)",
       "false_friend": true,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-WORKFLOWS-BEST-EFFORT",
+      "reason": "github_workflows counts known patterns in the files it parses; scripts are read with word lists; values through files, local action code and reusable workflows' callers are not read; basis: stated",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"GitHub workflows\": \"This part is best effort\""
+    },
+    {
+      "property": "D-RELEASE-NOT-WHO",
+      "reason": "github_release checks that only a version moved and changelogs only got lines; it says nothing about who made the change; basis: stated",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "docs/profile-format.md github_release row: \"It says nothing about who made the change\""
+    },
+    {
+      "property": "D-SERVICE-STATE-AS-STATED",
+      "reason": "Copilot, app approval and CodeRabbit facts are what the services' accounts did and wrote; CodeRabbit's budget, price and billable count read from its words; ignored is the author's line; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"CodeRabbit reviews\""
+    },
+    {
+      "property": "D-LOG-FACTS-NOT-ATOMIC",
+      "reason": "a log read is not a snapshot; two decisions at the same moment can miss each other, so a queue or spend limit can be passed; basis: stated; correctness only by a maintainer ruling (2026-10-24, Q35)",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-CONNECTOR-SHOWS-DECISION",
+      "reason": "every check run and the decision comment show the action, rule, facts' state and the AI answers' values to everyone who may read the pull request",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-CONNECTOR-OWN-REVIEW-EVENTS",
+      "reason": "its own approvals and dismissals start one more run each; a profile that depends on its own approval without keep_approval can approve and withdraw in turn",
+      "false_friend": false,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
     },
@@ -1663,6 +1892,9 @@
     "decision-for-another-commit",
     "unwarranted-approval-label-or-review-request",
     "model-cost-per-event",
+    "fake-review-service-state",
+    "make-the-connector-take-a-comment-for-its-own",
+    "wrong-review-state-budget-or-price",
     "malicious-release-old-enough-for-an-age-rule",
     "wrong-or-missing-facts",
     "wrong-action",
@@ -1710,7 +1942,12 @@
     "pair github_bump with github_pr, check missing first, require registry_changed false and a release_age_days margin; an old-enough release is not a reviewed one",
     "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; revoke the old token; remove the setting to switch off; no reliance on edge rules",
     "two GitHub Apps, the connector app only in the connector Worker; install only on the connector's repositories; only the permissions its settings need; secrets only in wrangler; its own token, never a test token",
-    "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis",
+    "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis; keep_approval only for an action of its own from a rule that requires what the approving rule requires; neither approve nor keep_approval with once_per_head",
+    "set bot_id in a github_app_approval fact",
+    "send privileged, unparsed and local_unresolved workflow changes to a person; never approve on zero counts alone",
+    "pair github_release with github_pr; name exact version and changelog files; no files that run in version_text_files",
+    "accept that check runs and the comment show decisions and AI answers to the pull request's readers, or do not ask that profile there",
+    "choose connectors for the engine Worker only after review; their own token, never a test token; their secrets as engine Worker secrets; edge limits on /connectors/; write keys only in an own Worker",
     "run tokens.mjs with --remote only on purpose and keep the printed token out of history and logs; deploy only through the template's workflows"
   ],
   "known_misuse": [
@@ -1811,7 +2048,7 @@
     },
     {
       "pattern": "giving the GitHub connector a test token, so it acts on decisions that are not logged",
-      "why_unsafe": "Giving the GitHub connector a test token, so it acts on decisions that are not logged (`D-CONNECTOR-TRUSTS-ENGINE`, `R-CONNECTOR-APPS`).",
+      "why_unsafe": "Giving the GitHub connector a test token: since `v0.13.1` it acts on none of its decisions (each check run says `test decision: nothing done` and its approvals are withdrawn), so the deployment silently does nothing (`P-CONNECTOR-ANSWER-CHECKED`, `R-CONNECTOR-APPS`).",
       "instead": "its own normal token limited to its profiles, or the internal call"
     },
     {
@@ -1828,6 +2065,51 @@
       "pattern": "counting on a firewall or rate-limit rule on /v1/ to limit the connector after switching to internal calls",
       "why_unsafe": "Counting on a firewall or rate-limit rule on `/v1/` to limit the connector after switching to internal calls (`D-INTERNAL-ACCOUNT-TRUST`).",
       "instead": "internal calls do not pass the edge; limit who can deploy Workers instead"
+    },
+    {
+      "pattern": "keep_approval mapped to an action the profile also gives where the approval should not stand, or from a rule that does not require what the approving rule requires",
+      "why_unsafe": "Mapping `keep_approval` to an action that the profile also gives where the approval should not stand (a merged pull request, a later rule), or by a rule that does not require everything the approving rule requires, so a failed check on the same commit keeps the approval (`R-CONNECTOR-APPROVE`).",
+      "instead": "an action of its own for the already-approved rule, after every blocking rule"
+    },
+    {
+      "pattern": "approve or keep_approval in a profile with once_per_head",
+      "why_unsafe": "Mapping `approve` or `keep_approval` in a profile with `once_per_head`: it is not asked again on the same commit, so a failed check or a change request never withdraws the approval; the settings do not refuse it (`R-CONNECTOR-APPROVE`).",
+      "instead": "map approve only in profiles asked on every run"
+    },
+    {
+      "pattern": "an approving decision that changes because of the connector's own approval, without keep_approval",
+      "why_unsafe": "A profile whose approving decision depends on the connector's own approval without a `keep_approval` rule, so the connector approves and withdraws in turn on every run its own review events start (`D-CONNECTOR-OWN-REVIEW-EVENTS`).",
+      "instead": "github_app_approval with a keep_approval rule"
+    },
+    {
+      "pattern": "github_app_approval without bot_id",
+      "why_unsafe": "A `github_app_approval` fact without `bot_id` (`R-APP-APPROVAL-BOT`).",
+      "instead": "set bot_id"
+    },
+    {
+      "pattern": "approving a workflow change because every github_workflows count is zero",
+      "why_unsafe": "Approving a workflow change because every `github_workflows` count is zero, or skipping a person for `privileged` changes (`R-WORKFLOWS-TO-PERSON`).",
+      "instead": "send privileged changes to a person"
+    },
+    {
+      "pattern": "approving on github_release.version_only alone, or files that run in version_text_files",
+      "why_unsafe": "Approving a release on `github_release.version_only` alone, or listing files that run in `version_text_files` (`R-RELEASE-PAIR`).",
+      "instead": "pair with github_pr; exact files"
+    },
+    {
+      "pattern": "treating coderabbit_spend as a hard cap with concurrent decisions",
+      "why_unsafe": "Treating `coderabbit_spend` as a hard spending cap when decisions of the profile can be made at the same moment (`D-LOG-FACTS-NOT-ATOMIC`).",
+      "instead": "set the hard limit at CodeRabbit"
+    },
+    {
+      "pattern": "showing github_workflows.detail or a CodeRabbit fact's author as Markdown or HTML without escaping",
+      "why_unsafe": "Showing `github_workflows.detail`, the CodeRabbit facts' `author` or any fact value as Markdown or HTML without escaping (§1.8).",
+      "instead": "escape fact values for the grammar they go into"
+    },
+    {
+      "pattern": "using the connector with AI questions on a public repository while counting on the author not seeing the answers",
+      "why_unsafe": "Using the connector with AI questions on a public repository while counting on the author not seeing how the model answered (`R-CONNECTOR-PUBLIC-DECISIONS`).",
+      "instead": "accept it or do not ask that profile there"
     }
   ],
   "known_non_findings": [
@@ -1852,7 +2134,7 @@
     {
       "reported_as": "the same callback arrived twice",
       "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
-      "cites": "properties_not_provided[26]",
+      "cites": "properties_not_provided[32]",
       "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
     },
     {
@@ -1864,7 +2146,7 @@
     {
       "reported_as": "untrusted issue text flows from the event payload to GITHUB_STEP_SUMMARY or GITHUB_OUTPUT",
       "why_safe": "Covers action-triage; symptom 'taint-flow-to-sink'. Exact-match conditions (§1.15): the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them.",
-      "cites": "properties_provided[30]",
+      "cites": "properties_provided[35]",
       "suppression": "the flagged values are answers, probabilities, labels or the decision id; the issue title and body are not among them"
     },
     {

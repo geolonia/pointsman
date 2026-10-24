@@ -274,6 +274,97 @@ Candidate issues kept out of the model:
    module, facts from the decision log, and connectors inside the engine
    Worker.
 
+## Amendment of 2026-10-24: `v0.14.2` and the list of what was not covered
+
+The model was re-bound from `v0.12.0` to `v0.14.2` (`a5cf423`) and amended
+for every commit in between (`git log ef2f822..a5cf423`: pointsman#191,
+#193, #195, #196, #199, #200, #202, the documentation site #168, #169,
+#203, and four releases) and for the six items §1.16 listed as not
+covered. §1.16 now lists none; what the connector's documentation calls
+"Not yet" stays a condition that changes the model.
+
+- **Time**: about 2.5 hours of agent time. Most of it went into the
+  connector (the decision comment alone is 350 lines, and what text can
+  reach it had to be traced field by field) and the CodeRabbit module
+  (about 1,000 lines of parsing a bot's own words).
+- **The comment question** (§1.16 named "text from the pull request in a
+  comment" as a model change): no pull-request text reaches the decision
+  comment or the check runs. Everything in them comes from the checked
+  engine answer, the head commit id, GitHub's review decision and the
+  settings; names are checked by pattern, reasons cleaned, answers shown
+  only in known shapes, drawings fenced. What does reach every reader of
+  the pull request is the decision itself, AI answers included (Q32).
+- **Earlier candidate issues**: 1 (check the engine's answer) shipped in
+  #193; 2 (any bot's approval taken as the connector's own) in #191; 3
+  (the provider's header comment) in #191; 4 (the gaps) in this amendment.
+- **Questions**: one wave of four, Q32 to Q35. The maintainer answered
+  all four on 2026-10-24 as proposed, so the claims carry *(maintainer,
+  2026-10)* and the model is *accepted* again:
+  - Q32: disclaim that check runs and the decision comment show the
+    decision and the AI answers to the pull request's readers
+    (`D-CONNECTOR-SHOWS-DECISION`); the integrator chooses where.
+  - Q33: disclaim the runs the connector's own review events start and the
+    approve-and-withdraw cycle (`D-CONNECTOR-OWN-REVIEW-EVENTS`); ignoring
+    those events is a hardening candidate (pointsman#213).
+  - Q34: the operational state of 2026-10-23 holds at `v0.14.2`.
+  - Q35: the CodeRabbit spend and queue are a cost guide, correctness only
+    (`D-LOG-FACTS-NOT-ATOMIC`).
+  From the Geolonia question bank: Q54 (steering, and what the author sees
+  of it, Q32), Q51 and Q107 (a connector that writes to another system,
+  Q33), Q52 and Q110 (state outside the repository; binding, Q34), Q49
+  (what the log proves, Q35).
+- **What the bank lacked**: a question for *a service that shows its
+  verdict to the party it judges*: "We believe the decision (and the AI's
+  answers) shown on the pull request or ticket it is about gives the author
+  an oracle to tune their text against. Proposed: disclaim, and let the
+  integrator choose where the verdict is shown." (Q32 here.) And one for
+  *facts that read the service's own log*: "We believe a fact that reads
+  earlier decisions sees only the asking client's, read only, and not as a
+  snapshot; limits computed from it (spend, queues) can be passed by
+  concurrent decisions. Proposed: a property for whose log, a disclaimer
+  for atomicity."
+- **Re-binding**: the citation script of the last amendment (every cited
+  `file:line` at the old binding compared with the new tree) moved 26
+  citations; one was ambiguous and was fixed by hand. The documentation
+  changed after the tag (#205 to #210), but the cited documents are the
+  same files, so citations by heading still hold.
+- **Validator**: the exporter needs "Proposed answer:" and "Lands in:" at
+  the start of a line in §1.18, or it leaves the JSON field empty; a
+  combined tag must start with the documented part ("documented, …;
+  maintainer, 2026-10"), else the detail check fails. The JSON folds
+  assumption claims into `inferred` (§1.19).
+- **Length**: about 31,000 to about 38,600 words. The plugin's 3 to 8
+  pages are out of reach for a service with nine GitHub fact types, a
+  review-service module and a connector; a per-family appendix would help.
+
+Candidate issues kept out of the model, filed on 2026-10-24 with the label
+`threat-model`:
+
+1. Connector settings: `approve` or `keep_approval` in a profile with
+   `once_per_head` is documented as wrong (docs/github-connector.md "When
+   the approval stays") but not refused (`runsOf` in
+   `packages/github/src/connector/settings.ts:150`). Refuse it at startup.
+   Hardening, Priority: Middle (pointsman#212).
+2. Connector: its own review events (`pull_request_review` submitted or
+   dismissed by its own bot) start a run each
+   (`packages/github/src/connector/webhook.ts:70`), unlike its own check
+   suites; ignore them (the Q33 hardening candidate). Hardening, Priority:
+   Low (pointsman#213).
+3. CodeRabbit budget: `observationsLogged`
+   (`packages/coderabbit/src/budget.ts:128`) reads budget readings from
+   earlier decisions under any fact name with the right fields, while
+   docs/modules.md "Facts from the decision log" says they are read back
+   "of the same profile and fact name". Same client and profile either
+   way, so not a leak; align the code or the text. Priority: Low
+   (pointsman#214).
+4. CodeRabbit `ignored`: the summary pattern in `ignoredBy`
+   (`packages/coderabbit/src/coderabbit.ts:30`) runs from a start marker
+   without an end marker to the end of the description, so an author can
+   hide an `@coderabbitai ignore` line from the fact by putting a lone
+   start marker before it; the connector's `authorText` keeps such text.
+   The effect is a profile that waits for a review CodeRabbit may not do.
+   Priority: Low (pointsman#215).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
