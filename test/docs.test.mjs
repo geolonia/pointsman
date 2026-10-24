@@ -129,6 +129,30 @@ test('translation-status reports a missing or unknown translatedFrom per page, a
   assert.match(r.stdout, /deploy\.md: cannot read the history of docs\/deployment\.md since 0000000: \S/);
 });
 
+test('translation-status leaves out commits that changed the translation too', (t) => {
+  const dir = repo(t, { 'docs/deployment.md': '# Deployment\n', 'docs/ja/how-to/deploy.md': '---\ntitle: x\n---\n' });
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.org', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.org' };
+  const git = (...args) => spawnSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd: dir, env, encoding: 'utf8' }).stdout.trim();
+  const commit = (message, files) => {
+    for (const [f, text] of Object.entries(files)) writeFileSync(join(dir, f), text);
+    git('add', '-A');
+    git('commit', '-q', '-m', message);
+  };
+  git('init', '-q');
+  commit('base', {});
+  const base = git('rev-parse', '--short', 'HEAD');
+  writeFileSync(join(dir, 'docs/ja/how-to/deploy.md'), `---\ntitle: x\ntranslatedFrom: ${base}\n---\n`);
+  commit('both languages', { 'docs/deployment.md': '# Deployment\n\nMore.\n', 'docs/ja/how-to/deploy.md': `---\ntitle: x\ntranslatedFrom: ${base}\n---\n\nもっと。\n` });
+  let r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /deploy\.md: up to date with docs\/deployment\.md/);
+  commit('English only', { 'docs/deployment.md': '# Deployment\n\nMore, and more.\n' });
+  r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.match(r.stdout, /deploy\.md: docs\/deployment\.md changed since \w+:\n {2}\w+ English only\n/);
+  assert.match(r.stdout, /1 translation\(s\) behind/);
+  assert.doesNotMatch(r.stdout, /both languages/);
+});
+
 test('heading-ids sets a heading id from {#id} and leaves other headings alone', async () => {
   const { default: headingIds } = await import('../docs-site/plugins/heading-ids.mjs');
   const heading = (...children) => ({ type: 'heading', depth: 2, children });

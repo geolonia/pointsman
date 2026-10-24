@@ -94,7 +94,25 @@ Some pull requests need no AI answer at all:
 
 Pair either fact with `github_pr` (author, signatures, who pushed), because
 neither says who made the change. To make the dependency case common, group
-Dependabot's development patch bumps into their own pull requests.
+Dependabot's development patch bumps into their own pull requests. A
+dependency goes to the first group it matches, so this group comes first,
+and everything else goes into a second pull request that gets a normal
+review:
+
+```yaml
+# .github/dependabot.yml
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-dev-patch:
+        dependency-type: development
+        update-types: [patch]
+      npm:
+        update-types: [minor, patch]
+```
 
 If an AI review service also reviews these pull requests, its review changes
 what the profile sees. Let it skip them. For CodeRabbit, give release pull

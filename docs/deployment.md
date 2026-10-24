@@ -114,10 +114,29 @@ Change `ref` in `engine.json` to a newer commit and open a pull request: the
 validate workflow checks your profiles against that engine version, and the
 fact modules in `modules`, before anything is deployed.
 
+A newer engine can add database migrations (`migrations/` in this
+repository; for example `0008_log_facts.sql` in 0.8.0, for facts from the
+decision log). The deploy workflow applies them before it deploys the
+engine, so an update needs no step of its own. If you deploy without the
+workflow, apply them first:
+
+```sh
+engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+```
+
 The engine repository itself is fixed in the workflows (`ENGINE_REPOSITORY`),
 not taken from `engine.json`: the workflows run the engine's code, the deploy
 workflow with the Cloudflare credentials, so a pull request that only edits
 `engine.json` cannot point them at other code.
+
+## Connect the GitHub connector
+
+The [GitHub connector](github-connector.md) is a Worker of its own. In the
+same Cloudflare account as the engine it can reach the engine by an
+internal call, with no token to create or rotate; otherwise it needs an API
+token (step 8). The settings for both ways, and the three steps that switch
+an existing connector from its token to the internal call, are in
+[How it reaches Pointsman](github-connector.md#how-it-reaches-pointsman).
 
 ## Rotate an API token
 

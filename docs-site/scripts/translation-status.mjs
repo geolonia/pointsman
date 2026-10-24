@@ -1,5 +1,6 @@
 // Lists the English changes since each Japanese translation of an older page
-// was last brought up to date (its front matter's translatedFrom commit).
+// was last brought up to date (its front matter's translatedFrom commit),
+// leaving out commits that changed the translation as well.
 // It does not fail: a change to the English wording should reach the
 // Japanese page soon, but need not block a pull request. A change to the
 // structure (a section, a table row, a code block) fails check-languages.mjs.
@@ -22,7 +23,15 @@ for (const [en, { slug }] of Object.entries(LEGACY)) {
   if (!from) { console.log(`${ja}: missing translatedFrom in the front matter`); continue; }
   let log;
   try {
-    log = execFileSync('git', ['log', '--oneline', `${from}..HEAD`, '--', en], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    // A commit that changes the translation too brought it up to date with
+    // that change, so only commits that change the English page alone count.
+    // (A squash merge gives the pull request's commit a new id, so
+    // translatedFrom cannot name it.)
+    const git = (args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const both = new Set(git(['log', '--format=%H', `${from}..HEAD`, '--', ja]).split('\n').filter(Boolean));
+    log = git(['log', '--format=%H %h %s', `${from}..HEAD`, '--', en]).split('\n').filter(Boolean)
+      .filter((line) => !both.has(line.slice(0, line.indexOf(' '))))
+      .map((line) => line.slice(line.indexOf(' ') + 1)).join('\n');
   } catch (error) {
     // For example an unknown commit, or a shallow clone without it.
     console.log(`${ja}: cannot read the history of ${en} since ${from}: ${error.stderr?.trim() || error.message}`);
