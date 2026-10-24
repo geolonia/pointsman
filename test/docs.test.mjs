@@ -99,3 +99,56 @@ test('a translated older page keeps the English section ids, table rows and code
   assert.match(r.stderr, /2 table rows, docs\/authoring\.md has 3/);
   assert.match(r.stderr, /code block 1 differs/);
 });
+
+test('a translated older page with the same ids, rows and code passes, and a wrong {#id} fails', (t) => {
+  const en = '# Writing\n\n## Commands\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n````md\n```sh\nnode x\n```\n````\n\n## Commands\n';
+  const ja = (id) => `---\ntitle: x\ntranslatedFrom: f97b3b6\n---\n\n## コマンド {#${id}}\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n\`\`\`\`md\n\`\`\`sh\nnode x\n\`\`\`\n\`\`\`\`\n\n## コマンド {#commands-1}\n`;
+  const good = run('docs-site/scripts/check-languages.mjs', {
+    POINTSMAN_DOCS_REPO: repo(t, { 'docs/authoring.md': en, 'docs/ja/how-to/write-a-profile-with-ai.md': ja('commands') }),
+  });
+  assert.equal(good.status, 0, good.stderr);
+  assert.match(good.stdout, /1 translated older pages/);
+  const bad = run('docs-site/scripts/check-languages.mjs', {
+    POINTSMAN_DOCS_REPO: repo(t, { 'docs/authoring.md': en, 'docs/ja/how-to/write-a-profile-with-ai.md': ja('command') }),
+  });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /heading 1 has the id "command", docs\/authoring\.md has "commands"; add \{#commands\}/);
+});
+
+test('translation-status reports a missing or unknown translatedFrom per page, and does not fail', (t) => {
+  const dir = repo(t, {
+    'docs/authoring.md': '# Writing\n',
+    'docs/ja/how-to/write-a-profile-with-ai.md': '---\ntitle: x\n---\n',
+    'docs/deployment.md': '# Deployment\n',
+    'docs/ja/how-to/deploy.md': '---\ntitle: x\ntranslatedFrom: 0000000\n---\n',
+  });
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  const r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /write-a-profile-with-ai\.md: missing translatedFrom/);
+  assert.match(r.stdout, /deploy\.md: cannot read the history of docs\/deployment\.md since 0000000/);
+});
+
+test('heading-ids sets a heading id from {#id} and leaves other headings alone', async () => {
+  const { default: headingIds } = await import('../docs-site/plugins/heading-ids.mjs');
+  const heading = (...children) => ({ type: 'heading', depth: 2, children });
+  const text = (value) => ({ type: 'text', value });
+  const tree = {
+    type: 'root',
+    children: [
+      heading(text('ファクト {#facts}')),
+      heading(text('Plain')),
+      heading(text('Use '), { type: 'inlineCode', value: 'x' }, text(' {#use-x}')),
+      heading(text('Ends in '), { type: 'inlineCode', value: '{#no}' }),
+    ],
+  };
+  headingIds()(tree);
+  const [a, b, c, d] = tree.children;
+  assert.equal(a.children[0].value, 'ファクト');
+  assert.equal(a.data.hProperties.id, 'facts');
+  assert.equal(b.children[0].value, 'Plain');
+  assert.equal(b.data, undefined);
+  assert.equal(c.children[2].value, '');
+  assert.equal(c.data.hProperties.id, 'use-x');
+  assert.equal(d.data, undefined);
+});

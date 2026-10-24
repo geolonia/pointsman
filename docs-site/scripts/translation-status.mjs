@@ -12,13 +12,22 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEGACY } from '../pages.mjs';
 
-const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+// The repository; POINTSMAN_DOCS_REPO points the script at another one (for its tests).
+const repo = process.env.POINTSMAN_DOCS_REPO ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 let behind = 0;
 for (const [en, { slug }] of Object.entries(LEGACY)) {
   const ja = ['.md', '.mdx'].map((ext) => `docs/ja/${slug}${ext}`).find((f) => existsSync(join(repo, f)));
   if (!ja) { console.log(`${en}: no Japanese translation`); continue; }
   const from = /^translatedFrom: ([0-9a-f]{7,40})$/m.exec(readFileSync(join(repo, ja), 'utf8'))?.[1];
-  const log = execFileSync('git', ['log', '--oneline', `${from}..HEAD`, '--', en], { cwd: repo, encoding: 'utf8' }).trim();
+  if (!from) { console.log(`${ja}: missing translatedFrom in the front matter`); continue; }
+  let log;
+  try {
+    log = execFileSync('git', ['log', '--oneline', `${from}..HEAD`, '--', en], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  } catch {
+    // An unknown commit, or a shallow clone without it.
+    console.log(`${ja}: cannot read the history of ${en} since ${from} (unknown commit or shallow clone)`);
+    continue;
+  }
   if (!log) { console.log(`${ja}: up to date with ${en}`); continue; }
   behind++;
   console.log(`${ja}: ${en} changed since ${from}:\n${log.replace(/^/gm, '  ')}`);

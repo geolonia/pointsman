@@ -30,7 +30,7 @@ function walk(dir) {
 /** The id a heading gets: `{#id}` when given, else GitHub's slug of its text. */
 function headingId(text, seen) {
   const fixed = /\s*\{#([A-Za-z0-9_-]+)\}\s*$/.exec(text);
-  if (fixed) return fixed[1];
+  if (fixed) { seen.add(fixed[1]); return fixed[1]; }
   const base = text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[`*]/g, '')
@@ -54,10 +54,13 @@ function shape(text, { dropTitle = false } = {}) {
   const seen = new Set();
   let rows = 0;
   let block = null;
+  // The open code fence ("```" or "~~~", three or more); it closes with the same character, at least as long.
+  let fence = null;
   for (const line of body.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      if (block === null) block = [line.trim()];
-      else { block.push(line.trim()); blocks.push(block.join('\n')); block = null; }
+    const f = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (block === null && f) { fence = f; block = [line.trim()]; continue; }
+    if (block !== null && f && f[0] === fence[0] && f.length >= fence.length && line.trim() === f) {
+      block.push(line.trim()); blocks.push(block.join('\n')); block = null; fence = null;
       continue;
     }
     if (block !== null) block.push(line);
