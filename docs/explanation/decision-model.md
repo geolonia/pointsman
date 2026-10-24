@@ -259,7 +259,10 @@ checks run the same engine with different modules.
 - **Connectors** connect another system: they bring its cases in and carry
   the results back, for example to a FIWARE platform (`@pointsman/fiware`)
   or to a pull request (`@pointsman/github`). They use the same public API
-  as any other client ([connectors](../connectors.md)).
+  as any other client ([connectors](../connectors.md)). The FIWARE connector,
+  its actions and settings are described in the
+  [FIWARE bridge](../../bridge/README.md), and the demo it runs in the
+  [FIWARE demo storyboard](../fiware-demo.md).
 - **Adapters** connect the engine to the platform it runs on: where the log
   and the profiles are stored, which AI service answers, how requests come
   in. Today that is Cloudflare Workers, Cloudflare's service for running

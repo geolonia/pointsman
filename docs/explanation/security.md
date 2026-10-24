@@ -11,8 +11,10 @@ what it does not. The full analysis is the
 
 ## API tokens
 
-- Every request to the HTTP API and to MCP needs a token. Without a valid
-  one, the answer is 401 and nothing else happens.
+- Every request to the HTTP API (`/v1/`) and to MCP needs a token, or for
+  MCP a GitHub sign-in. Without a valid one, the answer is 401 and nothing
+  else happens. The sign-in pages themselves are public by design, and an
+  [internal call](#internal-calls) needs no token.
 - A token acts only on the profiles it was made for, unless it was made
   for every profile (`--profiles '*'`). Other profiles look as if they did
   not exist, also their decisions and reviews.
@@ -60,6 +62,18 @@ profile's input mapping selects fields, it does not validate them.
 - GitHub facts read with the deployment's credential, only what they need,
   and only to read. The token is never logged.
 - Facts from the decision log see only the asking client's own decisions.
+
+## Approvals on facts
+
+Where a deployment lets the GitHub connector approve, a profile can approve
+a pull request on facts alone, with no person looking. A fact that is wrong
+(for example because the data behind it is wrong) can then approve a pull
+request in a live repository. Whether that approval is enough to merge
+depends on the repository's ruleset, which the repository's owners set: see
+[Review pull requests with Pointsman](../how-to/review-pull-requests.md#4-let-pointsman-approve).
+
+Callbacks with a review's final answer are signed, and the connector checks
+the signature of every webhook GitHub sends it.
 
 ## What is recorded
 

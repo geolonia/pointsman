@@ -87,7 +87,8 @@ Some pull requests need no AI answer at all:
 - a release pull request that only moves version fields and adds to the
   changelog (`github_release`);
 - a Dependabot pull request that only bumps npm development dependencies by
-  a patch step (`github_bump`).
+  a patch step (`github_bump`; a step counts as `patch` only from version
+  1.0.0 on, a 0.x patch step counts as `minor`).
 
 Pair either fact with `github_pr` (author, signatures, who pushed), because
 neither says who made the change. To make the dependency case common, group
