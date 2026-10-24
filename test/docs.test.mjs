@@ -131,8 +131,13 @@ test('translation-status reports a missing or unknown translatedFrom per page, a
 
 test('translation-status leaves out commits that changed the translation too', (t) => {
   const dir = repo(t, { 'docs/deployment.md': '# Deployment\n', 'docs/ja/how-to/deploy.md': '---\ntitle: x\n---\n' });
-  const env = { ...process.env, GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.org', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.org' };
-  const git = (...args) => spawnSync('git', ['-c', 'commit.gpgsign=false', ...args], { cwd: dir, env, encoding: 'utf8' }).stdout.trim();
+  // A throwaway repository: no global or system git config (signing, hooks).
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.org', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.org' };
+  const git = (...args) => {
+    const r = spawnSync('git', args, { cwd: dir, env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout.trim();
+  };
   const commit = (message, files) => {
     for (const [f, text] of Object.entries(files)) writeFileSync(join(dir, f), text);
     git('add', '-A');
@@ -142,7 +147,7 @@ test('translation-status leaves out commits that changed the translation too', (
   commit('base', {});
   const base = git('rev-parse', '--short', 'HEAD');
   writeFileSync(join(dir, 'docs/ja/how-to/deploy.md'), `---\ntitle: x\ntranslatedFrom: ${base}\n---\n`);
-  commit('both languages', { 'docs/deployment.md': '# Deployment\n\nMore.\n', 'docs/ja/how-to/deploy.md': `---\ntitle: x\ntranslatedFrom: ${base}\n---\n\nもっと。\n` });
+  commit('en and ja together', { 'docs/deployment.md': '# Deployment\n\nMore.\n', 'docs/ja/how-to/deploy.md': `---\ntitle: x\ntranslatedFrom: ${base}\n---\n\nもっと。\n` });
   let r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /deploy\.md: up to date with docs\/deployment\.md/);
@@ -150,7 +155,7 @@ test('translation-status leaves out commits that changed the translation too', (
   r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
   assert.match(r.stdout, /deploy\.md: docs\/deployment\.md changed since \w+:\n {2}\w+ English only\n/);
   assert.match(r.stdout, /1 translation\(s\) behind/);
-  assert.doesNotMatch(r.stdout, /both languages/);
+  assert.doesNotMatch(r.stdout, /en and ja together/);
 });
 
 test('heading-ids sets a heading id from {#id} and leaves other headings alone', async () => {

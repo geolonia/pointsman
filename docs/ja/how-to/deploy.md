@@ -83,7 +83,7 @@ translatedFrom: f97b3b6
 
 エンジンのリポジトリそのものは、`engine.json` から読むのではなく、ワークフローの中で固定しています(`ENGINE_REPOSITORY`)。ワークフローはエンジンのコードを実行し、デプロイのワークフローは Cloudflare の認証情報も使います。そのため、`engine.json` だけを変えるプルリクエストで、ワークフローに別のコードを実行させることはできません。
 
-新しいエンジンは、データベースのマイグレーションを追加することがあります(エンジンのリポジトリの `migrations/`。たとえば 0.8.0 では、判定ログからのファクトのために `0008_log_facts.sql` が加わりました)。デプロイのワークフローは、エンジンをデプロイする前にマイグレーションを適用します。そのため、更新のための手順は要りません。ワークフローを使わずにデプロイするときは、先に適用します。
+新しいエンジンは、データベースのマイグレーションを追加することがあります(エンジンのリポジトリの `migrations/`。チェックアウトでは `engine/migrations/` です。たとえば 0.8.0 では、判定ログからのファクトのために `0008_log_facts.sql` が加わりました)。デプロイのワークフローは、エンジンをデプロイする前にマイグレーションを適用します。そのため、更新のための手順は要りません。ワークフローを使わずにデプロイするときは、マイグレーションを先に適用します。設定用リポジトリで、エンジンをチェックアウトしてインストールし(手順 8 と同じ)、Cloudflare のアカウントに接続できる状態で、次のコマンドを実行します。
 
 ```sh
 engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrangler.jsonc
@@ -91,7 +91,7 @@ engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrang
 
 ## GitHub のコネクターをつなぐ {#connect-the-github-connector}
 
-[GitHub のコネクター](../../github-connector.md)は、エンジンとは別の Worker です。エンジンと同じ Cloudflare アカウントにあれば、内部呼び出しでエンジンに届きます。この場合、作成や入れ替えの必要なトークンはありません。それ以外の場合は、API トークンが要ります(手順 8)。2 つのつなぎ方の設定と、動いているコネクターをトークンから内部呼び出しに切り替える 3 つの手順は、[Pointsman へのつなぎ方](../../github-connector.md#how-it-reaches-pointsman)にあります。
+[GitHub のコネクター](../../github-connector.md)は、エンジンとは別の Worker です。エンジンと同じ Cloudflare アカウントにあれば、内部呼び出しを使えます。この場合、トークンは要りません。それ以外の場合は、API トークンが要ります([準備する](#set-up)の手順 8)。設定と、コネクターをトークンから内部呼び出しに切り替える手順は、[Pointsman へのつなぎ方](../../github-connector.md#how-it-reaches-pointsman)にあります。
 
 ## API トークンを入れ替える {#rotate-an-api-token}
 

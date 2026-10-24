@@ -1,6 +1,9 @@
 // Lists the English changes since each Japanese translation of an older page
 // was last brought up to date (its front matter's translatedFrom commit),
-// leaving out commits that changed the translation as well.
+// leaving out commits that changed the translation as well. That is a hint,
+// not a proof: a commit that changes both counts as translated, even when its
+// Japanese change was unrelated, so a pull request that touches both
+// languages still needs a look at its English diff.
 // It does not fail: a change to the English wording should reach the
 // Japanese page soon, but need not block a pull request. A change to the
 // structure (a section, a table row, a code block) fails check-languages.mjs.
@@ -41,4 +44,4 @@ for (const [en, { slug }] of Object.entries(LEGACY)) {
   behind++;
   console.log(`${ja}: ${en} changed since ${from}:\n${log.replace(/^/gm, '  ')}`);
 }
-if (behind) console.log(`\n${behind} translation(s) behind: update them, then set translatedFrom to the newest commit above.`);
+if (behind) console.log(`\n${behind} translation(s) behind: update them, then set translatedFrom to the newest commit above (or let a commit change both languages).`);
