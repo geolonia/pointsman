@@ -129,6 +129,47 @@ test('translation-status reports a missing or unknown translatedFrom per page, a
   assert.match(r.stdout, /deploy\.md: cannot read the history of docs\/deployment\.md since 0000000: \S/);
 });
 
+test('translation-status leaves out commits that changed the translation too', (t) => {
+  const dir = repo(t, { 'docs/deployment.md': '# Deployment\n', 'docs/ja/how-to/deploy.md': '---\ntitle: x\n---\n' });
+  // A throwaway repository: no global or system git config (signing, hooks).
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.org', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.org' };
+  const git = (...args) => {
+    const r = spawnSync('git', args, { cwd: dir, env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout.trim();
+  };
+  const commit = (message, files) => {
+    for (const [f, text] of Object.entries(files)) writeFileSync(join(dir, f), text);
+    git('add', '-A');
+    git('commit', '-q', '-m', message);
+  };
+  git('init', '-q');
+  commit('base', {});
+  const base = git('rev-parse', '--short', 'HEAD');
+  writeFileSync(join(dir, 'docs/ja/how-to/deploy.md'), `---\ntitle: x\ntranslatedFrom: ${base}\n---\n`);
+  commit('en and ja together', { 'docs/deployment.md': '# Deployment\n\nMore.\n', 'docs/ja/how-to/deploy.md': `---\ntitle: x\ntranslatedFrom: ${base}\n---\n\nもっと。\n` });
+  let r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /deploy\.md: up to date with docs\/deployment\.md/);
+  commit('English only', { 'docs/deployment.md': '# Deployment\n\nMore, and more.\n' });
+  r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.match(r.stdout, /deploy\.md: docs\/deployment\.md changed since \w+:\n {2}\w+ English only\n/);
+  assert.match(r.stdout, /1 translation\(s\) behind/);
+  assert.doesNotMatch(r.stdout, /en and ja together/);
+  // A merge of a branch that changed the English page and its translation in separate commits.
+  const head = git('rev-parse', '--short', 'HEAD');
+  writeFileSync(join(dir, 'docs/ja/how-to/deploy.md'), `---\ntitle: x\ntranslatedFrom: ${head}\n---\n`);
+  commit('translatedFrom', {});
+  git('checkout', '-q', '-b', 'side');
+  commit('English on a branch', { 'docs/deployment.md': '# Deployment\n\nBranch.\n' });
+  commit('Japanese on a branch', { 'docs/ja/how-to/deploy.md': `---\ntitle: x\ntranslatedFrom: ${head}\n---\n\n枝。\n` });
+  git('checkout', '-q', '-');
+  git('merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+  r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.match(r.stdout, /deploy\.md: docs\/deployment\.md changed since \w+:\n {2}\w+ English on a branch\n/);
+  assert.doesNotMatch(r.stdout, /merge side|Japanese on a branch/);
+});
+
 test('heading-ids sets a heading id from {#id} and leaves other headings alone', async () => {
   const { default: headingIds } = await import('../docs-site/plugins/heading-ids.mjs');
   const heading = (...children) => ({ type: 'heading', depth: 2, children });

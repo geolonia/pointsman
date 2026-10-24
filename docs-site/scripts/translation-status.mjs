@@ -1,5 +1,9 @@
 // Lists the English changes since each Japanese translation of an older page
-// was last brought up to date (its front matter's translatedFrom commit).
+// was last brought up to date (its front matter's translatedFrom commit),
+// leaving out commits that changed the translation as well. That is a hint,
+// not a proof: a commit that changes both counts as translated, even when its
+// Japanese change was unrelated, so a pull request that touches both
+// languages still needs a look at its English diff.
 // It does not fail: a change to the English wording should reach the
 // Japanese page soon, but need not block a pull request. A change to the
 // structure (a section, a table row, a code block) fails check-languages.mjs.
@@ -22,7 +26,16 @@ for (const [en, { slug }] of Object.entries(LEGACY)) {
   if (!from) { console.log(`${ja}: missing translatedFrom in the front matter`); continue; }
   let log;
   try {
-    log = execFileSync('git', ['log', '--oneline', `${from}..HEAD`, '--', en], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    // A commit that changes the translation too brought it up to date with
+    // that change, so only commits that change the English page alone count.
+    // (A squash merge gives the pull request's commit a new id, so
+    // translatedFrom cannot name it.) One log over both files, so both are
+    // judged from the same commits; merge commits are left out, since the
+    // commits they bring in are listed themselves.
+    const out = execFileSync('git', ['log', '--no-merges', '--format=%x00%h %s', '--name-only', `${from}..HEAD`, '--', en, ja], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    log = out.split('\0').filter(Boolean).map((entry) => entry.trim().split('\n'))
+      .filter(([, ...files]) => files.includes(en) && !files.includes(ja))
+      .map(([subject]) => subject).join('\n');
   } catch (error) {
     // For example an unknown commit, or a shallow clone without it.
     console.log(`${ja}: cannot read the history of ${en} since ${from}: ${error.stderr?.trim() || error.message}`);
@@ -32,4 +45,4 @@ for (const [en, { slug }] of Object.entries(LEGACY)) {
   behind++;
   console.log(`${ja}: ${en} changed since ${from}:\n${log.replace(/^/gm, '  ')}`);
 }
-if (behind) console.log(`\n${behind} translation(s) behind: update them, then set translatedFrom to the newest commit above.`);
+if (behind) console.log(`\n${behind} translation(s) behind: update them, then set translatedFrom to the newest commit above (or let a commit change both languages).`);

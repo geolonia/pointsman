@@ -114,10 +114,33 @@ Change `ref` in `engine.json` to a newer commit and open a pull request: the
 validate workflow checks your profiles against that engine version, and the
 fact modules in `modules`, before anything is deployed.
 
+A newer engine can add database migrations (in the engine repository's
+`migrations/`, so `engine/migrations/` in your checkout; for example
+`0008_log_facts.sql` in 0.8.0, for facts from the decision log). The deploy
+workflow applies them before it deploys the engine, so an update needs no
+step of its own. If you deploy without the workflow, apply the migrations
+first, from the configuration repository with the engine checked out and
+installed (as in step 8) and access to the Cloudflare account:
+
+```sh
+engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrangler.jsonc
+```
+
 The engine repository itself is fixed in the workflows (`ENGINE_REPOSITORY`),
 not taken from `engine.json`: the workflows run the engine's code, the deploy
 workflow with the Cloudflare credentials, so a pull request that only edits
 `engine.json` cannot point them at other code.
+
+## Connect the GitHub connector
+
+The [GitHub connector](github-connector.md) is a Worker of its own. In the
+same Cloudflare account as the engine it can use an internal call, with no
+token: a service binding `POINTSMAN` to the engine's `InternalEngine`, and
+`INTERNAL_CLIENT` in the engine's config. Without the binding it needs
+`POINTSMAN_URL` and an API token (step 8 of [Set up](#set-up)). The
+settings, and the steps that switch a connector from its token to the
+internal call, are in
+[How it reaches Pointsman](github-connector.md#how-it-reaches-pointsman).
 
 ## Rotate an API token
 
