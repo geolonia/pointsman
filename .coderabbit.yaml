@@ -13,6 +13,9 @@ reviews:
   # for through the pr-review-flow skill's review-next for now; later
   # Pointsman itself may ask (a connector action, not built yet).
   review_status: false
+  # Keep the commit status "CodeRabbit" on every head: Pointsman's CodeRabbit
+  # facts and review-next read it (installed, reviewed, rate limited).
+  commit_status: true
   auto_review:
     enabled: false
     # Only matters if automatic reviews are switched on again.
