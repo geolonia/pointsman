@@ -13,7 +13,7 @@ Pointsman のコードとこのドキュメントの多くは、AI の助けを�
 ## このサイトを読む AI のツール向け
 
 - **最初に読むもの:** [llms.txt](https://pointsman.net/llms.txt)。ドキュメントの全ページを 1 行ずつ説明した短い索引です(英語)。
-- **すべてを 1 つのファイルで:** [llms-full.txt](https://pointsman.net/llms-full.txt)。英語のページのうち、書き終えたページの本文です。今後書く内容だけを示す準備中のページは含みません。
+- **すべてを 1 つのファイルで:** [llms-full.txt](https://pointsman.net/llms-full.txt)。英語の全ページの本文です。
 - **API:** コードから生成した [HTTP API](../reference/http-api.md) と [MCP ツール](../reference/mcp-tools.md)。
 - このサイトの `robots.txt` では、検索、AI の回答、AI の学習のどれにも使ってよいとしています。
 

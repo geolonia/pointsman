@@ -123,9 +123,8 @@ workflow with the Cloudflare credentials, so a pull request that only edits
 
 Every client that calls Pointsman over its API has its own API token (the
 GitHub connector's internal call has none, so there is nothing to rotate for
-it). Rotate a token when
-it is about to expire, when someone who knew it leaves, or when it may have
-leaked. These steps replace it without downtime: the old token keeps working
+it). Rotate a token when it is about to expire, when someone who knew it
+leaves, or when it may have leaked. These steps replace it without downtime: the old token keeps working
 until you revoke it in step 3.
 
 Run the commands in a checkout of the Pointsman engine, with access to the
@@ -174,14 +173,13 @@ node scripts/tokens.mjs list --local
 
 ### 3. Revoke the old token
 
-Run the command that step 1 printed. That command leaves out `--config`: if
-you used `--config` in step 1 (for a deployed Worker), add the same
-`--config` here. Otherwise the revoke uses another configuration, and the old
-token keeps working.
+Run the command that step 1 printed, as it is: it has the same `--local` or
+`--remote` and `--config` as step 1. For a deployed Worker it looks like the
+second line:
 
 ```sh
 node scripts/tokens.mjs revoke --hash <old hash> --local
-node scripts/tokens.mjs revoke --hash <old hash> --remote --config <your wrangler config>
+node scripts/tokens.mjs revoke --hash <old hash> --remote --config=<your wrangler config>
 ```
 
 ```text

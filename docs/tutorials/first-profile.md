@@ -37,7 +37,8 @@ It is ready when it prints:
 [wrangler:info] Ready on http://localhost:8787
 ```
 
-Leave it running, and use a second terminal for the next steps. This local
+Leave it running, and use a second terminal, in the same `pointsman`
+folder, for the next steps. This local
 Pointsman serves the example profiles in `examples/profiles/`, and its mock
 model answers every yes-or-no question with "no", 80 % sure.
 
@@ -52,7 +53,8 @@ export POINTSMAN_TOKEN=pm_...
 ```
 
 The command prints the token once (`pm_` and 43 more characters). Put it in
-`POINTSMAN_TOKEN`, as in the second line.
+`POINTSMAN_TOKEN`, as in the second line. If you run it again, it refuses
+the name `tutorial`, which already has a token: use another name.
 
 ## 3. Write a profile
 
@@ -60,6 +62,15 @@ Save this as `examples/profiles/report-check.yaml`. It asks one question
 about a report, and has one rule: when the AI is at least 70 % sure that
 someone is in danger, the action is `urgent`. Otherwise a person checks the
 report (`review`).
+
+- `input` picks the part of the request the AI sees: `$.report.text` is a
+  path into the request (JSONPath).
+- `noul` is a yes-or-no question; `criteria` say what yes and no mean.
+- In the rule, `danger.yes` is the AI's probability for "yes".
+- `model` names the AI model a real deployment uses; here the mock answers
+  instead.
+
+Every field is described in the [profile format](../profile-format.md).
 
 ```yaml
 id: report-check
@@ -188,7 +199,7 @@ curl -s -X POST localhost:8787/v1/reviews/<decision_id>/resolve \
   -d '{"action": "urgent", "correct": {"danger": true}, "by": "you@example.com"}'
 ```
 
-The second command answers:
+The second command answers (shortened):
 
 ```json
 {

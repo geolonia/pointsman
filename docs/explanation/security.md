@@ -13,8 +13,9 @@ what it does not. The full analysis is the
 
 - Every request to the HTTP API and to MCP needs a token. Without a valid
   one, the answer is 401 and nothing else happens.
-- A token acts only on the profiles it was made for. Other profiles look
-  as if they did not exist, also their decisions and reviews.
+- A token acts only on the profiles it was made for, unless it was made
+  for every profile (`--profiles '*'`). Other profiles look as if they did
+  not exist, also their decisions and reviews.
 - Only a SHA-256 hash of each token is stored. The token is shown once, when
   it is made.
 - A token can expire; one without `--expires` works until it is revoked. A
@@ -42,9 +43,11 @@ permission to the people who run the engine.
 ## Input written by outsiders
 
 The text of a case is written by whoever sent it, and it can try to steer
-the AI. Pointsman does not claim to resist this. Instead, profiles use AI
-answers only to make a decision stricter, and check what must be true with
-facts ([why](decision-model.md#ai-answers-only-make-a-decision-stricter)).
+the AI. Pointsman does not claim to resist this. Profile authors should use
+AI answers only to make a decision stricter, and check what must be true
+with facts ([why](decision-model.md#ai-answers-only-make-a-decision-stricter)).
+Pointsman does not enforce this: where a profile approves on AI answers
+alone, the author of a pull request can steer that approval.
 Pointsman does not check the content of a request beyond its form: a
 profile's input mapping selects fields, it does not validate them.
 
@@ -60,9 +63,9 @@ profile's input mapping selects fields, it does not validate them.
 
 ## What is recorded
 
-Every decision is stored before it is returned, with its answers, facts,
-rule, model and versions. The request itself is kept only as a SHA-256 hash,
-unless the profile keeps it; equal requests give equal hashes. The log shows
+What the decision log keeps is described under
+[The decision log](decision-model.md#the-decision-log). The request is kept
+as a plain SHA-256 hash, so equal requests give equal hashes. The log shows
 what the engine saw and did, not that the request was true. It is not
 signed or chained: whoever runs the deployment can change it. Who resolved a
 review (`by`) is a name the client sends, not checked.

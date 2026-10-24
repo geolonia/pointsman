@@ -33,7 +33,7 @@ pnpm dev
 [wrangler:info] Ready on http://localhost:8787
 ```
 
-起動したままにして、以降の手順は別のターミナルで進めます。手元の Pointsman は `examples/profiles/` にある例のプロファイルを使い、モックのモデルは「はい・いいえ」の質問すべてに「いいえ」と 80% の確かさで答えます。
+起動したままにして、以降の手順は別のターミナルで、同じ `pointsman` フォルダーの中で進めます。手元の Pointsman は `examples/profiles/` にある例のプロファイルを使い、モックのモデルは「はい・いいえ」の質問すべてに「いいえ」と 80% の確かさで答えます。
 
 ## 2. トークンを作る
 
@@ -44,11 +44,18 @@ node scripts/tokens.mjs create --client tutorial --profiles '*' --local
 export POINTSMAN_TOKEN=pm_...
 ```
 
-トークン(`pm_` に続く 43 文字)は 1 回だけ表示されます。2 行目のように `POINTSMAN_TOKEN` に入れておきます。
+トークン(`pm_` に続く 43 文字)は 1 回だけ表示されます。2 行目のように `POINTSMAN_TOKEN` に入れておきます。もう一度実行すると、`tutorial` という名前にはすでにトークンがあるため断られます。その場合は別の名前を使ってください。
 
 ## 3. プロファイルを書く
 
 次の内容を `examples/profiles/report-check.yaml` として保存します。報告について 1 つ質問し、ルールは 1 つです。誰かが危険な状態にあると AI が 70% 以上確信したとき、アクションは `urgent`(至急)になります。それ以外は、人が報告を確認します(`review`)。
+
+- `input` は、リクエストのどの部分を AI に見せるかを選びます。`$.report.text` は、リクエストの中の位置を指すパス(JSONPath)です。
+- `noul` は「はい・いいえ」で答える質問で、`criteria` に「はい」と「いいえ」の意味を書きます。
+- ルールの `danger.yes` は、AI が「はい」と答える確率です。
+- `model` は、実際のデプロイで使う AI モデルの名前です。ここではモックが代わりに答えます。
+
+すべてのフィールドは[プロファイルの形式](../../profile-format.md)(英語)で説明しています。
 
 ```yaml
 id: report-check
@@ -169,7 +176,7 @@ curl -s -X POST localhost:8787/v1/reviews/<decision_id>/resolve \
   -d '{"action": "urgent", "correct": {"danger": true}, "by": "you@example.com"}'
 ```
 
-2 つ目のコマンドの答えは次のとおりです。
+2 つ目のコマンドの答えは次のとおりです(一部を省略しています)。
 
 ```json
 {
@@ -185,7 +192,7 @@ curl -s -X POST localhost:8787/v1/reviews/<decision_id>/resolve \
 
 ## ここまでで行ったこと
 
-プロファイルを書き、文章で読み、例で試し、判定させ、人として確認しました。次は、次のページに進んでください。
+プロファイルを書き、文章で読み、例で試し、判定させ、人として確認しました。続きは次のページで学べます。
 
 - [プロファイルの形式](../../profile-format.md)(英語): ファクトやチェーンを含む、すべてのフィールド。
 - [AI アシスタントとプロファイルを書く](../../authoring.md)(英語): 同じ手順を、アシスタントに下書きを任せて進める方法。

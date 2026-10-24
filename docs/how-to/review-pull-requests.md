@@ -61,13 +61,16 @@ Map an action to `approve` only when the profile's rules can carry it:
 
 - **Permissions.** An app's approval counts toward the required approvals
   only when the connector app has Contents and Pull requests with read and
-  write ([the two apps](../github-connector.md#the-two-github-apps)). Where
-  you do not want to grant that, use the decision's check run as a required
-  check instead.
+  write ([the two apps](../github-connector.md#the-two-github-apps)).
+  Without them the approval is shown but does not count. The connector's
+  check run is always `neutral`, so it cannot replace an approval as a
+  required check.
 - **Dismiss stale approvals.** Turn on "Dismiss stale pull request approvals
-  when new commits are pushed" in the branch's ruleset. The connector also
+  when new commits are pushed" in the branch's ruleset (the branch's
+  protection settings on GitHub). The connector also
   dismisses its own older approvals, but only on its next run.
-- **Code owners.** An app cannot be a code owner: where `CODEOWNERS` covers
+- **Code owners.** An app cannot be a code owner: where `CODEOWNERS` (the
+  file that names who must review which files) covers
   a changed file and the ruleset requires a code owner's review, a person
   must still approve.
 - **Forks** are never approved.
@@ -92,8 +95,9 @@ Dependabot's development patch bumps into their own pull requests.
 
 If an AI review service also reviews these pull requests, its review changes
 what the profile sees. Let it skip them. For CodeRabbit, give release pull
-requests a title that starts with `Release 0.` and ignore that title (the
-keyword matches anywhere in the title, so do not use just `Release`):
+requests a title that starts with `Release 0.` and ignore that title in the
+repository's `.coderabbit.yaml` (the keyword matches anywhere in the title,
+so do not use just `Release`; from version 1.0, use `Release 1.`):
 
 ```yaml
 reviews:

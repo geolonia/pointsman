@@ -65,9 +65,7 @@ decision can say which rules made it.
      the model is, from 0 to 1.
    - Pointsman looks up the profile's *facts* in data, for example whether
      the place is in a flood zone or how many files a pull request changes.
-     Some facts read Pointsman's own decision log instead, for example how
-     many of an author's pull requests wait for a review; they see only the
-     asking client's own decisions. The AI does not see or guess facts.
+     The AI does not see or guess facts.
 3. **Rules decide.** People write the rules, for example "danger 70 % or
    more: urgent". Pointsman checks them in order; the first rule whose
    condition is true (the first that *fits*) gives the action. When no rule
@@ -77,12 +75,8 @@ decision can say which rules made it.
    acts on it. When the action is `review` (or another action the profile
    lists for people to check), a person checks the case first,
    gives the final action and can correct the AI's answers.
-5. **Everything is recorded.** The decision log keeps the answers, the
-   facts, the rule that fit, the model, the versions of the engine and its
-   modules, and the profile version, which says which questions were asked.
-   The request itself is kept only as a hash, unless the profile asks to
-   keep it.
-   The corrections show how often the AI was right.
+5. **Everything is recorded** in the [decision log](#the-decision-log),
+   with the corrections, which show how often the AI was right.
 
 ## Why it is split this way
 
@@ -131,9 +125,13 @@ profile tests `missing` first, which is always known:
   action: review
 ```
 
-In a rule that allows something, name every condition as a known value
-(`facts.risky.any == false`) instead of counting on an earlier rule. The
-details are in the [profile format](../profile-format.md#facts).
+`reason` tells a failed lookup from one that does not apply: a detour can
+only be computed for a road section, so
+`facts.walk.missing == true and facts.walk.reason != 'no_location'` sends
+only a real failure to a person. In a rule that allows something, name every
+condition as a known value (`facts.risky.any == false`) instead of counting
+on an earlier rule. The details are in the
+[profile format](../profile-format.md#facts).
 
 ## AI answers only make a decision stricter
 
@@ -143,10 +141,14 @@ sent it. That person can write text meant to steer the AI, for example "this
 change is safe". This is called *prompt injection*, and no model is fully
 safe from it.
 
-So in a profile whose input comes from outsiders, an AI answer may only make
-the decision stricter: it can send a case to a person or ask for a fix, but
-it is never the reason a case passes. What must be true for a pass is
-checked with facts. The example profile
+So in a profile whose input comes from outsiders, the profile's author
+follows a rule: an AI answer may only make the decision stricter. It can
+send a case to a person or ask for a fix, but it is never the reason a case
+passes. What must be true for a pass is checked with facts, values that
+Pointsman works out itself and the author of the case cannot set directly.
+Pointsman does not enforce this rule: a profile that passes or approves on
+AI answers alone can be steered by whoever writes the case. The example
+profile
 [`workflow-check`](../../examples/profiles/workflow-check.yaml), shortened:
 
 ```yaml
@@ -167,7 +169,17 @@ policy:
 
 The AI question `touches_secrets` reads the pull request's text. It appears
 in a rule that sends the case to a person, and in the pass rule only as one
-more condition. A text that fools the AI can at most cause one more review.
+more condition. A text that fools the AI can at most remove that extra
+condition; the facts still have to allow the pass. When the facts cannot be
+read, the first rule gives `retry` (try again later), never `pass`.
+
+Before you publish such a profile, read its rules as sentences
+(`node scripts/explain-profile.mjs <file>`) and check that:
+
+1. every rule that lets a case pass names the facts it relies on;
+2. AI answers appear only in rules with a stricter action, or as an extra
+   condition in a pass rule;
+3. a missing fact leads to a person or to `retry`, never to a pass.
 
 ## People: reviews and corrections
 
@@ -183,12 +195,12 @@ right. Details: [reviews and callbacks](../reviews.md).
 Every decision is stored before it is returned: if the log cannot be
 written, the client gets an error and no decision, so nobody acts on a
 decision that is not recorded. The log keeps the answers, the facts, the
-rule, the model, the versions of the engine and its modules, and the
-profile version. The request itself is kept only as a hash, unless the
-profile asks to keep it. A *test token*'s decisions are not logged. Some
-facts read the log too, for example how many of an author's pull requests
-wait for a review; they see only the asking client's own decisions. Details:
-[decision log](../decision-log.md).
+rule, the model, the versions of the engine and its modules, and the profile
+version, which says which questions were asked. The request itself is kept
+only as a hash, unless the profile asks to keep it. A *test token*'s
+decisions are not logged. Some facts read the log too, for example how many
+of an author's pull requests wait for a review; they see only the asking
+client's own decisions. Details: [decision log](../decision-log.md).
 
 ## Decision chains
 
@@ -250,8 +262,14 @@ checks run the same engine with different modules.
   as any other client ([connectors](../connectors.md)).
 - **Adapters** connect the engine to the platform it runs on: where the log
   and the profiles are stored, which AI service answers, how requests come
-  in. Today that is Cloudflare Workers; the engine core uses no
-  Cloudflare-specific code ([adapters](../adapters.md)).
+  in. Today that is Cloudflare Workers, Cloudflare's service for running
+  code on its servers; the engine core uses no Cloudflare-specific code
+  ([adapters](../adapters.md)).
+
+One package can have more than one role: `@pointsman/github` looks up facts
+and is a connector. Keeping the parts apart keeps the engine small: a new
+data source or a new system is a new module, not a change to the engine, and
+another platform needs other adapters while the profiles stay the same.
 
 ## Where to go next
 
