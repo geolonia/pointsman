@@ -78,7 +78,7 @@ Pointsman は、ケースをどちらに進めるかを判定します。ケー�
   action: review
 ```
 
-`reason` を使うと、調べるのに失敗した場合と、もともと当てはまらない場合を区別できます。迂回路は道路の区間についてだけ計算できるため、`facts.walk.missing == true and facts.walk.reason != 'no_location'` とすると、本当に失敗したときだけ人に回せます。何かを許すルールでは、前のルールに頼らず、すべての条件を値がわかっている形で書きます(例: `facts.risky.any == false`)。詳細は[プロファイルの形式](../../profile-format.md#facts)(英語)にあります。
+`reason` を使うと、調べるのに失敗した場合と、もともと当てはまらない場合を区別できます。迂回路は道路の区間についてだけ計算できるため、`facts.walk.missing == true and facts.walk.reason != 'no_location'` とすると、本当に失敗したときだけ人に回せます。何かを許すルールでは、前のルールに頼らず、すべての条件を値がわかっている形で書きます(例: `facts.risky.any == false`)。詳細は[プロファイルの形式](../../profile-format.md#facts)にあります。
 
 ## AI の回答は判定を厳しくする方向にしか使わない
 
@@ -167,5 +167,5 @@ Pointsman は、1 つのエンジンと、その周りの部品でできてい�
 ## 次に読むページ
 
 - [はじめてのプロファイル](../tutorials/first-profile.md)で、ここまでの内容を自分のコンピューターで試せます。
-- [プロファイルの形式](../../profile-format.md)(英語)に、すべてのフィールドがあります。
+- [プロファイルの形式](../../profile-format.md)に、すべてのフィールドがあります。
 - [セキュリティ](security.md)では、Pointsman が何を、誰から守るかを説明します。

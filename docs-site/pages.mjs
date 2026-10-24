@@ -5,9 +5,10 @@
 // reference files stay where they are (docs/*.md, docs/spikes/*.md): code,
 // openapi.yaml, other repositories and GitHub links point at those paths.
 // LEGACY gives the ones that are pages their place on the site, and
-// scripts/sync.mjs adds their front matter; REPO_ONLY lists the others. The
-// LEGACY pages are in English only for now: the Japanese site shows the
-// English text with a notice until a page is rewritten for both.
+// scripts/sync.mjs adds their front matter; REPO_ONLY lists the others. A
+// LEGACY page can have a Japanese translation at docs/ja/<slug>.md, which
+// check-languages.mjs keeps in step with the English. Without one, the
+// Japanese site shows the English text with a notice.
 
 /** Where the docs are published on https://pointsman.net (astro.config.mjs `base`, with a trailing slash). */
 export const BASE = '/docs/';

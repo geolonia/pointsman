@@ -8,6 +8,7 @@
 import { defineConfig, passthroughImageService } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { BASE, sidebar } from './pages.mjs';
+import headingIds from './plugins/heading-ids.mjs';
 
 export default defineConfig({
   site: 'https://pointsman.net',
@@ -15,6 +16,8 @@ export default defineConfig({
   trailingSlash: 'always',
   // No raster images to optimise; SVGs pass through.
   image: { service: passthroughImageService() },
+  // `## Heading {#id}`: a fixed id (plugins/heading-ids.mjs).
+  markdown: { remarkPlugins: [headingIds] },
   integrations: [
     starlight({
       title: 'Pointsman',
