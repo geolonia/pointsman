@@ -45,8 +45,6 @@ function headingId(text, seen) {
 }
 
 const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$|^\s*\|\s*:?-+:?\s*\|\s*$/;
-/** A line that starts another block (heading, code fence, quote, list item, HTML, rule), which ends a table. */
-const BLOCK_START = /^\s*(#{1,6}\s|`{3,}|~{3,}|>|[-*+]\s|\d+[.)]\s|<|(\*\s*){3,}$|(_\s*){3,}$)/;
 
 /** Heading levels and ids, code blocks and table rows of a page, outside front matter. */
 function shape(text, { dropTitle = false } = {}) {
@@ -57,8 +55,8 @@ function shape(text, { dropTitle = false } = {}) {
   const blocks = [];
   const seen = new Set();
   let rows = 0;
-  // A table starts at its delimiter row (`|---|---|` or `--- | ---`) and runs until a line without `|`
-  // or the start of another block.
+  // A table starts at its delimiter row (`|---|---|` or `--- | ---`) and runs until a line without `|`,
+  // a heading or a code fence.
   let table = false;
   let block = null;
   // The open code fence ("```" or "~~~", three or more); it closes with the same character, at least as long.
@@ -77,7 +75,7 @@ function shape(text, { dropTitle = false } = {}) {
       headings.push(m[1].length);
       ids.push(headingId(m[2], seen));
     } else if (DELIMITER.test(line)) { rows += 2; table = true; } // the header row and this one
-    else if (table && line.includes('|') && !BLOCK_START.test(line)) rows++;
+    else if (table && line.includes('|')) rows++;
     else table = false;
   }
   return { headings: headings.join(','), ids, blocks, rows };

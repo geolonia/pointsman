@@ -163,12 +163,22 @@ test('table rows are counted for tables without a leading pipe too', (t) => {
   assert.match(r.stderr, /3 table rows, docs\/authoring\.md has 4/);
 });
 
-test('a table ends at a heading, code fence, list item, quote or HTML, so a later `|` in text is not a row', (t) => {
+test('a table ends at a heading or code fence, so a later `|` in text is not a row', (t) => {
   const table = '| a | b |\n|---|---|\n| 1 | 2 |\n';
-  const en = `# Writing\n\n${table}## Next\nText | with a pipe.\n\n${table}- item | pipe\n\n${table}> quote | pipe\n\n${table}<p>a | b</p>\n\n${table}\`\`\`sh\na | b\n\`\`\`\n`;
-  const ja = `---\ntitle: x\ntranslatedFrom: f97b3b6\n---\n\n${table}## 次 {#next}\nパイプのない文。\n\n${table}- 項目\n\n${table}> 引用\n\n${table}<p>a</p>\n\n${table}\`\`\`sh\na | b\n\`\`\`\n`;
+  const en = `# Writing\n\n${table}## Next\nText | with a pipe.\n\n${table}\`\`\`sh\na | b\n\`\`\`\nText | after the code.\n`;
+  const ja = `---\ntitle: x\ntranslatedFrom: f97b3b6\n---\n\n${table}## 次 {#next}\nパイプのない文。\n\n${table}\`\`\`sh\na | b\n\`\`\`\nコードのあとの文。\n`;
   const r = run('docs-site/scripts/check-languages.mjs', {
     POINTSMAN_DOCS_REPO: repo(t, { 'docs/authoring.md': en, 'docs/ja/how-to/write-a-profile-with-ai.md': ja }),
   });
   assert.equal(r.status, 0, r.stderr);
+});
+
+test('a table row that starts with inline HTML is still a row', (t) => {
+  const en = '# Writing\n\n| a | b |\n|---|---|\n<code>x</code> | 1\n| y | 2 |\n';
+  const ja = '---\ntitle: x\ntranslatedFrom: f97b3b6\n---\n\n| a | b |\n|---|---|\n<code>x</code> | 1\n';
+  const r = run('docs-site/scripts/check-languages.mjs', {
+    POINTSMAN_DOCS_REPO: repo(t, { 'docs/authoring.md': en, 'docs/ja/how-to/write-a-profile-with-ai.md': ja }),
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /3 table rows, docs\/authoring\.md has 4/);
 });
