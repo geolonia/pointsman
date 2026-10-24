@@ -2,8 +2,8 @@
 // the documentation (this folder's build) under /docs/. A Worker with static
 // assets only, no code. Cloudflare's GitHub app (Workers Builds) builds it
 // with `pnpm site:build`, which puts the files together in _site/, and deploys
-// it from main; other branches get a preview URL. The account is the one the
-// app is connected to, not set in this public file.
+// it from main. Other branches are not built and get no preview URL. The
+// account is the one the app is connected to, not set in this public file.
 {
   "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "pointsman-site",
@@ -17,6 +17,5 @@
   },
   "routes": [{ "pattern": "pointsman.net", "custom_domain": true }],
   "workers_dev": false,
-  // Preview URLs for the builds of other branches than main.
-  "preview_urls": true
+  "preview_urls": false
 }
