@@ -21,8 +21,8 @@ Pointsman のコードとこのドキュメントの多くは、AI の助けを�
 
 Pointsman のデプロイは、どれも `/mcp` で MCP(Model Context Protocol。AI アシスタントがツールを呼び出すための仕組み)を提供します。
 
-- **人**は GitHub でサインインします。入れるのは、そのデプロイが許可した GitHub の組織のメンバーだけです。組織に属しているかはサインインのときに確かめるため、組織を離れた人も最大 7 日間は使えます([詳細](../../mcp.md#authentication)、英語)。Geolonia 自身のデプロイは `https://mcp.pointsman.net/mcp` にあり、Geolonia のチームが使っています。ご自身で Pointsman を使うときは、[デプロイ](../../deployment.md)(英語)して、そのアドレスを使ってください。
-- **スクリプトや CI** は、API トークン(`Authorization: Bearer <token>`)で MCP か HTTP API を使います。トークンはクライアントごとにあり、使えるプロファイルを限定できます。[API トークンの入れ替え](../../deployment.md#rotate-an-api-token)(英語)も参照してください。
+- **人**は GitHub でサインインします。入れるのは、そのデプロイが許可した GitHub の組織のメンバーだけです。組織に属しているかはサインインのときに確かめるため、組織を離れた人も最大 7 日間は使えます([詳細](../../mcp.md#authentication)、英語)。Geolonia 自身のデプロイは `https://mcp.pointsman.net/mcp` にあり、Geolonia のチームが使っています。ご自身で Pointsman を使うときは、[デプロイ](../../deployment.md)して、そのアドレスを使ってください。
+- **スクリプトや CI** は、API トークン(`Authorization: Bearer <token>`)で MCP か HTTP API を使います。トークンはクライアントごとにあり、使えるプロファイルを限定できます。[API トークンの入れ替え](../../deployment.md#rotate-an-api-token)も参照してください。
 
 Claude Code では、次のコマンドでサーバーを追加します。
 
@@ -54,4 +54,4 @@ Claude Desktop と claude.ai では、コネクターの設定で、同じ URL �
 
 ## アシスタントとプロファイルを書く
 
-アシスタントがプロファイルの下書きを書き、Pointsman 自身のツールで確かめます。スキーマ、文章にしたルール、テストケース、これまでの判定でのリプレイです。内容を承認するのは人です。詳しくは [AI アシスタントとプロファイルを書く](../../authoring.md)(英語)を参照してください。
+アシスタントがプロファイルの下書きを書き、Pointsman 自身のツールで確かめます。スキーマ、文章にしたルール、テストケース、これまでの判定でのリプレイです。内容を承認するのは人です。詳しくは [AI アシスタントとプロファイルを書く](../../authoring.md)を参照してください。

@@ -85,3 +85,17 @@ test('llms.txt lists every English page, and llms-full.txt has the text of every
   assert.ok(full.includes('Source: https://pointsman.net/docs/tutorials/first-profile/'));
   assert.doesNotMatch(full, /<svg|<!--|\]\(\/docs\//);
 });
+
+test('a translated older page keeps the English section ids, table rows and code, and names its source commit', (t) => {
+  const en = '# Writing\n\nText.\n\n## Commands\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```sh\nnode x\n```\n';
+  const dir = repo(t, {
+    'docs/authoring.md': en,
+    'docs/ja/how-to/write-a-profile-with-ai.md': '---\ntitle: x\n---\n\n文章。\n\n## コマンド\n\n| a | b |\n|---|---|\n\n```sh\nnode y\n```\n',
+  });
+  const r = run('docs-site/scripts/check-languages.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /write-a-profile-with-ai\.md: front matter needs translatedFrom/);
+  assert.match(r.stderr, /heading 1 has the id "コマンド", docs\/authoring\.md has "commands"; add \{#commands\}/);
+  assert.match(r.stderr, /2 table rows, docs\/authoring\.md has 3/);
+  assert.match(r.stderr, /code block 1 differs/);
+});

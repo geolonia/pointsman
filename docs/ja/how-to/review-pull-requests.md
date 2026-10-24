@@ -6,7 +6,7 @@ sidebar: { order: 30 }
 
 Pointsman は、プルリクエストに次に何が必要かを判定できます。軽いレビュー、人の確認、修正、承認のどれかです。GitHub のコネクターは新しいコミットごとにプロファイルに判定を依頼し、その結果をプルリクエストに表示します。このガイドでは、デプロイを「表示するだけ」から「承認する」まで、1 段階ずつ進めます。
 
-Pointsman のデプロイ([Pointsman をデプロイする](../../deployment.md)、英語)にモジュール `@pointsman/github` を入れ、GitHub のコネクターを 2 つの GitHub アプリとともに設定しておく必要があります([GitHub コネクター](../../github-connector.md#setting-it-up)、英語)。
+Pointsman のデプロイ([Pointsman をデプロイする](../../deployment.md))にモジュール `@pointsman/github` を入れ、GitHub のコネクターを 2 つの GitHub アプリとともに設定しておく必要があります([GitHub コネクター](../../github-connector.md#setting-it-up))。
 
 ## 1. シャドーモードで始める
 
@@ -37,17 +37,17 @@ Pointsman のデプロイ([Pointsman をデプロイする](../../deployment.md)
 }
 ```
 
-コネクターは、コメント、ラベルの追加、レビューの依頼、承認、承認の維持ができます。どれもコミットごとに 1 回だけで、人が判定を確認している間は何もしません([Actions](../../github-connector.md#actions)、英語)。そのため、人が先に確認するアクション(既定では `review`)には動作を対応づけないでください。確認が終わるまで何も起きません。
+コネクターは、コメント、ラベルの追加、レビューの依頼、承認、承認の維持ができます。どれもコミットごとに 1 回だけで、人が判定を確認している間は何もしません([アクション](../../github-connector.md#actions))。そのため、人が先に確認するアクション(既定では `review`)には動作を対応づけないでください。確認が終わるまで何も起きません。
 
 ## 4. Pointsman に承認させる
 
 アクションを `approve` に対応づけるのは、プロファイルのルールがそれを支えられるときだけにします。
 
-- **権限。** アプリの承認が必要な承認数に数えられるのは、コネクターのアプリに Contents と Pull requests の読み書きの権限があるときだけです([2 つのアプリ](../../github-connector.md#the-two-github-apps)、英語)。権限がなければ、承認は表示されても数えられません。コネクターのチェックの結論は常に `neutral` なので、必須のチェックにしても承認の代わりにはなりません。
+- **権限。** アプリの承認が必要な承認数に数えられるのは、コネクターのアプリに Contents と Pull requests の読み書きの権限があるときだけです([2 つのアプリ](../../github-connector.md#the-two-github-apps))。権限がなければ、承認は表示されても数えられません。コネクターのチェックの結論は常に `neutral` なので、必須のチェックにしても承認の代わりにはなりません。
 - **古い承認を取り消す。** ブランチのルールセット(GitHub のブランチ保護の設定)で「Dismiss stale pull request approvals when new commits are pushed」を有効にします。コネクターも自分の古い承認を取り消しますが、それは次に動いたときです。
 - **コードオーナー。** アプリはコードオーナーになれません。`CODEOWNERS`(どのファイルを誰がレビューするかを定めるファイル)が変更されたファイルを含み、ルールセットがコードオーナーのレビューを求める場合は、人の承認がやはり必要です。
 - **フォーク**からのプルリクエストは承認しません。
-- **承認を残す条件。** 同じコミットへの後の判定は、`approve` か `keep_approval` に対応づけたアクションでない限り、承認を取り消します。ファクト `github_app_approval` と `keep_approval` を使うと、たとえば承認のあとに AI のレビューサービスがレビューしても、承認が取り消されません([承認が残る条件](../../github-connector.md#when-the-approval-stays)、英語)。
+- **承認を残す条件。** 同じコミットへの後の判定は、`approve` か `keep_approval` に対応づけたアクションでない限り、承認を取り消します。ファクト `github_app_approval` と `keep_approval` を使うと、たとえば承認のあとに AI のレビューサービスがレビューしても、承認が取り消されません([承認が残る条件](../../github-connector.md#when-the-approval-stays))。
 
 ## 5. リリースと依存関係のプルリクエストをファクトだけで承認する
 
@@ -68,6 +68,6 @@ reviews:
 
 ## 次に読むページ
 
-- [GitHub コネクター](../../github-connector.md)(英語): すべてのアクション、設定、制限。
+- [GitHub コネクター](../../github-connector.md): すべてのアクション、設定、制限。
 - [ファクトの型](../reference/fact-types.md): GitHub のファクトのすべてのフィールド。
 - [判定のしくみ](../explanation/decision-model.md#ai-の回答は判定を厳しくする方向にしか使わない): AI の回答だけでプルリクエストが通ることがない理由。

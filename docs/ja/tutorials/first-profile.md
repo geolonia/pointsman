@@ -55,7 +55,7 @@ export POINTSMAN_TOKEN=pm_...
 - ルールの `danger.yes` は、AI が「はい」と答える確率です。
 - `model` は、実際のデプロイで使う AI モデルの名前です。ここではモックが代わりに答えます。
 
-すべてのフィールドは[プロファイルの形式](../../profile-format.md)(英語)で説明しています。
+すべてのフィールドは[プロファイルの形式](../../profile-format.md)で説明しています。
 
 ```yaml
 id: report-check
@@ -194,8 +194,8 @@ curl -s -X POST localhost:8787/v1/reviews/<decision_id>/resolve \
 
 プロファイルを書き、文章で読み、例で試し、判定させ、人として確認しました。続きは次のページで学べます。
 
-- [プロファイルの形式](../../profile-format.md)(英語): ファクトやチェーンを含む、すべてのフィールド。
-- [AI アシスタントとプロファイルを書く](../../authoring.md)(英語): 同じ手順を、アシスタントに下書きを任せて進める方法。
-- [Pointsman をデプロイする](../../deployment.md)(英語): 実際のモデルを使い、本番として動かす方法。
+- [プロファイルの形式](../../profile-format.md): ファクトやチェーンを含む、すべてのフィールド。
+- [AI アシスタントとプロファイルを書く](../../authoring.md): 同じ手順を、アシスタントに下書きを任せて進める方法。
+- [Pointsman をデプロイする](../../deployment.md): 実際のモデルを使い、本番として動かす方法。
 
 片付けるときは、`examples/profiles/report-check.yaml` と `examples/cases/report-check.yaml` を削除します。

@@ -46,6 +46,13 @@ from `docs/` with Astro Starlight (`docs-site/`):
   them into site links. Which older files in `docs/` are site pages, and
   which stay in the repository only (notes, design notes, plans), is set in
   `docs-site/pages.mjs`.
+- The older English pages that are on the site (profile format, GitHub
+  connector, writing a profile with AI, deployment) have Japanese
+  translations in `docs/ja/`. They keep the English section ids
+  (`## 見出し {#id}`), tables and code, which `pnpm docs:check` checks; when
+  you change one of those English files, update its translation, or note it
+  in the pull request. `pnpm docs:translations` lists the English changes
+  since each translation's `translatedFrom` commit.
 - A page goes on the site only when someone needs it now; there are no
   "planned" pages. When a page is removed or merged, add its old URL to
   `site/_redirects`; the build checks every line.

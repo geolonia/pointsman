@@ -28,7 +28,8 @@
     "docs:check": "node scripts/docs-reference.mjs --check && node docs-site/scripts/check-languages.mjs && node docs-site/scripts/sync.mjs",
     "docs:build": "pnpm --filter @pointsman/docs-site build",
     "docs:dev": "pnpm --filter @pointsman/docs-site dev",
-    "site:build": "pnpm docs:build && node docs-site/scripts/assemble.mjs"
+    "site:build": "pnpm docs:build && node docs-site/scripts/assemble.mjs",
+    "docs:translations": "node docs-site/scripts/translation-status.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.2",
