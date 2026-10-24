@@ -34,6 +34,8 @@ export interface Accepted {
   delivery: string;
   /** SHA-256 of the body. */
   digest: string;
+  /** A review event sent by a bot account: the review's id (webhook.ts botReviewOf). */
+  botReview?: number;
 }
 
 /** Same as the shadow poller: enough for the AI questions, keeps a very long description out of the model. */
@@ -70,6 +72,8 @@ export const SETTLE_MS = 20_000;
 /** Deliveries and bodies are remembered this long, at most this many. */
 const SEEN_MS = 7 * 24 * 3600_000;
 const SEEN_MAX = 500;
+/** The ids of its own reviews it remembers, to leave out the events about them. */
+const OWN_REVIEWS_MAX = 50;
 
 /** An unclear action (its run stopped after the record) is left alone this long before it may be done again (design: 10 minutes). */
 export const UNCLEAR_MS = 10 * 60_000;
@@ -159,13 +163,17 @@ export class PullRequestWork {
   }
 
   /**
-   * Takes an event: a delivery or a body seen before is dropped (a replay);
+   * Takes an event: a delivery or a body seen before is dropped (a replay),
+   * and so is an event about one of the connector's own reviews (its
+   * approval or its dismissal: the run that made it already showed it);
    * otherwise the pull request is due for a run. Returns what happened.
    */
-  async accept(event: Accepted, now: number): Promise<'accepted' | 'replay'> {
+  async accept(event: Accepted, now: number): Promise<'accepted' | 'replay' | 'own'> {
     const seen = (await this.#storage.get<Record<string, number>>('seen')) ?? {};
     const keys = [`d:${event.delivery}`, `b:${event.digest}`];
     if (keys.some((k) => seen[k] !== undefined && now - seen[k]! < SEEN_MS)) return 'replay';
+    // Only reviews it recorded giving: an event that comes before the record (its own approval, while the run still goes on) starts a run, as before.
+    if (event.botReview !== undefined && ((await this.#storage.get<number[]>('ownReviews')) ?? []).includes(event.botReview)) return 'own';
     const kept = Object.entries(seen).filter(([, t]) => now - t < SEEN_MS).sort((a, b) => b[1] - a[1]).slice(0, SEEN_MAX - keys.length);
     const generation = ((await this.#storage.get<number>('generation')) ?? 0) + 1;
     // Each accepted event is a new generation; a run ends only when it has handled the newest.
@@ -692,6 +700,9 @@ export class PullRequestWork {
   async #remember(a: Given): Promise<void> {
     const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
     if (!given.some((g) => g.id === a.id)) await this.#storage.put({ approvals: [...given, { id: a.id, commit: a.commit, profile: a.profile }] });
+    // Kept after a dismissal too, so that the event about the dismissal is known as its own (accept); the newest OWN_REVIEWS_MAX.
+    const own = (await this.#storage.get<number[]>('ownReviews')) ?? [];
+    if (!own.includes(a.id)) await this.#storage.put({ ownReviews: [...own, a.id].slice(-OWN_REVIEWS_MAX) });
   }
 
   /** Asks Pointsman; null when it refused (a setting to fix, logged); with a 2xx, the checked answer (checkDecision). */

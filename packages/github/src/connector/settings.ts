@@ -264,6 +264,14 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
     throw new ConfigError('GITHUB_CONNECTOR: "profiles" must be a list of profile ids');
   }
   if (new Set(profiles).size !== profiles.length) throw new ConfigError('GITHUB_CONNECTOR: a profile is listed twice');
+  const byProfile = actionsOf(actions, profiles as string[]);
+  const runOptions = runsOf(runs, profiles as string[]);
+  // A kept decision is not asked again on the same commit, so it would never withdraw its approval (a failed check, a change request).
+  for (const [profile, run] of Object.entries(runOptions)) {
+    if (run.oncePerHead && Object.values(byProfile[profile] ?? {}).some((a) => a.do === 'approve' || a.do === 'keep_approval')) {
+      throw new ConfigError(`GITHUB_CONNECTOR: runs.${profile}.once_per_head: not with an action mapped to approve or keep_approval`);
+    }
+  }
   return {
     appId: Number(env.GITHUB_APP_ID),
     privateKey: env.GITHUB_APP_PRIVATE_KEY as string,
@@ -271,8 +279,8 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
     engine: engineSetting(env),
     repos: new Set((repos as string[]).map((r) => r.toLowerCase())),
     profiles: profiles as string[],
-    actions: actionsOf(actions, profiles as string[]),
-    runs: runsOf(runs, profiles as string[]),
+    actions: byProfile,
+    runs: runOptions,
     ...withValue('signals', signalsOf(signals, profiles as string[])),
     ...withValue('comment', commentOf(comment, profiles as string[])),
   };

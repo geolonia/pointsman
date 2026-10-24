@@ -11,7 +11,7 @@ import type { EngineClient } from './engine.ts';
 import { AppGitHub, type ConnectorGitHub } from './github.ts';
 import { type Accepted, type ObjectStorage, PullRequestWork } from './pull-request.ts';
 import { actsOnGitHub, connectorSettings, readsDiff, type ConnectorSettings } from './settings.ts';
-import { bodyDigest, MAX_BODY_BYTES, targetsOf, verifySignature } from './webhook.ts';
+import { bodyDigest, botReviewOf, MAX_BODY_BYTES, targetsOf, verifySignature } from './webhook.ts';
 
 /** The objects of the pull requests, one per pull request (a Durable Object namespace has this). */
 export interface PullRequestObjects {
@@ -78,10 +78,11 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
       const targets = targetsOf(event, payload, settings.appId, settings.comment !== undefined).filter((t) => settings.repos.has(t.repo.toLowerCase()));
       if (targets.length === 0) return json(202, { ignored: true });
       const digest = await bodyDigest(body);
+      const botReview = botReviewOf(event, payload);
       const results: string[] = [];
       for (const target of targets) {
         const stub = objects.get(objects.idFromName(`${target.repo.toLowerCase()}#${target.number}`) as never);
-        const accepted: Accepted = { target, delivery, digest };
+        const accepted: Accepted = { target, delivery, digest, ...(botReview !== undefined && { botReview }) };
         const res = await stub.fetch('https://pull-request/accept', { method: 'POST', body: JSON.stringify(accepted) });
         if (!res.ok) return json(502, { error: 'could not take the event' });
         results.push(((await res.json()) as { result: string }).result);
@@ -110,4 +111,4 @@ export { checkDecision, engineSetting, httpEngine, ENGINE_BINDING, type CheckedA
 export { COMMENT_MARKER, DEFAULT_SIGNALS, MAX_COLUMNS, SIGNAL_WORDS, STATIONS, answersOf, checkText, clean, columns, commentBody, CLOSED_TEXT, NO_REVIEWS, lineArt, positionOf, reviewStateOf, signalOf, switchArt, type Position, type ReviewRef, type ReviewSummary, type HeadReviews, type Signal, type Station } from './comment.ts';
 export { PullRequestWork, RetryError, authorText, checkOutput, notActedOnOutput, UNCLEAR_MS, type ActOutcome, type CheckView, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
 export { AppGitHub, GitHubError, actingScope, connectorScope, scopeFor, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, DIFF_PERMISSIONS, MARKER, markerOf, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
-export { targetsOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';
+export { targetsOf, botReviewOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type PullRequestTarget } from './webhook.ts';

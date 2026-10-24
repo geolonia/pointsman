@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, botReviewOf, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewSummary, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -199,6 +199,15 @@ describe('webhook', () => {
     expect(targetsOf('check_suite', { action: 'completed', repository: { full_name: REPO }, check_suite: { app: { id: 1 }, pull_requests: [] } }, APP_ID)).toEqual([]);
     expect(targetsOf('pull_request_review', { action: 'submitted', repository: { full_name: REPO }, pull_request: { number: 3 } }, APP_ID)).toEqual([{ repo: REPO, number: 3 }]);
     expect(targetsOf('pull_request', { action: 'opened', repository: { full_name: 'bad name' }, pull_request: { number: 3 } }, APP_ID)).toEqual([]);
+  });
+
+  it('names the review of a review event only when a bot account sent it', () => {
+    const review = (sender: unknown) => ({ action: 'submitted', repository: { full_name: REPO }, pull_request: { number: 3 }, review: { id: 42 }, sender });
+    expect(botReviewOf('pull_request_review', review({ login: 'pointsman[bot]', type: 'Bot' }))).toBe(42);
+    expect(botReviewOf('pull_request_review', review({ login: 'someone', type: 'User' }))).toBeUndefined();
+    expect(botReviewOf('pull_request_review', review(undefined))).toBeUndefined();
+    expect(botReviewOf('pull_request', review({ login: 'pointsman[bot]', type: 'Bot' }))).toBeUndefined();
+    expect(botReviewOf('pull_request_review', { ...review({ type: 'Bot' }), review: { id: 'x' } })).toBeUndefined();
   });
 });
 
@@ -485,6 +494,23 @@ describe('actions (switched on per profile action)', () => {
     expect(gh.github.approvals.map((a) => a.commit)).toEqual([HEAD2]);
   });
 
+  it('leaves out the events about its own approval and its dismissal, not a person\'s or another bot\'s', async () => {
+    const { work, gh, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' as const } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    const own = gh.github.approvals[0]!.id;
+    const review = (botReview?: number) => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID(), ...(botReview !== undefined && { botReview }) }, Date.now());
+    expect(await review(own)).toBe('own');
+    expect(await review(own + 1000)).toBe('accepted');
+    expect(await review()).toBe('accepted');
+    await work.run();
+    // A push dismisses the approval: the event about that dismissal is its own too.
+    gh.github.state.head = HEAD2;
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toContain('dismiss');
+    expect(await review(own)).toBe('own');
+  });
+
   it('does not approve when the head moved between the decision and the approval', async () => {
     const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
       gh.github.state.head = HEAD2; // a push while Pointsman decided
@@ -684,6 +710,15 @@ describe('actions (switched on per profile action)', () => {
     expect(connectorSettings(conf({ p: { light: { do: 'approve' }, done: { do: 'keep_approval' } } }))!.actions).toEqual({ p: { light: { do: 'approve' }, done: { do: 'keep_approval' } } });
     expect(() => connectorSettings(conf({ p: { done: { do: 'keep_approval' } } }))).toThrow(/keep_approval needs an action of the same profile mapped to approve/);
     expect(() => connectorSettings(conf({ p: { light: { do: 'approve' }, done: { do: 'keep_approval', for: 'x' } } }))).toThrow(/unknown key for/);
+  });
+
+  it('settings: no approve or keep_approval in a profile asked once per head', () => {
+    const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
+    const conf = (actions: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p', 'q'], actions, runs: { p: { once_per_head: {} } } }) });
+    expect(() => connectorSettings(conf({ p: { light: { do: 'approve' } } }))).toThrow(/runs\.p\.once_per_head: not with an action mapped to approve or keep_approval/);
+    expect(() => connectorSettings(conf({ p: { light: { do: 'approve' }, done: { do: 'keep_approval' } } }))).toThrow(/once_per_head: not with/);
+    // Another action in that profile, or an approval in a profile asked every run: allowed.
+    expect(connectorSettings(conf({ p: { risky: { do: 'label', labels: ['risky'] } }, q: { light: { do: 'approve' } } }))!.runs).toEqual({ p: { oncePerHead: { rerun: [] } } });
   });
 
   it('counts only its own bot\'s approvals as its own (the app\'s slug from the installation), never another bot\'s', async () => {
