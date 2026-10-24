@@ -12,6 +12,23 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.15.0 (2026-10-24)
+
+Fixes in the GitHub connector and the CodeRabbit facts, found with the threat model's amendment for `v0.14.2` (#211). A minor release because a connector setting that loaded until now can be refused.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.15.0`. No migration, no new secrets, no new permissions.
+- Check `GITHUB_CONNECTOR` first: a profile with `runs.<profile>.once_per_head` and an action mapped to `approve` or `keep_approval` is now a config error (the connector answers 500 and logs the setting). Remove `once_per_head` from that profile, or the approving action. The docs already said not to combine them.
+
+What changed:
+
+- **GitHub connector, `once_per_head` with an approval** (#212, #216): refused. A kept decision is not asked again on the same commit, so it never withdrew its approval after a failed check or a change request.
+- **GitHub connector, its own reviews** (#213, #216): a review event about one of its own approvals, or their dismissal, sent by its own bot, no longer starts a run (each one asked every profile again). The connector remembers the ids of the reviews it gave (the newest 50 per pull request). A person's dismissal of its approval, another app's review or dismissal, and an event that comes before the approval's id is recorded still start a run. The run that approves or dismisses reads the reviews again and draws the decision comment.
+- **CodeRabbit facts, `ignored`** (#215, #217): CodeRabbit's summary is left out of the description only as a whole block, from its start to its end marker, as the connector already does. A lone start marker no longer hides the text after it.
+- **Docs:** `docs/modules.md` says how the CodeRabbit facts find earlier decisions (#214, #217); the deploy guide covers migrations on updates and connecting the GitHub connector, and the PR-review guide a Dependabot group (#210); Japanese versions of the four English-only pages (#208); the site's layout (#205, #206, #207, #209).
+- **Threat model:** bound to `v0.14.2`, covering what shipped since `v0.12.0` (#211).
+
 ## 0.14.2 (2026-10-24)
 
 A fix for the token script (#202), and the documentation site at https://pointsman.net (#168, #169, #203).
