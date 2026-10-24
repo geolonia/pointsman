@@ -799,7 +799,7 @@ facts:
 | Field | Meaning |
 |---|---|
 | `installed` | CodeRabbit runs in the repository: it left a review, comment or status on this pull request, or a status on the head of one of the 5 newest other pull requests. No value when it cannot tell (no other pull requests). |
-| `ignored` | The description has `@coderabbitai ignore`, outside CodeRabbit's own summary block there. |
+| `ignored` | The description has `@coderabbitai ignore`, outside CodeRabbit's own summary block there (a whole block, from its start to its end marker; a start marker alone hides nothing). |
 | `reviewed_any`, `reviewed_head` | CodeRabbit reviewed a commit of the pull request; the head commit (a review on it, or a CodeRabbit status on it that says it was reviewed: "Review completed", "Review approved", or the approve command's). |
 | `in_progress` | CodeRabbit's latest status on the head is "Review in progress". |
 | `approved_head`, `changes_requested` | CodeRabbit's latest review that decides (approve, request changes, or a dismissed one) approves the head commit; requests changes. |

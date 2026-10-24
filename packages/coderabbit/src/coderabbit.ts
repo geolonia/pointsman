@@ -27,12 +27,14 @@ export const commentByCodeRabbit = (c: Comment): boolean => isService(c.by, CODE
 export const statusByCodeRabbit = (s: Status): boolean => s.context === STATUS_CONTEXT && isService(s.by, CODERABBIT);
 
 const IGNORE = /@coderabbitai\s+ignore\b/i;
-const SUMMARY = /<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->[\s\S]*?(?:<!-- end of auto-generated comment: release notes by coderabbit\.ai -->|$)/g;
+const SUMMARY = /<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->[\s\S]*?<!-- end of auto-generated comment: release notes by coderabbit\.ai -->/g;
 
 /**
  * The ignore line in a pull request's description, outside CodeRabbit's own
  * summary block there: a summary that quotes the command (a pull request
- * about it) is not the author switching CodeRabbit off.
+ * about it) is not the author switching CodeRabbit off. Only whole blocks
+ * (start and end marker) are left out, as the GitHub connector does: a lone
+ * start marker an author wrote does not hide the text after it.
  */
 export function ignoredBy(body: string): boolean {
   // Each part outside the summaries on its own: joining them could make a command out of text before and after a block.

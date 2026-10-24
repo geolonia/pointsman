@@ -140,6 +140,8 @@ describe('CodeRabbit (coderabbit)', () => {
     const summary = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\nAdds `@coderabbitai ignore` docs\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
     expect(await values(routes({ [PR]: () => pullRequest(`Docs.\n${summary}`) }))).toMatchObject({ ignored: false });
     expect(ignoredBy(`@coderabbitai${summary}ignore`)).toBe(false);
+    // A start marker without its end hides nothing.
+    expect(ignoredBy('Docs.\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n@coderabbitai ignore')).toBe(true);
   });
 
   it('reviewed, approved, changes requested, in progress', async () => {
