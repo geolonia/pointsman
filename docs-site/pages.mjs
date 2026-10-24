@@ -1,4 +1,3 @@
-
 // The structure of the documentation site, in one place.
 //
 // Pages written for the site live in docs/<group>/ (English) and
