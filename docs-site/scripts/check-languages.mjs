@@ -45,6 +45,8 @@ function headingId(text, seen) {
 }
 
 const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$|^\s*\|\s*:?-+:?\s*\|\s*$/;
+/** A line that starts another block (heading, code fence, quote, list item, HTML, rule), which ends a table. */
+const BLOCK_START = /^\s*(#{1,6}\s|`{3,}|~{3,}|>|[-*+]\s|\d+[.)]\s|<|(\*\s*){3,}$|(_\s*){3,}$)/;
 
 /** Heading levels and ids, code blocks and table rows of a page, outside front matter. */
 function shape(text, { dropTitle = false } = {}) {
@@ -55,25 +57,27 @@ function shape(text, { dropTitle = false } = {}) {
   const blocks = [];
   const seen = new Set();
   let rows = 0;
-  // A table starts at its delimiter row (`|---|---|` or `--- | ---`) and runs until a line without `|`.
+  // A table starts at its delimiter row (`|---|---|` or `--- | ---`) and runs until a line without `|`
+  // or the start of another block.
   let table = false;
   let block = null;
   // The open code fence ("```" or "~~~", three or more); it closes with the same character, at least as long.
   let fence = null;
   for (const line of body.split('\n')) {
     const f = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
-    if (block === null && f) { fence = f; block = [line.trim()]; continue; }
+    if (block === null && f) { fence = f; block = [line.trim()]; table = false; continue; }
     if (block !== null && f && f[0] === fence[0] && f.length >= fence.length && line.trim() === f) {
       block.push(line.trim()); blocks.push(block.join('\n')); block = null; fence = null;
       continue;
     }
     if (block !== null) block.push(line);
     else if (/^#{1,6}\s/.test(line)) {
+      table = false;
       const m = /^(#+)\s+(.*)$/.exec(line);
       headings.push(m[1].length);
       ids.push(headingId(m[2], seen));
     } else if (DELIMITER.test(line)) { rows += 2; table = true; } // the header row and this one
-    else if (table && line.includes('|')) rows++;
+    else if (table && line.includes('|') && !BLOCK_START.test(line)) rows++;
     else table = false;
   }
   return { headings: headings.join(','), ids, blocks, rows };
