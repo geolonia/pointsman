@@ -5,54 +5,43 @@ description: Pointsman decides which way a case goes, or calls a person when it 
 
 Pointsman is an open-source decision service. Your systems send it a
 *case*, something to decide, for example a report of a closed road or a new
-pull request. Pointsman asks
-fixed questions, applies rules that people wrote, and answers with an action.
-When it is not sure, a person checks the case.
+pull request. Pointsman asks an AI model fixed questions, looks up facts in
+data, and applies rules that people wrote. The answer is an action. When it
+is not sure, a person checks the case. Every decision is recorded.
 
-New here? Read [The decision model](explanation/decision-model.md) first,
-then [Profiles at a glance](reference/profiles.md).
+New here? Read [How a decision is made](explanation/decision-model.md), then
+try [Your first profile](tutorials/first-profile.md).
 
-## Tutorials
+## Tutorial
 
-Learn by doing, step by step.
-
-- [Your first profile](tutorials/first-profile.md)
-- [Decide about a pull request](tutorials/pull-request-facts.md)
-- [A road-closure decision with map data](tutorials/road-closure.md)
+- [Your first profile](tutorials/first-profile.md): run Pointsman on your
+  computer, write a profile, and decide with it.
 
 ## How-to guides
 
-Reach one goal.
-
 - [Write a profile with an AI assistant](authoring.md)
-- [Choose modules for a deployment](how-to/choose-modules.md)
-- [Deploy Pointsman](deployment.md)
+- [Deploy Pointsman](deployment.md), and rotate its API tokens
 - [Review pull requests with Pointsman](how-to/review-pull-requests.md)
-- [Rotate an API token](how-to/rotate-api-tokens.md)
-- [Answer reviews](how-to/answer-reviews.md)
-- [Read and replay the decision log](how-to/read-the-decision-log.md)
 
 ## Reference
 
-Look up the details.
-
-- [Profiles at a glance](reference/profiles.md) and the [full profile format](profile-format.md)
-- [Fact types](reference/fact-types.md) and [connectors](reference/connectors.md)
-- [HTTP API](reference/http-api.md) and [MCP tools](reference/mcp-tools.md)
+- [Profile format](profile-format.md)
+- [Fact types](reference/fact-types.md), [HTTP API](reference/http-api.md)
+  and [MCP tools](reference/mcp-tools.md), generated from the code
+- [GitHub connector](github-connector.md)
 
 ## Explanation
 
-Why Pointsman works as it does.
-
-- [The decision model](explanation/decision-model.md)
-- [Why AI answers can only make a decision stricter](explanation/stricter-only.md)
-- [Missing facts](explanation/missing-facts.md)
-- [How Pointsman is built](explanation/architecture.md)
+- [How a decision is made](explanation/decision-model.md): questions, facts,
+  rules and people, missing facts, and how Pointsman is built
+- [Security](explanation/security.md): what Pointsman protects, and against
+  whom
 
 ## About
 
 - [About this site](about/index.md): who runs it, the licence, privacy
 - [AI and agents](about/ai.md): how an AI assistant uses Pointsman, and `llms.txt`
 
-Pages marked *Planned* in the sidebar say what they will contain and link to
-what exists today. Older notes and spike reports are under *Background*.
+Notes for people who work on the engine, design notes and plans are in the
+[repository](https://github.com/geolonia/pointsman/tree/main/docs), not on
+this site.

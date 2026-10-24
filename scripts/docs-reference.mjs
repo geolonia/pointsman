@@ -4,8 +4,6 @@
 // - docs/reference/fact-types.md: fact types and their fields, from the
 //   module definitions (packages/*, scripts/lib/modules.mjs) and the shared
 //   capabilities (@pointsman/module-api);
-// - docs/reference/connectors.md: connectors, where they run, their actions
-//   and settings, from the same definitions;
 // - docs/reference/http-api.md: the HTTP API, from openapi.yaml;
 // - docs/reference/mcp-tools.md: the MCP tools, from src/mcp-tools.ts.
 //
@@ -182,43 +180,6 @@ async function factTypes(lang) {
     sections);
 }
 
-// ------------------------------------------------------------- connectors
-
-/** Where each connector's own page is. */
-const CONNECTOR_DOCS = {
-  '@pointsman/github': 'github-connector.md',
-  '@pointsman/fiware': '../bridge/README.md',
-};
-
-async function connectors(lang) {
-  const names = Object.keys(CATALOG).filter((n) => CATALOG[n].roles.includes('connector'));
-  const defs = await loadDefinitions(names.map((name) => ({ name })));
-  const where = {
-    en: { engine: 'inside the Pointsman Worker', own: 'in its own Worker' },
-    ja: { engine: 'Pointsman の Worker の中', own: '専用の Worker' },
-  }[lang];
-  const sections = [];
-  for (const d of defs) {
-    const c = d.connector;
-    const doc = CONNECTOR_DOCS[d.name];
-    sections.push(`## ${code(d.name)}`, '');
-    sections.push(lang === 'en'
-      ? `Connector ${code(c.id)} of the module ${code(d.name)}.${doc ? ` Setup and details: [its page](${rel(lang, doc)}).` : ''}`
-      : `モジュール ${code(d.name)} のコネクター ${code(c.id)} です。${doc ? `設定方法と詳細は[専用のページ](${rel(lang, doc)})にあります。` : ''}`, '');
-    sections.push(table(lang === 'en' ? ['What', 'Values'] : ['項目', '値'], [
-      [lang === 'en' ? 'Runs' : '動かす場所', c.placements.map((p) => where[p]).join(lang === 'en' ? ', or ' : '、または')],
-      [lang === 'en' ? 'Actions' : 'アクション', list(c.actions)],
-      [lang === 'en' ? 'Settings' : '設定', list(c.settings)],
-    ]), '');
-  }
-  return page(lang, lang === 'en'
-    ? { order: 30, title: 'Connectors', description: 'Every connector, where it runs, its actions and its settings.',
-        intro: `A *connector* connects Pointsman to another system: it brings cases in and carries the results out. [Connectors](${rel(lang, 'connectors.md')}) explains the idea.` }
-    : { order: 30, title: 'コネクター', description: 'コネクターの一覧と、動かす場所、アクション、設定です。',
-        intro: `コネクターは、Pointsman とほかのシステムをつなぎます。ケースを受け取って Pointsman に渡し、結果をそのシステムに返します。考え方は[コネクター](${rel(lang, 'connectors.md')})で説明しています。` },
-    sections);
-}
-
 // ----------------------------------------------------------------- HTTP API
 
 function httpApi(lang) {
@@ -303,7 +264,7 @@ async function mcpTools(lang) {
 
 // ------------------------------------------------------------------- write
 
-const PAGES = { 'fact-types': factTypes, connectors, 'http-api': httpApi, 'mcp-tools': mcpTools };
+const PAGES = { 'fact-types': factTypes, 'http-api': httpApi, 'mcp-tools': mcpTools };
 
 let stale = 0;
 for (const [slug, make] of Object.entries(PAGES)) {

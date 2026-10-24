@@ -53,9 +53,26 @@ for (const page of html(dist)) {
   }
 }
 
+// The redirects of removed pages (site/_redirects): the old page must be
+// gone, and the new page and its #section must exist.
+let redirects = 0;
+const redirectsFile = join(landing, '_redirects');
+if (existsSync(redirectsFile)) {
+  for (const line of readFileSync(redirectsFile, 'utf8').split('\n')) {
+    const [from, to] = line.trim().split(/\s+/);
+    if (!from || from.startsWith('#')) continue;
+    redirects++;
+    if (!from.endsWith('*') && fileFor(from)) errors.push(`_redirects: ${from} still exists, so it is not redirected`);
+    const target = new URL(to, 'https://x');
+    const file = fileFor(decodeURIComponent(target.pathname));
+    if (!file) errors.push(`_redirects: ${to} does not exist`);
+    else if (target.hash && file.startsWith(dist) && !idsOf(file).has(decodeURIComponent(target.hash.slice(1)))) errors.push(`_redirects: ${to} has no ${decodeURIComponent(target.hash)}`);
+  }
+}
+
 if (errors.length) {
   console.error([...new Set(errors)].join('\n'));
   console.error(`\n${errors.length} broken link(s)`);
   process.exit(1);
 }
-console.log(`links: ${checked} internal links on ${html(dist).length} pages, none broken`);
+console.log(`links: ${checked} internal links on ${html(dist).length} pages and ${redirects} redirects, none broken`);

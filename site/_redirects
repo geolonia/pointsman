@@ -1,0 +1,56 @@
+# Pages that were merged into others when the docs were made smaller
+# (2026-10-24). Cloudflare Workers static assets read this file; old links
+# land on the section that now holds the content. Each line is checked by
+# docs-site/scripts/check-links.mjs: the old page must be gone, the new
+# page and its section must exist.
+
+/docs/tutorials/pull-request-facts/ /docs/how-to/review-pull-requests/ 301
+/docs/tutorials/road-closure/ /docs/ 301
+/docs/how-to/rotate-api-tokens/ /docs/how-to/deploy/#rotate-an-api-token 301
+/docs/how-to/choose-modules/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/how-to/add-a-fact-module/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/how-to/write-a-connector/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/how-to/answer-reviews/ /docs/explanation/decision-model/#people-reviews-and-corrections 301
+/docs/how-to/read-the-decision-log/ /docs/explanation/decision-model/#the-decision-log 301
+/docs/reference/profiles/ /docs/reference/profile-format/#at-a-glance 301
+/docs/reference/connectors/ /docs/reference/github-connector/ 301
+/docs/reference/settings/ /docs/how-to/deploy/ 301
+/docs/reference/models/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/reference/decision-log/ /docs/explanation/decision-model/#the-decision-log 301
+/docs/reference/reviews/ /docs/explanation/decision-model/#people-reviews-and-corrections 301
+/docs/reference/mcp/ /docs/about/ai/#connecting-an-ai-assistant 301
+/docs/explanation/architecture/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/explanation/missing-facts/ /docs/explanation/decision-model/#missing-facts 301
+/docs/explanation/stricter-only/ /docs/explanation/decision-model/#ai-answers-only-make-a-decision-stricter 301
+/docs/explanation/modules/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/explanation/connectors/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/explanation/adapters/ /docs/explanation/decision-model/#how-pointsman-is-built 301
+/docs/explanation/decision-chains/ /docs/explanation/decision-model/#decision-chains 301
+
+/docs/ja/tutorials/pull-request-facts/ /docs/ja/how-to/review-pull-requests/ 301
+/docs/ja/tutorials/road-closure/ /docs/ja/ 301
+/docs/ja/how-to/rotate-api-tokens/ /docs/ja/how-to/deploy/#rotate-an-api-token 301
+/docs/ja/how-to/choose-modules/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/how-to/add-a-fact-module/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/how-to/write-a-connector/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/how-to/answer-reviews/ /docs/ja/explanation/decision-model/#人の関わり方-レビューと訂正 301
+/docs/ja/how-to/read-the-decision-log/ /docs/ja/explanation/decision-model/#判定ログ 301
+/docs/ja/reference/profiles/ /docs/ja/reference/profile-format/#at-a-glance 301
+/docs/ja/reference/connectors/ /docs/ja/reference/github-connector/ 301
+/docs/ja/reference/settings/ /docs/ja/how-to/deploy/ 301
+/docs/ja/reference/models/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/reference/decision-log/ /docs/ja/explanation/decision-model/#判定ログ 301
+/docs/ja/reference/reviews/ /docs/ja/explanation/decision-model/#人の関わり方-レビューと訂正 301
+/docs/ja/reference/mcp/ /docs/ja/about/ai/#ai-アシスタントをつなぐ 301
+/docs/ja/explanation/architecture/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/explanation/missing-facts/ /docs/ja/explanation/decision-model/#欠けたファクト 301
+/docs/ja/explanation/stricter-only/ /docs/ja/explanation/decision-model/#ai-の回答は判定を厳しくする方向にしか使わない 301
+/docs/ja/explanation/modules/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/explanation/connectors/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/explanation/adapters/ /docs/ja/explanation/decision-model/#pointsman-の構成 301
+/docs/ja/explanation/decision-chains/ /docs/ja/explanation/decision-model/#判定のチェーン 301
+
+# Background notes and spike reports moved off the site (they stay in the
+# repository, under docs/).
+/docs/background/* /docs/ 301
+/docs/ja/background/* /docs/ja/ 301

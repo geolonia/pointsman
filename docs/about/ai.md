@@ -41,7 +41,7 @@ assistants use to call tools) at `/mcp`.
   deployment.
 - **Scripts and CI** use an API token (`Authorization: Bearer <token>`),
   over MCP or the HTTP API. Each client has its own token, limited to some
-  profiles; see [Rotate an API token](../how-to/rotate-api-tokens.md).
+  profiles; see [Rotate an API token](../deployment.md#rotate-an-api-token).
 
 In Claude Code, add the server with:
 
@@ -81,7 +81,7 @@ An agent cannot:
 
 In profiles whose input is written by outsiders, AI answers can only make a
 decision stricter: see
-[why](../explanation/stricter-only.md).
+[why](../explanation/decision-model.md#ai-answers-only-make-a-decision-stricter).
 
 ## Writing profiles with an assistant
 
