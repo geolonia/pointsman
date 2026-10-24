@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:e525ecd034de946f1047ee316f771042527bb13296f689a307cb01b9fbeea2c3"
+prose_version: "threat-model.md@sha256:9d3de286afff1ae95eda35a99435144bd4b8f699df7fc5eaccb72ad8767f1495"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 424, maintainer: 82, inferred: 0, assumption: 0}
@@ -1790,7 +1790,7 @@ properties_claimed:
     kind: x-authorization
     components: [engine-api, bridge]
     tier: security-critical
-    conditions: "a connector inside the engine Worker reaches only the engine's own /v1/ routes, in process, with its own token; it is handed only the settings its module lists; one connector with a queue"
+    conditions: "a connector inside the engine Worker reaches only the engine's own /v1/ routes, in process, with its own token; it is handed only the settings its module lists; the queue goes to a connector only when exactly one has a queue, else the batch is retried"
     violation_symptoms: [x-authorization-bypass, x-unlogged-decision]
     provenance: {kind: documented, source: "docs/connectors.md \"The rule: through the public API\", \"Where it runs\""}
   - id: P-OUTBOUND-PUBLIC-ONLY

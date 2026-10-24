@@ -1563,7 +1563,7 @@
       "property": "P-CONNECTORS-IN-ENGINE-API-ONLY",
       "violation_symptom": "x-authorization-bypass, x-unlogged-decision",
       "severity_tier": "security",
-      "conditions": "a connector inside the engine Worker reaches only the engine's own /v1/ routes, in process, with its own token; it is handed only the settings its module lists; one connector with a queue",
+      "conditions": "a connector inside the engine Worker reaches only the engine's own /v1/ routes, in process, with its own token; it is handed only the settings its module lists; the queue goes to a connector only when exactly one has a queue, else the batch is retried",
       "provenance": "documented",
       "source": "docs/connectors.md \"The rule: through the public API\", \"Where it runs\""
     },
