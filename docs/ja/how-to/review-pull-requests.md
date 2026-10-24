@@ -60,6 +60,7 @@ AI の回答をまったく必要としないプルリクエストもありま�
 
 ```yaml
 # .github/dependabot.yml
+version: 2
 updates:
   - package-ecosystem: npm
     directory: /

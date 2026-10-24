@@ -156,6 +156,18 @@ test('translation-status leaves out commits that changed the translation too', (
   assert.match(r.stdout, /deploy\.md: docs\/deployment\.md changed since \w+:\n {2}\w+ English only\n/);
   assert.match(r.stdout, /1 translation\(s\) behind/);
   assert.doesNotMatch(r.stdout, /en and ja together/);
+  // A merge of a branch that changed the English page and its translation in separate commits.
+  const head = git('rev-parse', '--short', 'HEAD');
+  writeFileSync(join(dir, 'docs/ja/how-to/deploy.md'), `---\ntitle: x\ntranslatedFrom: ${head}\n---\n`);
+  commit('translatedFrom', {});
+  git('checkout', '-q', '-b', 'side');
+  commit('English on a branch', { 'docs/deployment.md': '# Deployment\n\nBranch.\n' });
+  commit('Japanese on a branch', { 'docs/ja/how-to/deploy.md': `---\ntitle: x\ntranslatedFrom: ${head}\n---\n\n枝。\n` });
+  git('checkout', '-q', '-');
+  git('merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+  r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
+  assert.match(r.stdout, /deploy\.md: docs\/deployment\.md changed since \w+:\n {2}\w+ English on a branch\n/);
+  assert.doesNotMatch(r.stdout, /merge side|Japanese on a branch/);
 });
 
 test('heading-ids sets a heading id from {#id} and leaves other headings alone', async () => {

@@ -101,6 +101,7 @@ normal review; major bumps come in pull requests of their own:
 
 ```yaml
 # .github/dependabot.yml
+version: 2
 updates:
   - package-ecosystem: npm
     directory: /
