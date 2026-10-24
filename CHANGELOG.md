@@ -29,6 +29,8 @@ What changed:
 - **Docs:** `docs/modules.md` says how the CodeRabbit facts find earlier decisions (#214, #217); the deploy guide covers migrations on updates and connecting the GitHub connector, and the PR-review guide a Dependabot group (#210); Japanese versions of the four English-only pages (#208); the site's layout (#205, #206, #207, #209).
 - **Threat model:** bound to `v0.14.2`, covering what shipped since `v0.12.0` (#211).
 
+Known limit: the decision comment now relies on the approving run's own re-read of the reviews. If GitHub's review decision lagged behind the approval at that moment, the comment's station stays behind until the next event.
+
 ## 0.14.2 (2026-10-24)
 
 A fix for the token script (#202), and the documentation site at https://pointsman.net (#168, #169, #203).
