@@ -23,9 +23,9 @@ for (const [en, { slug }] of Object.entries(LEGACY)) {
   let log;
   try {
     log = execFileSync('git', ['log', '--oneline', `${from}..HEAD`, '--', en], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  } catch {
-    // An unknown commit, or a shallow clone without it.
-    console.log(`${ja}: cannot read the history of ${en} since ${from} (unknown commit or shallow clone)`);
+  } catch (error) {
+    // For example an unknown commit, or a shallow clone without it.
+    console.log(`${ja}: cannot read the history of ${en} since ${from}: ${error.stderr?.trim() || error.message}`);
     continue;
   }
   if (!log) { console.log(`${ja}: up to date with ${en}`); continue; }

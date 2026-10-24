@@ -44,6 +44,8 @@ function headingId(text, seen) {
   return id;
 }
 
+const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$|^\s*\|\s*:?-+:?\s*\|\s*$/;
+
 /** Heading levels and ids, code blocks and table rows of a page, outside front matter. */
 function shape(text, { dropTitle = false } = {}) {
   let body = text.replace(/^---\n[\s\S]*?\n---\n/, '');
@@ -53,6 +55,8 @@ function shape(text, { dropTitle = false } = {}) {
   const blocks = [];
   const seen = new Set();
   let rows = 0;
+  // A table starts at its delimiter row (`|---|---|` or `--- | ---`) and runs until a line without `|`.
+  let table = false;
   let block = null;
   // The open code fence ("```" or "~~~", three or more); it closes with the same character, at least as long.
   let fence = null;
@@ -68,7 +72,9 @@ function shape(text, { dropTitle = false } = {}) {
       const m = /^(#+)\s+(.*)$/.exec(line);
       headings.push(m[1].length);
       ids.push(headingId(m[2], seen));
-    } else if (/^\s*\|/.test(line)) rows++;
+    } else if (DELIMITER.test(line)) { rows += 2; table = true; } // the header row and this one
+    else if (table && line.includes('|')) rows++;
+    else table = false;
   }
   return { headings: headings.join(','), ids, blocks, rows };
 }

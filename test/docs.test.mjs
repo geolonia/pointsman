@@ -126,7 +126,7 @@ test('translation-status reports a missing or unknown translatedFrom per page, a
   const r = run('docs-site/scripts/translation-status.mjs', { POINTSMAN_DOCS_REPO: dir });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /write-a-profile-with-ai\.md: missing translatedFrom/);
-  assert.match(r.stdout, /deploy\.md: cannot read the history of docs\/deployment\.md since 0000000/);
+  assert.match(r.stdout, /deploy\.md: cannot read the history of docs\/deployment\.md since 0000000: \S/);
 });
 
 test('heading-ids sets a heading id from {#id} and leaves other headings alone', async () => {
@@ -151,4 +151,14 @@ test('heading-ids sets a heading id from {#id} and leaves other headings alone',
   assert.equal(c.children[2].value, '');
   assert.equal(c.data.hProperties.id, 'use-x');
   assert.equal(d.data, undefined);
+});
+
+test('table rows are counted for tables without a leading pipe too', (t) => {
+  const en = '# Writing\n\na | b\n--- | ---\n1 | 2\n3 | 4\n\nText | with a pipe after the table.\n';
+  const ja = '---\ntitle: x\ntranslatedFrom: f97b3b6\n---\n\na | b\n--- | ---\n1 | 2\n\nパイプ | を含む文。\n';
+  const r = run('docs-site/scripts/check-languages.mjs', {
+    POINTSMAN_DOCS_REPO: repo(t, { 'docs/authoring.md': en, 'docs/ja/how-to/write-a-profile-with-ai.md': ja }),
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /3 table rows, docs\/authoring\.md has 4/);
 });
