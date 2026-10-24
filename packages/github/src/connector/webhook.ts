@@ -82,3 +82,24 @@ export function targetsOf(event: string, payload: unknown, appId: number, closed
       return [];
   }
 }
+
+/** A review event that a bot account sent: the review's id and the bot's login (lower case). */
+export interface BotReview {
+  id: number;
+  login: string;
+}
+
+/**
+ * The review a `pull_request_review` event is about, when a bot account sent
+ * it: the connector's own approvals and dismissals come so, and the pull
+ * request's object leaves out those about reviews it recorded giving, sent by
+ * its own bot (pull-request.ts `accept`). Undefined for any other event or
+ * sender, so a person who dismisses the connector's approval still starts a run.
+ */
+export function botReviewOf(event: string, payload: unknown): BotReview | undefined {
+  if (event !== 'pull_request_review' || !isObject(payload)) return undefined;
+  const sender = payload.sender;
+  if (!isObject(sender) || sender.type !== 'Bot' || typeof sender.login !== 'string') return undefined;
+  const review = payload.review;
+  return isObject(review) && isNumber(review.id) ? { id: review.id, login: sender.login.toLowerCase() } : undefined;
+}
