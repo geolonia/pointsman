@@ -123,9 +123,9 @@ One property, named in the configuration (here `check`):
   result (`value`, `inputHash`, `decision`, `reviewStatus`, `finalAction`,
   `reviewedAt` and the others above, or NGSI-LD's such as `observedAt` and
   `createdAt`), and neither may `<name>Probability`: the bridge then writes
-  nothing for the decision and reports it, without a retry; from the queue,
-  the message goes to the dead-letter queue, to be replayed once the question
-  is renamed.
+  nothing for the decision and reports it, without a retry. Once the question
+  is renamed, the entity's next change is decided again (a replay of the same
+  notification would get the same logged decision).
 - `decisionId` is Pointsman's decision id: use it to fetch the full record or
   to send feedback.
 - `policyRule` is the rule of the profile's policy that gave the action

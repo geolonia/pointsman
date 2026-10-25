@@ -178,8 +178,11 @@ export function editors(v: unknown): Editors & { head: string } {
     if (conn.totalCount > conn.nodes.length) throw new FactError(`GitHub ${what}: more than ${conn.nodes.length}, their editors are not known`);
     const out = new Map<number, Edit>();
     for (const n of conn.nodes) {
-      const key = isObject(n) ? id(n.databaseId) : null;
-      if (key === null || !isObject(n)) throw bad();
+      if (!isObject(n)) throw bad();
+      // A node without an id cannot be matched to a REST item: left out (a
+      // CodeRabbit item missing here counts as edited).
+      const key = id(n.databaseId);
+      if (key === null) continue;
       // As REST's: no text is "".
       out.set(key, { by: isObject(n.editor) ? account(n.editor) : null, body: typeof n.body === 'string' ? n.body : '' });
     }

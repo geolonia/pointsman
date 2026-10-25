@@ -263,6 +263,10 @@ describe('evacuation sites', () => {
     for (const lat of [90, -90]) {
       await expect(lookup(p, { type: 'Point', coordinates: [139.75, lat] })).rejects.toThrow(/outside the tile grid/);
     }
+    // At the 180° meridian the box's east edge is past the last tile column.
+    for (const lon of [180, -180]) {
+      await expect(lookup(p, { type: 'Point', coordinates: [lon, 0] })).rejects.toThrow(/outside the tile grid/);
+    }
     // Close to a pole the box is finite but very wide: too many tiles.
     await expect(lookup(p, { type: 'Point', coordinates: [139.75, 89.99] })).rejects.toThrow(FactError);
     const facts = await lookupFacts([{ name: 'shelter', type: 'nearest', layer: 'gsi-shelters-flood', at: '$.g' }], { g: { type: 'Point', coordinates: [0, 90] } }, p);

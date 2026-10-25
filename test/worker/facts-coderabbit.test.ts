@@ -239,6 +239,15 @@ describe('CodeRabbit (coderabbit)', () => {
     const rLater = async (_u: URL, init: RequestInit) => (String(init.body).includes('editor')
       ? editorsOf([], [{ id: r.id, body: 'Looks good' }], { [r.id]: self }) : graph());
     expect(await reason(routes({ [`${PR}/reviews`]: () => [r], '/graphql': rLater }))).toBe('error');
+    // A node without an id (GraphQL's databaseId is nullable) is left out, not an error.
+    const withNull = async (_u: URL, init: RequestInit) => {
+      if (!String(init.body).includes('editor')) return graph();
+      const e = editorsOf([c], []) as any;
+      e.data.repository.pullRequest.comments.nodes.push({ databaseId: null, body: 'x', editor: null });
+      e.data.repository.pullRequest.comments.totalCount = 2;
+      return e;
+    };
+    expect(await values(routes({ [COMMENTS]: () => [c], '/graphql': withNull }))).toMatchObject({ price_stated: true });
     // Edits by others to someone else's comment do not matter.
     const own = comment('a note', AFTER, { login: 'bob', id: 5, type: 'User' }, null);
     expect(await values(routes({ [COMMENTS]: () => [own], '/graphql': gql([], false, { [own.id]: editor }) }))).toMatchObject({ price_stated: false });
