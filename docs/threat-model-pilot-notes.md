@@ -365,6 +365,56 @@ Candidate issues kept out of the model, filed on 2026-10-24 with the label
    The effect is a profile that waits for a review CodeRabbit may not do.
    Priority: Low (pointsman#215).
 
+## Amendment of 2026-10-25: asking a person inside the pull request
+
+The model was amended for pointsman#147 (part 1, pointsman#221, merged
+after `v0.15.0`; part 2, pointsman#222, open), without re-binding.
+
+- **Binding**: the plugin binds a model only to a release tag or a merged
+  commit, never to an unmerged branch, so the binding stays at `v0.14.2`
+  and every new claim says "since pointsman#221" or "since pointsman#222".
+  Re-bind at the next release tag. `v0.15.0` (pointsman#216, #217) was
+  never bound; §1.16 lists it as not covered.
+- **Citations**: the validator resolves `file:line` in the working tree,
+  not at the bound tag, so a model that keeps an older binding still has
+  to move its citations with the tree. The script that compares each cited
+  line at the tag with the tree moved 42 citations (two cited in words).
+- **Threat review first**: the questions (Q36 to Q42) were asked on the
+  issue before the code was written, with build rules and where each
+  finding would land. The amendment then had mostly documented claims to
+  write, and the maintainer's answers became *(maintainer, 2026-10)* tags.
+  Worth repeating for any feature that adds an entry point.
+- **Code moving during the amendment**: the code changed twice while the
+  model was written (the command went from 7 to 12 characters of the
+  commit; the caps moved before any GitHub write). Re-read the final
+  commit before the sidecar is generated.
+- **Question**: one new, Q43 (is a 12-character commit in the command
+  enough, given that a second commit with the same prefix costs about
+  2^48 SHA-1 tries). The proposed answer was to accept the limit; the
+  maintainer chose a code change the same day instead (`ca11f53`: the
+  connector keeps the pull request's last 100 heads and refuses a command
+  whose 12 characters start more than one of them). The disclaimer now
+  states only what the list does not cover, and the model is *accepted*
+  again with no assumption tag.
+- **What the bank lacked**: a question for *an approval given on a
+  person's word inside the tool it approves in*: "We believe an answer
+  given in the pull request (a button, a comment command) counts only from
+  a person with write access who is neither the author nor the last
+  pusher, checked at answer time and bound to one commit. Proposed: a
+  property for who and what, disclaimers for the time between the check
+  and the action, for other ways to give the same answer, and for how
+  much of the commit the answer names."
+- **Validator**: passes (90 checks, one length warning: about 44,700
+  words).
+
+Candidate issues kept out of the model (not filed):
+
+1. Re-bind the model at the next release and cover `v0.15.0`
+   (pointsman#216, #217).
+
+The command's 12-character binding (Q43) was a candidate too; it was
+fixed in pointsman#222 before the amendment was finished.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
