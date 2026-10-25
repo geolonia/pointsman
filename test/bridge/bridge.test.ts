@@ -113,7 +113,7 @@ describe('a decision', () => {
       const { notify, calls } = setup({ route: { decisionEntity: true }, pointsman: () => Response.json({ ...decision, answers: { ...decision.answers, [name]: answer } }) });
       const res = await notify([entity()]);
       expect(res.status, name).toBe(200);
-      expect(await res.json()).toEqual({ handled: [{ id: 'urn:ngsi-ld:RoadRestriction:1', decision: 'd-1', error: expect.stringContaining(`answer "${name}"`), retry: false }] });
+      expect(await res.json()).toEqual({ handled: [{ id: 'urn:ngsi-ld:RoadRestriction:1', decision: 'd-1', error: expect.stringContaining(`answer "${name}"`), retry: false, deadLetter: true }] });
       expect(calls.filter((c) => c.url.startsWith('https://broker.test/')), name).toHaveLength(0);
     }
     // <name>Probability: of a field, or of another answer.

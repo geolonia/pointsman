@@ -738,6 +738,12 @@ describe('actions (switched on per profile action)', () => {
     expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('could not be withdrawn');
     expect(mem.data.get('approvals')).toHaveLength(1);
     expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    // GitHub busy (a retryable error): the run is retried, the record stays.
+    gh.github.ownApproval = async () => { throw new GitHubError('GitHub review: 502', true, 502); };
+    await event();
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect(mem.data.get('approvals')).toHaveLength(1);
     // The next run reads it: still approved, so it is dismissed.
     gh.github.ownApproval = byId;
     await event();

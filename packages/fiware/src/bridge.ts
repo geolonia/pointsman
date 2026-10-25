@@ -611,9 +611,10 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
 
   // An answer named like a field of the result would overwrite it (an
   // inputHash: decided again on each write). Nothing is written; a retry
-  // cannot pass, the profile needs another question name.
+  // cannot pass, the profile needs another question name: to the dead-letter
+  // queue, replayed once the question is renamed.
   const clash = clashingAnswer(Object.keys(d.answers));
-  if (clash !== undefined) return { id: entity.id, decision: d.decision_id, error: answerClash(clash), retry: false };
+  if (clash !== undefined) return { id: entity.id, decision: d.decision_id, error: answerClash(clash), retry: false, deadLetter: true };
 
   // From here on a decision exists: a failure keeps its id (a redirect
   // throws, see send).
