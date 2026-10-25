@@ -264,6 +264,11 @@ describe('closing a review (POST /v1/reviews/{id}/close)', () => {
     const other = await newReview(s.call);
     expect(await log.closeReview(other, 'colleague')).toBe(false);
     expect(await log.closeReview(other, 'all')).toBe(true);
+    // A discarded decision is never closed (as for resolve), even with a pending status left on it.
+    const discarded = await newReview(s.call);
+    await DB.prepare("UPDATE decisions SET discarded_at = '2026-10-25T00:00:00Z' WHERE id = ?").bind(discarded).run();
+    expect(await log.closeReview(discarded, 'all')).toBe(false);
+    expect((await log.get(discarded))?.review?.status).toBe('pending');
   });
 });
 

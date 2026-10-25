@@ -140,13 +140,14 @@ interface Asked {
   head: string;
   /** The decision, and the hash of what it rests on besides the head (#basisOf). */
   byProfile: Record<string, { decision: Decision; basis: string }>;
-  /** `since`: when it was listed; `tries`: closes that failed so far. */
-  close: { id: string; since: number; tries: number }[];
+  /** `since`: when it was listed; `tries`: closes that failed so far; `lastTry`: when the last one failed. */
+  close: { id: string; since: number; tries: number; lastTry: number }[];
 }
 
-/** A close that fails (busy, down) is tried again on later runs, at most this often and this long. */
+/** A close that fails (busy, down) is tried again on later runs: at most this often, this long, and once per CLOSE_SPACING_MS. */
 const CLOSE_TRIES = 10;
 const CLOSE_MS = 24 * 3600_000;
+const CLOSE_SPACING_MS = 5 * 60_000;
 
 /** What is not acted on: an answer that is not a decision, a test decision, or a question that could not be read back. */
 type NotActed = Exclude<CheckedAnswer, { kind: 'decision' }> | { kind: 'unreadable'; status: string };
@@ -284,10 +285,14 @@ export class PullRequestWork {
       // A required decision that is not there (a skipped draft, a refusal) is not sent: the profile's requires must be optional.
       const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
-      // Everything the decision rests on, besides the head: the required decisions with a person's answer to them,
-      // so a decision kept for once_per_head or as a question is made anew when any of it changes.
+      // Everything the decision rests on, besides the head: what the required decisions say (their action, rule and a
+      // person's answer to them, not their ids: a required profile is decided anew on every run), so a decision kept for
+      // once_per_head or as a question is made anew when any of it changes. The ids still go to Pointsman in `decisions`.
       const required = Object.entries(run.requires ?? {}).filter(([, from]) => decided[from] !== undefined)
-        .map(([name, from]) => [name, decided[from]!.decision_id, decided[from]!.review?.status ?? null, decided[from]!.review?.final_action ?? null]);
+        .map(([name, from]) => {
+          const d = decided[from]!;
+          return [name, from, d.action, d.rule, d.review?.status ?? null, d.review?.final_action ?? null];
+        });
       const keyOf = await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, required, run, this.#settings.actions[profile] ?? null]));
       // A question to a person on this head: its decision is read back, not made anew (undefined: none open).
       const back = await this.#readBack(target, pr.head, profile, keyOf);
@@ -524,10 +529,11 @@ export class PullRequestWork {
     const id = kept.decision.decision_id;
     const where = `${target.repo}#${target.number}`;
     const forget = async (why: string, close: boolean) => {
-      console.error(`github connector: Pointsman ${profile} for ${where}: decision ${id} ${why}; asked anew`);
+      // The id names the dropped question, so an answer given to it can be traced.
+      console.error(`github connector: Pointsman ${profile} for ${where}: decision ${id} (${kept.decision.review?.status ?? 'no review'}) ${why}; dropped and asked anew`);
       delete asked.byProfile[profile];
       // An open question on an older basis leaves Pointsman's queue: an answer to it would rest on what no longer holds.
-      if (close && kept.decision.review?.status === 'pending') asked.close.push({ id, since: this.now(), tries: 0 });
+      if (close && kept.decision.review?.status === 'pending') asked.close.push({ id, since: this.now(), tries: 0, lastTry: 0 });
       await this.#storage.put({ asked });
       if (close) await this.#closeListed(target, asked);
       return undefined;
@@ -577,7 +583,7 @@ export class PullRequestWork {
     let asked = await this.#storage.get<Asked>('asked');
     if (!asked) return;
     const pending = (entries: [string, { decision: Decision }][]) => entries.filter(([, q]) => q.decision.review?.status === 'pending')
-      .map(([, q]) => ({ id: q.decision.decision_id, since: this.now(), tries: 0 }));
+      .map(([, q]) => ({ id: q.decision.decision_id, since: this.now(), tries: 0, lastTry: 0 }));
     if (asked.head !== head) {
       asked = { head, byProfile: {}, close: [...asked.close, ...pending(Object.entries(asked.byProfile))] };
       await this.#storage.put({ asked });
@@ -595,14 +601,20 @@ export class PullRequestWork {
    * Closes the listed questions. Closed, answered already or not found:
    * done. A refusal is logged and not tried again. An engine that is busy,
    * down or too old to close (no close call) is logged, and the close is
-   * tried again on later runs, at most CLOSE_TRIES times within CLOSE_MS:
-   * it never holds up the run (the connector never acts on a question it
+   * tried again on later runs, at most CLOSE_TRIES times within CLOSE_MS and
+   * once per CLOSE_SPACING_MS (a burst of events does not use them up): it
+   * never holds up the run (the connector never acts on a question it
    * no longer keeps).
    */
   async #closeListed(target: PullRequestTarget, asked: Asked): Promise<void> {
     if (asked.close.length === 0) return;
     const left: Asked['close'] = [];
     for (const entry of asked.close) {
+      // Failed a moment ago: left for a later run.
+      if (entry.tries > 0 && this.now() - entry.lastTry < CLOSE_SPACING_MS) {
+        left.push(entry);
+        continue;
+      }
       let res: EngineAnswer | undefined;
       let failure: string | undefined;
       try {
@@ -614,8 +626,8 @@ export class PullRequestWork {
       if (failure !== undefined) {
         const tries = entry.tries + 1;
         const given = tries >= CLOSE_TRIES || this.now() - entry.since >= CLOSE_MS;
-        console.error(`github connector: Pointsman closing ${entry.id} for ${target.repo}#${target.number}: ${failure}; ${given ? 'given up' : 'tried again on the next run'}`);
-        if (!given) left.push({ ...entry, tries });
+        console.error(`github connector: Pointsman closing ${entry.id} for ${target.repo}#${target.number}: ${failure}; ${given ? 'given up' : 'tried again later'}`);
+        if (!given) left.push({ ...entry, tries, lastTry: this.now() });
         continue;
       }
       // 409: answered or closed already; 404: gone. Neither needs closing; other refusals are a setting to fix.
