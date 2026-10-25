@@ -62,7 +62,10 @@ export interface RequiredSnapshot {
 }
 
 export interface Review {
-  /** superseded: a newer decision replaced it while the review was open. */
+  /**
+   * superseded: a newer decision replaced it while the review was open, or
+   * the client that made it closed it (DecisionLog.closeReview).
+   */
   status: 'pending' | 'resolved' | 'superseded';
   resolved_at?: string;
   resolved_by?: string;
@@ -125,6 +128,12 @@ export interface DecisionLog {
   recent(profile: string, version: number, limit: number): Promise<DecisionRecord[]>;
   /** Resolve a pending review. False when it is not pending (any more). */
   resolve(decisionId: string, resolution: Resolution): Promise<boolean>;
+  /**
+   * Close a pending review as superseded, only for the client that made the
+   * decision (docs/reviews.md#closing-a-review). False when it is not that
+   * client's, or not pending (any more). No callback is due for it.
+   */
+  closeReview(decisionId: string, client: string): Promise<boolean>;
   /** The decision a client made with this idempotency key, if any. */
   byIdempotencyKey(client: string, key: string): Promise<DecisionRecord | null>;
   /** The newest decision of a profile for a ref and client that counts (not superseded), if any. */

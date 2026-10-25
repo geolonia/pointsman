@@ -20,7 +20,7 @@ What it sends to Pointsman: `POST /v1/decide/<profile>` with its own token (or t
 }
 ```
 
-Title and body are cut to 300 and 8,000 characters. The body is the description as the author wrote it: CodeRabbit's summary blocks (between its `auto-generated comment: release notes by coderabbit.ai` start and end markers, whole blocks only) are left out, so a bot's edit neither reaches the model nor counts as a new description for `once_per_head`. Other bots' text in the description is not left out. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's runs, so every run asks anew (a retry too): an action never rests on an older answer, and each new event (for example finished CI) gets a new decision.
+Title and body are cut to 300 and 8,000 characters. The body is the description as the author wrote it: CodeRabbit's summary blocks (between its `auto-generated comment: release notes by coderabbit.ai` start and end markers, whole blocks only) are left out, so a bot's edit neither reaches the model nor counts as a new description for `once_per_head`. Other bots' text in the description is not left out. Pointsman reads every fact from GitHub itself, with its own app (below). The idempotency key covers the profile, this state, the draft flag, the base branch and a count of the pull request's runs, so every run asks anew (a retry too): an action never rests on an older answer, and each new event (for example finished CI) gets a new decision. The one exception is a decision a person checks: it is kept for its head commit and read back on later runs ([Asking a person](#asking-a-person)).
 
 ### Safety
 
@@ -29,7 +29,7 @@ Title and body are cut to 300 and 8,000 characters. The body is the description 
 - **Only its repositories.** Events for other repositories are ignored. Its own check runs' events are ignored too, so a check run does not start the next run.
 - **One check run per profile and head.** The record of a check run is written before the check run is created. If a run stops in between, the next run first looks for the check run on GitHub and updates it, instead of creating a second one. Later decisions on the same head update the same check run.
 - **Retries.** When GitHub or Pointsman is busy, down or not reached (5xx, 429, a network error or timeout), the run is tried again later (the Durable Object's alarm, a few times with growing delays). When Pointsman refuses (another 4xx) or the app cannot do it (not installed, no permission, a broken key), it is a setting to fix: the error is logged without the token or key, and nothing is shown on the pull request. In both cases the next event of the pull request starts a new run; a redelivery of the same webhook from GitHub's settings is dropped as a replay.
-- **The engine's answer is checked.** Before anything is done with a decision, whichever way it came ([How it reaches Pointsman](#how-it-reaches-pointsman)), the connector checks the fields it reads: `decision_id` (a decision id), `action` (an action name: lower-case letters, digits, `_` and `-`, at most 64 characters), `profile` (the profile it asked), `ref` (the ref it sent), `profile_version`, `rule`, and when they are there `facts` (fact names and their `missing` and `reason`), `review` (only `pending` is known) and `test`. Other fields are not looked at. An answer that fails the check is logged (the field, never its value), shown on the check run as `invalid answer: nothing done`, and not tried again until the next event or recheck; nothing is done for it, nothing is kept or sent on to other profiles, and an approval of the head commit is withdrawn.
+- **The engine's answer is checked.** Before anything is done with a decision, whichever way it came ([How it reaches Pointsman](#how-it-reaches-pointsman)), the connector checks the fields it reads: `decision_id` (a decision id), `action` (an action name: lower-case letters, digits, `_` and `-`, at most 64 characters), `profile` (the profile it asked), `ref` (the ref it sent), `profile_version`, `rule`, and when they are there `facts` (fact names and their `missing` and `reason`), `review` (`pending`, or `resolved` with a person's answer in `final_action`, an action name, when it is read back; any other status is not acted on) and `test`. Other fields are not looked at. An answer that fails the check is logged (the field, never its value), shown on the check run as `invalid answer: nothing done`, and not tried again until the next event or recheck; nothing is done for it, nothing is kept or sent on to other profiles, and an approval of the head commit is withdrawn.
 - **No test decisions.** A decision with `test: true` (made with a test token, so not logged) is never acted on: no action, no `keep_approval` (an approval of the head commit is withdrawn), not kept and not sent on. Its check run is titled `test decision: nothing done`. Give the connector a token that is not a test token.
 - **Write access only here.** Only the connector has the key of the app that can write, and only in its own Worker. Its tokens are down-scoped to what it needs (read pull requests, write check runs; write pull requests only when actions or the decision comment are switched on) and to the one repository.
 - **Check runs deleted on GitHub** are made again on the next run.
@@ -61,9 +61,9 @@ The engine Worker's config names the client the calls are made as, and its profi
 
 Use the client name the connector's token has today: its decisions are logged under the same client, so idempotency, chains and facts from the decision log go on where they left off. The profiles are those in `GITHUB_CONNECTOR` (`"*"` is not allowed).
 
-Why no token is needed: `InternalEngine` has no URL. Only a Worker in the same Cloudflare account with a binding to it can call it, and the engine, not the caller, says who the caller is (`INTERNAL_CLIENT`). After that, the call runs the same code as `POST /v1/decide` after the token check: the same profile scope, idempotency and decision log ([adapters.md](adapters.md#internal-calls)). Edge rules on the engine's `/v1/` paths (a firewall, rate limits) do not see internal calls.
+Why no token is needed: `InternalEngine` has no URL. Only a Worker in the same Cloudflare account with a binding to it can call it, and the engine, not the caller, says who the caller is (`INTERNAL_CLIENT`). After that, each call runs the same code as its HTTP route after the token check (`decide`, `get`, `resolve` and `close`: `POST /v1/decide`, `GET /v1/decisions/{id}`, `POST /v1/reviews/{id}/resolve` and `/close`): the same profile scope, idempotency and decision log ([adapters.md](adapters.md#internal-calls)). Edge rules on the engine's `/v1/` paths (a firewall, rate limits) do not see internal calls.
 
-What that means: anyone who can deploy a Worker in this Cloudflare account can bind `InternalEngine` and decide as the `INTERNAL_CLIENT` client, with its profiles, without a token and without an expiry. Every bound Worker is the same client (one decision history, one idempotency space). It cannot be revoked per caller, and revoking the old token does not stop it: to turn internal calls off, remove `INTERNAL_CLIENT` from the engine's config and deploy.
+What that means: anyone who can deploy a Worker in this Cloudflare account can bind `InternalEngine` and act as the `INTERNAL_CLIENT` client, with its profiles, without a token and without an expiry: decide, read decisions, resolve reviews, and close the reviews of that client's decisions. Every bound Worker is the same client (one decision history, one idempotency space). It cannot be revoked per caller, and revoking the old token does not stop it: to turn internal calls off, remove `INTERNAL_CLIENT` from the engine's config and deploy.
 
 To switch an existing deployment from the token to the internal call:
 
@@ -112,7 +112,7 @@ Rules for every action:
 
 - **At most once per head commit**, per profile and kind. The record is written before the action and closed after it. A new commit starts again.
 - **A stop in between:** a record left open is settled by its trace on GitHub (the comment or approval with its marker, the labels, the requested reviewers). Without a trace, the action may be done again only after 10 minutes; the connector looks again then, also without a new event.
-- **A person first:** while a person still checks the decision (the profile's `people_check`, `review: pending`), nothing is done.
+- **A person first:** while a person still checks the decision (the profile's `people_check`, `review: pending`), nothing is done. Once they answered, their answer is the action ([Asking a person](#asking-a-person)).
 - **Refused by GitHub** (no permission, a reviewer who cannot be asked): shown on the check run and logged, and not tried again for that commit. Busy or down: tried again later.
 - **One record per profile and kind:** two decision actions of one profile mapped to the same kind (for example two `label` actions) are done only once per commit, whichever comes first.
 
@@ -137,6 +137,7 @@ The connector approves at most once per head commit. Each later decision on that
 | An action mapped to `keep_approval` | stays |
 | Any other action, mapped or not (`ask-person`, `review`, `pay`, `split`, `wait` …) | withdrawn |
 | Any decision a person still checks (`review: pending`), also one mapped to `approve` or `keep_approval` | withdrawn |
+| A person's answer to that decision ([Asking a person](#asking-a-person)) | as for the action they answered |
 | A test decision (`test: true`), or an answer that is not a valid decision ([Safety](#safety)) | withdrawn |
 | A new head commit (a push) | the approval of the older commit is dismissed, whatever the decision |
 
@@ -169,6 +170,17 @@ The connector cannot tell which rule gave the action. Map `keep_approval` only t
 A profile with `once_per_head` ([Chains](#chains)) is not asked again on the same commit, so its later decisions neither keep nor withdraw anything. Such a profile cannot map `approve` or `keep_approval` (a config error): a failed check or a change request on the same commit would not withdraw the approval.
 
 Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run). For its approval to count toward a ruleset's required approvals, the app also needs **Contents: Read and write**: GitHub counts approvals only from reviewers with write access (tested on #174, 2026-10-23). The connector's tokens ask for contents only to read a diff (`contents: read`, [Chains](#chains)), never to write.
+
+## Asking a person
+
+When a decision needs a person (`review: pending`, the profile's `people_check`), the connector keeps that decision as the question for its head commit. Later runs on the same head do not ask Pointsman again for that profile: they read the decision back (`GET /v1/decisions/{id}`, or `get` as an [internal call](#internal-call)). So Pointsman's review queue holds one question per pull request, profile and head commit, however many events come in.
+
+- **Where a person answers today:** in Pointsman's review queue (`POST /v1/reviews/{id}/resolve`, [reviews.md](reviews.md)). The connector sees the answer on its next run: the next event of the pull request, or a [recheck](#chains).
+- **The answer is the action.** It goes through the same [actions](#actions) table and rules as a decision's own action: only a mapped action is done, at most once per head commit, and `approve` only on the commit the question was about. The answer stands for that commit: it is not read again, and the profile is not asked again on it.
+- **What is shown:** while the question is open, the check run's title ends in `: a person checks first`, and its details say it waits for a person. Once answered, the title is the answer with `: a person's answer`, and the decision comment shows the answer with "a person" in the column "Set by". Who answered is not shown.
+- **An answer that is not an action name** (or a decision read back that is not the one kept) is not acted on: the check run says `invalid answer: nothing done`, and the question stays.
+- **A push, or the pull request closed:** the connector closes the open questions of the older head in Pointsman (`POST /v1/reviews/{id}/close`, or `close` as an internal call), then decides on the new head. A late answer to a closed question is refused (`409 not_pending`) and never acted on. A question that was closed in Pointsman some other way, or that is gone, is asked anew once.
+- **Engine version:** the connector needs an engine with `GET /v1/decisions/{id}` and `POST /v1/reviews/{id}/close` (and, for internal calls, `InternalEngine.get` and `close`). Deploy the engine first.
 
 ## The decision comment
 
@@ -353,3 +365,4 @@ The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `F
 - **One commit in two pull requests** (one branch to two bases) gets a check run from each.
 - **Pull requests from forks.** GitHub lists no pull requests on a fork's check suites, so only the pull request's own events start a run.
 - **Re-deciding on a timer** only for profiles with `recheck` ([Chains](#chains)); others are decided again on the next event.
+- **Answering inside the pull request.** Buttons on the check run and a `/pointsman <answer>` comment command are not built yet; a person answers in Pointsman's review queue ([Asking a person](#asking-a-person)), and the connector reads the answer on its next run.

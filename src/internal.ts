@@ -1,9 +1,12 @@
-// POST /v1/decide/{profile} after the caller is known, and internal calls
-// (docs/adapters.md#internal-calls).
+// The routes that internal calls share, after the caller is known
+// (docs/adapters.md#internal-calls): POST /v1/decide/{profile},
+// GET /v1/decisions/{id}, POST /v1/reviews/{id}/resolve and
+// POST /v1/reviews/{id}/close.
 //
-// `decideAnswer` is the route's work once the token is checked: the HTTP
-// route (src/app.ts) and internal calls both use it, so both pass the same
-// checks (profile scope, body, idempotency key) and log the same way.
+// `decideAnswer`, `getAnswer`, `resolveAnswer` and `closeAnswer` are the
+// routes' work once the token is checked: the HTTP routes (src/app.ts) and
+// internal calls both use them, so both pass the same checks (profile scope,
+// body, idempotency key, who may close) and log the same way.
 //
 // An internal call comes from a connector in the same deployment through a
 // channel of the runtime that is not reachable from outside (on Cloudflare
@@ -14,7 +17,10 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
-import { ConfigError, makeDecision, type Deps } from './decide';
+import { ConfigError, deliver, makeDecision, publicRecord, type Deps } from './decide';
+import { parseResolution } from './feedback';
+import type { DecisionLog, FinalAnswer } from './log';
+import { peopleAnswers } from './policy';
 
 /** A route's answer, as status and JSON body. */
 export interface ApiAnswer {
@@ -51,6 +57,113 @@ export async function decideAnswer(
   // A repeated request returns the logged decision: hide what the client may no longer see.
   const requires = visibleRequires(result.decision.requires, (p) => canUse(client, p));
   return { status: 200, body: requires ? { ...result.decision, requires } : result.decision };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * A decision as a client sees it: only with a profile it may use. For others
+ * it does not exist (null, a 404), as for unknown ids.
+ */
+export async function findDecision(client: TokenRecord, log: DecisionLog, id: string) {
+  if (!UUID.test(id)) return null;
+  const record = await log.get(id);
+  return record && canUse(client, record.profile) ? record : null;
+}
+
+const notFound = () => error(404, 'decision_not_found', 'unknown decision');
+const notPending = () => error(409, 'not_pending', 'this decision has no pending review');
+
+/** GET /v1/decisions/{id} for a known client. */
+export async function getAnswer(deps: Deps, client: TokenRecord, id: string): Promise<ApiAnswer> {
+  const record = await findDecision(client, deps.log, id);
+  if (!record) return notFound();
+  return { status: 200, body: publicRecord(record, client) };
+}
+
+/**
+ * POST /v1/reviews/{id}/resolve for a known client. `defer` runs the first
+ * callback delivery after the answer (the runtime's waitUntil).
+ */
+export async function resolveAnswer(
+  deps: Deps,
+  client: TokenRecord,
+  id: string,
+  readBody: () => Promise<unknown>,
+  defer: (work: Promise<unknown>) => Promise<void>,
+): Promise<ApiAnswer> {
+  const record = await findDecision(client, deps.log, id);
+  if (!record) return notFound();
+  if (record.review?.status !== 'pending') return notPending();
+
+  let raw: unknown;
+  try {
+    raw = await readBody();
+  } catch {
+    return error(400, 'invalid_request', 'body must be valid JSON');
+  }
+  const profile = await deps.store.get(record.profile, record.profile_version);
+  if (!profile) {
+    return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
+  }
+  const input = parseResolution(raw, profile);
+  if (typeof input === 'string') return error(400, 'invalid_request', input);
+  // Only the answers the profile lists, so rules that read a person's answer
+  // (decisions.<name>.outcome) know every value it can have.
+  const answers = peopleAnswers(profile);
+  if (!answers.includes(input.action)) {
+    return error(400, 'invalid_request', `"action" must be one of: ${answers.join(', ')}`);
+  }
+
+  const finalAnswers: Record<string, FinalAnswer> = {};
+  for (const q of profile.questions) {
+    finalAnswers[q.name] = Object.hasOwn(input.correct, q.name)
+      ? { value: input.correct[q.name], source: 'human' }
+      : { value: record.answers[q.name]?.value, source: 'model' };
+  }
+  const now = new Date().toISOString();
+  const resolved = await deps.log.resolve(id, {
+    resolved_at: now,
+    resolved_by: input.by,
+    client: client.client,
+    final_action: input.action,
+    final_answers: finalAnswers,
+    correct: input.correct,
+    ...(input.note !== undefined && { note: input.note }),
+  });
+  // Someone else resolved or closed it between the check above and this update.
+  if (!resolved) return notPending();
+
+  // First delivery right away, after the answer; retries are scheduled.
+  const updated = await deps.log.get(id);
+  if (updated?.callback_url && updated.callback?.status === 'pending') await defer(deliver(updated, deps));
+  return {
+    status: 200,
+    body: {
+      decision_id: id,
+      action: input.action,
+      answers: finalAnswers,
+      resolved_by: input.by,
+      resolved_at: now,
+      callback: updated?.callback_url ? 'pending' : 'none',
+    },
+  };
+}
+
+/**
+ * POST /v1/reviews/{id}/close for a known client: its own pending review
+ * leaves the queue as `superseded` (docs/reviews.md#closing-a-review). Only
+ * the client that made the decision may close it; for any other client the
+ * decision does not exist (404). No callback is sent, and a later resolve
+ * gets 409 not_pending.
+ */
+export async function closeAnswer(deps: Deps, client: TokenRecord, id: string): Promise<ApiAnswer> {
+  const record = await findDecision(client, deps.log, id);
+  if (!record || record.client !== client.client) return notFound();
+  if (record.review?.status !== 'pending') return notPending();
+  // Resolved or closed by someone else in between: the same update only matches a pending review.
+  if (!(await deps.log.closeReview(id, client.client))) return notPending();
+  return { status: 200, body: { decision_id: id, review: { status: 'superseded' } } };
 }
 
 /** The setting that names the client of internal calls. */
@@ -106,4 +219,16 @@ export async function decideInternal(deps: Deps, client: TokenRecord, profile: u
   }
   return decideAnswer(deps, client, profile, async () => JSON.parse(JSON.stringify(request)) as unknown,
     version === undefined ? undefined : String(version), idempotencyKey);
+}
+
+/** An internal get or close call: the id is checked like a path parameter. */
+export async function byIdInternal(deps: Deps, client: TokenRecord, id: unknown, call: typeof getAnswer | typeof closeAnswer): Promise<ApiAnswer> {
+  if (typeof id !== 'string') return error(400, 'invalid_request', 'the decision id must be a string');
+  return call(deps, client, id);
+}
+
+/** An internal resolve call: the body goes through JSON, as over HTTP. */
+export async function resolveInternal(deps: Deps, client: TokenRecord, id: unknown, request: unknown, defer: (work: Promise<unknown>) => Promise<void>): Promise<ApiAnswer> {
+  if (typeof id !== 'string') return error(400, 'invalid_request', 'the decision id must be a string');
+  return resolveAnswer(deps, client, id, async () => JSON.parse(JSON.stringify(request)) as unknown, defer);
 }

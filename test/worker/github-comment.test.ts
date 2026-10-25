@@ -843,7 +843,7 @@ describe('the art lines up', () => {
         // Every line but the first (the profile) and the last of a pending review starts on the track, at column 0.
         const track = lines.slice(1, d.review ? -1 : undefined);
         for (const line of track) expect(BOX.test([...line][0]!) || line.trimStart().startsWith('← '), line).toBe(true);
-        if (d.review) expect(lines.at(-1)).toBe('a person checks this decision before it counts');
+        if (d.review) expect(lines.at(-1)).toBe('waiting for a person to check this decision');
       }
     }
   });

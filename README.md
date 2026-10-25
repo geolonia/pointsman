@@ -112,7 +112,9 @@ corrected: `GET /v1/decisions/{id}`, `POST /v1/decisions/{id}/feedback`. See
 
 Decisions with action `review` wait for a person: `GET /v1/reviews`,
 `POST /v1/reviews/{id}/resolve`; the final answer is sent, signed, to the
-decision's `callback_url`. See [docs/reviews.md](docs/reviews.md).
+decision's `callback_url`. The client that made a decision can close its
+pending review: `POST /v1/reviews/{id}/close`. See
+[docs/reviews.md](docs/reviews.md).
 
 A profile can build on earlier decisions (a decision chain, see
 [docs/decision-chains.md](docs/decision-chains.md)).

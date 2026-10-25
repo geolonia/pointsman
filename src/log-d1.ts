@@ -291,6 +291,16 @@ export class D1DecisionLog implements DecisionLog {
     return (update!.meta.changes ?? 0) === 1;
   }
 
+  async closeReview(decisionId: string, client: string): Promise<boolean> {
+    // Only a pending review matches, so a close and a resolve at the same
+    // time cannot both succeed (the resolve gets 409 not_pending).
+    const result = await this.db
+      .prepare(`UPDATE decisions SET review_status = 'superseded' WHERE id = ? AND client = ? AND review_status = 'pending'`)
+      .bind(decisionId, client)
+      .run();
+    return (result.meta.changes ?? 0) === 1;
+  }
+
   async dueCallbacks(now: string, limit: number): Promise<DecisionRecord[]> {
     const { results } = await this.db
       .prepare(`SELECT * FROM decisions WHERE callback_status = 'pending' AND callback_next_at <= ? ORDER BY callback_next_at LIMIT ?`)

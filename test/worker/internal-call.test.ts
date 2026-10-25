@@ -22,7 +22,13 @@ const CLIENT = JSON.stringify({ client: 'github-connector', profiles: ['deploy-p
 const body = { state: 'Deploy has had no event for 40 minutes.' };
 
 /** The entrypoint with these settings (the class itself; the last test of the block calls it over RPC). */
-type Engine = { decide(profile: unknown, request: unknown, options?: unknown): Promise<{ status: number; body: any }> };
+type Answer = Promise<{ status: number; body: any }>;
+type Engine = {
+  decide(profile: unknown, request: unknown, options?: unknown): Answer;
+  get(id: unknown): Answer;
+  resolve(id: unknown, request: unknown): Answer;
+  close(id: unknown): Answer;
+};
 const engineWith = (settings: Record<string, unknown>): Engine => {
   const ctx = { waitUntil: () => {}, passThroughOnException: () => {}, props: {} } as unknown as ExecutionContext;
   return new InternalEngine(ctx, { ...env, ...settings } as Env) as unknown as Engine;
@@ -116,6 +122,76 @@ describe('InternalEngine (the Cloudflare entrypoint)', () => {
   });
 });
 
+describe('InternalEngine: get, resolve and close, as the routes after the token check', () => {
+  const engine = engineWith({ INTERNAL_CLIENT: CLIENT });
+  /** A decision of the internal client whose review is pending (deploy-progress decides without a person here). */
+  async function pending(client = 'github-connector'): Promise<string> {
+    const answer = await engine.decide('deploy-progress', body, { idempotencyKey: crypto.randomUUID() });
+    expect(answer.status).toBe(200);
+    const id = answer.body.decision_id as string;
+    await env.DB.prepare("UPDATE decisions SET review_status = 'pending', client = ? WHERE id = ?").bind(client, id).run();
+    return id;
+  }
+
+  it('get reads a decision in scope as GET /v1/decisions/{id} does', async () => {
+    const id = await pending();
+    const answer = await engine.get(id);
+    expect(answer.status).toBe(200);
+    expect(answer.body).toMatchObject({ decision_id: id, client: 'github-connector', profile: 'deploy-progress', review: { status: 'pending' }, feedback: [] });
+    expect(answer.body.request_digest).toBeUndefined();
+    // Out of scope (another profile) or unknown: not found. Not a string: refused.
+    await env.DB.prepare("UPDATE decisions SET profile_id = 'issue-triage' WHERE id = ?").bind(await pending()).run();
+    const other = (await env.DB.prepare("SELECT id FROM decisions WHERE profile_id = 'issue-triage' AND client = 'github-connector' LIMIT 1").first<{ id: string }>())!.id;
+    expect((await engine.get(other)).status).toBe(404);
+    expect((await engine.get('00000000-0000-4000-8000-000000000000')).body.error.code).toBe('decision_not_found');
+    expect((await engine.get(42)).status).toBe(400);
+  });
+
+  it('close closes its own pending review; a later resolve gets 409', async () => {
+    const id = await pending();
+    expect(await engine.close(id)).toEqual({ status: 200, body: { decision_id: id, review: { status: 'superseded' } } });
+    expect((await engine.resolve(id, { action: 'reject', by: 'github:octocat (1)' })).body.error.code).toBe('not_pending');
+    expect((await engine.close(id)).status).toBe(409);
+    expect((await engine.get(id)).body.review).toEqual({ status: 'superseded' });
+  });
+
+  it('close refuses a decision another client made (404), and resolve stays open to it', async () => {
+    const id = await pending('another-client');
+    expect((await engine.close(id)).body.error.code).toBe('decision_not_found');
+    expect((await engine.close(undefined)).status).toBe(400);
+    const answer = await engine.resolve(id, { action: 'reject', by: 'github:octocat (1)' });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toMatchObject({ decision_id: id, action: 'reject', resolved_by: 'github:octocat (1)', callback: 'none' });
+    const row = await env.DB.prepare('SELECT review_status, resolved_client FROM decisions WHERE id = ?').bind(id).first();
+    expect(row).toEqual({ review_status: 'resolved', resolved_client: 'github-connector' });
+  });
+
+  it('resolve checks the body as the route does: only JSON, only the profile\'s people_answers', async () => {
+    const id = await pending();
+    expect((await engine.resolve(id, { action: 'review', by: 'x' })).status).toBe(400);
+    expect((await engine.resolve(id, { action: 'not-an-answer', by: 'x' })).body.error.message).toMatch(/must be one of/);
+    expect((await engine.resolve(id, undefined)).status).toBe(400);
+    expect((await engine.resolve(id, { action: 'reject', by: 'x', extra: 1 })).status).toBe(400);
+    expect((await engine.resolve(7, { action: 'reject', by: 'x' })).status).toBe(400);
+    expect((await engine.get(id)).body.review.status).toBe('pending');
+  });
+
+  it('refuses get, resolve and close without INTERNAL_CLIENT, also over RPC', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const off = engineWith({ INTERNAL_CLIENT: undefined });
+    const refused = { status: 500, body: { error: { code: 'not_configured', message: 'internal calls are not configured' } } };
+    const id = crypto.randomUUID();
+    expect(await off.get(id)).toEqual(refused);
+    expect(await off.resolve(id, { action: 'reject', by: 'x' })).toEqual(refused);
+    expect(await off.close(id)).toEqual(refused);
+    const rpc = (exports as unknown as { InternalEngine: Engine }).InternalEngine;
+    expect(await rpc.get(id)).toEqual(refused);
+    expect(await rpc.resolve(id, { action: 'reject', by: 'x' })).toEqual(refused);
+    expect(await rpc.close(id)).toEqual(refused);
+    errors.mockRestore();
+  });
+});
+
 // The connector side.
 
 const APP_ID = '4242';
@@ -132,7 +208,9 @@ const base = {
   GITHUB_APP_ID: APP_ID, GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: `whsec-${crypto.randomUUID()}`,
   GITHUB_CONNECTOR: JSON.stringify({ repos: ['example/repo'], profiles: ['pr-docs-check'] }),
 };
-const binding = (decide: EngineBinding['decide'] = async () => ({ status: 200, body: {} })): EngineBinding => ({ decide });
+const binding = (decide: EngineBinding['decide'] = async () => ({ status: 200, body: {} }), more: Partial<EngineBinding> = {}): EngineBinding => ({
+  decide, get: async () => ({ status: 404, body: { error: { code: 'decision_not_found' } } }), close: async () => ({ status: 200, body: {} }), ...more,
+});
 
 describe('the connector: how it reaches the engine', () => {
   const token = `pm_${crypto.randomUUID()}`;
@@ -174,6 +252,33 @@ describe('the connector: binding adapter', () => {
     // Of a refusal only the error code is passed on, for the log.
     expect(await bindingEngine(binding(async () => ({ status: 403, body: { error: { code: 'forbidden', message: 'x' } } }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 403, code: 'forbidden' });
     expect(await bindingEngine(binding(async () => ({ status: 500, body: { error: { code: 'Not A Code' } } }))).decide('p', req, { idempotencyKey: 'k' })).toEqual({ status: 500 });
+  });
+
+  it('get and close go to the binding with the id only, no token, and are checked like decide', async () => {
+    const calls: unknown[][] = [];
+    const id = crypto.randomUUID();
+    const engine = bindingEngine(binding(undefined, {
+      get: async (...args) => (calls.push(['get', ...args]), { status: 200, body: { decision_id: id } }),
+      close: async (...args) => (calls.push(['close', ...args]), { status: 409, body: { error: { code: 'not_pending', message: 'x' } } }),
+    }));
+    expect(await engine.get(id)).toEqual({ status: 200, body: { decision_id: id } });
+    expect(await engine.close(id)).toEqual({ status: 409, code: 'not_pending' });
+    expect(calls).toEqual([['get', id], ['close', id]]);
+    // An engine older than the connector (no close yet): the error says what to update.
+    await expect(bindingEngine(binding(undefined, { close: () => { throw new TypeError('The RPC receiver does not implement the method "close".'); } })).close(id))
+      .rejects.toThrow(/as new as the connector \(close\)/);
+    await expect(bindingEngine(binding(undefined, { get: async () => 'x' })).get(id)).rejects.toThrow(/no engine answer/);
+  });
+
+  it('the binding reaches InternalEngine\'s get and close: a pending question read back and closed as INTERNAL_CLIENT', async () => {
+    const internal = engineWith({ INTERNAL_CLIENT: CLIENT });
+    const engine = bindingEngine(internal as unknown as EngineBinding);
+    const made = await internal.decide('deploy-progress', body, { idempotencyKey: crypto.randomUUID() });
+    const id = made.body.decision_id as string;
+    await env.DB.prepare("UPDATE decisions SET review_status = 'pending' WHERE id = ?").bind(id).run();
+    expect((await engine.get(id)).body).toMatchObject({ decision_id: id, review: { status: 'pending' } });
+    expect(await engine.close(id)).toEqual({ status: 200, body: { decision_id: id, review: { status: 'superseded' } } });
+    expect(await engine.close(id)).toEqual({ status: 409, code: 'not_pending' });
   });
 
   it('throws (so the run is tried again) when the binding fails, answers nonsense or takes too long', async () => {

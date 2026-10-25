@@ -29,6 +29,7 @@ const responses = {
   decisionRecord: { $ref: '#/components/schemas/DecisionRecord' },
   profileStats: { $ref: '#/components/schemas/ProfileStats' },
   resolution: { $ref: '#/components/schemas/Resolution' },
+  closedReview: { $ref: '#/components/schemas/ClosedReview' },
   reviewList: api.paths['/v1/reviews'].get.responses['200'].content['application/json'].schema,
   error: { $ref: '#/components/schemas/Error' },
   profileList: api.paths['/v1/profiles'].get.responses['200'].content['application/json'].schema,
