@@ -19,7 +19,7 @@ export interface Route {
   attribute: string;
   /** Also create a Decision entity (datamodels.jp Decision model) for each decision. */
   decisionEntity?: boolean;
-  /** Actions a person checks before anything happens (default: as Pointsman says, from the profile's people_check). */
+  /** More actions a person checks before anything happens, besides those Pointsman opens a review for (the profile's people_check). */
   reviewActions?: string[];
   /**
    * Needed when a type has more than one route: the subscription for this
@@ -41,8 +41,9 @@ export interface Route {
    */
   requires?: Record<string, Requirement>;
   /**
-   * Also create a Task entity (datamodels.jp Task model) for these actions,
-   * so a person's work shows up in any app that lists tasks. See TaskOptions.
+   * Also create a Task entity (datamodels.jp Task model) for these actions
+   * and for every decision Pointsman opens a review for, so a person's work
+   * shows up in any app that lists tasks. See TaskOptions.
    */
   task?: TaskOptions;
 }
@@ -651,7 +652,8 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     // and the Task always follows the latest decision for these inputs.
     if (route.task) {
       const taskId = await taskEntityId(entity.id, route.attribute, hash);
-      let failed = route.task.actions.includes(d.action)
+      // A pending review always gets a Task, even for an action not in task.actions.
+      let failed = route.task.actions.includes(d.action) || isPending(d)
         ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
         : await cancelOpenTask(taskId, d.action, config);
       // A replaced decision's open Task (made for the earlier inputs) is not needed any more.
@@ -875,16 +877,24 @@ export function informedByOf(entity: Entity, route: Route): string | undefined {
 }
 
 /**
- * Whether a person checks the decision before anything happens: the route's
- * reviewActions, if set; otherwise Pointsman says so (`review`, from the
- * profile's people_check). Older Pointsman versions without it: action review.
+ * Whether a person checks the decision before anything happens: always when
+ * Pointsman says so (`review`, from the profile's people_check), and for the
+ * route's reviewActions, which add actions but never take one away. Older
+ * Pointsman versions without `review`: the reviewActions, or else action review.
  */
 export function isChecked(d: Pick<Decision, 'action' | 'review' | 'requires'>, route: Route): boolean {
+  // A pending review is never treated as already decided (threat-model.md `R-PEOPLE-CHECK-PENDING`).
+  if (isPending(d)) return true;
   if (route.reviewActions) return route.reviewActions.includes(d.action);
-  // The last case is for engines from before decision chains (#107), which
-  // send no review: a profile whose people_check leaves out review is then
-  // marked checked for action review. Set reviewActions for such a profile.
-  return d.review !== undefined || (d.requires === undefined && d.action === 'review');
+  // For engines from before decision chains (#107), which send no review: a
+  // profile whose people_check leaves out review is then marked checked for
+  // action review. Set reviewActions for such a profile.
+  return d.requires === undefined && d.action === 'review';
+}
+
+/** Whether Pointsman opened a review for the decision (`review: {status: pending}`); anything else is not. */
+export function isPending(d: Pick<Decision, 'review'>): boolean {
+  return d.review?.status === 'pending';
 }
 
 /**
@@ -1232,9 +1242,10 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   const waiting = candidates.filter((r) => {
     if (r.type !== current.type) return false;
     const result = current[r.attribute] as Record<string, unknown> | undefined;
-    // reviewStatus on the result since decision chains; before, the action review.
-    const checked = r.reviewActions ? r.reviewActions.includes(valueOf(result) as string)
-      : valueOf(result?.reviewStatus) === 'pending' || (result?.reviewStatus === undefined && valueOf(result) === 'review');
+    // reviewStatus on the result since decision chains; before, the route's
+    // reviewActions or the action review.
+    const checked = valueOf(result?.reviewStatus) === 'pending'
+      || (r.reviewActions ? r.reviewActions.includes(valueOf(result) as string) : result?.reviewStatus === undefined && valueOf(result) === 'review');
     return typeof valueOf(result) === 'string' && checked
       && valueOf(result?.finalAction) === undefined
       && typeof (result?.decision as { object?: unknown } | undefined)?.object === 'string';

@@ -147,10 +147,11 @@ for a person (`type=Decision&q=reviewStatus=="pending"`).
   it, nothing is written and the notification fails (502 when a retry may
   help).
 - `humanInvolvement` is `dpv:HumanInvolvementForVerification` (and
-  `reviewStatus` `pending`) for the route's `reviewActions` (default
-  `["review"]`), `dpv:HumanInvolvementForOversight` for the other actions:
-  they are taken, and a person can correct them later through Pointsman's
-  feedback.
+  `reviewStatus` `pending`) for every decision Pointsman opens a review for
+  (`review: {status: pending}` in its answer, from the profile's
+  `people_check`) and for the route's `reviewActions`;
+  `dpv:HumanInvolvementForOversight` for the other actions: they are taken,
+  and a person can correct them later through Pointsman's feedback.
 - `@context` is the model's published context,
   `https://datamodels.jp/context/decision/v1.jsonld` (`DECISION_CONTEXT`), so
   the broker must be able to fetch it.
@@ -161,7 +162,8 @@ for a person (`type=Decision&q=reviewStatus=="pending"`).
 ## Task entities
 
 With `"task": {"actions": ["review", "urgent"]}` in a route, the bridge also
-creates a `Task` entity for each decision with one of these actions,
+creates a `Task` entity for each decision with one of these actions, and for
+each decision Pointsman opens a review for (whatever its action),
 following the Task model on
 [datamodels.jp](https://datamodels.jp/models/task/Task/). Any app that lists
 tasks from the broker (for example Redmine with GTT) then shows the work for
@@ -381,7 +383,9 @@ their ids, from the result attributes the earlier routes wrote.
   the [datamodels.jp Decision model](https://datamodels.jp/models/decision/Decision/).
   `informedBy` cannot be combined with `requires`.
 - Whether a person checks the decision comes from Pointsman (the profile's
-  `people_check`), unless the route sets `reviewActions`. A checked result has
+  `people_check`). The route's `reviewActions` can only add actions to that,
+  never remove one: when Pointsman says a review is pending, the bridge
+  always marks the decision as waiting for a person. A checked result has
   `reviewStatus: pending`, so work orders find it.
 - **From the queue only:** routes with `requires` need the queue (below) with
   `max_concurrency` 1, so two runs for one entity never overlap and the
@@ -416,7 +420,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 
 | Name | Meaning |
 |---|---|
-| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (actions a person checks first; default: as Pointsman answers, from the profile's `people_check`), `name`, `informedBy` and `requires` (for chains, above), `task` (also create Task entities, above) |
+| `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (more actions a person checks first, for Pointsman versions or profiles that do not say so; a decision Pointsman opens a review for, from the profile's `people_check`, is always checked), `name`, `informedBy` and `requires` (for chains, above), `task` (also create Task entities, above) |
 | `POINTSMAN_URL` | Pointsman's base URL (in its own Worker only; leave it out inside the Pointsman Worker) |
 | `BRIDGE_WORK_ORDERS` | Optional JSON object: a completed work order's `statusLabel` to the final action, for example `{"Published": "publish"}` (see "Work orders from other apps") |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |

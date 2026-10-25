@@ -125,8 +125,9 @@ So one report never waits for two people.
   validated.
 - The decide response says when a review was opened (`review: { "status":
   "pending" }`). The bridge creates the Task and resolves the review from
-  that, instead of its own `reviewActions` setting. `reviewActions` keeps
-  working for profiles without `people_check` while routes are moved over.
+  that. A route's `reviewActions` can only add actions to check (for
+  profiles without `people_check` while routes are moved over); it never
+  turns a pending review into a final action.
   Migration note: a route with `reviewActions: ["review", "urgent"]` needs
   its profile to list `people_check: [review, urgent]`; the bridge then
   resolves `urgent` as a review, not as feedback.
