@@ -8,6 +8,7 @@
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
+import { COPILOT } from '../reviews.ts';
 import type { ReviewRef, ReviewSummary } from './comment.ts';
 
 const API = 'https://api.github.com';
@@ -138,6 +139,10 @@ export interface ConnectorGitHub {
   updateComment(repo: string, id: number, body: string): Promise<void>;
   addLabels(repo: string, number: number, labels: string[]): Promise<void>;
   requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void>;
+  /** Asks Copilot for a review; an error when GitHub's answer does not list Copilot as requested (Copilot review off, for example). */
+  requestCopilot(repo: string, number: number): Promise<void>;
+  /** Whether Copilot is requested now, or reviewed this head (by Copilot's account id, never its login). */
+  copilotAsked(repo: string, number: number, head: string): Promise<boolean>;
   /** The app's bot login, "<app slug>[bot]", lower case. */
   botLogin(repo: string): Promise<string>;
   /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
@@ -170,6 +175,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typ
 const SHA = /^[0-9a-f]{40}$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+/** Copilot's bot account: by id and type (GitHub names it "Copilot" in review requests, COPILOT.login in reviews). */
+const isCopilot = (u: unknown): boolean => isObject(u) && u.type === 'Bot' && u.id === COPILOT.id;
+const listsCopilot = (pr: unknown): boolean => isObject(pr) && Array.isArray(pr.requested_reviewers) && pr.requested_reviewers.some(isCopilot);
 /** The activity types that put a commit at the head of a branch. */
 const PUSHES = new Set(['push', 'force_push', 'branch_creation']);
 /** GitHub's review decisions (GraphQL PullRequestReviewDecision). */
@@ -311,6 +319,22 @@ export class AppGitHub implements ConnectorGitHub {
 
   async requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void> {
     await this.#call(repo, 'POST', `/pulls/${number}/requested_reviewers`, 'review request', { reviewers });
+  }
+
+  async requestCopilot(repo: string, number: number): Promise<void> {
+    // The one fixed reviewer, GitHub's documented way to ask Copilot.
+    const pr = await this.#call(repo, 'POST', `/pulls/${number}/requested_reviewers`, 'Copilot review request', { reviewers: [COPILOT.login] });
+    // A 201 without Copilot in the list: GitHub did not ask it (not tried again for this commit).
+    if (!listsCopilot(pr)) throw new GitHubError('GitHub Copilot review request: Copilot was not added (is Copilot code review on for this repository?)', false);
+  }
+
+  async copilotAsked(repo: string, number: number, head: string): Promise<boolean> {
+    if (listsCopilot(await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request'))) return true;
+    const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    if (reviews.some((r) => isCopilot(r.user) && r.commit_id === head && r.state !== 'PENDING')) return true;
+    // #list stops at 1,000 (oldest first): the head's review may be after them, so not known.
+    if (reviews.length >= 1000) throw new GitHubError('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known', false);
+    return false;
   }
 
   async botLogin(repo: string): Promise<string> {

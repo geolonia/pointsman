@@ -451,6 +451,28 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Questions**: none; the code left nothing open.
 - **Validator**: passes (90 checks, one length warning).
 
+## Amendment for `copilot_review` (pointsman#220, 2026-10-25)
+
+- **Scope**: only the connector's action `copilot_review`. The CodeRabbit
+  commands and paid reviews of pointsman#220 were not built: a sandbox test
+  showed that CodeRabbit ignores commands from a GitHub App.
+- **Threat review first**, on the issue, before the code (as for
+  pointsman#147); its four questions (Q44 to Q47: forks, one review per
+  head, no cap, no repository list) were answered the same day as proposed,
+  as clickable options.
+- **What it adds**: a wider `P-CONNECTOR-ACTIONS-MAPPED`, two disclaimers
+  (cost and what Copilot reads), one obligation, one misuse pattern.
+- **Question bank**: the cost of an outside AI service that the project
+  triggers, billed to someone else, is not in the bank as such; it fitted
+  section A (hosted service) as a cost question.
+- **Citations**: the new import in `github.ts` moved every line of that
+  file; a script compared each cited line at `origin/main` with the tree
+  and rewrote the line numbers (16 citations).
+- **JSON**: exported with the plugin's exporter; `description`,
+  `trust_boundaries` and `environment` were taken from the previous JSON
+  (hand completed), `commit` kept at `8eea43d` until the next release.
+- **Validator**: passes (90 checks, one length warning).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

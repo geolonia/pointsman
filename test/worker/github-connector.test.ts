@@ -48,8 +48,9 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
   };
   const approvals: OwnApproval[] = [];
   const comments: string[] = [];
-  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string; summary: ReviewSummary } = {
+  const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string; summary: ReviewSummary; copilot: { requested: boolean; reviewed: string[]; refuse: boolean } } = {
     state,
+    copilot: { requested: false, reviewed: [], refuse: false },
     summary: { head: HEAD, decision: null, reviews: [] },
     diffText: 'diff --git a/README.md b/README.md\n+one line\n',
     approvals,
@@ -64,6 +65,12 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     updateComment: async (_r, id, body) => void calls.push({ op: 'updateComment', id, body }),
     addLabels: async (_r, _n, labels) => { calls.push({ op: 'label', list: labels }); github.state.labels.push(...labels); },
     requestReviewers: async (_r, _n, reviewers) => { calls.push({ op: 'request', list: reviewers }); github.state.requestedReviewers.push(...reviewers); },
+    requestCopilot: async () => {
+      calls.push({ op: 'copilot' });
+      if (github.copilot.refuse) throw new GitHubError('GitHub Copilot review request: Copilot was not added', false);
+      github.copilot.requested = true;
+    },
+    copilotAsked: async (_r, _n, head) => (calls.push({ op: 'copilotAsked', head }), github.copilot.requested || github.copilot.reviewed.includes(head)),
     botLogin: async () => 'pointsman-test[bot]',
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
     // Read for the line on every run that draws it: not in `calls`, which follows what the connector decides and does.
@@ -870,6 +877,160 @@ describe('actions (switched on per profile action)', () => {
     gh.github.findComment = findComment;
     await work.run();
     expect(gh.github.comments).toHaveLength(1);
+  });
+
+  describe('copilot_review', () => {
+    const COPILOT = { 'pr-docs-check': { light: { do: 'copilot_review' as const } } };
+    const light = (p: string) => Response.json(decision(p, { action: 'light' }));
+    const asks = (calls: { op: string }[]) => calls.filter((c) => c.op === 'copilot').length;
+
+    it('is a kind with no settings', () => {
+      const env = { GITHUB_APP_ID: String(APP_ID), GITHUB_APP_PRIVATE_KEY: KEY, GITHUB_WEBHOOK_SECRET: SECRET, POINTSMAN_URL: 'https://pointsman.example.org', POINTSMAN_TOKEN: 'pm_x' };
+      const conf = (spec: unknown) => ({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: ['p'], actions: { p: { light: spec } } }) });
+      expect(connectorSettings(conf({ do: 'copilot_review' }))!.actions.p!.light).toEqual({ do: 'copilot_review' });
+      expect(() => connectorSettings(conf({ do: 'copilot_review', reviewers: ['someone'] }))).toThrow(/unknown key reviewers/);
+    });
+
+    it('asks Copilot once per head, and says so on the check run', async () => {
+      const { work, gh, event } = await acting(COPILOT, light);
+      await work.run();
+      await event();
+      await work.run();
+      expect(asks(gh.calls)).toBe(1);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('review requested from Copilot');
+      gh.github.state.head = HEAD2;
+      gh.github.copilot.requested = false;
+      await event();
+      await work.run();
+      expect(asks(gh.calls)).toBe(2);
+    });
+
+    it('does not ask again when Copilot is already requested or reviewed this head, whoever asked', async () => {
+      const { work, gh, mem } = await acting(COPILOT, light);
+      gh.github.copilot.reviewed = [HEAD];
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('Copilot already asked or reviewed this commit');
+      expect((mem.data.get('acts') as any).done['pr-docs-check:copilot_review'].state).toBe('done');
+      // A review of an older head does not count; a pending request does.
+      const other = await acting(COPILOT, light);
+      other.gh.github.copilot.reviewed = [HEAD2];
+      other.gh.github.copilot.requested = true;
+      await other.work.run();
+      expect(asks(other.gh.calls)).toBe(0);
+    });
+
+    it('asks once when two profiles map it', async () => {
+      const mem = memoryStorage();
+      const gh = fakeGitHub();
+      const pm = fakeEngine(light);
+      const actions = { 'pr-docs-check': { light: { do: 'copilot_review' as const } }, 'workflow-check': { light: { do: 'copilot_review' as const } } };
+      const work = pullRequestWork(settings({ actions }), mem.storage, pm.engine, gh.github);
+      await work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+      await work.run();
+      expect(asks(gh.calls)).toBe(1);
+    });
+
+    it('is not done for a pull request from a fork, or a closed one', async () => {
+      for (const pr of [{ fork: true }, { open: false }]) {
+        const { work, gh } = await acting(COPILOT, light, pr);
+        await work.run();
+        expect(gh.calls.filter((c) => c.op.startsWith('copilot')), JSON.stringify(pr)).toEqual([]);
+      }
+      const { work, gh } = await acting(COPILOT, light, { fork: true });
+      await work.run();
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('copilot_review: not done for a closed pull request or one from a fork');
+    });
+
+    it('asks nothing while it cannot read whether Copilot was asked, and looks again later', async () => {
+      const { work, gh, mem, event } = await acting(COPILOT, light);
+      const t = 5_000_000;
+      work.now = () => t;
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      gh.github.copilotAsked = async () => { throw new GitHubError('GitHub reviews: 404', false, 404); };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any)?.done?.['pr-docs-check:copilot_review']).toBeUndefined();
+      expect(mem.data.get('recheckAt')).toBe(t + UNCLEAR_MS);
+      expect(mem.alarms).toContain(t + UNCLEAR_MS);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('whether Copilot was asked is unclear, checked again later');
+      // A GitHub error that may pass: the run is tried again, nothing recorded, nothing asked.
+      gh.github.copilotAsked = async () => { throw new GitHubError('GitHub reviews: 502', true, 502); };
+      await event();
+      await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any)?.done?.['pr-docs-check:copilot_review']).toBeUndefined();
+    });
+
+    it('asks nothing when the head moved after the decision', async () => {
+      const { work, gh } = await acting(COPILOT, light);
+      const copilotAsked = gh.github.copilotAsked;
+      // The push lands between the decision and the request.
+      gh.github.copilotAsked = async (r, n, h) => { const asked = await copilotAsked(r, n, h); gh.github.state.head = HEAD2; return asked; };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('copilot_review: not done, the pull request changed');
+    });
+
+    it('settles a request left open by a stop through its trace, without asking again', async () => {
+      const { work, gh, mem, event } = await acting(COPILOT, light);
+      mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:copilot_review': { decision: 'd', state: 'pending', at: Date.now() } } });
+      gh.github.copilot.requested = true;
+      await event();
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any).done['pr-docs-check:copilot_review'].state).toBe('done');
+    });
+
+    it('counts a request GitHub did not take as refused: not tried again for that commit', async () => {
+      const { work, gh, mem, event } = await acting(COPILOT, light);
+      gh.github.copilot.refuse = true;
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      await work.run();
+      await event();
+      await work.run();
+      expect(asks(gh.calls)).toBe(1);
+      expect((mem.data.get('acts') as any).done['pr-docs-check:copilot_review'].state).toBe('failed');
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('failed earlier');
+    });
+
+    it('asks GitHub for the fixed reviewer, checks the answer, and knows Copilot by its account id', async () => {
+      const COPILOT_BOT = { login: 'Copilot', id: 175728472, type: 'Bot' };
+      const sent: { url: string; method: string; body?: any }[] = [];
+      let answer: Record<string, unknown> = {};
+      let reviews: unknown[] = [];
+      const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        const url = String(input);
+        if (url.endsWith('/installation')) return Response.json({ id: 9, permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' } });
+        if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+        sent.push({ url, method: init.method ?? 'GET', ...(init.body ? { body: JSON.parse(String(init.body)) } : {}) });
+        if (url.includes('/reviews')) return Response.json(reviews);
+        return Response.json(answer, { status: init.method === 'POST' ? 201 : 200 });
+      }) as typeof fetch;
+      const gh = new AppGitHub(APP_ID, KEY, fetchFn, true);
+      answer = { requested_reviewers: [COPILOT_BOT] };
+      await gh.requestCopilot(REPO, 7);
+      expect(sent[0]).toEqual({ url: 'https://api.github.com/repos/example/repo/pulls/7/requested_reviewers', method: 'POST', body: { reviewers: ['copilot-pull-request-reviewer[bot]'] } });
+      // A 201 without Copilot (Copilot review off), or an account that only takes its name: refused.
+      for (const listed of [[], [{ login: 'Copilot', id: 1, type: 'User' }], [{ ...COPILOT_BOT, type: 'User' }]]) {
+        answer = { requested_reviewers: listed };
+        await expect(gh.requestCopilot(REPO, 7), JSON.stringify(listed)).rejects.toMatchObject({ retry: false });
+      }
+      answer = { requested_reviewers: [COPILOT_BOT] };
+      expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(true);
+      answer = { requested_reviewers: [{ login: 'Copilot', id: 5, type: 'Bot' }] };
+      reviews = [
+        { user: { login: 'copilot-pull-request-reviewer[bot]', id: 175728472, type: 'Bot' }, commit_id: HEAD2, state: 'COMMENTED' },
+        { user: { login: 'copilot-pull-request-reviewer[bot]', id: 6, type: 'Bot' }, commit_id: HEAD, state: 'COMMENTED' },
+        { user: { login: 'copilot-pull-request-reviewer[bot]', id: 175728472, type: 'Bot' }, commit_id: HEAD, state: 'PENDING' },
+      ];
+      expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(false);
+      reviews.push({ user: { login: 'copilot-pull-request-reviewer[bot]', id: 175728472, type: 'Bot' }, commit_id: HEAD, state: 'COMMENTED' });
+      expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(true);
+      // 1,000 reviews (the most #list reads) without one of the head: not known, an error.
+      reviews = Array.from({ length: 100 }, () => ({ user: { login: 'someone', id: 9, type: 'User' }, commit_id: HEAD, state: 'COMMENTED' }));
+      await expect(gh.copilotAsked(REPO, 7, HEAD)).rejects.toMatchObject({ retry: false });
+    });
   });
 });
 

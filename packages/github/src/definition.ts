@@ -587,7 +587,8 @@ export const definition: FactModule = {
     ],
     // The check run always; the others only as the deployment maps decision
     // actions to them (GITHUB_CONNECTOR "actions"); dismiss undoes its own approval after a push;
-    // decision_comment is the one living comment per pull request (GITHUB_CONNECTOR "comment").
-    actions: ['check', 'comment', 'label', 'request_reviewer', 'approve', 'dismiss', 'decision_comment'],
+    // decision_comment is the one living comment per pull request (GITHUB_CONNECTOR "comment");
+    // copilot_review asks Copilot for a review.
+    actions: ['check', 'comment', 'label', 'request_reviewer', 'approve', 'dismiss', 'decision_comment', 'copilot_review'],
   },
 };
