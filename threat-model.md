@@ -5,9 +5,11 @@
 - **Project**: Pointsman (geolonia/pointsman), a decision service on Cloudflare
   Workers: typed questions in, typed answers with probabilities and an action
   out.
-- **Version binding**: release tag `v0.17.1`, commit
-  `f783c0b2c2718d251374ab56a6474e85e3508277` on `main` (2026-10-25 JST),
-  pointsman#230. History: bound to `v0.17.0`
+- **Version binding**: release tag `v0.17.2`, commit
+  `b1ad3e62485255f47905f79dc708a552418bb505` on `main` (2026-10-26 JST),
+  pointsman#233. History: bound to `v0.17.1`
+  (`f783c0b2c2718d251374ab56a6474e85e3508277`, 2026-10-25, pointsman#230)
+  before the re-binding to `v0.17.2`; bound to `v0.17.0`
   (`b08aaf3756daefacfa6921ac8ddc065becdc049e`, 2026-10-25, pointsman#226)
   before the re-binding to `v0.17.1`; bound to `v0.16.0`
   (`8eea43df5b881e5a50b4f4c21a4235650e9db92a`, 2026-10-25, pointsman#223)
@@ -48,10 +50,16 @@
   after the CodeRabbit deep scan (§1.17, "Reports triaged against this
   model"): every claim it changed is marked "since pointsman#229
   (`v0.17.1`)". After its merge (`4aefd82`) the tag changed only version
-  numbers and the changelog (pointsman#230). The
+  numbers and the changelog (pointsman#230). The re-binding to `v0.17.2`
+  (2026-10-26) covers pointsman#232: the FIWARE bridge treats every
+  answer whose review is pending as checked by a person, whatever the
+  route's `reviewActions`; every claim it changed is marked "since
+  pointsman#232 (`v0.17.2`)". After its merge (`81a271f`) the tag changed
+  only version numbers and the changelog (pointsman#233). The
   code is cited at its place in the bound commit. A report against an
   earlier release is triaged without the claims marked as added since a
-  later one (for `v0.17.0`, without those since pointsman#229; for
+  later one (for `v0.17.1`, without those since pointsman#232; for
+  `v0.17.0`, also without those since pointsman#229; for
   `v0.16.0`, also without those since pointsman#220; for
   `v0.14.2`, also without those since pointsman#216, #217, #221 and #222); a
   report against a later commit is triaged against the model as it stood
@@ -244,6 +252,15 @@
   and `P-WATCH-FAILSAFE`; the new obligation `R-PEOPLE-CHECK-PENDING`;
   one misuse pattern; §1.16; the new triage record in §1.17. The maintainer
   answered its two questions (Q48, Q49) on 2026-10-26 (§1.18).
+  Re-bound 2026-10-26 to `v0.17.2` and amended for pointsman#232: the
+  FIWARE bridge counts an answer with `review: {status: pending}` as
+  checked by a person whatever the route's `reviewActions`, which now only
+  add actions to check; a route with `task` opens a Task for such a
+  decision even when `task.actions` leaves its action out; a work order
+  resolves such a result even when its action is not in `reviewActions`.
+  Changed: the §1.7 row for work orders; the §1.8 row for the bridge's
+  result; `P-BRIDGE-SAFE-TO-REPEAT`; `R-PEOPLE-CHECK-PENDING`, which the
+  bridge now meets for every route; §1.16. No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -309,7 +326,14 @@
   compares the cited lines, the counts in §1.5 re-run; recon, interview
   and backtest were not run again; the advisories were routed by hand
   against the model as bound to `v0.17.0`. Its questions Q48 and Q49 come
-  from that routing, not from the question bank.
+  from that routing, not from the question bank. The re-binding to
+  `v0.17.2` was done the same way (Claude Opus 5.5, the same plugin
+  version and commit): the prose by hand from the code and documents of
+  pointsman#232, every citation into the changed files mapped from
+  `v0.17.1` to the tag by the same script and the citations written in
+  words checked by hand, the counts in §1.5 re-run; recon, interview and
+  backtest were not run again; no question was picked, because the code
+  left none open.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -321,7 +345,8 @@
   day, with no new question; the amendment for `copilot_review`, also of
   2026-10-25, before its code was released; re-bound to `v0.17.0` the
   same day, with no new question; re-bound to `v0.17.1` on 2026-10-26 for
-  pointsman#229, with two questions answered the same day). The maintainer answered all 24 questions
+  pointsman#229, with two questions answered the same day; re-bound to
+  `v0.17.2` on 2026-10-26 for pointsman#232, with no new question). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -334,7 +359,7 @@
   **inferred** or **assumption** tag remains. Closure constraint: an
   **inferred** claim may escalate a report but never close it, and an
   **assumption** closes only what the triage policy below permits. Nothing
-  shipped up to `v0.17.1` is listed as not covered (§1.16).
+  shipped up to `v0.17.2` is listed as not covered (§1.16).
 - **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). Should an
   **assumption** be added in a later revision, it escalates and never closes.
   See §1.17.
@@ -377,8 +402,8 @@
   The backtest was not run again for the GitHub-facts amendment, the
   re-binding to `v0.5.0`, the amendment of 2026-10-23, the amendment of
   2026-10-24, the amendment of 2026-10-25, the re-binding to `v0.16.0`,
-  the amendment for `copilot_review`, the re-binding to `v0.17.0` or the
-  re-binding to `v0.17.1`.
+  the amendment for `copilot_review`, the re-binding to `v0.17.0`, the
+  re-binding to `v0.17.1` or the re-binding to `v0.17.2`.
 - **Sibling models**: none. The FIWARE bridge, the GitHub connector, the
   two GitHub Actions and the config-repository template are component
   families of this model (§1.2).
@@ -883,7 +908,7 @@ modeled tree.
   and check runs with buttons) and the engine at `POINTSMAN_URL`
   (`packages/github/src/connector/engine.ts` `httpEngine`), or reaches the
   engine through its service binding, which is not a fetch. Search:
-  `grep -rn 'fetch(' src bridge/src packages/*/src connectors/*/src | grep -v ':\s*//'` — 29 hits at `v0.14.2`, at `v0.16.0`, at `v0.17.0` and at `v0.17.1` (the connector's calls to the engine share one fetch since pointsman#221, `v0.16.0`):
+  `grep -rn 'fetch(' src bridge/src packages/*/src connectors/*/src | grep -v ':\s*//'` — 29 hits at `v0.14.2`, at `v0.16.0`, at `v0.17.0`, at `v0.17.1` and at `v0.17.2` (the connector's calls to the engine share one fetch since pointsman#221, `v0.16.0`):
   the outbound calls listed above, the fetch functions handed to the fact
   modules and the connectors, the in-process engine for connectors inside
   the engine Worker (`src/index.ts` `connectorsFor`, which is not a network
@@ -963,7 +988,7 @@ modeled tree.
   none in the fact modules (the bridge in 9 places, 7 in
   `packages/fiware/src/bridge.ts` and 2 in `bridge/src/index.ts`; the GitHub
   connector in 15 at `v0.14.2`, at `v0.16.0` and `v0.17.0` in 35, and at
-  `v0.17.1` in 36: 20
+  `v0.17.1` and `v0.17.2` in 36: 20
   in `packages/github/src/connector/pull-request.ts`, 13 in
   `packages/github/src/connector/answers.ts` and 3 in
   `connectors/github/src/index.ts`, plus one `console.warn` for a
@@ -1105,7 +1130,7 @@ they are security-relevant.
 | `bridge` `POST /notify` | `?route` | yes (with the secret) | resource-name | none — must name a configured route | *(documented, bridge/README.md "Chains of decisions")* |
 | `bridge` `POST /notify` | notification `data[]`: entity ids, types and attribute values | yes — written by whoever may write entities in the broker tenant, delivered by the broker | data, size, x-prompt-text | the broker's access control decides who may write; the bridge forwards the whole entity as `state` | *(documented, bridge/README.md "The subscription"; maintainer, 2026-10)* |
 | `bridge` `POST /reviews` | a `Decision` entity (`reviewStatus`, `finalAction`, `reviewedBy`, `reviewedAt`, `corrections`) | yes — whoever may write Decision entities | data | the broker's access control; `reviewedBy` is taken as written; since pointsman#229 (`v0.17.1`), when Pointsman refuses the resolve (409), the bridge writes the final action and completes the Task only when the review is resolved there with the same action (`P-BRIDGE-SAFE-TO-REPEAT`) | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control"; "Reviews resolved in the broker")* |
-| `bridge` `POST /reviews` | a completed `Task` entity (`progress`, `statusLabel`, `refersTo`, `dateModified`) | yes — whoever may write Task entities | data | the broker's access control; only labels in `BRIDGE_WORK_ORDERS` map to an action | *(documented, bridge/README.md "Work orders from other apps")* |
+| `bridge` `POST /reviews` | a completed `Task` entity (`progress`, `statusLabel`, `refersTo`, `dateModified`) | yes — whoever may write Task entities | data | the broker's access control; only labels in `BRIDGE_WORK_ORDERS` map to an action; a work order resolves only a result still waiting for a person with no final action, and since pointsman#232 (`v0.17.2`) every result with `reviewStatus` `pending`, also when its action is not in the route's `reviewActions` | *(documented, bridge/README.md "Work orders from other apps")* |
 | `bridge` queue consumer | queue message bodies | no — written by the bridge's own `/notify` and `/reviews` | serialized-state | none; a malformed message is dropped | *(maintainer, 2026-10)* |
 | `bridge` broker reads | entity JSON from the broker | partly — the broker is trusted; the content is what writers put there | data, collaborator-implementation | none | *(maintainer, 2026-10)* |
 | `bridge` Pointsman calls | the decision JSON | no — Pointsman is the bridge's trusted collaborator; shape-checked | data | none | *(maintainer, 2026-10)* |
@@ -1335,7 +1360,7 @@ docs/profile-format.md "A missing fact is never guessed")*.
 | MCP tool results | engine-mcp | the same decision and record as REST, as JSON text; `get_decision` strips `callback_url` and `state` | as for the REST outputs; also that the tool description text is an instruction to act on | *(documented, docs/mcp.md "Tools"; `src/mcp.ts` `get_decision`)* |
 | the consent and failure pages | engine-mcp | HTML assembled from the client's registered name, domain and redirect host, HTML-escaped | that a self-registered client name is verified (`D-OPEN-CLIENT-REGISTRATION`) | *(documented, `src/oauth.ts` `consentPage`: "This app registered itself; its name is not verified")* |
 | the answers of a connector inside the engine Worker (`/connectors/<id>/…`) | engine-api, bridge | the connector's own answers, as in its own Worker; a configuration error is 500 `not_configured`, an unknown or switched-off connector 404, with the setting's name only in the log | that a request to `/connectors/` passed edge rules on `/v1/` | *(documented, docs/connectors.md "Where it runs")* |
-| the result property, Decision entity and Task entity written to the broker | bridge | constrained: the action, answer values from the closed set, probabilities, profile and model names, the input hash, fact values and ≤ 200-character `source` strings; the Task `name` is assembled from the action and an entity attribute's text; `reviewedBy` and `finalAction` on a review are passed through from the resolving app; since pointsman#229 (`v0.17.1`) an answer whose name, or `<name>Probability`, is a field of the result (`value`, `inputHash`, `decision` and the others, or an NGSI-LD one such as `observedAt`) or another answer's is refused: nothing is written for that decision and the error names the question, without a retry | that the Task name or `reviewedBy` is safe for any grammar; that the result is the latest decision after a race (`D-BRIDGE-RACE-WINDOWS`) | *(documented, bridge/README.md "The result on the entity", "Task entities", "Reviews resolved in the broker")* |
+| the result property, Decision entity and Task entity written to the broker | bridge | constrained: the action, answer values from the closed set, probabilities, profile and model names, the input hash, fact values and ≤ 200-character `source` strings; the Task `name` is assembled from the action and an entity attribute's text; `reviewedBy` and `finalAction` on a review are passed through from the resolving app; since pointsman#232 (`v0.17.2`) a decision whose review is pending (`review: {status: pending}`) is always written with `reviewStatus` `pending`, the Decision entity's `humanInvolvement` for verification and no final action, and on a route with `task` gets a Task, whatever the route's `reviewActions` and `task.actions`; since pointsman#229 (`v0.17.1`) an answer whose name, or `<name>Probability`, is a field of the result (`value`, `inputHash`, `decision` and the others, or an NGSI-LD one such as `observedAt`) or another answer's is refused: nothing is written for that decision and the error names the question, without a retry | that the Task name or `reviewedBy` is safe for any grammar; that the result is the latest decision after a race (`D-BRIDGE-RACE-WINDOWS`) | *(documented, bridge/README.md "The result on the entity", "Task entities", "Reviews resolved in the broker")* |
 | the bridge's HTTP response to the broker | bridge | lists what happened per entity id: skip reasons, decision ids, error reasons with HTTP statuses; never the entity or the Pointsman body | — | *(documented, bridge/README.md "Failures and retries": "The response lists what happened to each entity")* |
 | check runs `Pointsman: <profile>` | connector-github | always conclusion `neutral`, so they never block a merge; the title is the decision's signal and action; the summary is from the decision (the action, the profile and its version, the rule, what was done or why not, missing facts with their reason, the decision id); the details are the line (the pull request's station from GitHub) and the switch (how many facts were read, which are missing with the engine's reason, the AI answers' values); never pull-request text (`P-CONNECTOR-COMMENT-NO-PR-TEXT`); a test decision or an invalid answer gets a fixed text; since pointsman#221 (`v0.16.0`) the title ends in `: a person checks first` while a question is open, and in `: a person's answer` or (since pointsman#222, `v0.16.0`) `: answered by <login>`, a checked login without `@`, once answered; since pointsman#222 (`v0.16.0`), where answers are on and the question is open, up to 3 buttons (label an offered answer, description `Pointsman: answer <answer>`, identifier the answer's place and the first 8 characters of the decision id), the exact commands with the head's first 12 characters, and a fixed line when an answer was not taken | that a check run means a person or the profile approved the pull request; that a button can be clicked only by people who may answer (the connector checks the person, `P-CONNECTOR-ANSWER-AUTHORIZED`); that the answers it shows are hidden from the pull-request author (`D-CONNECTOR-SHOWS-DECISION`) | *(documented, docs/github-connector.md introduction: "The check runs stay `neutral`"; "How it works", 4)* |
 | the decision comment | connector-github | only with `comment` set: one comment per pull request by the connector's bot, with a hidden marker, a table of the latest decision of each listed profile (profile, signal, action, rule) and, in code blocks, the line and each switch; no decision ids, times, reviewers, review text or pull-request text; profile and action names are checked names, reasons cleaned to plain characters and cut, an AI answer's option shown only when it is a plain name; written only when its text changed, at most once per run; on a closed pull request updated once; since pointsman#221 (`v0.16.0`) a person's answer in the column "Decision", with "a person" or (since pointsman#222, `v0.16.0`) "answered by <login>" in "Set by", and, with the command on, the exact commands for an open question with the head's first 12 characters | that a person wrote or checked it; that the answers it shows are hidden from the pull-request author or the public (`D-CONNECTOR-SHOWS-DECISION`); that its train's station is more than what GitHub's review decision said at the last read | *(documented, docs/github-connector.md "The decision comment", Rules: "Nothing from the pull request")* |
@@ -1766,14 +1791,14 @@ what voids it.
   `x-authentication-bypass`. Tier: security-critical. *(documented,
   bridge/README.md "Configuration": "other notifications are refused")*.
   Voided by: nothing. Search: `grep -n "sameSecret\|pathname" packages/fiware/src/bridge.ts`
-  — the two routes at `packages/fiware/src/bridge.ts:316` and the secret check at `packages/fiware/src/bridge.ts:318`.
+  — the two routes at `packages/fiware/src/bridge.ts:317` and the secret check at `packages/fiware/src/bridge.ts:319`.
 - **`P-BRIDGE-LOOP-GUARD`** — the bridge stores a hash of the input attribute
   values with the result and skips a notification whose inputs already have
   that hash; it writes with attribute-level `PATCH` so its own write does not
   start a new decision; since pointsman#229 (`v0.17.1`) an answer named
   like a field of the result, such as `inputHash`, cannot replace the hash:
   such a decision is refused before anything is written
-  (`packages/fiware/src/bridge.ts:617`). For a route with `requires` the hash also covers each
+  (`packages/fiware/src/bridge.ts:618`). For a route with `requires` the hash also covers each
   earlier decision's id (and, with `rerunOnReview`, the person's answer on
   it), so a final decision runs again only when an earlier one changes; routes
   that read each other's results in a circle are refused when the routes are
@@ -1791,8 +1816,13 @@ what voids it.
   final action is written and the Task completed only when Pointsman has
   the review resolved with the same action: a review still pending is
   tried again (not when its profile version is gone), and one closed as
-  superseded is reported (`packages/fiware/src/bridge.ts:1058`,
-  `packages/fiware/src/bridge.ts:1064`). Every decide request carries an `Idempotency-Key` from the route,
+  superseded is reported (`packages/fiware/src/bridge.ts:1068`,
+  `packages/fiware/src/bridge.ts:1074`). Since pointsman#232 (`v0.17.2`)
+  a decision whose review is pending gets its Task under the same derived
+  id also when `task.actions` leaves its action out
+  (`packages/fiware/src/bridge.ts:656`), and a work order resolves only a
+  result that is still pending and has no final action, whatever the
+  route's `reviewActions` (`packages/fiware/src/bridge.ts:1247`). Every decide request carries an `Idempotency-Key` from the route,
   the entity and the exact request, so a retry of the same request after
   Pointsman logged the decision gets the same decision; for a route with `requires`, which runs
   from the queue only, a result older than the one on the entity is not
@@ -1992,18 +2022,23 @@ the receivers must do for §1.5–§1.11 to hold.
   `packages/github/src/connector/pull-request.ts:890`); since
   pointsman#229 (`v0.17.1`) the triage Action
   (`actions/triage/triage.mjs:74`) and the deploy-watch Action
-  (`actions/deploy-watch/watch.mjs:155`); the FIWARE bridge when the
-  route's `reviewActions` is unset or lists every action of
-  `people_check`: it then marks the result and the Decision entity
-  `reviewStatus` `pending`, opens a Task, and writes `finalAction` only
-  after the review is resolved (`packages/fiware/src/bridge.ts:887`). A
-  route whose `reviewActions` leaves out an action of `people_check`
-  marks that action as taken (`packages/fiware/src/bridge.ts:883`), and
-  the result's `value` is the pending action in every case, so a broker
-  consumer must read `reviewStatus` too. *(documented,
+  (`actions/deploy-watch/watch.mjs:155`); since pointsman#232
+  (`v0.17.2`) the FIWARE bridge on every route: an answer with
+  `review: {status: pending}` counts as checked by a person whatever the
+  route's `reviewActions` (`packages/fiware/src/bridge.ts:887`), which
+  only add actions to check (`packages/fiware/src/bridge.ts:888`). The
+  bridge then marks the result and the Decision entity `reviewStatus`
+  `pending`, on a route with `task` opens a Task even when `task.actions`
+  leaves the action out (`packages/fiware/src/bridge.ts:656`), and writes
+  `finalAction` only after a person resolves the review, also when a
+  work order resolves it (`packages/fiware/src/bridge.ts:1247`). Up to `v0.17.1` a route whose
+  `reviewActions` left out an action of `people_check` marked that action
+  as taken. The result's `value` is the pending action in every case, so
+  a broker consumer must read `reviewStatus` too. *(documented,
   docs/profile-format.md "People: check and answers": "`policy.people_check`
   lists the actions a person checks before they count",
-  `docs/profile-format.md:434`; maintainer, 2026-10)*.
+  `docs/profile-format.md:434`; bridge/README.md "Decision entities";
+  maintainer, 2026-10)*.
 - **`R-VERIFY-CALLBACK`** — verify `x-pointsman-signature` with the shared
   `CALLBACK_SECRET`, reject timestamps older than a few minutes, and make the
   handler idempotent on `decision_id` *(documented, docs/reviews.md "Check the
@@ -2243,7 +2278,8 @@ Revise the model when any of these happens:
 - A new fact type, layer or provider, a new fact module, a module from
   outside this repository (docs/modules.md "Trust"), or a fact that the
   model can see.
-- Not yet covered: nothing shipped up to `v0.17.1`. The re-binding to
+- Not yet covered: nothing shipped up to `v0.17.2`. The re-binding to
+  `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to
   `v0.17.0` released the amendment for `copilot_review` (pointsman#220,
   #225). The re-binding to
@@ -2382,7 +2418,7 @@ claims it added and the obligation `R-PEOPLE-CHECK-PENDING` (§1.13, Q48); the i
 
 ## 1.18 Open questions for the maintainers
 
-Not applicable — all answered and retired: the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, the three questions of the GitHub-facts amendment on 2026-10-21 (Q25: disclaim required checks matched by name; Q26: no repository allow-list, the GitHub credential's reach is the boundary; Q27: disclaim the shared GitHub rate limit), and the four questions of the amendment of 2026-10-23 on 2026-10-23 (Q28: disclaim the connector's trust in the engine's answer, a check of `test` and of the decision's shape is a hardening candidate; Q29: disclaim the reach of the connector app's key, which stays only in the connector Worker; Q30: disclaim trust in the npm registry, integrators pair `github_bump` with `github_pr` and an age margin; Q31: disclaim a person's review behind a connector approval and prompt injection through the pull request, the integrator's rules are the control), accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires. The four questions of the amendment of 2026-10-24 were answered on 2026-10-24 as proposed (Q32: disclaim that check runs and the decision comment show the decision and the AI answers to the pull request's readers, the integrator chooses where; Q33: disclaim the runs the connector's own review events start and the approve-and-withdraw cycle, ignoring those events is a hardening candidate, pointsman#213; Q34: the operational state of 2026-10-23 holds at `v0.14.2`, with `keep_approval`, the decision comment, `github_release` and `github_bump`; Q35: the CodeRabbit spend and queue are a cost guide, correctness only, a hard cap belongs at CodeRabbit), and the claims they ratified carry *(maintainer, 2026-10)*. Q28's hardening candidate (check the engine's answer and refuse test decisions) shipped in pointsman#193 (`v0.13.1`) and is now `P-CONNECTOR-ANSWER-CHECKED`; `D-CONNECTOR-TRUSTS-ENGINE` is narrowed to what that check does not cover. The seven questions of the threat review on pointsman#147 (asking a person inside the pull request, before it was built) were answered on 2026-10-25 as proposed (Q36: only people with write access answer, code owners later; Q37: the author and the last pusher of the head are refused, commit authors are not checked; Q38: `InternalEngine.resolve`, the same code as the route, as `INTERNAL_CLIENT`; Q39: the connector keeps the question until it is answered or the head moves, the engine can close a pending review for the client that made it, and an answer given in the review queue counts too; Q40: the answerer is stored as `github:<login> (<account id>)`, shown without a mention, kept as long as the log keeps decisions; Q41: the command is built but off by default, buttons are on wherever answers are on; Q42: a requested GitHub review does not answer the question), and the claims they ratified carry *(maintainer, 2026-10)*. The one question of the amendment of 2026-10-25, Q43 (the command names the head by 12 characters, and a second commit with the same 12 characters costs about 2^48 tries; proposed: accept the limit), was answered on 2026-10-25 with a code change instead: the connector keeps the pull request's last 100 heads and refuses a command whose 12 characters start more than one of them (pointsman#222, `ca11f53`); `D-COMMAND-SHORT-COMMIT` now states only what that check does not cover, and the documentation no longer says "never". The re-binding to `v0.16.0` (2026-10-25) raised no question: pointsman#216 ships the hardening candidate of Q33 (pointsman#213), so `D-CONNECTOR-OWN-REVIEW-EVENTS` keeps Q33's ruling for what is left of it, and refuses `once_per_head` with an approving action (pointsman#212), which the model had listed as a misuse; pointsman#217 aligns the code and the documentation with the two candidate issues of the amendment of 2026-10-24 (pointsman#214, #215). The four questions of the threat review on pointsman#220 (`copilot_review`, before it was built) were answered on 2026-10-25 as proposed (Q44: refused for a fork's pull request; Q45: at most one Copilot review per head, whoever asked, Copilot known by its account id; Q46: no cap per pull request in the connector, the profile and the organization's budget limit it, `D-CONNECTOR-COPILOT-COST`; Q47: every repository of `repos`, no separate list), and the claims they ratified carry *(maintainer, 2026-10)*. The re-binding to `v0.17.0` (2026-10-25) raised no question. The re-binding to `v0.17.1` (2026-10-26, pointsman#229) raised two questions from its routing of the deep-scan reports, answered on 2026-10-26 (Q48: hold every engine client to `review: {status: pending}` by an obligation, since GHSA-h4jj-2x7q-m6fv was a `MODEL-GAP` — yes, added in this re-binding as `R-PEOPLE-CHECK-PENDING`; Q49: make the seven advisories and pointsman#228 the backtest's historical corpus — yes, at the next amendment, which re-runs the backtest with them and reports the fail-safe figure).
+Not applicable — all answered and retired: the maintainer answered all 24 questions of the first draft in one wave on 2026-10-16, the three questions of the GitHub-facts amendment on 2026-10-21 (Q25: disclaim required checks matched by name; Q26: no repository allow-list, the GitHub credential's reach is the boundary; Q27: disclaim the shared GitHub rate limit), and the four questions of the amendment of 2026-10-23 on 2026-10-23 (Q28: disclaim the connector's trust in the engine's answer, a check of `test` and of the decision's shape is a hardening candidate; Q29: disclaim the reach of the connector app's key, which stays only in the connector Worker; Q30: disclaim trust in the npm registry, integrators pair `github_bump` with `github_pr` and an age margin; Q31: disclaim a person's review behind a connector approval and prompt injection through the pull request, the integrator's rules are the control), accepting every proposed answer; the claims they ratified carry *(maintainer, 2026-10)* and the questions were retired as the skill's wave procedure requires. The four questions of the amendment of 2026-10-24 were answered on 2026-10-24 as proposed (Q32: disclaim that check runs and the decision comment show the decision and the AI answers to the pull request's readers, the integrator chooses where; Q33: disclaim the runs the connector's own review events start and the approve-and-withdraw cycle, ignoring those events is a hardening candidate, pointsman#213; Q34: the operational state of 2026-10-23 holds at `v0.14.2`, with `keep_approval`, the decision comment, `github_release` and `github_bump`; Q35: the CodeRabbit spend and queue are a cost guide, correctness only, a hard cap belongs at CodeRabbit), and the claims they ratified carry *(maintainer, 2026-10)*. Q28's hardening candidate (check the engine's answer and refuse test decisions) shipped in pointsman#193 (`v0.13.1`) and is now `P-CONNECTOR-ANSWER-CHECKED`; `D-CONNECTOR-TRUSTS-ENGINE` is narrowed to what that check does not cover. The seven questions of the threat review on pointsman#147 (asking a person inside the pull request, before it was built) were answered on 2026-10-25 as proposed (Q36: only people with write access answer, code owners later; Q37: the author and the last pusher of the head are refused, commit authors are not checked; Q38: `InternalEngine.resolve`, the same code as the route, as `INTERNAL_CLIENT`; Q39: the connector keeps the question until it is answered or the head moves, the engine can close a pending review for the client that made it, and an answer given in the review queue counts too; Q40: the answerer is stored as `github:<login> (<account id>)`, shown without a mention, kept as long as the log keeps decisions; Q41: the command is built but off by default, buttons are on wherever answers are on; Q42: a requested GitHub review does not answer the question), and the claims they ratified carry *(maintainer, 2026-10)*. The one question of the amendment of 2026-10-25, Q43 (the command names the head by 12 characters, and a second commit with the same 12 characters costs about 2^48 tries; proposed: accept the limit), was answered on 2026-10-25 with a code change instead: the connector keeps the pull request's last 100 heads and refuses a command whose 12 characters start more than one of them (pointsman#222, `ca11f53`); `D-COMMAND-SHORT-COMMIT` now states only what that check does not cover, and the documentation no longer says "never". The re-binding to `v0.16.0` (2026-10-25) raised no question: pointsman#216 ships the hardening candidate of Q33 (pointsman#213), so `D-CONNECTOR-OWN-REVIEW-EVENTS` keeps Q33's ruling for what is left of it, and refuses `once_per_head` with an approving action (pointsman#212), which the model had listed as a misuse; pointsman#217 aligns the code and the documentation with the two candidate issues of the amendment of 2026-10-24 (pointsman#214, #215). The four questions of the threat review on pointsman#220 (`copilot_review`, before it was built) were answered on 2026-10-25 as proposed (Q44: refused for a fork's pull request; Q45: at most one Copilot review per head, whoever asked, Copilot known by its account id; Q46: no cap per pull request in the connector, the profile and the organization's budget limit it, `D-CONNECTOR-COPILOT-COST`; Q47: every repository of `repos`, no separate list), and the claims they ratified carry *(maintainer, 2026-10)*. The re-binding to `v0.17.0` (2026-10-25) raised no question. The re-binding to `v0.17.1` (2026-10-26, pointsman#229) raised two questions from its routing of the deep-scan reports, answered on 2026-10-26 (Q48: hold every engine client to `review: {status: pending}` by an obligation, since GHSA-h4jj-2x7q-m6fv was a `MODEL-GAP` — yes, added in this re-binding as `R-PEOPLE-CHECK-PENDING`; Q49: make the seven advisories and pointsman#228 the backtest's historical corpus — yes, at the next amendment, which re-runs the backtest with them and reports the fail-safe figure). The re-binding to `v0.17.2` (2026-10-26, pointsman#232) raised no question.
 
 ## 1.19 Machine-readable companions
 
@@ -2403,7 +2439,8 @@ of 2026-10-24, after the amendment of 2026-10-25 (then with the JSON's
 `v0.16.0`, where the JSON's `commit` was the bound commit (`8eea43d`);
 after the amendment for `copilot_review` it was kept there, and after the
 re-binding to `v0.17.0` it was the bound commit (`b08aaf3`); after the
-re-binding to `v0.17.1` it is the bound commit (`f783c0b`). The
+re-binding to `v0.17.1` it was the bound commit (`f783c0b`); after the
+re-binding to `v0.17.2` it is the bound commit (`b1ad3e6`). The
 hand completion sets each boundary's text from fixed strings and asserts
 that each added phrase occurs once, so a repeated run cannot repeat it. The JSON's `confidence` has no maintainer or assumption
 count: the exporter folds maintainer claims into documented and

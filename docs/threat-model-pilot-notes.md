@@ -544,6 +544,37 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   backtest with them and reports the fail-safe figure.
 - **Validator**: passes (90 checks, one length warning).
 
+## Re-binding to `v0.17.2` (2026-10-26)
+
+- **What it covers**: pointsman#232 (`81a271f`), released as `v0.17.2`
+  (`b1ad3e6`, pointsman#233, which changed only versions and the
+  changelog). In the FIWARE bridge an answer with
+  `review: {status: pending}` now always counts as checked by a person;
+  a route's `reviewActions` only adds actions to check. A route with
+  `task` opens a Task for a pending review even when `task.actions`
+  leaves the action out, and a work order resolves a pending result
+  whose action is not in `reviewActions`.
+- **What changed**: `R-PEOPLE-CHECK-PENDING` (§1.13) now lists the bridge
+  as meeting it on every route; before, it met it unless `reviewActions`
+  left out an action of `people_check`. Also `P-BRIDGE-SAFE-TO-REPEAT`,
+  the §1.7 row for work orders, the §1.8 row for the bridge's result,
+  §1.1 and §1.16. Each new part is marked "since pointsman#232
+  (`v0.17.2`)". No property, disclaimer or misuse pattern was added or
+  removed; the confidence counts are unchanged (460 / 83 / 0 / 0).
+- **Citations**: 7 cited lines in `packages/fiware/src/bridge.ts` were
+  affected: 5 moved (316, 318, 617, 1058, 1064) and 2 were rewritten by
+  #232 (883, 887, the old `isChecked`) and placed by meaning. Before the
+  update the validator flagged only 4 of the 7; 316, 887 and 1064 still
+  resolved to other code. The four citations written in words are in
+  `src/app.ts` and `github.ts`, which #232 did not change. No line of
+  `bridge/README.md` is cited by number, and #232 changed none of the
+  README text the model quotes.
+- **Counts**: the fetch count (29) and the log lines (7 in `bridge.ts`, 36
+  in the connector) are unchanged.
+- **Backtest**: not run again; Q49 waits for the next amendment.
+- **Questions**: none in the model.
+- **Validator**: passes (90 checks, one length warning).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
