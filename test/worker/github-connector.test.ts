@@ -74,6 +74,9 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
       calls.push({ op: 'dismiss', id });
       approvals.splice(approvals.findIndex((a) => a.id === id), 1);
     },
+    // Answers in the pull request have tests of their own (github-answers.test.ts).
+    permission: async () => { throw new Error('not used here'); },
+    headPusher: async () => { throw new Error('not used here'); },
   };
   return { github, calls };
 }

@@ -1,6 +1,6 @@
 // How the connector reaches Pointsman (docs/github-connector.md#how-it-reaches-pointsman):
-// a port with the calls it makes (decide, and get and close for decisions a
-// person is asked about), and the settings that choose the adapter behind it. The connector logic (pull-request.ts) only uses the port.
+// a port with the calls it makes (decide, and get, resolve and close for
+// decisions a person is asked about), and the settings that choose the adapter behind it. The connector logic (pull-request.ts) only uses the port.
 //
 // Adapters:
 // - HTTP with a token (here, any runtime): POINTSMAN_URL and POINTSMAN_TOKEN.
@@ -40,8 +40,21 @@ export interface EngineClient {
   decide(profile: string, body: DecideBody, options: { idempotencyKey: string }): Promise<EngineAnswer>;
   /** GET /v1/decisions/{id}: a decision it made, read back for a person's answer. Throws and passes the body on as decide. */
   get(decisionId: string): Promise<EngineAnswer>;
+  /**
+   * POST /v1/reviews/{id}/resolve: a person's answer, given in the pull
+   * request and checked by the connector (answers.ts), for a decision it made.
+   * Throws as decide.
+   */
+  resolve(decisionId: string, body: ResolveBody): Promise<EngineAnswer>;
   /** POST /v1/reviews/{id}/close: closes the pending review of a decision it made. Throws as decide. */
   close(decisionId: string): Promise<EngineAnswer>;
+}
+
+/** The body of POST /v1/reviews/{id}/resolve, as the connector sends it: the answer and who gave it, never `correct`. */
+export interface ResolveBody {
+  action: string;
+  /** `github:<login> (<account id>)`. */
+  by: string;
 }
 
 /**
@@ -57,6 +70,11 @@ export interface Decision {
   facts?: Record<string, { missing?: boolean; reason?: string }>;
   /** pending while a person checks it; resolved, with their answer, once read back (GET /v1/decisions/{id}). */
   review?: { status: string; final_action?: string };
+  /**
+   * The connector's own note, never the engine's: the GitHub login of the
+   * person who answered in the pull request (answers.ts). Shown without "@".
+   */
+  answered_by?: string;
   /** The AI answers, by question; not checked (comment.ts shows only values of the known shapes). */
   answers?: unknown;
   /** Only on a test token's decision, which is not logged: never acted on. */
@@ -109,7 +127,9 @@ export function checkDecision(body: unknown, asked: { profile: string; ref: stri
     }
   }
   if (d.test !== undefined && typeof d.test !== 'boolean') return invalid('"test" is not a boolean');
-  const decision = d as unknown as Decision;
+  // Who answered in the pull request is the connector's own note: never taken from the engine.
+  const decision = (Object.hasOwn(d, 'answered_by') ? { ...d } : d) as unknown as Decision;
+  delete decision.answered_by;
   return d.test === true ? { kind: 'test', decision } : { kind: 'decision', decision };
 }
 
@@ -179,6 +199,8 @@ export function httpEngine(api: EngineApi, token: string): EngineClient {
     decide: (profile, body, { idempotencyKey }) => call('POST', `/v1/decide/${encodeURIComponent(profile)}`,
       { headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey }, body: JSON.stringify(body) }),
     get: (id) => call('GET', `/v1/decisions/${encodeURIComponent(id)}`),
+    resolve: (id, body) => call('POST', `/v1/reviews/${encodeURIComponent(id)}/resolve`,
+      { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
     close: (id) => call('POST', `/v1/reviews/${encodeURIComponent(id)}/close`),
   };
 }

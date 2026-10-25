@@ -1,7 +1,9 @@
 // What the connector reads and writes on GitHub, with the write app's
 // installation token, down-scoped to what it needs: read the pull request,
 // write check runs, and only when the deployment switched actions on, write
-// pull requests (docs/github-connector.md).
+// pull requests (docs/github-connector.md). For an answer given in the pull
+// request it reads who may answer: a person's permission and who pushed the
+// head (metadata: read).
 
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
@@ -65,7 +67,11 @@ export interface PullRequestInfo {
   merged: boolean;
   /** The author's login (only compared with reviewers', never shown). */
   author: string;
+  /** The author's account id (0 when GitHub gives none): an answer is never taken from it. */
+  authorId?: number;
   head: string;
+  /** The head branch's name (only to read who pushed it, never shown). */
+  headRef?: string;
   draft: boolean;
   base: string;
   title: string;
@@ -93,6 +99,24 @@ export interface CheckRunOutput {
   summary: string;
   /** The check run's details (shown below the summary). */
   text?: string;
+  /** Buttons (GitHub's requested actions, at most 3); [] removes those shown. Left out: not touched. */
+  actions?: CheckRunButton[];
+}
+
+/** A button on a check run: a click reaches the app as a `check_run` `requested_action` event with the identifier. */
+export interface CheckRunButton {
+  /** At most 20 characters. */
+  label: string;
+  /** At most 40 characters. */
+  description: string;
+  /** At most 20 characters; the connector's own code, mapped through its record (answers.ts). */
+  identifier: string;
+}
+
+/** A GitHub account, as the connector compares people: by id, the login only to name it. */
+export interface GitHubAccount {
+  id: number;
+  login: string;
 }
 
 export interface ConnectorGitHub {
@@ -124,6 +148,18 @@ export interface ConnectorGitHub {
   diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }>;
   approve(repo: string, number: number, head: string, body: string): Promise<number>;
   dismissReview(repo: string, number: number, id: number, message: string): Promise<void>;
+  /**
+   * A person's permission on the repository (GitHub's collaborator permission:
+   * admin, write, read or none; maintain counts as write), with the account
+   * GitHub gives for the login. Read anew for every answer, never kept.
+   */
+  permission(repo: string, login: string): Promise<{ account: GitHubAccount; permission: string }>;
+  /**
+   * Who pushed the head: the newest push to the head branch in the
+   * repository's activity, when it ended at this commit; undefined when
+   * that is not known (another newest push, none listed, a fork's branch).
+   */
+  headPusher(repo: string, branch: string, head: string): Promise<GitHubAccount | undefined>;
 }
 
 /** Every comment and review the connector writes starts with this; with the head and profile it is the action's trace. */
@@ -132,6 +168,10 @@ export const markerOf = (head: string, profile: string, kind: string) => `${MARK
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const SHA = /^[0-9a-f]{40}$/;
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+/** The activity types that put a commit at the head of a branch. */
+const PUSHES = new Set(['push', 'force_push', 'branch_creation']);
 /** GitHub's review decisions (GraphQL PullRequestReviewDecision). */
 const DECISIONS = new Set(['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED']);
 /** Only this query is sent to GraphQL: it reads, never writes. The newest 100 reviews: those of the head are among them. */
@@ -215,7 +255,9 @@ export class AppGitHub implements ConnectorGitHub {
       open: pr.state === 'open',
       merged: pr.merged === true || (typeof pr.merged_at === 'string' && pr.merged_at !== ''),
       author: isObject(pr.user) && typeof pr.user.login === 'string' ? pr.user.login : '',
+      authorId: isObject(pr.user) && isId(pr.user.id) ? pr.user.id : 0,
       head: pr.head.sha,
+      headRef: typeof pr.head.ref === 'string' ? pr.head.ref : '',
       draft: pr.draft === true,
       base: typeof pr.base.ref === 'string' ? pr.base.ref : '',
       title: typeof pr.title === 'string' ? pr.title : '',
@@ -360,6 +402,29 @@ export class AppGitHub implements ConnectorGitHub {
     await this.#call(repo, 'PUT', `/pulls/${number}/reviews/${id}/dismissals`, 'dismissal', { message, event: 'DISMISS' });
   }
 
+  async permission(repo: string, login: string): Promise<{ account: GitHubAccount; permission: string }> {
+    if (!LOGIN.test(login)) throw new GitHubError('GitHub permission: not a login', false);
+    const answer = await this.#call(repo, 'GET', `/collaborators/${encodeURIComponent(login)}/permission`, 'permission');
+    const user = isObject(answer) ? answer.user : undefined;
+    if (!isObject(answer) || typeof answer.permission !== 'string' || !isObject(user) || !isId(user.id) || typeof user.login !== 'string') {
+      throw new GitHubError('GitHub permission: unexpected answer', false);
+    }
+    return { account: { id: user.id, login: user.login }, permission: answer.permission };
+  }
+
+  async headPusher(repo: string, branch: string, head: string): Promise<GitHubAccount | undefined> {
+    if (branch === '') return undefined;
+    // Newest first; only the newest is looked at: the head must be what it pushed.
+    const q = new URLSearchParams({ ref: `refs/heads/${branch}`, per_page: '1' });
+    const list = await this.#call(repo, 'GET', `/activity?${q}`, 'activity');
+    if (!Array.isArray(list)) throw new GitHubError('GitHub activity: unexpected answer', false);
+    const newest = list[0];
+    if (!isObject(newest) || typeof newest.after !== 'string' || newest.after.toLowerCase() !== head) return undefined;
+    if (!PUSHES.has(String(newest.activity_type))) return undefined;
+    const actor = newest.actor;
+    return isObject(actor) && isId(actor.id) && typeof actor.login === 'string' ? { id: actor.id, login: actor.login } : undefined;
+  }
+
   async findCheckRun(repo: string, head: string, name: string): Promise<number | undefined> {
     // Filtered by name and app, so one page is the rule; at most 10 are read.
     for (let page = 1; page <= 10; page++) {
@@ -389,5 +454,6 @@ function checkRunBody(o: CheckRunOutput) {
     conclusion: o.conclusion,
     external_id: o.externalId,
     output: { title: o.title.slice(0, 255), summary: o.summary.slice(0, 60_000), ...(o.text !== undefined && { text: o.text.slice(0, 60_000) }) },
+    ...(o.actions !== undefined && { actions: o.actions.slice(0, 3) }),
   };
 }

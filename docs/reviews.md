@@ -27,6 +27,11 @@ curl -s -X POST "$POINTSMAN/v1/reviews/$ID/resolve" -H "authorization: Bearer $T
 - A review can be resolved once. A second resolve, also at the same moment,
   answers `409 not_pending`. So does a resolve after the review was
   [closed](#closing-a-review).
+- `by` is stored as the client sends it (`resolved_by`). The GitHub connector
+  sends `github:<login> (<account id>)` for an answer given in a pull request,
+  after it checked the person with GitHub
+  ([github-connector.md](github-connector.md#answering-in-the-pull-request));
+  Pointsman itself checks the token, not the person.
 - `GET /v1/decisions/{id}` shows `review` (status, final action and answers)
   and `callback` (delivery status).
 - For a profile with `requires`, a newer decision for the same report

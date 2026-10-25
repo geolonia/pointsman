@@ -229,7 +229,8 @@ const base = {
   GITHUB_CONNECTOR: JSON.stringify({ repos: ['example/repo'], profiles: ['pr-docs-check'] }),
 };
 const binding = (decide: EngineBinding['decide'] = async () => ({ status: 200, body: {} }), more: Partial<EngineBinding> = {}): EngineBinding => ({
-  decide, get: async () => ({ status: 404, body: { error: { code: 'decision_not_found' } } }), close: async () => ({ status: 200, body: {} }), ...more,
+  decide, get: async () => ({ status: 404, body: { error: { code: 'decision_not_found' } } }), resolve: async () => ({ status: 409, body: { error: { code: 'not_pending' } } }),
+  close: async () => ({ status: 200, body: {} }), ...more,
 });
 
 describe('the connector: how it reaches the engine', () => {
@@ -299,6 +300,23 @@ describe('the connector: binding adapter', () => {
     expect((await engine.get(id)).body).toMatchObject({ decision_id: id, review: { status: 'pending' } });
     expect(await engine.close(id)).toEqual({ status: 200, body: { decision_id: id, review: { status: 'superseded' } } });
     expect(await engine.close(id)).toEqual({ status: 409, code: 'not_pending' });
+  });
+
+  it('the binding reaches InternalEngine\'s resolve: a person\'s answer given in the pull request, once, as INTERNAL_CLIENT', async () => {
+    const internal = engineWith({ INTERNAL_CLIENT: CLIENT });
+    const engine = bindingEngine(internal as unknown as EngineBinding);
+    const made = await internal.decide('deploy-progress', body, { idempotencyKey: crypto.randomUUID() });
+    const id = made.body.decision_id as string;
+    await env.DB.prepare("UPDATE decisions SET review_status = 'pending' WHERE id = ?").bind(id).run();
+    expect(await engine.resolve(id, { action: 'reject', by: 'github:octocat (1)' })).toMatchObject({ status: 200, body: { decision_id: id, action: 'reject', resolved_by: 'github:octocat (1)' } });
+    expect((await engine.get(id)).body).toMatchObject({ review: { status: 'resolved', final_action: 'reject', resolved_by: 'github:octocat (1)' } });
+    // Answered already: 409, with only the code passed on.
+    expect(await engine.resolve(id, { action: 'reject', by: 'github:octocat (1)' })).toEqual({ status: 409, code: 'not_pending' });
+    // Only action and by are sent, nothing else from the caller.
+    const sent: unknown[] = [];
+    await bindingEngine(binding(undefined, { resolve: async (...args) => (sent.push(args), { status: 200, body: {} }) }))
+      .resolve(id, { action: 'reject', by: 'github:octocat (1)', correct: { x: true } } as never);
+    expect(sent).toEqual([[id, { action: 'reject', by: 'github:octocat (1)' }]]);
   });
 
   it('throws (so the run is tried again) when the binding fails, answers nonsense or takes too long', async () => {
