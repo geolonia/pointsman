@@ -8,11 +8,14 @@
 // and shows each decision as a check run ("neutral"). Where the deployment
 // maps a decision to an action (settings.ts), it carries that out too, at
 // most once per head commit; otherwise nothing else is done on GitHub.
+// A decision a person checks is kept for its head and read back on every
+// run, so the question stays the same until it is answered or the head
+// moves; then the old question is closed in Pointsman.
 // The record of a check run is written before the check run is created, so a
 // run that stops in between does not create a second one: the next run looks
 // for the check run first.
 
-import { type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
+import { actionOf, type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
 import { checkText, clean, COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
@@ -126,6 +129,29 @@ interface CommentRecord {
   failed?: string;
 }
 
+/**
+ * The decisions a person is asked about (docs/github-connector.md#asking-a-person),
+ * by profile: kept for this head, read back on every run until the person
+ * answered, and never replaced by a new decision on the same head. `close`:
+ * the pending ones of an older head (or of a closed pull request), still to
+ * be closed in Pointsman.
+ */
+interface Asked {
+  head: string;
+  /** The decision, and the hash of what it rests on besides the head (#basisOf). */
+  byProfile: Record<string, { decision: Decision; basis: string }>;
+  /** `since`: when it was listed; `tries`: closes that failed so far; `lastTry`: when the last one failed. */
+  close: { id: string; since: number; tries: number; lastTry: number }[];
+}
+
+/** A close that fails (busy, down) is tried again on later runs: at most this often, this long, and once per CLOSE_SPACING_MS. */
+const CLOSE_TRIES = 10;
+const CLOSE_MS = 24 * 3600_000;
+const CLOSE_SPACING_MS = 5 * 60_000;
+
+/** What is not acted on: an answer that is not a decision, a test decision, or a question that could not be read back. */
+type NotActed = Exclude<CheckedAnswer, { kind: 'decision' }> | { kind: 'unreadable'; status: string };
+
 /** What the reviews said about a head when they were last read: kept for a run that cannot read them. */
 interface ReviewsSeen {
   head: string;
@@ -227,8 +253,12 @@ export class PullRequestWork {
   async #once(target: PullRequestTarget, attempt: number, recheck = false): Promise<void> {
     const pr = await retrying(() => this.#github.pullRequest(target.repo, target.number));
     this.#reviews = undefined;
-    // Closed (merged or not): Pointsman is not asked; the comment shows it, once (unchanged, no write). A reopen runs as usual.
-    if (!pr.open) return this.#settings.comment ? this.#closeComment(target, pr) : undefined;
+    // Closed (merged or not): Pointsman is not asked; its open questions are closed, and the comment shows it,
+    // once (unchanged, no write). A reopen runs as usual and asks anew.
+    if (!pr.open) {
+      await this.#closeAsked(target, '');
+      return this.#settings.comment ? this.#closeComment(target, pr) : undefined;
+    }
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
     // A recheck deadline of an older head is void: a new head starts with none.
     const recheckHead = await this.#storage.get<string>('recheckHead');
@@ -236,6 +266,8 @@ export class PullRequestWork {
       await this.#storage.put({ recheckAt: 0, recheckHead: pr.head });
       if (recheck) return;
     }
+    // The questions of an older head are closed before this head is decided on.
+    await this.#closeAsked(target, pr.head);
     // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
     const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
     // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
@@ -253,17 +285,33 @@ export class PullRequestWork {
       // A required decision that is not there (a skipped draft, a refusal) is not sent: the profile's requires must be optional.
       const decisions = Object.fromEntries(Object.entries(run.requires ?? {})
         .filter(([, from]) => decided[from] !== undefined).map(([name, from]) => [name, decided[from]!.decision_id]));
-      // Everything the decision rests on, besides the head: a new one when any of it changes.
-      const keyOf = run.oncePerHead ? await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, decisions, run, this.#settings.actions[profile] ?? null])) : '';
-      const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun, refOf(target, pr.head)) : undefined;
-      if (kept) {
-        // Its action was carried out and its check run written when it was made.
-        decided[profile] = kept;
-        continue;
+      // Everything the decision rests on, besides the head: what the required decisions say (their action, rule and a
+      // person's answer to them, not their ids: a required profile is decided anew on every run), so a decision kept for
+      // once_per_head or as a question is made anew when any of it changes. The ids still go to Pointsman in `decisions`.
+      const required = Object.entries(run.requires ?? {}).filter(([, from]) => decided[from] !== undefined)
+        .map(([name, from]) => {
+          const d = decided[from]!;
+          return [name, from, d.action, d.rule, d.review?.status ?? null, d.review?.final_action ?? null];
+        });
+      const keyOf = await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, required, run, this.#settings.actions[profile] ?? null]));
+      // A question to a person on this head: its decision is read back, not made anew (undefined: none open).
+      const back = await this.#readBack(target, pr.head, profile, keyOf);
+      let answer: CheckedAnswer | NotActed | null = back ?? null;
+      let refused: true | undefined;
+      if (!back) {
+        const kept = run.oncePerHead ? await this.#kept(profile, pr.head, keyOf, run.oncePerHead.rerun, refOf(target, pr.head)) : undefined;
+        if (kept) {
+          // Its action was carried out and its check run written when it was made.
+          decided[profile] = kept;
+          continue;
+        }
+        const { refused: diffRefused, ...diffState } = run.diff ? await this.#diffOf(target, pr.head, run.diff) : { refused: undefined };
+        refused = diffRefused;
+        const asked = { ...state, ...diffState };
+        answer = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
+        // Kept at once, before anything is done: a retried run reads it back instead of asking a person again.
+        if (answer?.kind === 'decision' && answer.decision.review?.status === 'pending') await this.#ask(pr.head, profile, answer.decision, keyOf);
       }
-      const { refused, ...diffState } = run.diff ? await this.#diffOf(target, pr.head, run.diff) : { refused: undefined };
-      const asked = { ...state, ...diffState };
-      const answer = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
       if (!answer) continue;
       if (answer.kind !== 'decision') {
         // Not a decision to act on: nothing is done, nothing is kept or sent on, and an approval of this head is withdrawn.
@@ -276,7 +324,8 @@ export class PullRequestWork {
       shown[profile] = await this.#showCheck(target.repo, target.number, pr, profile, decision, outcome);
       // Kept only once its action is done (or none) and its check run written, so a later run does a skipped or unclear one.
       // Not kept when the diff was refused: once the app may read it, the next run asks with it.
-      if (run.oncePerHead && outcome.kind !== 'skipped' && !refused) await this.#keep(profile, pr.head, keyOf, decision);
+      // A question read back is kept as a question (#readBack), not here.
+      if (run.oncePerHead && !back && outcome.kind !== 'skipped' && !refused) await this.#keep(profile, pr.head, keyOf, decision);
       // Counted only once it is done (decided, acted, shown): a failed recheck is tried again without using one up.
       if (counted) await this.#countRecheck(profile, pr.head);
       await this.#scheduleRecheck(profile, pr.head, decision, run);
@@ -444,7 +493,7 @@ export class PullRequestWork {
   async #kept(profile: string, head: string, key: string, rerun: string[], ref: string): Promise<Decision | undefined> {
     const kept = await this.#storage.get<Kept>('kept');
     const k = kept?.head === head ? kept.byProfile[profile] : undefined;
-    // Never a decision a person still checks: their answer comes with a new one.
+    // Never a decision a person still checks: it is kept as a question instead (#ask, #readBack).
     // Checked again like a new answer: one kept before the check (a test decision, say) is asked anew.
     return k && k.key === key && !rerun.includes(k.decision.action) && k.decision.review?.status !== 'pending'
       && checkDecision(k.decision, { profile, ref }).kind === 'decision' ? k.decision : undefined;
@@ -457,9 +506,142 @@ export class PullRequestWork {
     await this.#storage.put({ kept });
   }
 
+  /** Keeps a decision a person checks, for this head, with what it rests on. */
+  async #ask(head: string, profile: string, decision: Decision, basis: string): Promise<void> {
+    const asked = (await this.#storage.get<Asked>('asked')) ?? { head, byProfile: {}, close: [] };
+    // #closeAsked ran for this head at the start of the run, so the record is this head's.
+    if (asked.head !== head) throw new Error('the questions of an older head were not closed');
+    asked.byProfile[profile] = { decision: slim(decision), basis };
+    await this.#storage.put({ asked });
+  }
+
+  /**
+   * The kept question of this profile on this head, read back: the person's
+   * answer once they gave it, still pending, or an answer that is not a
+   * decision (not acted on, the question stays). undefined: no question
+   * open (none kept, it was closed in Pointsman, or what it rests on
+   * changed: then it is closed here), so one is asked anew.
+   */
+  async #readBack(target: PullRequestTarget, head: string, profile: string, basis: string): Promise<NotActed | { kind: 'decision'; decision: Decision } | undefined> {
+    const asked = await this.#storage.get<Asked>('asked');
+    const kept = asked?.head === head ? asked.byProfile[profile] : undefined;
+    if (!asked || !kept) return undefined;
+    const id = kept.decision.decision_id;
+    const where = `${target.repo}#${target.number}`;
+    const forget = async (why: string, close: boolean) => {
+      // The id names the dropped question, so an answer given to it can be traced.
+      console.error(`github connector: Pointsman ${profile} for ${where}: decision ${id} (${kept.decision.review?.status ?? 'no review'}) ${why}; dropped and asked anew`);
+      delete asked.byProfile[profile];
+      // An open question on an older basis leaves Pointsman's queue: an answer to it would rest on what no longer holds.
+      if (close && kept.decision.review?.status === 'pending') asked.close.push({ id, since: this.now(), tries: 0, lastTry: 0 });
+      await this.#storage.put({ asked });
+      if (close) await this.#closeListed(target, asked);
+      return undefined;
+    };
+    // The title, description, base, draft flag, settings or a required decision (or its answer) changed: asked anew.
+    if (kept.basis !== basis) return forget('rests on what changed', true);
+    // Answered on an earlier run: the answer stands for this head and this basis.
+    if (kept.decision.review?.status === 'resolved') return { kind: 'decision', decision: kept.decision };
+    let res: EngineAnswer;
+    try {
+      res = await this.#engine.get(id);
+    } catch (err) {
+      throw new RetryError(`Pointsman ${profile} reading ${id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const status = res.code ? `${res.status} ${res.code}` : String(res.status);
+    if (res.status >= 500 || res.status === 429) throw new RetryError(`Pointsman ${profile} reading ${id}: ${status}`);
+    // Gone, or no longer visible to the connector (its scope changed).
+    if (res.status === 404) return forget('not found', false);
+    if (res.status < 200 || res.status >= 300) {
+      // Refused (a setting to fix): nothing done, shown on the check run; the question stays.
+      console.error(`github connector: Pointsman ${profile} for ${where} reading ${id}: ${status}`);
+      return { kind: 'unreadable', status };
+    }
+    const body = res.body as { decision_id?: unknown; review?: { status?: unknown } } | null | undefined;
+    // Closed in Pointsman (superseded): not acted on, and no longer the question.
+    if (body?.decision_id === id && body.review?.status === 'superseded') return forget('was closed', false);
+    const checked = checkDecision(body, { profile, ref: refOf(target, head) });
+    if (checked.kind === 'decision' && checked.decision.decision_id !== id) return { kind: 'invalid', reason: '"decision_id" is not the decision asked' };
+    if (checked.kind !== 'decision') {
+      if (checked.kind === 'invalid') console.error(`github connector: Pointsman ${profile} for ${where}: decision ${id} read back is not a decision (${checked.reason}); nothing done`);
+      return checked;
+    }
+    if (checked.decision.review?.status !== 'resolved') return { kind: 'decision', decision: kept.decision };
+    // The person's answer is kept with the question: it stands for this head and basis, and is not read again.
+    const answered: Decision = { ...kept.decision, review: { status: 'resolved', final_action: checked.decision.review.final_action! } };
+    asked.byProfile[profile] = { decision: answered, basis };
+    await this.#storage.put({ asked });
+    return { kind: 'decision', decision: answered };
+  }
+
+  /**
+   * The questions of an older head (or of a closed pull request: head ''),
+   * and of profiles no longer in the settings, are closed in Pointsman, so
+   * they leave its review queue and a late answer there is refused.
+   */
+  async #closeAsked(target: PullRequestTarget, head: string): Promise<void> {
+    let asked = await this.#storage.get<Asked>('asked');
+    if (!asked) return;
+    const pending = (entries: [string, { decision: Decision }][]) => entries.filter(([, q]) => q.decision.review?.status === 'pending')
+      .map(([, q]) => ({ id: q.decision.decision_id, since: this.now(), tries: 0, lastTry: 0 }));
+    if (asked.head !== head) {
+      asked = { head, byProfile: {}, close: [...asked.close, ...pending(Object.entries(asked.byProfile))] };
+      await this.#storage.put({ asked });
+    }
+    const gone = Object.entries(asked.byProfile).filter(([p]) => !this.#settings.profiles.includes(p));
+    if (gone.length > 0) {
+      for (const [p] of gone) delete asked.byProfile[p];
+      asked.close.push(...pending(gone));
+      await this.#storage.put({ asked });
+    }
+    await this.#closeListed(target, asked);
+  }
+
+  /**
+   * Closes the listed questions. Closed, answered already or not found:
+   * done. A refusal is logged and not tried again. An engine that is busy,
+   * down or too old to close (no close call) is logged, and the close is
+   * tried again on later runs, at most CLOSE_TRIES times within CLOSE_MS and
+   * once per CLOSE_SPACING_MS (a burst of events does not use them up): it
+   * never holds up the run (the connector never acts on a question it
+   * no longer keeps).
+   */
+  async #closeListed(target: PullRequestTarget, asked: Asked): Promise<void> {
+    if (asked.close.length === 0) return;
+    const left: Asked['close'] = [];
+    for (const entry of asked.close) {
+      // Failed a moment ago: left for a later run.
+      if (entry.tries > 0 && this.now() - entry.lastTry < CLOSE_SPACING_MS) {
+        left.push(entry);
+        continue;
+      }
+      let res: EngineAnswer | undefined;
+      let failure: string | undefined;
+      try {
+        res = await this.#engine.close(entry.id);
+        if (res.status >= 500 || res.status === 429) failure = res.code ? `${res.status} ${res.code}` : String(res.status);
+      } catch (err) {
+        failure = err instanceof Error ? err.message : String(err);
+      }
+      if (failure !== undefined) {
+        const tries = entry.tries + 1;
+        const given = tries >= CLOSE_TRIES || this.now() - entry.since >= CLOSE_MS;
+        console.error(`github connector: Pointsman closing ${entry.id} for ${target.repo}#${target.number}: ${failure}; ${given ? 'given up' : 'tried again later'}`);
+        if (!given) left.push({ ...entry, tries, lastTry: this.now() });
+        continue;
+      }
+      // 409: answered or closed already; 404: gone. Neither needs closing; other refusals are a setting to fix.
+      if (res && (res.status < 200 || res.status >= 300) && res.status !== 409 && res.status !== 404) {
+        console.error(`github connector: Pointsman closing ${entry.id} for ${target.repo}#${target.number}: ${res.code ? `${res.status} ${res.code}` : res.status}`);
+      }
+    }
+    asked.close = left;
+    await this.#storage.put({ asked });
+  }
+
   /** While the decision waits (its action is one of recheck.actions), asks again later, unless its rechecks for this head are used up. */
   async #scheduleRecheck(profile: string, head: string, decision: Decision, run: RunOptions): Promise<void> {
-    if (!run.recheck || !run.recheck.actions.includes(decision.action)) return;
+    if (!run.recheck || !run.recheck.actions.includes(actionOf(decision))) return;
     const rechecks = await this.#storage.get<Rechecks>('rechecks');
     if (rechecks?.head === head && (rechecks.count[profile] ?? 0) >= run.recheck.max) return;
     const at = this.now() + run.recheck.minutes * 60_000;
@@ -554,7 +736,9 @@ export class PullRequestWork {
    */
   async #act(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision, approveBlocked = false): Promise<ActOutcome> {
     const byAction = this.#settings.actions[profile];
-    const spec = byAction && Object.hasOwn(byAction, decision.action) ? byAction[decision.action] : undefined;
+    // A person's answer goes through the same table and guards as a decision's own action.
+    const action = actionOf(decision);
+    const spec = byAction && Object.hasOwn(byAction, action) ? byAction[action] : undefined;
     let acts = (await this.#storage.get<Acts>('acts')) ?? { head: pr.head, done: {} };
     if (acts.head !== pr.head) acts = { head: pr.head, done: {} };
     const pending = decision.review?.status === 'pending';
@@ -749,7 +933,7 @@ export class PullRequestWork {
    * Its check run says so.
    */
   /** Returns whether an approval of this head was withdrawn. */
-  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>): Promise<boolean> {
+  async #notActedOn(target: PullRequestTarget, pr: PullRequestInfo, profile: string, answer: NotActed): Promise<boolean> {
     const byAction = this.#settings.actions[profile];
     let note: string | undefined;
     let withdrawn = false;
@@ -814,7 +998,7 @@ function slim(d: Decision): Decision {
   return {
     decision_id: d.decision_id, action: d.action, profile: d.profile, profile_version: d.profile_version, rule: d.rule,
     ...(d.facts && { facts: Object.fromEntries(Object.entries(d.facts).slice(0, 50).map(([k, f]) => [k, { ...(f.missing !== undefined && { missing: f.missing }), ...(f.reason !== undefined && { reason: f.reason.slice(0, 100) }) }])) }),
-    ...(d.review && { review: { status: d.review.status } }),
+    ...(d.review && { review: { status: d.review.status, ...(typeof d.review.final_action === 'string' && { final_action: d.review.final_action }) } }),
     ...(answers && { answers }),
   };
 }
@@ -859,20 +1043,23 @@ export interface CheckView {
 
 export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }, view: CheckView = {}): CheckRunOutput {
   const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${clean(f.reason ?? 'missing', 300)})`);
+  const answered = d.review?.status === 'resolved';
+  const action = actionOf(d);
   const lines = [
     `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
+    ...(answered ? ['', `A person answered **${action}** in Pointsman's review queue; that answer is the action.`] : []),
     '',
     outcome.kind === 'none'
       ? 'Shadow mode: this check shows the decision and never blocks; Pointsman acts on nothing for it.'
       : `${outcome.kind === 'done' ? 'Done' : 'Not done'}: ${outcome.text}. This check never blocks.`,
     ...(missing.length > 0 ? ['', `Missing facts: ${missing.join(', ')}.`] : []),
-    ...(d.review?.status === 'pending' ? ['', 'A person checks this decision before it counts.'] : []),
+    ...(d.review?.status === 'pending' ? ['', 'Waiting for a person: a person checks this decision before it counts. Their answer is used once they give it.'] : []),
     '',
     `Decision \`${d.decision_id}\``,
   ];
   // The signal and the action, as the comment shows them: "🟢 approve", "🔴 review (shadow)".
   const signal = signalOf(view.signals, d);
-  const title = `${signalMark(signal)} ${d.action}${d.review?.status === 'pending' ? ': a person checks first' : ''}${outcome.kind === 'none' ? ' (shadow)' : ''}`;
+  const title = `${signalMark(signal)} ${action}${d.review?.status === 'pending' ? ': a person checks first' : answered ? ': a person\'s answer' : ''}${outcome.kind === 'none' ? ' (shadow)' : ''}`;
   return {
     externalId: d.decision_id, conclusion: 'neutral', title, summary: lines.join('\n'),
     ...(view.head !== undefined && { text: checkText(d, view.head, view.station) }),
@@ -880,7 +1067,7 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' },
 }
 
 /** The check run for a test decision or an answer that is not a decision: neutral, and nothing was done. */
-export function notActedOnOutput(profile: string, answer: Exclude<CheckedAnswer, { kind: 'decision' }>, note?: string): CheckRunOutput {
+export function notActedOnOutput(profile: string, answer: NotActed, note?: string): CheckRunOutput {
   const lines = answer.kind === 'test'
     ? [
       `Pointsman answered with a **test decision** for the profile \`${profile}\` (\`test: true\`, decided **${answer.decision.action}**). A test decision is not logged, so nothing was done for it.`,
@@ -889,16 +1076,22 @@ export function notActedOnOutput(profile: string, answer: Exclude<CheckedAnswer,
       '',
       `Decision \`${answer.decision.decision_id}\``,
     ]
-    : [
-      `Pointsman's answer for the profile \`${profile}\` is not a decision the connector can use: ${answer.reason}. Nothing was done for it, and it is not tried again until the next event or recheck.`,
-      '',
-      'This check never blocks.',
-    ];
+    : answer.kind === 'unreadable'
+      ? [
+        `Pointsman refused to read back the decision a person was asked about for the profile \`${profile}\` (${answer.status}), so their answer could not be read. Nothing was done for it; it is read again on the next event or recheck.`,
+        '',
+        'This check never blocks.',
+      ]
+      : [
+        `Pointsman's answer for the profile \`${profile}\` is not a decision the connector can use: ${answer.reason}. Nothing was done for it, and it is not tried again until the next event or recheck.`,
+        '',
+        'This check never blocks.',
+      ];
   if (note) lines.splice(1, 0, '', note);
   return {
-    externalId: answer.kind === 'test' ? answer.decision.decision_id : 'invalid-answer',
+    externalId: answer.kind === 'test' ? answer.decision.decision_id : answer.kind === 'unreadable' ? 'unreadable-answer' : 'invalid-answer',
     conclusion: 'neutral',
-    title: answer.kind === 'test' ? 'test decision: nothing done' : 'invalid answer: nothing done',
+    title: answer.kind === 'test' ? 'test decision: nothing done' : answer.kind === 'unreadable' ? 'answer could not be read: nothing done' : 'invalid answer: nothing done',
     summary: lines.join('\n'),
     // Replaces the details of an earlier decision on this check run.
     text: 'No decision to show: nothing was done for this profile. The decision comment shows no decision from this answer.',

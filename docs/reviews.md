@@ -25,13 +25,34 @@ curl -s -X POST "$POINTSMAN/v1/reviews/$ID/resolve" -H "authorization: Bearer $T
   kept (`source: model`). `correct` is also stored as feedback, so it counts
   in the accuracy numbers (see [decision-log.md](decision-log.md)).
 - A review can be resolved once. A second resolve, also at the same moment,
-  answers `409 not_pending`.
+  answers `409 not_pending`. So does a resolve after the review was
+  [closed](#closing-a-review).
 - `GET /v1/decisions/{id}` shows `review` (status, final action and answers)
   and `callback` (delivery status).
 - For a profile with `requires`, a newer decision for the same report
   replaces the earlier one: the earlier review leaves the queue with status
   `superseded`, cannot be resolved (`409 not_pending`), and sends no
   callback. See [decision-chains.md](decision-chains.md).
+
+## Closing a review
+
+The client that made a decision can close its pending review when the
+question no longer applies, for example the GitHub connector after a push
+(the review was about the older commit):
+
+```sh
+curl -s -X POST "$POINTSMAN/v1/reviews/$ID/close" -H "authorization: Bearer $TOKEN"
+```
+
+- Only the client that made the decision may close it. For any other token,
+  also one that may use the profile, the decision does not exist (`404`).
+  A test token may not close (`403`).
+- The review leaves the queue with status `superseded`, as for a decision
+  that a newer one replaced. No callback is sent.
+- A review can be closed or resolved, once. A resolve after the close, or a
+  second close, answers `409 not_pending`; so does a close after a resolve.
+  Of a close and a resolve at the same moment, only one succeeds.
+- `GET /v1/stats/{profile}` counts closed reviews under `superseded`.
 
 ## Callbacks
 

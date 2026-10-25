@@ -232,7 +232,39 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '409':
-          description: The decision has no pending review (not a review, or already resolved), or its profile version is gone.
+          description: The decision has no pending review (not a review, already resolved, or closed as superseded), or its profile version is gone.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+  /v1/reviews/{id}/close:
+    post:
+      operationId: closeReview
+      summary: Close a pending review of your own decision
+      description: |
+        The review leaves the queue as `superseded`, for example when the
+        question it asks no longer applies (the GitHub connector closes the
+        review of an older commit after a push). Only the client that made
+        the decision may close it; for any other token the decision does not
+        exist (404). No body. No callback is sent, and a later resolve gets
+        409 `not_pending`.
+      parameters:
+        - { $ref: '#/components/parameters/DecisionId' }
+      responses:
+        '200':
+          description: Closed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClosedReview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TestToken' }
+        '404':
+          description: Unknown decision, one whose profile this token may not use, or one another client made.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: The decision has no pending review (not a review, already resolved, or closed).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -707,7 +739,7 @@ components:
           properties:
             pending: { type: integer, minimum: 0 }
             resolved: { type: integer, minimum: 0 }
-            superseded: { type: integer, minimum: 0, description: Reviews closed because a newer decision replaced theirs. }
+            superseded: { type: integer, minimum: 0, description: Reviews closed because a newer decision replaced theirs, or closed by the client that made them. }
             final_actions:
               type: object
               description: Resolved reviews per final action.
@@ -771,7 +803,7 @@ components:
       required: [status]
       properties:
         status:
-          description: '`superseded`: a newer decision replaced this one while the review was open.'
+          description: '`superseded`: a newer decision replaced this one while the review was open, or the client that made it closed the review.'
           type: string
           enum: [pending, resolved, superseded]
         resolved_at: { type: string, format: date-time }
@@ -822,6 +854,18 @@ components:
           type: string
           enum: [pending, none]
           description: pending when the final answer will be sent to the callback_url.
+    ClosedReview:
+      type: object
+      additionalProperties: false
+      required: [decision_id, review]
+      properties:
+        decision_id: { type: string, format: uuid }
+        review:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { type: string, const: superseded }
     FeedbackRequest:
       type: object
       additionalProperties: false

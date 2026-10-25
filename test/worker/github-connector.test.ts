@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, botReviewOf, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, actingScope, actionOf, botReviewOf, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewSummary, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -84,22 +84,47 @@ const decision = (profile: string, extra: Partial<Decision> = {}): Decision => (
 
 function fakeEngine(answer: (profile: string) => Response = (p) => Response.json(decision(p))) {
   const calls: { profile: string; key: string; body: any; auth: string }[] = [];
+  /** The decisions it gave, by id, as GET /v1/decisions/{id} reads them back: a test sets a person's answer here. */
+  const logged = new Map<string, any>();
+  /** The get and close calls, in order. */
+  const reads: { op: 'get' | 'close'; id: string; auth: string }[] = [];
+  /** A test can make get or close answer otherwise. */
+  const override: { get?: (id: string) => Response; close?: (id: string) => Response } = {};
   const api: EngineApi = {
     url: 'https://pointsman.example.org',
     fetch: async (url, init) => {
-      const profile = decodeURIComponent(url.split('/v1/decide/')[1]!);
       const headers = new Headers(init.headers);
+      const byId = /\/v1\/(decisions|reviews)\/([^/]+)(\/close)?$/.exec(url);
+      if (byId) {
+        const id = decodeURIComponent(byId[2]!);
+        const op = byId[3] ? 'close' : 'get';
+        reads.push({ op, id, auth: headers.get('authorization')! });
+        if (override[op]) return override[op]!(id);
+        const record = logged.get(id);
+        if (!record) return Response.json({ error: { code: 'decision_not_found', message: 'unknown decision' } }, { status: 404 });
+        if (op === 'get') return Response.json(record);
+        if (record.review?.status !== 'pending') return Response.json({ error: { code: 'not_pending', message: 'x' } }, { status: 409 });
+        record.review = { status: 'superseded' };
+        return Response.json({ decision_id: id, review: { status: 'superseded' } });
+      }
+      const profile = decodeURIComponent(url.split('/v1/decide/')[1]!);
       const sent = JSON.parse(String(init.body));
       calls.push({ profile, key: headers.get('idempotency-key')!, body: sent, auth: headers.get('authorization')! });
       const res = answer(profile);
       // As the engine does: a decision echoes the ref it was sent (one that sets its own ref keeps it).
       if (!res.ok) return res;
-      const out = await res.clone().json().catch(() => undefined);
-      return out !== null && typeof out === 'object' && !Array.isArray(out) && !('ref' in out) ? Response.json({ ...out, ref: sent.ref }, { status: res.status }) : res;
+      const out: any = await res.clone().json().catch(() => undefined);
+      const plain = out !== null && typeof out === 'object' && !Array.isArray(out);
+      if (plain && typeof out.decision_id === 'string') logged.set(out.decision_id, { client: 'github-connector', feedback: [], ref: sent.ref, ...structuredClone(out) });
+      return plain && !('ref' in out) ? Response.json({ ...out, ref: sent.ref }, { status: res.status }) : res;
     },
   };
+  /** A person answers in Pointsman's review queue. */
+  const resolve = (id: string, finalAction: string) => {
+    logged.get(id).review = { status: 'resolved', resolved_by: 'someone@example.org', final_action: finalAction, resolved_at: '2026-10-25T00:00:00Z' };
+  };
   // The HTTP adapter, as the connector Worker builds it.
-  return { engine: httpEngine(api, `pm_${crypto.randomUUID()}`), api, calls };
+  return { engine: httpEngine(api, `pm_${crypto.randomUUID()}`), api, calls, logged, reads, override, resolve };
 }
 
 async function sign(body: string, secret = SECRET): Promise<string> {
@@ -627,17 +652,7 @@ describe('actions (switched on per profile action)', () => {
     await work.run();
     expect(ops(gh.calls)).toEqual([]);
     expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('no approval of this commit to keep');
-    action = 'light';
-    await event();
-    await work.run();
-    // Still done, but a person checks it first: fail-safe, withdrawn.
-    action = 'done';
-    review = { status: 'pending' };
-    await event();
-    await work.run();
-    expect(gh.github.approvals).toHaveLength(0);
-    review = undefined;
-    // An edit changed the class: pr-risk is no longer approvable, so the next step asks a person. Withdrawn too.
+    // An edit changed the class: pr-risk is no longer approvable, so the next step asks a person. Withdrawn.
     action = 'light';
     await event();
     await work.run();
@@ -652,6 +667,16 @@ describe('actions (switched on per profile action)', () => {
     await work.run();
     gh.github.state.head = HEAD2;
     action = 'done';
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(0);
+    // Still done, but a person checks it first: fail-safe, withdrawn (the question is kept for this head from then on).
+    action = 'light';
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(1);
+    action = 'done';
+    review = { status: 'pending' };
     await event();
     await work.run();
     expect(gh.github.approvals).toHaveLength(0);
@@ -1070,12 +1095,72 @@ describe('chains: profiles that build on each other', () => {
     expect(gh.calls.filter((c) => c.op === 'approve')).toHaveLength(1);
   });
 
-  it('never keeps a decision a person still checks', async () => {
+  it('keeps a decision a person still checks as the question: read back, not asked again, and sent on as it is', async () => {
     const { work, pm, event } = await chained(chain(), {}, (p) => Response.json(decision(p, { action: 'normal', review: { status: 'pending' } })));
     await work.run();
     await event();
     await work.run();
-    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(2);
+    expect(pm.calls.filter((c) => c.profile === RISK)).toHaveLength(1);
+    const risk = pm.calls.find((c) => c.profile === RISK)!;
+    // NEXT waits for a person too: kept as well; both read back on the second run.
+    expect(pm.calls.filter((c) => c.profile === NEXT)).toHaveLength(1);
+    expect(pm.reads.map((r) => r.op)).toEqual(['get', 'get']);
+    expect(pm.reads[0]!.id).toBe([...pm.logged.keys()][0]);
+    expect(risk.body.ref).toBe(`github:${REPO}#7@${HEAD}`);
+  });
+
+  it('a kept decision is made anew once a person answers the question it rests on', async () => {
+    const runs = { [RISK]: {}, [NEXT]: { requires: { risk: RISK }, oncePerHead: { rerun: [] } } };
+    const { work, pm, event } = await chained(chain(runs), {},
+      (p) => Response.json(decision(p, p === RISK ? { action: 'review', review: { status: 'pending' } } : { action: 'wait' })));
+    await work.run();
+    await event();
+    await work.run();
+    // The question to a person is kept, and so is the decision resting on it.
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT]);
+    pm.resolve([...pm.logged.keys()][0]!, 'normal');
+    await event();
+    await work.run();
+    // The answer changes what NEXT rests on: asked again, with the same decision id of RISK.
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, NEXT]);
+    expect(pm.calls[2]!.body.decisions).toEqual({ risk: [...pm.logged.keys()][0] });
+  });
+
+  it('a question rests on what the required decision says, not its id: answerable across runs, asked anew when that changes', async () => {
+    const runs = { [RISK]: {}, [NEXT]: { requires: { risk: RISK } } };
+    let riskAction = 'normal';
+    const { work, pm, gh, event } = await chained({ ...chain(runs), actions: { [NEXT]: { approve: { do: 'approve' as const } } } }, {},
+      (p) => Response.json(decision(p, p === RISK ? { action: riskAction } : { action: 'review', review: { status: 'pending' } })));
+    await work.run();
+    const nextId = [...pm.logged.values()].find((d) => d.profile === NEXT).decision_id;
+    // RISK is decided anew (a new id) with the same action: NEXT keeps its one question, nothing is closed.
+    await event();
+    await work.run();
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, RISK]);
+    expect(pm.reads.map((r) => r.op)).toEqual(['get']);
+    // An answer given between two runs is acted on.
+    pm.resolve(nextId, 'approve');
+    await event();
+    await work.run();
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, RISK, RISK]);
+    expect(gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD]);
+    // RISK says something else now: NEXT is asked anew (its answered question needs no close), and the approval goes.
+    riskAction = 'risky';
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await event();
+    await work.run();
+    expect(errors.mock.calls.join(' ')).toContain(`decision ${nextId} (resolved) rests on what changed; dropped and asked anew`);
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, RISK, RISK, RISK, NEXT]);
+    expect(gh.github.approvals).toEqual([]);
+    // And a pending question is closed when RISK changes again.
+    const second = [...pm.logged.values()].filter((d) => d.profile === NEXT).at(-1).decision_id;
+    riskAction = 'normal';
+    await event();
+    await work.run();
+    errors.mockRestore();
+    expect(pm.reads.filter((r) => r.op === 'close').map((r) => r.id)).toEqual([second]);
+    expect(pm.logged.get(second).review).toEqual({ status: 'superseded' });
+    expect(pm.calls.filter((c) => c.profile === NEXT)).toHaveLength(3);
   });
 
   it('a kept decision that rests on an earlier one is asked again when that one is new', async () => {
@@ -1231,6 +1316,254 @@ describe('chains: profiles that build on each other', () => {
   });
 });
 
+describe('asking a person: the question stays until it is answered or the head moves', () => {
+  const APPROVE = { 'pr-docs-check': { light: { do: 'approve' as const }, review: { do: 'request_reviewer' as const, reviewers: ['octocat'] } } };
+  const ops = (calls: { op: string }[]) => calls.map((c) => c.op).filter((o) => !['get', 'find', 'create', 'update', 'approvals'].includes(o));
+  const pendingReview = (p: string) => Response.json(decision(p, { action: 'review', review: { status: 'pending' } }));
+
+  async function asking(answer: (p: string) => Response = pendingReview, actions: ConnectorSettings['actions'] = APPROVE, extra: Partial<ConnectorSettings> = {}) {
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    const pm = fakeEngine(answer);
+    const work = pullRequestWork(settings({ profiles: ['pr-docs-check'], actions, comment: { profiles: ['pr-docs-check'] }, ...extra }), mem.storage, pm.engine, gh.github);
+    const event = () => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await event();
+    const again = async () => { await event(); await work.run(); };
+    const lastCheck = () => gh.calls.filter((c) => c.output).at(-1)!.output!;
+    return { work, mem, gh, pm, event, again, lastCheck };
+  }
+
+  it('one decision per head while a person checks it: read back on every run, nothing done, shown as waiting', async () => {
+    const { work, gh, pm, again, lastCheck } = await asking();
+    await work.run();
+    await again();
+    await again();
+    expect(pm.calls).toHaveLength(1);
+    const id = pm.calls.length === 1 ? [...pm.logged.keys()][0]! : '';
+    expect(pm.reads).toEqual([{ op: 'get', id, auth: expect.stringMatching(/^Bearer pm_/) }, { op: 'get', id, auth: expect.stringMatching(/^Bearer pm_/) }]);
+    // Nothing done: not the mapped request for review, no approval.
+    expect(ops(gh.calls).filter((o) => o !== 'comment' && o !== 'findOwnComment' && o !== 'updateComment')).toEqual([]);
+    expect(lastCheck().title).toBe('🔴 review: a person checks first');
+    expect(lastCheck().summary).toContain('Waiting for a person');
+    expect(lastCheck().summary).toContain('a person checks this decision first');
+  });
+
+  it('a person\'s answer in the queue is read back and acted on, once, through the same table and guards', async () => {
+    const { work, gh, pm, mem, again, lastCheck } = await asking();
+    await work.run();
+    const id = [...pm.logged.keys()][0]!;
+    pm.resolve(id, 'light');
+    await again();
+    expect(gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD]);
+    expect(gh.calls.find((c) => c.op === 'approve')!.body).toContain(id);
+    expect(lastCheck().title).toBe('🟡 light: a person\'s answer');
+    expect(lastCheck().summary).toContain('Pointsman decided **review**');
+    expect(lastCheck().summary).toContain('A person answered **light**');
+    expect(lastCheck().summary).toContain('Done: approved this commit');
+    // Who answered is not shown.
+    expect(JSON.stringify(gh.calls)).not.toContain('someone@example.org');
+    const comment = gh.calls.filter((c) => c.op === 'comment' || c.op === 'updateComment').at(-1)!.body!;
+    expect(comment).toContain('| `pr-docs-check` | 🟡 decided: light | `light` | a person |');
+    expect(comment).toContain('a person answered: light');
+    // The row shows what is acted on; the details why the rules asked a person, with the answer.
+    expect(comment).toContain('<summary><code>pr-docs-check</code>: why <code>review</code>; a person answered <code>light</code></summary>');
+    expect(comment).toContain('━ review');
+    // The answer stands for this head: not read again, no new decision, not approved twice.
+    await again();
+    expect(pm.calls).toHaveLength(1);
+    expect(pm.reads.filter((r) => r.op === 'get')).toHaveLength(1);
+    expect(gh.calls.filter((c) => c.op === 'approve')).toHaveLength(1);
+    expect(lastCheck().summary).toContain('already done for this commit');
+    expect((mem.data.get('asked') as any).byProfile['pr-docs-check'].decision.review).toEqual({ status: 'resolved', final_action: 'light' });
+  });
+
+  it('an answer for an older head is never acted on: the head moved, so the old question is closed and Pointsman decides anew', async () => {
+    const { work, gh, pm, again } = await asking();
+    await work.run();
+    const old = [...pm.logged.keys()][0]!;
+    gh.github.state.head = HEAD2;
+    pm.resolve(old, 'light');
+    await again();
+    expect(gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+    // Answered already: closing it gets 409, which is fine.
+    expect(pm.reads.map((r) => [r.op, r.id])).toEqual([['close', old]]);
+    expect(pm.calls.map((c) => c.body.ref)).toEqual([`github:${REPO}#7@${HEAD}`, `github:${REPO}#7@${HEAD2}`]);
+  });
+
+  it('a push closes the pending question of the old head; a close that fails never holds up the new head, is tried again (spaced), then given up', async () => {
+    const { work, gh, pm, mem, again } = await asking();
+    let t = 1_000_000;
+    work.now = () => t;
+    await work.run();
+    const old = [...pm.logged.keys()][0]!;
+    gh.github.state.head = HEAD2;
+    pm.override.close = () => new Response('busy', { status: 503 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    // Decided on the new head all the same; the close is listed for a later run.
+    expect(pm.calls).toHaveLength(2);
+    expect((mem.data.get('asked') as any).close).toEqual([{ id: old, since: t, tries: 1, lastTry: t }]);
+    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${old} for ${REPO}#7: 503; tried again later`);
+    // A burst of events within 5 minutes does not try again.
+    delete pm.override.close;
+    await again();
+    await again();
+    expect(pm.reads.filter((r) => r.op === 'close')).toHaveLength(1);
+    t += 5 * 60_000;
+    await again();
+    expect(pm.logged.get(old).review).toEqual({ status: 'superseded' });
+    expect(pm.reads.filter((r) => r.op === 'close').map((r) => r.id)).toEqual([old, old]);
+    // The new head has its own question, kept as before.
+    expect(pm.calls).toHaveLength(2);
+    const fresh = [...pm.logged.keys()][1]!;
+    expect((mem.data.get('asked') as any)).toMatchObject({ head: HEAD2, close: [] });
+    expect((mem.data.get('asked') as any).byProfile['pr-docs-check'].decision.decision_id).toBe(fresh);
+    // An engine without the close call (older than the connector): logged, tried again, given up after a day.
+    pm.override.close = () => { throw new TypeError('The RPC receiver does not implement the method "close".'); };
+    gh.github.state.head = HEAD;
+    await again();
+    expect((mem.data.get('asked') as any).close).toEqual([{ id: fresh, since: t, tries: 1, lastTry: t }]);
+    t += 24 * 3600_000;
+    await again();
+    expect((mem.data.get('asked') as any).close).toEqual([]);
+    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${fresh} for ${REPO}#7: The RPC receiver does not implement the method "close".; given up`);
+    // A refusal is logged and not tried again.
+    delete pm.override.close;
+    const third = [...pm.logged.keys()].at(-1)!;
+    pm.override.close = () => Response.json({ error: { code: 'forbidden', message: 'x' } }, { status: 403 });
+    gh.github.state.head = HEAD2;
+    await again();
+    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${third} for ${REPO}#7: 403`);
+    expect((mem.data.get('asked') as any).close).toEqual([]);
+    errors.mockRestore();
+  });
+
+  it('a close of a closed pull request that fails still lets the comment show it', async () => {
+    const { work, gh, pm, again } = await asking();
+    await work.run();
+    gh.github.state.open = false;
+    pm.override.close = () => new Response('busy', { status: 503 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = gh.calls.filter((c) => c.op === 'updateComment').length;
+    await again();
+    errors.mockRestore();
+    expect(gh.calls.filter((c) => c.op === 'updateComment').length).toBe(before + 1);
+  });
+
+  it('a closed pull request closes its open questions', async () => {
+    const { work, gh, pm, mem, again } = await asking();
+    await work.run();
+    const id = [...pm.logged.keys()][0]!;
+    gh.github.state.open = false;
+    await again();
+    expect(pm.logged.get(id).review).toEqual({ status: 'superseded' });
+    expect((mem.data.get('asked') as any)).toEqual({ head: '', byProfile: {}, close: [] });
+    // Reopened: asked anew.
+    gh.github.state.open = true;
+    await again();
+    expect(pm.calls).toHaveLength(2);
+  });
+
+  it('an answer that is not a valid action is not acted on, and the question stays (no new decision)', async () => {
+    const { work, gh, pm, again, lastCheck } = await asking();
+    await work.run();
+    const id = [...pm.logged.keys()][0]!;
+    pm.logged.get(id).review = { status: 'resolved', final_action: 'Not An Action' };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    await again();
+    expect(lastCheck().title).toBe('invalid answer: nothing done');
+    expect(errors.mock.calls.join(' ')).toContain('"review"');
+    expect(errors.mock.calls.join(' ')).not.toContain('Not An Action');
+    errors.mockRestore();
+    expect(ops(gh.calls).filter((o) => o === 'approve' || o === 'request')).toEqual([]);
+    expect(pm.calls).toHaveLength(1);
+    // Another decision read back under the id: not acted on either.
+    pm.logged.get(id).review = { status: 'resolved', final_action: 'light' };
+    pm.override.get = () => Response.json({ ...pm.logged.get(id), decision_id: crypto.randomUUID() });
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    quiet.mockRestore();
+    expect(lastCheck().title).toBe('invalid answer: nothing done');
+    expect(gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+  });
+
+  it('a question closed in Pointsman, or gone, is asked anew once; an engine that cannot read it is tried again', async () => {
+    const { work, pm, again } = await asking();
+    await work.run();
+    const first = [...pm.logged.keys()][0]!;
+    pm.logged.get(first).review = { status: 'superseded' };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    expect(pm.calls).toHaveLength(2);
+    pm.logged.delete([...pm.logged.keys()][1]!);
+    await again();
+    expect(pm.calls).toHaveLength(3);
+    errors.mockRestore();
+    pm.override.get = () => new Response('', { status: 502 });
+    await expect(again()).rejects.toBeInstanceOf(RetryError);
+    expect(pm.calls).toHaveLength(3);
+  });
+
+  it('a question whose title, description or settings changed is closed and asked anew, so an answer never rests on older state', async () => {
+    const { work, gh, pm, mem, again } = await asking();
+    await work.run();
+    const first = [...pm.logged.keys()][0]!;
+    gh.github.state.title = 'Docs, and a workflow';
+    pm.resolve(first, 'light');
+    await again();
+    // The answer to the old question is not acted on: closed (409, answered already) and asked anew.
+    expect(gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+    expect(pm.calls).toHaveLength(2);
+    expect(pm.reads.map((r) => [r.op, r.id])).toEqual([['close', first]]);
+    const second = [...pm.logged.keys()][1]!;
+    // A settings change (another mapped action) asks anew too.
+    const changed = pullRequestWork(settings({ profiles: ['pr-docs-check'], actions: { 'pr-docs-check': { light: { do: 'label', labels: ['docs-only'] } } }, comment: { profiles: ['pr-docs-check'] } }),
+      mem.storage, pm.engine, gh.github);
+    await changed.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await changed.run();
+    errors.mockRestore();
+    expect(pm.calls).toHaveLength(3);
+    expect(pm.logged.get(second).review).toEqual({ status: 'superseded' });
+  });
+
+  it('a question that cannot be read back (refused) is shown on the check run, nothing is done, and it stays', async () => {
+    const { work, pm, again, lastCheck } = await asking();
+    await work.run();
+    pm.override.get = () => Response.json({ error: { code: 'forbidden', message: 'x' } }, { status: 403 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    errors.mockRestore();
+    expect(lastCheck().title).toBe('answer could not be read: nothing done');
+    expect(lastCheck().summary).toContain('(403)');
+    expect(pm.calls).toHaveLength(1);
+    delete pm.override.get;
+    await again();
+    expect(lastCheck().title).toBe('🔴 review: a person checks first');
+  });
+
+  it('a question of a profile taken out of the settings is closed', async () => {
+    const { work, gh, pm, mem } = await asking();
+    await work.run();
+    const id = [...pm.logged.keys()][0]!;
+    const other = pullRequestWork(settings({ profiles: ['workflow-check'] }), mem.storage, pm.engine, gh.github);
+    await other.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await other.run();
+    expect(pm.logged.get(id).review).toEqual({ status: 'superseded' });
+    expect(Object.keys((mem.data.get('asked') as any).byProfile)).toEqual(['workflow-check']);
+  });
+
+  it('a decision that needs no person is not kept as a question', async () => {
+    const { work, pm, mem, again } = await asking((p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    await again();
+    expect(pm.calls).toHaveLength(2);
+    expect(pm.reads).toEqual([]);
+    expect(mem.data.get('asked')).toBeUndefined();
+  });
+});
+
 describe('the engine\'s answer: checked before anything is done (checkDecision)', () => {
   const PROFILE = 'pr-docs-check';
   const REF = `github:${REPO}#7@${HEAD}`;
@@ -1265,6 +1598,8 @@ describe('the engine\'s answer: checked before anything is done (checkDecision)'
       ['"profile"', { ...full(), profile: 'other' }], ['"profile"', { ...full(), profile: undefined }],
       ['"ref"', { ...full(), ref: `github:${REPO}#7@${HEAD2}` }], ['"ref"', { ...full(), ref: undefined }],
       ['"review"', { ...full(), review: { status: 'resolved' } }], ['"review"', { ...full(), review: { status: 'Pending' } }],
+      ['"review"', { ...full(), review: { status: 'resolved', final_action: 'Approve' } }], ['"review"', { ...full(), review: { status: 'resolved', final_action: 7 } }],
+      ['"review"', { ...full(), review: { status: 'resolved', final_action: big } }], ['"review"', { ...full(), review: { status: 'superseded' } }],
       ['"facts"', { ...full(), facts: { 'a`b': { missing: true, reason: 'r' } } }], ['"facts"', { ...full(), facts: { '': { missing: true } } }],
       ['"profile_version"', { ...full(), profile_version: 0 }], ['"profile_version"', { ...full(), profile_version: '3' }],
       ['"rule"', { ...full(), rule: undefined }], ['"rule"', { ...full(), rule: -1 }], ['"rule"', { ...full(), rule: 1.5 }],
@@ -1280,6 +1615,13 @@ describe('the engine\'s answer: checked before anything is done (checkDecision)'
       expect(reason.length).toBeLessThan(80);
       expect(reason).not.toContain('ZQ');
     }
+  });
+
+  it('a person\'s answer read back is a decision whose action is the answer (actionOf)', () => {
+    const d = { ...full(), action: 'review', review: { status: 'resolved', final_action: 'light', resolved_by: 'someone' } };
+    expect(checkDecision(d, asked)).toEqual({ kind: 'decision', decision: d });
+    expect(actionOf(d)).toBe('light');
+    expect(actionOf({ action: 'review', review: { status: 'pending' } })).toBe('review');
   });
 
   it('marks a test decision as one', () => {

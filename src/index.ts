@@ -3,7 +3,8 @@
 
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
-import { decideInternal, internalClient, type ApiAnswer } from './internal';
+import type { TokenRecord } from './auth';
+import { byIdInternal, closeAnswer, decideInternal, getAnswer, internalClient, resolveInternal, type ApiAnswer } from './internal';
 import { KvTokenStore } from './auth-kv';
 import { ModuleRouter, type FactProvider } from './facts';
 import type { Connector, ConnectorEntry, ConnectorMessage, FactModuleEntry } from '@pointsman/module-api';
@@ -289,23 +290,42 @@ const served = worker();
  * Internal calls (docs/adapters.md#internal-calls): a Worker of the same
  * deployment, for example the GitHub connector, binds this entrypoint
  * (`"services": [{ "binding": "POINTSMAN", "service": "<this Worker>",
- * "entrypoint": "InternalEngine" }]`) and calls `decide` without a token.
+ * "entrypoint": "InternalEngine" }]`) and calls `decide`, `get`, `resolve`
+ * and `close` without a token.
  *
  * A named entrypoint is not reachable from the internet: the Worker's URL and
  * routes reach only the default export. Only a Worker in the same Cloudflare
  * account with a binding to it can call it. The engine, not the caller,
  * decides who the caller is: every call is made as the client in
- * INTERNAL_CLIENT, with its profiles, through the same code as
- * POST /v1/decide/{profile} after the token check. Without INTERNAL_CLIENT
- * every call is refused.
+ * INTERNAL_CLIENT, with its profiles, through the same code as the HTTP
+ * route after the token check. Without INTERNAL_CLIENT every call is refused.
  */
 export class InternalEngine extends WorkerEntrypoint<Env> {
   /** As POST /v1/decide/{profile}: the status and the JSON body. */
   async decide(profile: unknown, request: unknown, options?: unknown): Promise<ApiAnswer> {
+    return this.#call((deps, client) => decideInternal(deps, client, profile, request, options));
+  }
+
+  /** As GET /v1/decisions/{id}. */
+  async get(id: unknown): Promise<ApiAnswer> {
+    return this.#call((deps, client) => byIdInternal(deps, client, id, getAnswer));
+  }
+
+  /** As POST /v1/reviews/{id}/resolve; the first callback is sent after the answer. */
+  async resolve(id: unknown, request: unknown): Promise<ApiAnswer> {
+    return this.#call((deps, client) => resolveInternal(deps, client, id, request, async (delivery) => this.ctx.waitUntil(delivery)));
+  }
+
+  /** As POST /v1/reviews/{id}/close: only for decisions INTERNAL_CLIENT made. */
+  async close(id: unknown): Promise<ApiAnswer> {
+    return this.#call((deps, client) => byIdInternal(deps, client, id, closeAnswer));
+  }
+
+  async #call(work: (deps: Deps, client: TokenRecord) => Promise<ApiAnswer>): Promise<ApiAnswer> {
     try {
       const env = this.env as unknown as PointsmanEnv;
       const client = internalClient(env.INTERNAL_CLIENT);
-      return await decideInternal(depsFor(env), client, profile, request, options);
+      return await work(depsFor(env), client);
     } catch (err) {
       if (err instanceof ConfigError) {
         // The message names the setting, never its value.

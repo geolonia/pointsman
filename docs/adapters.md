@@ -48,7 +48,7 @@ An adapter must:
 
 - Store a decision before the engine returns it. If storing fails, the call fails, so no client acts on a decision that is not logged. (Decisions for a test token are not logged, by design: they are marked `test`.)
 - Keep an idempotency key unique per client: of two inserts with the same key, exactly one succeeds.
-- Resolve a review only while it is pending, and claim a callback for one caller only (`resolve`, `claimCallback` are compare-and-set).
+- Resolve or close a review only while it is pending, close it only for the client that made the decision, and claim a callback for one caller only (`resolve`, `closeReview`, `claimCallback` are compare-and-set).
 - Keep decisions as they were written: only review, callback and discard fields change later.
 - Answer `recentFor(client, profiles, since, limit)` with that client's decisions of those profiles since a time, newest first, without discarded ones, and never more than `limit`. Facts read the log through it ([modules.md](modules.md#facts-from-the-decision-log)); the engine limits it to the profiles the client's token may use.
 
@@ -91,7 +91,7 @@ An adapter must:
 
 ### Engine client (a connector's way to the engine)
 
-Interface: `EngineClient` in `packages/github/src/connector/engine.ts`, with the one call the GitHub connector makes: `decide(profile, body, { idempotencyKey })`, the same as `POST /v1/decide/{profile}`. It answers the HTTP status and, with a 2xx status, the decision. The connector's logic (`pull-request.ts`) uses only this interface. The settings choose the adapter (`engineSetting`):
+Interface: `EngineClient` in `packages/github/src/connector/engine.ts`, with the calls the GitHub connector makes: `decide(profile, body, { idempotencyKey })`, the same as `POST /v1/decide/{profile}`; `get(id)`, the same as `GET /v1/decisions/{id}`, to read back a decision a person checks; and `close(id)`, the same as `POST /v1/reviews/{id}/close`. Each answers the HTTP status and, with a 2xx status, the body. The connector's logic (`pull-request.ts`) uses only this interface. The settings choose the adapter (`engineSetting`):
 
 | Adapter | Where | Chosen by |
 | --- | --- | --- |
@@ -118,15 +118,15 @@ An adapter must:
 
 An internal call reaches the engine without a token, through a channel of the runtime that is not reachable from outside. On Cloudflare that is a named entrypoint of the engine Worker, `InternalEngine` (`src/index.ts`), which another Worker reaches through a service binding with `"entrypoint": "InternalEngine"`.
 
-Who can call it: only a Worker in the same Cloudflare account that has a binding to it. A named entrypoint has no URL: the Worker's `workers.dev` address and routes reach only its default export (the HTTP API). So the trust boundary is the account: anyone who can deploy a Worker to it can call the entrypoint. That person (or a Cloudflare API token with Workers Scripts: Edit, which is account-wide) can already change the engine Worker itself or bind its token store and decision log, so the entrypoint gives no one more than they have. Keep that permission to the people who deploy the engine. Every Worker bound to the entrypoint decides as the same client, with no expiry; there is no revoking one caller. Removing `INTERNAL_CLIENT` turns internal calls off for all of them.
+Who can call it: only a Worker in the same Cloudflare account that has a binding to it. A named entrypoint has no URL: the Worker's `workers.dev` address and routes reach only its default export (the HTTP API). So the trust boundary is the account: anyone who can deploy a Worker to it can call the entrypoint. That person (or a Cloudflare API token with Workers Scripts: Edit, which is account-wide) can already change the engine Worker itself or bind its token store and decision log, so the entrypoint gives no one more than they have. Keep that permission to the people who deploy the engine. Every Worker bound to the entrypoint acts as the same client, with no expiry; there is no revoking one caller. `resolve` checks the profile scope as the HTTP route does, not who made the decision: a bound Worker can resolve any pending review of `INTERNAL_CLIENT`'s profiles, also one another client made, and the GitHub connector acts on such an answer ([github-connector.md](github-connector.md#asking-a-person)). Only `close` is limited to the decisions of the client itself. Removing `INTERNAL_CLIENT` turns internal calls off for all of them.
 
 Who the caller is: the engine decides, not the caller. The engine's setting `INTERNAL_CLIENT` names one client and the profiles it may use, for example `{"client":"github-connector","profiles":["pr-docs-check","workflow-check"]}`. Every internal call is made as that client. Without the setting, every internal call is refused (500 `not_configured`, the log names the setting). `"*"` is not allowed: the profiles are always listed.
 
-What it checks: after the token check, the HTTP route and the internal call run the same code (`decideAnswer` in `src/internal.ts`). So an internal call passes the same checks as the client's token would: the profile scope (a profile outside `INTERNAL_CLIENT` gets the same 403), the body, the idempotency key (per client), the decision log under the client's name, and facts from the decision log, which see only that client's decisions of its profiles. The internal client is never a test token and never expires. The body goes through JSON on the way in, so only JSON values reach the engine, as over HTTP.
+What it checks: after the token check, the HTTP route and the internal call run the same code (`decideAnswer`, `getAnswer`, `resolveAnswer` and `closeAnswer` in `src/internal.ts`, for `decide`, `get`, `resolve` and `close`). So an internal call passes the same checks as the client's token would: the profile scope (a profile outside `INTERNAL_CLIENT` gets the same 403, a decision of another profile the same 404), the body, the idempotency key (per client), who may close a review (only the client that made the decision), the decision log under the client's name, and facts from the decision log, which see only that client's decisions of its profiles. The internal client is never a test token and never expires. The body goes through JSON on the way in, so only JSON values reach the engine, as over HTTP.
 
 What differs from HTTP: edge rules on `/v1/` (a firewall, Cloudflare rate limits) do not see internal calls, as for a connector inside the engine Worker ([connectors.md](connectors.md)). The engine itself has no rate limits on either path.
 
-Today it serves one client per deployment, for `decide` only. A second internal caller or another call would need its own setting.
+Today it serves one client per deployment, for `decide`, `get`, `resolve` and `close`. A second internal caller or another call would need its own setting.
 
 ## Not yet
 

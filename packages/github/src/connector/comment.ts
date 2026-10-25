@@ -6,11 +6,12 @@
 // (pull-request.ts).
 //
 // Only what the check run shows goes in: the action, the rule, the facts'
-// names and why one is missing, the AI answers' values, a pending review.
+// names and why one is missing, the AI answers' values, a pending review or
+// a person's answer (never who gave it).
 // Never text from the pull request, and every value is checked or cleaned
 // first, so nothing in it can add markdown, HTML or a mention.
 
-import type { Decision } from './engine.ts';
+import { actionOf, type Decision } from './engine.ts';
 import type { SignalColour, SignalSpec } from './settings.ts';
 
 /** The first line of the decision comment: how the connector finds it again (with its own bot account). */
@@ -35,10 +36,12 @@ export const DEFAULT_SIGNALS: Record<string, SignalColour> = {
 /**
  * The signal for a decision: the deployment's own for this profile and
  * action, else the default for the action, else yellow "decided: <action>".
- * A decision a person still checks is red, whatever its action.
+ * A decision a person still checks is red, whatever its action; once a
+ * person answered, the signal is their answer's.
  */
-export function signalOf(signals: Record<string, Record<string, SignalSpec>> | undefined, d: Decision): Signal {
-  if (d.review?.status === 'pending') return { colour: 'red', text: 'a person checks first' };
+export function signalOf(signals: Record<string, Record<string, SignalSpec>> | undefined, decision: Decision): Signal {
+  if (decision.review?.status === 'pending') return { colour: 'red', text: 'a person checks first' };
+  const d = { profile: decision.profile, action: actionOf(decision) };
   const own = signals && Object.hasOwn(signals, d.profile) && Object.hasOwn(signals[d.profile]!, d.action) ? signals[d.profile]![d.action] : undefined;
   if (own) return { colour: own.signal, text: own.text ?? SIGNAL_WORDS[own.signal] };
   if (Object.hasOwn(DEFAULT_SIGNALS, d.action)) {
@@ -286,6 +289,7 @@ export function switchArt(d: Decision, head: string): string {
       : beside('facts', `✕ ${missing.length} of ${facts.length} missing:`, listed(missing));
   const answers = answersOf(d);
   const aiLines = beside('AI', answers.length === 0 ? '– none asked' : '', listed(answers));
+  // The rules' own action (the track taken); a person's answer is a line of its own below.
   const action = label(d.action);
   const why = d.rule === null ? 'the default' : `rule ${d.rule + 1}`;
   // The track taken, with its action and why; "← why" on the next line (`next`, the rail below) when too wide.
@@ -303,7 +307,8 @@ export function switchArt(d: Decision, head: string): string {
     ...factLines,
     ...aiLines,
     ...points,
-    ...(d.review?.status === 'pending' ? ['a person checks this decision before it counts'] : []),
+    ...(d.review?.status === 'pending' ? ['waiting for a person to check this decision'] : []),
+    ...(d.review?.status === 'resolved' ? [`a person answered: ${cut(label(actionOf(d)), MAX_COLUMNS - 20)}`] : []),
   ].join('\n');
 }
 
@@ -333,9 +338,11 @@ export function commentBody(decisions: Decision[], signals: Record<string, Recor
   }
   const rows = decisions.map((d) => {
     const s = signalOf(signals, d);
-    return `| \`${d.profile}\` | ${signalMark(s)} ${s.text} | \`${d.action}\` | ${d.rule === null ? 'default' : `rule ${d.rule + 1}`} |`;
+    const by = d.review?.status === 'resolved' ? 'a person' : d.rule === null ? 'default' : `rule ${d.rule + 1}`;
+    return `| \`${d.profile}\` | ${signalMark(s)} ${s.text} | \`${actionOf(d)}\` | ${by} |`;
   });
-  const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code></summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
+  // The row shows what is acted on (a person's answer once given); the switch shows why the rules gave their action, and the answer below it.
+  const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code>${d.review?.status === 'resolved' ? `; a person answered <code>${actionOf(d)}</code>` : ''}</summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
   return [
     COMMENT_MARKER,
     '### 🚦 Pointsman',

@@ -1,6 +1,6 @@
 // How the connector reaches Pointsman (docs/github-connector.md#how-it-reaches-pointsman):
-// a port with the one call it makes, and the settings that choose the
-// adapter behind it. The connector logic (pull-request.ts) only uses the port.
+// a port with the calls it makes (decide, and get and close for decisions a
+// person is asked about), and the settings that choose the adapter behind it. The connector logic (pull-request.ts) only uses the port.
 //
 // Adapters:
 // - HTTP with a token (here, any runtime): POINTSMAN_URL and POINTSMAN_TOKEN.
@@ -38,6 +38,10 @@ export interface EngineClient {
    * way for every adapter.
    */
   decide(profile: string, body: DecideBody, options: { idempotencyKey: string }): Promise<EngineAnswer>;
+  /** GET /v1/decisions/{id}: a decision it made, read back for a person's answer. Throws and passes the body on as decide. */
+  get(decisionId: string): Promise<EngineAnswer>;
+  /** POST /v1/reviews/{id}/close: closes the pending review of a decision it made. Throws as decide. */
+  close(decisionId: string): Promise<EngineAnswer>;
 }
 
 /**
@@ -51,7 +55,8 @@ export interface Decision {
   profile_version: number;
   rule: number | null;
   facts?: Record<string, { missing?: boolean; reason?: string }>;
-  review?: { status: string };
+  /** pending while a person checks it; resolved, with their answer, once read back (GET /v1/decisions/{id}). */
+  review?: { status: string; final_action?: string };
   /** The AI answers, by question; not checked (comment.ts shows only values of the known shapes). */
   answers?: unknown;
   /** Only on a test token's decision, which is not logged: never acted on. */
@@ -89,8 +94,12 @@ export function checkDecision(body: unknown, asked: { profile: string; ref: stri
   if (d.ref !== asked.ref) return invalid('"ref" is not the ref asked');
   if (!count(d.profile_version, 1)) return invalid('"profile_version" is not a positive integer');
   if (d.rule !== null && !count(d.rule, 0)) return invalid('"rule" is neither null nor a rule index');
-  // The engine gives review only while a person checks the decision; another status is not known here, so not acted on.
-  if (d.review !== undefined && !(plain(d.review) && d.review.status === 'pending')) return invalid('"review" is not a pending review');
+  // The engine gives review while a person checks the decision, and once they answered (read back) their
+  // answer as final_action. Another status (superseded: closed) is not known here, so not acted on.
+  if (d.review !== undefined && !(plain(d.review) && (d.review.status === 'pending'
+    || (d.review.status === 'resolved' && typeof d.review.final_action === 'string' && ACTION.test(d.review.final_action))))) {
+    return invalid('"review" is neither a pending review nor a person\'s answer');
+  }
   if (d.facts !== undefined) {
     if (!plain(d.facts)) return invalid('"facts" is not an object');
     for (const [name, f] of Object.entries(d.facts)) {
@@ -102,6 +111,14 @@ export function checkDecision(body: unknown, asked: { profile: string; ref: stri
   if (d.test !== undefined && typeof d.test !== 'boolean') return invalid('"test" is not a boolean');
   const decision = d as unknown as Decision;
   return d.test === true ? { kind: 'test', decision } : { kind: 'decision', decision };
+}
+
+/**
+ * The action to carry out: a person's answer once they gave one (a resolved
+ * review), else the decision's own action.
+ */
+export function actionOf(d: Pick<Decision, 'action' | 'review'>): string {
+  return d.review?.status === 'resolved' && typeof d.review.final_action === 'string' ? d.review.final_action : d.action;
 }
 
 /** Which adapter the settings choose. */
@@ -142,21 +159,26 @@ export function engineSetting(env: Record<string, unknown>): EngineSetting {
   return { kind: 'http', url: url!.replace(/\/+$/, ''), token };
 }
 
-/** The HTTP adapter: POST /v1/decide/{profile} with the connector's token. */
+/** The HTTP adapter: the routes with the connector's token. */
 export function httpEngine(api: EngineApi, token: string): EngineClient {
+  const call = async (method: 'GET' | 'POST', path: string, extra: { headers?: Record<string, string>; body?: string } = {}): Promise<EngineAnswer> => {
+    const res = await api.fetch(`${api.url}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, ...extra.headers },
+      ...(extra.body !== undefined && { body: extra.body }),
+      redirect: 'manual',
+      signal: AbortSignal.timeout(60_000),
+    });
+    // A body that is not JSON is passed on as none: the connector's check refuses it like any other non-decision.
+    if (res.ok) return { status: res.status, body: await res.json().catch(() => undefined) };
+    await res.body?.cancel();
+    return { status: res.status };
+  };
+  // The ids are the engine's own (checked as UUIDs before they were kept); encoded all the same.
   return {
-    async decide(profile, body, { idempotencyKey }) {
-      const res = await api.fetch(`${api.url}/v1/decide/${encodeURIComponent(profile)}`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'idempotency-key': idempotencyKey },
-        body: JSON.stringify(body),
-        redirect: 'manual',
-        signal: AbortSignal.timeout(60_000),
-      });
-      // A body that is not JSON is passed on as none: the connector's check refuses it like any other non-decision.
-      if (res.ok) return { status: res.status, body: await res.json().catch(() => undefined) };
-      await res.body?.cancel();
-      return { status: res.status };
-    },
+    decide: (profile, body, { idempotencyKey }) => call('POST', `/v1/decide/${encodeURIComponent(profile)}`,
+      { headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey }, body: JSON.stringify(body) }),
+    get: (id) => call('GET', `/v1/decisions/${encodeURIComponent(id)}`),
+    close: (id) => call('POST', `/v1/reviews/${encodeURIComponent(id)}/close`),
   };
 }

@@ -136,7 +136,31 @@ model's (source `human`); the others are kept (source `model`).
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
 | 403 | A test token, which may only decide. | `Error` (application/json) |
 | 404 | Unknown decision, or one whose profile this token may not use. | `Error` (application/json) |
-| 409 | The decision has no pending review (not a review, or already resolved), or its profile version is gone. | `Error` (application/json) |
+| 409 | The decision has no pending review (not a review, already resolved, or closed as superseded), or its profile version is gone. | `Error` (application/json) |
+| 500 | Error | `Error` (application/json) |
+
+## POST /v1/reviews/{id}/close
+
+Close a pending review of your own decision.
+
+The review leaves the queue as `superseded`, for example when the
+question it asks no longer applies (the GitHub connector closes the
+review of an older commit after a push). Only the client that made
+the decision may close it; for any other token the decision does not
+exist (404). No body. No callback is sent, and a later resolve gets
+409 `not_pending`.
+
+| パラメーター | 場所 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `id` | path | はい |   |
+
+| ステータス | 説明 | ボディ |
+| --- | --- | --- |
+| 200 | Closed | `ClosedReview` (application/json) |
+| 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
+| 403 | A test token, which may only decide. | `Error` (application/json) |
+| 404 | Unknown decision, one whose profile this token may not use, or one another client made. | `Error` (application/json) |
+| 409 | The decision has no pending review (not a review, already resolved, or closed). | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 
 ## GET /v1/profiles
@@ -397,7 +421,7 @@ Only for decisions whose action a person checks (the profile's people_check; def
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `status` | "pending" \| "resolved" \| "superseded" | はい | `superseded`: a newer decision replaced this one while the review was open. |
+| `status` | "pending" \| "resolved" \| "superseded" | はい | `superseded`: a newer decision replaced this one while the review was open, or the client that made it closed the review. |
 | `resolved_at` | string | いいえ |   |
 | `resolved_by` | string | いいえ |   |
 | `final_action` | string | いいえ |   |
@@ -437,6 +461,13 @@ Delivery of the final answer to the decision's callback_url.
 | `resolved_by` | string | はい |   |
 | `resolved_at` | string | はい |   |
 | `callback` | "pending" \| "none" | はい | pending when the final answer will be sent to the callback_url. |
+
+### ClosedReview
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `decision_id` | string | はい |   |
+| `review` | object | はい |   |
 
 ### FeedbackRequest
 

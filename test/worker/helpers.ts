@@ -15,6 +15,7 @@ export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
     pendingReviews: async () => [],
     recent: async () => [],
     resolve: async () => false,
+    closeReview: async () => false,
     dueCallbacks: async () => [],
     claimCallback: async () => true,
     recordCallback: async () => true,

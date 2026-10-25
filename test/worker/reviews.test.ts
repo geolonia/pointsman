@@ -185,6 +185,93 @@ describe('review queue', () => {
   });
 });
 
+describe('closing a review (POST /v1/reviews/{id}/close)', () => {
+  let s: ReturnType<typeof setup>;
+  const SAME_SCOPE = newToken();
+  const TEST = newToken();
+  beforeEach(async () => {
+    s = setup();
+    await addTokens(s.tokens);
+    // Another client that may use the profile, and a test token of the same client.
+    s.tokens.records.set(await hashToken(SAME_SCOPE), { client: 'colleague', profiles: ['issue-triage'], created_at: '' });
+    s.tokens.records.set(await hashToken(TEST), { client: 'all', profiles: ['*'], created_at: '', test: true });
+  });
+
+  it('the client that made the decision closes its pending review: superseded, out of the queue, no callback', async () => {
+    const id = await newReview(s.call, { callback_url: 'https://client.example.org/hook' });
+    const { status, data } = await s.call('POST', `/v1/reviews/${id}/close`);
+    expect(status).toBe(200);
+    expect(contract.closedReview(data), JSON.stringify(contract.closedReview.errors)).toBe(true);
+    expect(data).toEqual({ decision_id: id, review: { status: 'superseded' } });
+    const record = (await s.call('GET', `/v1/decisions/${id}`)).data;
+    expect(contract.decisionRecord(record), JSON.stringify(contract.decisionRecord.errors)).toBe(true);
+    expect(record.review).toEqual({ status: 'superseded' });
+    expect(record.callback).toBeUndefined();
+    expect((await s.call('GET', '/v1/reviews')).data.reviews.some((r: any) => r.decision_id === id)).toBe(false);
+    expect(s.sent).toEqual([]);
+  });
+
+  it('a resolve after the close gets 409, and a second close too', async () => {
+    const id = await newReview(s.call);
+    expect((await s.call('POST', `/v1/reviews/${id}/close`)).status).toBe(200);
+    const resolve = await s.call('POST', `/v1/reviews/${id}/resolve`, resolveBody);
+    expect(resolve.status).toBe(409);
+    expect(resolve.data.error.code).toBe('not_pending');
+    const again = await s.call('POST', `/v1/reviews/${id}/close`);
+    expect(again.status).toBe(409);
+    expect(contract.error(again.data)).toBe(true);
+    expect((await s.call('GET', `/v1/decisions/${id}`)).data.feedback).toEqual([]);
+  });
+
+  it('a resolved review, or a decision without one, cannot be closed', async () => {
+    const id = await newReview(s.call);
+    expect((await s.call('POST', `/v1/reviews/${id}/resolve`, resolveBody)).status).toBe(200);
+    expect((await s.call('POST', `/v1/reviews/${id}/close`)).status).toBe(409);
+    expect((await s.call('GET', `/v1/decisions/${id}`)).data.review.status).toBe('resolved');
+    const auto = (await s.call('POST', '/v1/decide/auto-triage', { state: issue })).data.decision_id;
+    expect((await s.call('POST', `/v1/reviews/${auto}/close`)).status).toBe(409);
+  });
+
+  it('another client gets 404, also one that may use the profile; the review stays open', async () => {
+    const id = await newReview(s.call);
+    for (const token of [SAME_SCOPE, OTHER]) {
+      const res = await s.call('POST', `/v1/reviews/${id}/close`, undefined, token);
+      expect(res.status).toBe(404);
+      expect(res.data.error.code).toBe('decision_not_found');
+    }
+    expect((await s.call('POST', '/v1/reviews/00000000-0000-4000-8000-000000000000/close')).status).toBe(404);
+    expect((await s.call('POST', '/v1/reviews/not-a-uuid/close')).status).toBe(404);
+    expect((await s.call('GET', `/v1/decisions/${id}`)).data.review.status).toBe('pending');
+    // Resolving stays open to every client in scope, as before.
+    expect((await s.call('POST', `/v1/reviews/${id}/resolve`, resolveBody, SAME_SCOPE)).status).toBe(200);
+  });
+
+  it('a test token may not close, also not its own client\'s review', async () => {
+    const id = await newReview(s.call);
+    const res = await s.call('POST', `/v1/reviews/${id}/close`, undefined, TEST);
+    expect(res.status).toBe(403);
+    expect(res.data.error.code).toBe('forbidden');
+    expect((await s.call('GET', `/v1/decisions/${id}`)).data.review.status).toBe('pending');
+  });
+
+  it('a close and a resolve at the same time: only one of them succeeds', async () => {
+    const id = await newReview(s.call);
+    const log = new D1DecisionLog(DB);
+    const r = { resolved_at: '2026-10-25T00:00:00Z', resolved_by: 'a', client: 'all', final_action: 'auto', final_answers: {}, correct: {} };
+    const [closed, resolved] = await Promise.all([log.closeReview(id, 'all'), log.resolve(id, r)]);
+    expect([closed, resolved].filter(Boolean)).toHaveLength(1);
+    // Only the client that made it.
+    const other = await newReview(s.call);
+    expect(await log.closeReview(other, 'colleague')).toBe(false);
+    expect(await log.closeReview(other, 'all')).toBe(true);
+    // A discarded decision is never closed (as for resolve), even with a pending status left on it.
+    const discarded = await newReview(s.call);
+    await DB.prepare("UPDATE decisions SET discarded_at = '2026-10-25T00:00:00Z' WHERE id = ?").bind(discarded).run();
+    expect(await log.closeReview(discarded, 'all')).toBe(false);
+    expect((await log.get(discarded))?.review?.status).toBe('pending');
+  });
+});
+
 describe('callbacks', () => {
   it('sends the final answer, signed, and records the delivery', async () => {
     const s = setup();

@@ -3,21 +3,17 @@
 import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord } from './auth';
-import { connected, deliver, makeReplay, publicRecord, type Deps } from './decide';
-import { decideAnswer } from './internal';
-import { parseFeedback, parseResolution } from './feedback';
+import { connected, makeReplay, publicRecord, type Deps } from './decide';
+import { closeAnswer, decideAnswer, findDecision, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
+import { parseFeedback } from './feedback';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
 import { decisionGraph, toDmn, toSvg } from './graph';
 import { explainProfile, explanationText } from './explain';
-import type { DecisionLog, FinalAnswer } from './log';
-import { peopleAnswers } from './policy';
 import type { Profile } from './types';
 
 // The engine core, re-exported for the Worker entry and the tests.
 export { ConfigError, deliver, makeDecision, makeReplay, NO_MODEL, retryDueCallbacks, type DecisionResult, type Deps } from './decide';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function error(status: ContentfulStatusCode, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status });
@@ -133,31 +129,21 @@ export function createApp(deps: (env: Env) => Deps) {
     return c.json(result.replay);
   });
 
-  // The work after the token check is shared with internal calls (src/internal.ts).
-  app.post('/v1/decide/:profile', async (c) => {
-    const answer = await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => c.req.json(),
-      c.req.query('version'), c.req.header('Idempotency-Key'));
-    return Response.json(answer.body, { status: answer.status });
-  });
+  // The work after the token check of decide, get, resolve and close is
+  // shared with internal calls (src/internal.ts).
+  const json = (answer: ApiAnswer) => Response.json(answer.body, { status: answer.status });
+
+  app.post('/v1/decide/:profile', async (c) => json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => c.req.json(),
+    c.req.query('version'), c.req.header('Idempotency-Key'))));
 
   // A decision is visible only to tokens that may use its profile; for others
   // it does not exist (404), as for unknown ids.
-  async function findDecision(c: { get(key: 'client'): TokenRecord }, log: DecisionLog, id: string) {
-    if (!UUID.test(id)) return null;
-    const record = await log.get(id);
-    return record && canUse(c.get('client'), record.profile) ? record : null;
-  }
-
-  app.get('/v1/decisions/:id', async (c) => {
-    const record = await findDecision(c, deps(c.env).log, c.req.param('id'));
-    if (!record) return error(404, 'decision_not_found', 'unknown decision');
-    return c.json(publicRecord(record, c.get('client')));
-  });
+  app.get('/v1/decisions/:id', async (c) => json(await getAnswer(deps(c.env), c.get('client'), c.req.param('id'))));
 
   app.post('/v1/decisions/:id/feedback', async (c) => {
     const { store, log } = deps(c.env);
     const id = c.req.param('id');
-    const record = await findDecision(c, log, id);
+    const record = await findDecision(c.get('client'), log, id);
     if (!record) return error(404, 'decision_not_found', 'unknown decision');
 
     let raw: unknown;
@@ -216,72 +202,17 @@ export function createApp(deps: (env: Env) => Deps) {
     });
   });
 
-  app.post('/v1/reviews/:id/resolve', async (c) => {
-    const d = deps(c.env);
-    const id = c.req.param('id');
-    const record = await findDecision(c, d.log, id);
-    if (!record) return error(404, 'decision_not_found', 'unknown decision');
-    if (record.review?.status !== 'pending') {
-      return error(409, 'not_pending', 'this decision has no pending review');
-    }
-
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return error(400, 'invalid_request', 'body must be valid JSON');
-    }
-    const profile = await d.store.get(record.profile, record.profile_version);
-    if (!profile) {
-      return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
-    }
-    const input = parseResolution(raw, profile);
-    if (typeof input === 'string') return error(400, 'invalid_request', input);
-    // Only the answers the profile lists, so rules that read a person's answer
-    // (decisions.<name>.outcome) know every value it can have.
-    const answers = peopleAnswers(profile);
-    if (!answers.includes(input.action)) {
-      return error(400, 'invalid_request', `"action" must be one of: ${answers.join(', ')}`);
-    }
-
-    const finalAnswers: Record<string, FinalAnswer> = {};
-    for (const q of profile.questions) {
-      finalAnswers[q.name] = Object.hasOwn(input.correct, q.name)
-        ? { value: input.correct[q.name], source: 'human' }
-        : { value: record.answers[q.name]?.value, source: 'model' };
-    }
-    const now = new Date().toISOString();
-    const resolved = await d.log.resolve(id, {
-      resolved_at: now,
-      resolved_by: input.by,
-      client: c.get('client').client,
-      final_action: input.action,
-      final_answers: finalAnswers,
-      correct: input.correct,
-      ...(input.note !== undefined && { note: input.note }),
-    });
-    // Someone else resolved it between the check above and this update.
-    if (!resolved) return error(409, 'not_pending', 'this decision has no pending review');
-
-    // First delivery right away, after the response; retries are scheduled.
-    const updated = await d.log.get(id);
-    if (updated?.callback_url && updated.callback?.status === 'pending') {
-      const delivery = deliver(updated, d);
+  app.post('/v1/reviews/:id/resolve', async (c) => json(await resolveAnswer(deps(c.env), c.get('client'), c.req.param('id'), () => c.req.json(),
+    async (delivery) => {
       try {
         c.executionCtx.waitUntil(delivery);
       } catch {
         await delivery; // no execution context (tests): deliver inline
       }
-    }
-    return c.json({
-      decision_id: id,
-      action: input.action,
-      answers: finalAnswers,
-      resolved_by: input.by,
-      resolved_at: now,
-      callback: updated?.callback_url ? 'pending' : 'none',
-    });
-  });
+    })));
+
+  // Only the client that made the decision may close its pending review (docs/reviews.md#closing-a-review).
+  app.post('/v1/reviews/:id/close', async (c) => json(await closeAnswer(deps(c.env), c.get('client'), c.req.param('id'))));
 
   // Hono's ExecutionContext type lacks newer Workers fields; it is the same object.
   const ctxOf = (c: Context<AppEnv>) => c.executionCtx as unknown as ExecutionContext;
