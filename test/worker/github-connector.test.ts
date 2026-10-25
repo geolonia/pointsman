@@ -931,11 +931,45 @@ describe('actions (switched on per profile action)', () => {
       expect(asks(gh.calls)).toBe(1);
     });
 
-    it('is not done for a pull request from a fork', async () => {
+    it('is not done for a pull request from a fork, or a closed one', async () => {
+      for (const pr of [{ fork: true }, { open: false }]) {
+        const { work, gh } = await acting(COPILOT, light, pr);
+        await work.run();
+        expect(gh.calls.filter((c) => c.op.startsWith('copilot')), JSON.stringify(pr)).toEqual([]);
+      }
       const { work, gh } = await acting(COPILOT, light, { fork: true });
       await work.run();
-      expect(gh.calls.filter((c) => c.op.startsWith('copilot'))).toEqual([]);
       expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('copilot_review: not done for a closed pull request or one from a fork');
+    });
+
+    it('asks nothing while it cannot read whether Copilot was asked, and looks again later', async () => {
+      const { work, gh, mem, event } = await acting(COPILOT, light);
+      const t = 5_000_000;
+      work.now = () => t;
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      gh.github.copilotAsked = async () => { throw new GitHubError('GitHub reviews: 404', false, 404); };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any)?.done?.['pr-docs-check:copilot_review']).toBeUndefined();
+      expect(mem.data.get('recheckAt')).toBe(t + UNCLEAR_MS);
+      expect(mem.alarms).toContain(t + UNCLEAR_MS);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('whether Copilot was asked is unclear, checked again later');
+      // A GitHub error that may pass: the run is tried again, nothing recorded, nothing asked.
+      gh.github.copilotAsked = async () => { throw new GitHubError('GitHub reviews: 502', true, 502); };
+      await event();
+      await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any)?.done?.['pr-docs-check:copilot_review']).toBeUndefined();
+    });
+
+    it('settles a request left open by a stop through its trace, without asking again', async () => {
+      const { work, gh, mem, event } = await acting(COPILOT, light);
+      mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:copilot_review': { decision: 'd', state: 'pending', at: Date.now() } } });
+      gh.github.copilot.requested = true;
+      await event();
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any).done['pr-docs-check:copilot_review'].state).toBe('done');
     });
 
     it('counts a request GitHub did not take as refused: not tried again for that commit', async () => {

@@ -925,7 +925,16 @@ export class PullRequestWork {
     if (spec.do === 'copilot_review' && record === undefined) {
       // At most one Copilot review per head, whoever asked (another profile, a person).
       const asked = await this.#tracedOrUnknown(target, pr, profile, spec);
-      if (asked === 'unknown') return { kind: 'skipped', text: 'copilot_review: whether Copilot was asked is unclear, tried again on the next run' };
+      if (asked === 'unknown') {
+        // Nothing recorded: looked at again once the time is up, also without a new event.
+        const at = this.now() + UNCLEAR_MS;
+        const due = await this.#storage.get<number>('recheckAt');
+        if (!due || at < due) {
+          await this.#storage.put({ recheckAt: at, recheckHead: pr.head });
+          await this.#storage.setAlarm(at);
+        }
+        return { kind: 'skipped', text: 'copilot_review: whether Copilot was asked is unclear, checked again later' };
+      }
       if (asked) {
         acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now() };
         await this.#storage.put({ acts });
