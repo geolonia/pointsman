@@ -12,6 +12,21 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.17.0 (2026-10-25)
+
+The GitHub connector can ask Copilot for a review (#220). Nothing changes until a deployment maps a decision action to the new action.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.17.0`. No migration, no new secrets, no new GitHub App permission or event.
+- To use it: map a decision action to `{ "do": "copilot_review" }` in `GITHUB_CONNECTOR` `actions`, only where your organization allows Copilot code review for every repository in `repos`. Limit how many commits get a review with `skip_drafts` and a rule on `github_copilot` (for example its `reviews` count), and keep a Copilot budget in the organization. Not yet tried with a GitHub App (only with `github-actions[bot]`): check the first request when you switch it on.
+
+What changed:
+
+- **GitHub connector, `copilot_review`** (#225): requests a review from Copilot with one fixed reviewer and no settings. At most one Copilot review per head commit, whoever asked (another profile or a person; Copilot known by its account id). Done only when GitHub's answer lists Copilot, otherwise shown on the check run as refused and not tried again for that commit. The pull request is read again right before, and nothing is asked if its head moved. Never for a fork's or a closed pull request. When the connector cannot tell whether Copilot was already asked, it asks nothing and looks again 10 minutes later.
+- **Not built** from #220: CodeRabbit commands and paid reviews, because CodeRabbit ignores commands from a GitHub App. A person or an agent still posts them.
+- **Threat model**: amended for `copilot_review` (Q44 to Q47); re-bound to this release in a separate pull request.
+
 ## 0.16.0 (2026-10-25)
 
 Asking a person inside the pull request (#147): the engine can close a waiting review, the GitHub connector keeps one question per head commit and acts on the person's answer, and, where a deployment switches it on, a person with write access answers from the pull request itself. Nothing changes until a deployment switches answers on.
