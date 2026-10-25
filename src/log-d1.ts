@@ -295,7 +295,7 @@ export class D1DecisionLog implements DecisionLog {
     // Only a pending review matches, so a close and a resolve at the same
     // time cannot both succeed (the resolve gets 409 not_pending).
     const result = await this.db
-      .prepare(`UPDATE decisions SET review_status = 'superseded' WHERE id = ? AND client = ? AND review_status = 'pending'`)
+      .prepare(`UPDATE decisions SET review_status = 'superseded' WHERE id = ? AND client = ? AND review_status = 'pending' AND discarded_at IS NULL`)
       .bind(decisionId, client)
       .run();
     return (result.meta.changes ?? 0) === 1;

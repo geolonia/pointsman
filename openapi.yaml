@@ -232,7 +232,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '409':
-          description: The decision has no pending review (not a review, or already resolved), or its profile version is gone.
+          description: The decision has no pending review (not a review, already resolved, or closed as superseded), or its profile version is gone.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

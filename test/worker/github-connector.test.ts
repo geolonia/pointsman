@@ -1109,6 +1109,39 @@ describe('chains: profiles that build on each other', () => {
     expect(risk.body.ref).toBe(`github:${REPO}#7@${HEAD}`);
   });
 
+  it('a kept decision is made anew once a person answers the question it rests on', async () => {
+    const runs = { [RISK]: {}, [NEXT]: { requires: { risk: RISK }, oncePerHead: { rerun: [] } } };
+    const { work, pm, event } = await chained(chain(runs), {},
+      (p) => Response.json(decision(p, p === RISK ? { action: 'review', review: { status: 'pending' } } : { action: 'wait' })));
+    await work.run();
+    await event();
+    await work.run();
+    // The question to a person is kept, and so is the decision resting on it.
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT]);
+    pm.resolve([...pm.logged.keys()][0]!, 'normal');
+    await event();
+    await work.run();
+    // The answer changes what NEXT rests on: asked again, with the same decision id of RISK.
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, NEXT]);
+    expect(pm.calls[2]!.body.decisions).toEqual({ risk: [...pm.logged.keys()][0] });
+  });
+
+  it('a question that rests on a decision made anew is closed and asked anew', async () => {
+    const runs = { [RISK]: {}, [NEXT]: { requires: { risk: RISK } } };
+    const { work, pm, event } = await chained(chain(runs), {},
+      (p) => Response.json(decision(p, p === RISK ? { action: 'normal' } : { action: 'review', review: { status: 'pending' } })));
+    await work.run();
+    const firstNext = [...pm.logged.values()].find((d) => d.profile === NEXT).decision_id;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await event();
+    await work.run();
+    errors.mockRestore();
+    // RISK is decided on every run: NEXT's question rests on the older RISK decision, so it is closed and asked anew.
+    expect(pm.calls.map((c) => c.profile)).toEqual([RISK, NEXT, RISK, NEXT]);
+    expect(pm.reads.map((r) => [r.op, r.id])).toEqual([['close', firstNext]]);
+    expect(pm.logged.get(firstNext).review).toEqual({ status: 'superseded' });
+  });
+
   it('a kept decision that rests on an earlier one is asked again when that one is new', async () => {
     let n = 0;
     const s = { ...chain({ a: { oncePerHead: { rerun: ['incomplete'] } }, b: { requires: { a: 'a' }, oncePerHead: { rerun: [] } } }), profiles: ['a', 'b'] };
@@ -1311,13 +1344,16 @@ describe('asking a person: the question stays until it is answered or the head m
     const comment = gh.calls.filter((c) => c.op === 'comment' || c.op === 'updateComment').at(-1)!.body!;
     expect(comment).toContain('| `pr-docs-check` | 🟡 decided: light | `light` | a person |');
     expect(comment).toContain('a person answered: light');
+    // The row shows what is acted on; the details why the rules asked a person, with the answer.
+    expect(comment).toContain('<summary><code>pr-docs-check</code>: why <code>review</code>; a person answered <code>light</code></summary>');
+    expect(comment).toContain('━ review');
     // The answer stands for this head: not read again, no new decision, not approved twice.
     await again();
     expect(pm.calls).toHaveLength(1);
     expect(pm.reads.filter((r) => r.op === 'get')).toHaveLength(1);
     expect(gh.calls.filter((c) => c.op === 'approve')).toHaveLength(1);
     expect(lastCheck().summary).toContain('already done for this commit');
-    expect((mem.data.get('asked') as any).byProfile['pr-docs-check'].review).toEqual({ status: 'resolved', final_action: 'light' });
+    expect((mem.data.get('asked') as any).byProfile['pr-docs-check'].decision.review).toEqual({ status: 'resolved', final_action: 'light' });
   });
 
   it('an answer for an older head is never acted on: the head moved, so the old question is closed and Pointsman decides anew', async () => {
@@ -1333,35 +1369,59 @@ describe('asking a person: the question stays until it is answered or the head m
     expect(pm.calls.map((c) => c.body.ref)).toEqual([`github:${REPO}#7@${HEAD}`, `github:${REPO}#7@${HEAD2}`]);
   });
 
-  it('a push closes the pending question of the old head before the new head is decided on; a busy engine is tried again', async () => {
-    const { work, gh, pm, mem, event, again } = await asking();
+  it('a push closes the pending question of the old head; a close that fails never holds up the new head, is tried again, then given up', async () => {
+    const { work, gh, pm, mem, again } = await asking();
+    let t = 1_000_000;
+    work.now = () => t;
     await work.run();
     const old = [...pm.logged.keys()][0]!;
     gh.github.state.head = HEAD2;
     pm.override.close = () => new Response('busy', { status: 503 });
-    await event();
-    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
-    expect(pm.calls).toHaveLength(1);
-    expect((mem.data.get('asked') as any).close).toEqual([old]);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    // Decided on the new head all the same; the close is listed for the next run.
+    expect(pm.calls).toHaveLength(2);
+    expect((mem.data.get('asked') as any).close).toEqual([{ id: old, since: t, tries: 1 }]);
+    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${old} for ${REPO}#7: 503; tried again on the next run`);
     delete pm.override.close;
-    await work.run();
+    await again();
     expect(pm.logged.get(old).review).toEqual({ status: 'superseded' });
-    expect(pm.reads.map((r) => r.op)).toEqual(['close', 'close']);
+    expect(pm.reads.filter((r) => r.op === 'close').map((r) => r.id)).toEqual([old, old]);
     // The new head has its own question, kept as before.
     expect(pm.calls).toHaveLength(2);
     const fresh = [...pm.logged.keys()][1]!;
     expect((mem.data.get('asked') as any)).toMatchObject({ head: HEAD2, close: [] });
-    expect((mem.data.get('asked') as any).byProfile['pr-docs-check'].decision_id).toBe(fresh);
-    await again();
-    expect(pm.calls).toHaveLength(2);
-    // A refusal is logged and not tried again.
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    pm.override.close = () => Response.json({ error: { code: 'forbidden', message: 'x' } }, { status: 403 });
+    expect((mem.data.get('asked') as any).byProfile['pr-docs-check'].decision.decision_id).toBe(fresh);
+    // An engine without the close call (older than the connector): logged, tried again, given up after a day.
+    pm.override.close = () => { throw new TypeError('The RPC receiver does not implement the method "close".'); };
     gh.github.state.head = HEAD;
     await again();
-    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${fresh}`);
+    expect((mem.data.get('asked') as any).close).toEqual([{ id: fresh, since: t, tries: 1 }]);
+    t += 24 * 3600_000;
+    await again();
+    expect((mem.data.get('asked') as any).close).toEqual([]);
+    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${fresh} for ${REPO}#7: The RPC receiver does not implement the method "close".; given up`);
+    // A refusal is logged and not tried again.
+    delete pm.override.close;
+    const third = [...pm.logged.keys()].at(-1)!;
+    pm.override.close = () => Response.json({ error: { code: 'forbidden', message: 'x' } }, { status: 403 });
+    gh.github.state.head = HEAD2;
+    await again();
+    expect(errors.mock.calls.join(' ')).toContain(`Pointsman closing ${third} for ${REPO}#7: 403`);
     expect((mem.data.get('asked') as any).close).toEqual([]);
     errors.mockRestore();
+  });
+
+  it('a close of a closed pull request that fails still lets the comment show it', async () => {
+    const { work, gh, pm, again } = await asking();
+    await work.run();
+    gh.github.state.open = false;
+    pm.override.close = () => new Response('busy', { status: 503 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = gh.calls.filter((c) => c.op === 'updateComment').length;
+    await again();
+    errors.mockRestore();
+    expect(gh.calls.filter((c) => c.op === 'updateComment').length).toBe(before + 1);
   });
 
   it('a closed pull request closes its open questions', async () => {
@@ -1417,6 +1477,55 @@ describe('asking a person: the question stays until it is answered or the head m
     pm.override.get = () => new Response('', { status: 502 });
     await expect(again()).rejects.toBeInstanceOf(RetryError);
     expect(pm.calls).toHaveLength(3);
+  });
+
+  it('a question whose title, description or settings changed is closed and asked anew, so an answer never rests on older state', async () => {
+    const { work, gh, pm, mem, again } = await asking();
+    await work.run();
+    const first = [...pm.logged.keys()][0]!;
+    gh.github.state.title = 'Docs, and a workflow';
+    pm.resolve(first, 'light');
+    await again();
+    // The answer to the old question is not acted on: closed (409, answered already) and asked anew.
+    expect(gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+    expect(pm.calls).toHaveLength(2);
+    expect(pm.reads.map((r) => [r.op, r.id])).toEqual([['close', first]]);
+    const second = [...pm.logged.keys()][1]!;
+    // A settings change (another mapped action) asks anew too.
+    const changed = pullRequestWork(settings({ profiles: ['pr-docs-check'], actions: { 'pr-docs-check': { light: { do: 'label', labels: ['docs-only'] } } }, comment: { profiles: ['pr-docs-check'] } }),
+      mem.storage, pm.engine, gh.github);
+    await changed.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await changed.run();
+    errors.mockRestore();
+    expect(pm.calls).toHaveLength(3);
+    expect(pm.logged.get(second).review).toEqual({ status: 'superseded' });
+  });
+
+  it('a question that cannot be read back (refused) is shown on the check run, nothing is done, and it stays', async () => {
+    const { work, pm, again, lastCheck } = await asking();
+    await work.run();
+    pm.override.get = () => Response.json({ error: { code: 'forbidden', message: 'x' } }, { status: 403 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await again();
+    errors.mockRestore();
+    expect(lastCheck().title).toBe('answer could not be read: nothing done');
+    expect(lastCheck().summary).toContain('(403)');
+    expect(pm.calls).toHaveLength(1);
+    delete pm.override.get;
+    await again();
+    expect(lastCheck().title).toBe('🔴 review: a person checks first');
+  });
+
+  it('a question of a profile taken out of the settings is closed', async () => {
+    const { work, gh, pm, mem } = await asking();
+    await work.run();
+    const id = [...pm.logged.keys()][0]!;
+    const other = pullRequestWork(settings({ profiles: ['workflow-check'] }), mem.storage, pm.engine, gh.github);
+    await other.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    await other.run();
+    expect(pm.logged.get(id).review).toEqual({ status: 'superseded' });
+    expect(Object.keys((mem.data.get('asked') as any).byProfile)).toEqual(['workflow-check']);
   });
 
   it('a decision that needs no person is not kept as a question', async () => {

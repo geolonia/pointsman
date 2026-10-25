@@ -15,7 +15,7 @@ import type { Profile } from '../../src/types';
 import bundled from '../../generated/profiles.json';
 import { InternalEngine } from '../../src/index';
 import { bindingEngine, type EngineBinding } from '../../connectors/github/src/engine-binding';
-import { checkDecision, connectorSettings, engineSetting, pullRequestWork, RetryError, type CheckRunOutput, type ObjectStorage } from '@pointsman/github';
+import { actionOf, checkDecision, connectorSettings, type Decision, engineSetting, pullRequestWork, RetryError, type CheckRunOutput, type ObjectStorage } from '@pointsman/github';
 import { ConfigError } from '@pointsman/module-api';
 
 const CLIENT = JSON.stringify({ client: 'github-connector', profiles: ['deploy-progress'] });
@@ -174,6 +174,26 @@ describe('InternalEngine: get, resolve and close, as the routes after the token 
     expect((await engine.resolve(id, { action: 'reject', by: 'x', extra: 1 })).status).toBe(400);
     expect((await engine.resolve(7, { action: 'reject', by: 'x' })).status).toBe(400);
     expect((await engine.get(id)).body.review.status).toBe('pending');
+  });
+
+  it('a decision read back in its real shape passes the connector\'s check: pending, then the person\'s answer as the action', async () => {
+    const ref = `github:example/repo#1@${'c'.repeat(40)}`;
+    const made = await engine.decide('deploy-progress', { ...body, ref }, { idempotencyKey: crypto.randomUUID() });
+    const id = made.body.decision_id as string;
+    await env.DB.prepare("UPDATE decisions SET review_status = 'pending' WHERE id = ?").bind(id).run();
+    const pendingRecord = (await engine.get(id)).body;
+    expect(checkDecision(pendingRecord, { profile: 'deploy-progress', ref })).toEqual({ kind: 'decision', decision: pendingRecord });
+    expect((await engine.resolve(id, { action: 'reject', by: 'github:octocat (1)' })).status).toBe(200);
+    const record = (await engine.get(id)).body;
+    // As GET /v1/decisions/{id} gives it: client, state_hash, feedback, the review with who and when.
+    expect(record).toMatchObject({ client: 'github-connector', state_hash: expect.any(String), feedback: [], review: { status: 'resolved', final_action: 'reject', resolved_by: 'github:octocat (1)' } });
+    const checked = checkDecision(record, { profile: 'deploy-progress', ref });
+    expect(checked.kind).toBe('decision');
+    expect(actionOf((checked as { decision: Decision }).decision)).toBe('reject');
+    // Closed: not a decision the connector acts on.
+    const other = await pending();
+    await engine.close(other);
+    expect(checkDecision((await engine.get(other)).body, { profile: 'deploy-progress', ref: 'x' }).kind).toBe('invalid');
   });
 
   it('refuses get, resolve and close without INTERNAL_CLIENT, also over RPC', async () => {

@@ -136,7 +136,7 @@ model's (source `human`); the others are kept (source `model`).
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
 | 403 | A test token, which may only decide. | `Error` (application/json) |
 | 404 | Unknown decision, or one whose profile this token may not use. | `Error` (application/json) |
-| 409 | The decision has no pending review (not a review, or already resolved), or its profile version is gone. | `Error` (application/json) |
+| 409 | The decision has no pending review (not a review, already resolved, or closed as superseded), or its profile version is gone. | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 
 ## POST /v1/reviews/{id}/close

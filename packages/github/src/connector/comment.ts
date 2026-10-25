@@ -289,6 +289,7 @@ export function switchArt(d: Decision, head: string): string {
       : beside('facts', `✕ ${missing.length} of ${facts.length} missing:`, listed(missing));
   const answers = answersOf(d);
   const aiLines = beside('AI', answers.length === 0 ? '– none asked' : '', listed(answers));
+  // The rules' own action (the track taken); a person's answer is a line of its own below.
   const action = label(d.action);
   const why = d.rule === null ? 'the default' : `rule ${d.rule + 1}`;
   // The track taken, with its action and why; "← why" on the next line (`next`, the rail below) when too wide.
@@ -340,7 +341,8 @@ export function commentBody(decisions: Decision[], signals: Record<string, Recor
     const by = d.review?.status === 'resolved' ? 'a person' : d.rule === null ? 'default' : `rule ${d.rule + 1}`;
     return `| \`${d.profile}\` | ${signalMark(s)} ${s.text} | \`${actionOf(d)}\` | ${by} |`;
   });
-  const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code></summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
+  // The row shows what is acted on (a person's answer once given); the switch shows why the rules gave their action, and the answer below it.
+  const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code>${d.review?.status === 'resolved' ? `; a person answered <code>${actionOf(d)}</code>` : ''}</summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
   return [
     COMMENT_MARKER,
     '### 🚦 Pointsman',
