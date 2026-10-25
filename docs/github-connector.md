@@ -135,7 +135,8 @@ For `copilot_review` also:
 - **One Copilot review per commit, whoever asked.** Before asking, the connector reads the pull request: if Copilot is already requested, or already reviewed the head commit (asked by a person or another profile), it asks nothing and the action counts as done. It knows Copilot by its account id, not its name.
 - **Checked:** GitHub can accept the request and still not add Copilot (for example when Copilot code review is not on for the repository). The connector counts it as done only when GitHub's answer lists Copilot. Otherwise it is refused: shown on the check run, not tried again for that commit.
 - Never for a pull request from a fork, so an outsider's pushes do not use your Copilot allowance, and never for a closed one.
-- **Unclear:** when the connector cannot read whether Copilot was already asked, it asks nothing and looks again 10 minutes later.
+- **Only for the commit decided on:** the pull request is read again right before; if its head moved, nothing is asked.
+- **Unclear:** when the connector cannot read whether Copilot was already asked (also when the pull request has more than 1,000 reviews), it asks nothing and looks again 10 minutes later.
 - **Cost:** each Copilot review uses Copilot premium requests, billed as GitHub decides for a request made by an app. The connector asks at most once per commit; how many commits get a review is up to the profile. Use `skip_drafts` ([Chains](#chains)) and a rule on [`github_copilot`](profile-format.md#github-pull-requests) (for example its `reviews` count) to limit it, and keep a Copilot budget in the organization.
 - Copilot reads the pull request's code and text. Map `copilot_review` only where your organization allows Copilot code review for these repositories. The connector never reads what Copilot writes.
 - Not yet tried with a GitHub App (only with `github-actions[bot]`): check the first request when you switch it on.

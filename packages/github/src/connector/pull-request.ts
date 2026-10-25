@@ -941,10 +941,10 @@ export class PullRequestWork {
         return { kind: 'done', text: 'Copilot already asked or reviewed this commit' };
       }
     }
-    if (spec.do === 'approve') {
+    if (spec.do === 'approve' || spec.do === 'copilot_review') {
       // Only the commit that was decided on: read the pull request again right before.
       const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
-      if (!now.open || now.draft || now.head !== pr.head) return { kind: 'skipped', text: 'approve: not done, the pull request changed' };
+      if (!now.open || (spec.do === 'approve' && now.draft) || now.head !== pr.head) return { kind: 'skipped', text: `${spec.do}: not done, the pull request changed` };
     }
     acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now() };
     await this.#storage.put({ acts });

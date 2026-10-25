@@ -331,7 +331,10 @@ export class AppGitHub implements ConnectorGitHub {
   async copilotAsked(repo: string, number: number, head: string): Promise<boolean> {
     if (listsCopilot(await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request'))) return true;
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
-    return reviews.some((r) => isCopilot(r.user) && r.commit_id === head && r.state !== 'PENDING');
+    if (reviews.some((r) => isCopilot(r.user) && r.commit_id === head && r.state !== 'PENDING')) return true;
+    // #list stops at 1,000 (oldest first): the head's review may be after them, so not known.
+    if (reviews.length >= 1000) throw new GitHubError('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known', false);
+    return false;
   }
 
   async botLogin(repo: string): Promise<string> {

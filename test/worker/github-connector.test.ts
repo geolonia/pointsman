@@ -962,6 +962,16 @@ describe('actions (switched on per profile action)', () => {
       expect((mem.data.get('acts') as any)?.done?.['pr-docs-check:copilot_review']).toBeUndefined();
     });
 
+    it('asks nothing when the head moved after the decision', async () => {
+      const { work, gh } = await acting(COPILOT, light);
+      const copilotAsked = gh.github.copilotAsked;
+      // The push lands between the decision and the request.
+      gh.github.copilotAsked = async (r, n, h) => { const asked = await copilotAsked(r, n, h); gh.github.state.head = HEAD2; return asked; };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('copilot_review: not done, the pull request changed');
+    });
+
     it('settles a request left open by a stop through its trace, without asking again', async () => {
       const { work, gh, mem, event } = await acting(COPILOT, light);
       mem.data.set('acts', { head: HEAD, done: { 'pr-docs-check:copilot_review': { decision: 'd', state: 'pending', at: Date.now() } } });
@@ -1017,6 +1027,9 @@ describe('actions (switched on per profile action)', () => {
       expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(false);
       reviews.push({ user: { login: 'copilot-pull-request-reviewer[bot]', id: 175728472, type: 'Bot' }, commit_id: HEAD, state: 'COMMENTED' });
       expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(true);
+      // 1,000 reviews (the most #list reads) without one of the head: not known, an error.
+      reviews = Array.from({ length: 100 }, () => ({ user: { login: 'someone', id: 9, type: 'User' }, commit_id: HEAD, state: 'COMMENTED' }));
+      await expect(gh.copilotAsked(REPO, 7, HEAD)).rejects.toMatchObject({ retry: false });
     });
   });
 });
