@@ -12,9 +12,16 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
-## Unreleased
+## 0.17.1 (2026-10-25)
 
-Hardening of facts, connectors and Actions. No migration, no new secrets, no new GitHub App permission.
+Hardening of facts, connectors and Actions (#229).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.17.1`. No migration, no new secrets, no new GitHub App permission or event.
+- FIWARE bridge: a profile with a question named like a field of the result (see below) now gets nothing written; rename the question.
+
+What changed:
 
 - **GSI facts, `gsi-shelters-flood`**: a geometry whose box leaves the tile grid (at or near a pole, or at or across the 180° meridian) is refused: the fact is missing (`error`), and no tile is read.
 - **`github_bump`**: a changed lockfile line with a backslash (an escape such as `\u0065` or `\/`, in a `package-lock.json` or a `pnpm-lock.yaml`) gives `registry_changed` true. Peers in a `pnpm-lock.yaml` version are taken off in one pass, also when deeply nested; results for usual lockfiles are the same.
