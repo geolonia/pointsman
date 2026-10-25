@@ -32,7 +32,7 @@ A deployment lists its modules in `engine.json`, next to the engine version:
   "repository": "geolonia/pointsman",
   "ref": "<engine commit>",
   "modules": {
-    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/github@0.17.1"]
+    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/github@0.17.2"]
   }
 }
 ```
@@ -157,7 +157,7 @@ fact name).
 Each decision records the engine version and the modules that answered its facts, with their versions:
 
 ```json
-"versions": { "engine": "0.17.1", "modules": { "@pointsman/github": "0.17.1" } }
+"versions": { "engine": "0.17.2", "modules": { "@pointsman/github": "0.17.2" } }
 ```
 
 Decisions made before modules have no `versions`.

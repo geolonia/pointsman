@@ -12,6 +12,20 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.17.2 (2026-10-26)
+
+FIWARE bridge: a decision a person still checks is always treated as pending (#232).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.17.2`. No migration, no new secrets, no new GitHub App permission or event.
+- FIWARE bridge: a route with `task` now also opens a Task for an action whose review is pending even when `task.actions` leaves it out.
+
+What changed:
+
+- **FIWARE bridge**: an answer with `review: {status: pending}` (an action in the profile's `people_check`) counts as checked by a person, whatever the route's `reviewActions` say. The result and the Decision entity get `reviewStatus: pending`, the final action waits for the person, and a route with `task` opens a Task for it. Before, a route whose `reviewActions` left out that action wrote it as final. `reviewActions` now only adds actions to check (for engines or profiles that report no review); any other `review` value falls back to the old rule.
+- **FIWARE bridge, work orders**: a result with `reviewStatus: pending` can be resolved by a work order also when its action is not in the route's `reviewActions`.
+
 ## 0.17.1 (2026-10-25)
 
 Hardening of facts, connectors and Actions (#229).

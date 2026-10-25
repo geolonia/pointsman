@@ -303,7 +303,7 @@ const coderabbit_spend: FactTypeDef = {
 export const definition: FactModule = {
   name: '@pointsman/coderabbit',
   // As in package.json (a test checks); released with the engine for now.
-  version: '0.17.1',
+  version: '0.17.2',
   roles: ['facts'],
   types: [coderabbit, coderabbit_budget, coderabbit_queue, coderabbit_spend],
   reasons: {
