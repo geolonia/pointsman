@@ -15,7 +15,7 @@
 // place the patch does not show. A dependency of an importer or a package
 // added or removed is no step (the package itself is a key or an entry).
 
-import { larger as largerStep, stepOf } from './bump';
+import { larger as largerStep, stepOf, stripPeers } from './bump';
 
 export interface LockfileSteps {
   /** The largest step: "major", "minor", "patch" or "none"; null when no version changes. */
@@ -124,9 +124,7 @@ function yamlKey(body: string): { key: string; value: string | null } | null {
 const unquote = (s: string) => (s.length >= 2 && (s[0] === "'" || s[0] === '"') && s[s.length - 1] === s[0] ? s.slice(1, -1) : s);
 /** A pnpm version without its peers in parentheses. */
 function withoutPeers(v: string): string {
-  let out = unquote(v);
-  while (/\([^()]*\)/.test(out)) out = out.replace(/\([^()]*\)/g, '');
-  return out;
+  return stripPeers(unquote(v));
 }
 
 /** The lines of each hunk, with the section its header names (git's function context). */

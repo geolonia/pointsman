@@ -355,6 +355,7 @@ function fakeApprovals(gh: ReturnType<typeof fakeApi>) {
   const client = gh.github as unknown as Record<string, unknown>;
   client.approve = async () => { ids.push(77); gh.api.reviews.push(review(77, 'APPROVED', `${SLUG}[bot]`, HEAD, 'Bot')); gh.api.decision = 'APPROVED'; return 77; };
   client.ownApprovals = async () => ids.map((id) => ({ id, commit: HEAD, marker: '' }));
+  client.ownApproval = async (_r: string, _n: number, id: number) => (ids.includes(id) ? { id, commit: HEAD, marker: '' } : null);
   client.dismissReview = async () => { ids.pop(); gh.api.reviews.find((r) => r.id === 77)!.state = 'DISMISSED'; gh.api.decision = 'REVIEW_REQUIRED'; };
   return ids;
 }

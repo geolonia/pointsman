@@ -12,6 +12,18 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## Unreleased
+
+Hardening of facts, connectors and Actions. No migration, no new secrets, no new GitHub App permission.
+
+- **GSI facts, `gsi-shelters-flood`**: a geometry at or near a pole, whose box leaves the tile grid, is refused: the fact is missing (`error`), and no tile is read.
+- **`github_bump`**: a changed lockfile line with a backslash (an escape such as `\u0065` or `\/`, in a `package-lock.json` or a `pnpm-lock.yaml`) gives `registry_changed` true. Peers in a `pnpm-lock.yaml` version are taken off in one pass, also when deeply nested; results for usual lockfiles are the same.
+- **CodeRabbit facts**: the editors are read with each comment's and review's text; when that text differs from the copy read before (an edit between the two reads), the fact is missing, as for a comment someone else edited.
+- **GitHub connector**: a recorded approval that is not in the review list (which reads up to 1,000 reviews) is read by its id and dismissed if it still stands; when that read fails, the record stays and the next run tries again.
+- **FIWARE bridge**: after a `409` on resolving a review, the final action is written and the Task completed only when Pointsman has the review resolved with the same action; a review still pending is tried again (not when its profile version is gone), and one closed as superseded is reported.
+- **FIWARE bridge**: an answer whose name, or `<name>Probability`, is a field of the result (`value`, `inputHash`, `decision`, `reviewStatus` and the others, or an NGSI-LD one such as `observedAt`) is refused: nothing is written for that decision, the error says which question to rename, and there is no retry (#228).
+- **deploy-watch and triage Actions**: an answer a person still checks (`review: {status: pending}`, from `people_check`) does not count: deploy-watch does not count such a `cancel`, and triage adds only the review label.
+
 ## 0.17.0 (2026-10-25)
 
 The GitHub connector can ask Copilot for a review (#220). Nothing changes until a deployment maps a decision action to the new action.

@@ -51,15 +51,15 @@ const thread = (resolved: boolean, author: unknown = { __typename: 'Bot', login:
 const graph = (threads: unknown[] = [], more = false) => ({
   data: { repository: { pullRequest: { headRefOid: HEAD, reviewRequests: { totalCount: 0, nodes: [] }, reviewThreads: { pageInfo: { hasNextPage: more }, nodes: threads } } } },
 });
-type Item = { id: number };
-/** Who last edited each comment and review: nobody, unless `editedBy` names an editor by id. */
+type Item = { id: number; body?: string };
+/** Who last edited each comment and review, with the same text: nobody, unless `editedBy` names an editor by id. */
 const editorsOf = (comments: Item[], reviews: Item[], editedBy: Record<number, unknown> = {}) => ({
   data: {
     repository: {
       pullRequest: {
         headRefOid: HEAD,
-        comments: { totalCount: comments.length, nodes: comments.map((c) => ({ databaseId: c.id, editor: editedBy[c.id] ?? null })) },
-        reviews: { totalCount: reviews.length, nodes: reviews.map((r) => ({ databaseId: r.id, editor: editedBy[r.id] ?? null })) },
+        comments: { totalCount: comments.length, nodes: comments.map((c) => ({ databaseId: c.id, body: c.body ?? '', editor: editedBy[c.id] ?? null })) },
+        reviews: { totalCount: reviews.length, nodes: reviews.map((r) => ({ databaseId: r.id, body: r.body ?? '', editor: editedBy[r.id] ?? null })) },
       },
     },
   },
@@ -231,6 +231,14 @@ describe('CodeRabbit (coderabbit)', () => {
       [COMMENTS]: () => [c],
       '/graphql': async (_u, init) => (String(init.body).includes('editor') ? editorsOf([], []) : graph()),
     }))).toBe('error');
+    // GraphQL saw other text than REST (an edit between the two reads): the editor it names is not the text's.
+    const later = (body: string) => async (_u: URL, init: RequestInit) => (String(init.body).includes('editor')
+      ? editorsOf([{ id: c.id, body }], [], { [c.id]: self }) : graph());
+    expect(await reason(routes({ [COMMENTS]: () => [c], '/graphql': later(notice(4)) }))).toBe('error');
+    expect(await values(routes({ [COMMENTS]: () => [c], '/graphql': later(c.body) }))).toMatchObject({ price_stated: true });
+    const rLater = async (_u: URL, init: RequestInit) => (String(init.body).includes('editor')
+      ? editorsOf([], [{ id: r.id, body: 'Looks good' }], { [r.id]: self }) : graph());
+    expect(await reason(routes({ [`${PR}/reviews`]: () => [r], '/graphql': rLater }))).toBe('error');
     // Edits by others to someone else's comment do not matter.
     const own = comment('a note', AFTER, { login: 'bob', id: 5, type: 'User' }, null);
     expect(await values(routes({ [COMMENTS]: () => [own], '/graphql': gql([], false, { [own.id]: editor }) }))).toMatchObject({ price_stated: false });

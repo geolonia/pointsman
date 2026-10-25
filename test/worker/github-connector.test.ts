@@ -73,6 +73,8 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     copilotAsked: async (_r, _n, head) => (calls.push({ op: 'copilotAsked', head }), github.copilot.requested || github.copilot.reviewed.includes(head)),
     botLogin: async () => 'pointsman-test[bot]',
     ownApprovals: async () => (calls.push({ op: 'approvals' }), approvals.map((a) => ({ ...a }))),
+    // By id: only when a recorded approval is not in the list. Not in `calls`.
+    ownApproval: async (_r, _n, id) => { const a = approvals.find((x) => x.id === id); return a ? { ...a } : null; },
     // Read for the line on every run that draws it: not in `calls`, which follows what the connector decides and does.
     reviewSummary: async () => structuredClone(github.summary),
     diff: async (_r, _n, max) => (calls.push({ op: 'diff' }), { diff: github.diffText.slice(0, max), truncated: github.diffText.length > max }),
@@ -716,6 +718,59 @@ describe('actions (switched on per profile action)', () => {
     expect(last.summary).toContain('could not be withdrawn');
     expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
     errors.mockRestore();
+  });
+
+  it('an approval missing from the review list (past its 1,000 reviews) is read by its id: dismissed, or kept when it cannot be read', async () => {
+    let action = 'light';
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(1);
+    // The list is cut before the approval; it still stands on GitHub.
+    gh.github.ownApprovals = async () => [];
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const byId = gh.github.ownApproval;
+    gh.github.ownApproval = async () => { throw new GitHubError('GitHub review: 502', false, 502); };
+    action = 'review';
+    await event();
+    await work.run();
+    // Not known: not dismissed, not forgotten, shown.
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('could not be withdrawn');
+    expect(mem.data.get('approvals')).toHaveLength(1);
+    expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    // The next run reads it: still approved, so it is dismissed.
+    gh.github.ownApproval = byId;
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss']);
+    expect(gh.github.approvals).toHaveLength(0);
+    expect(mem.data.get('approvals')).toEqual([]);
+    errors.mockRestore();
+  });
+
+  it('reads one review by id: its own standing approval, else null; 404 is gone, other errors are errors', async () => {
+    const marker = `<!-- pointsman approve pr-docs-check ${HEAD} -->`;
+    const answers: Record<string, Response | (() => Response)> = {
+      '/pulls/7/reviews/1': Response.json({ id: 1, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } }),
+      '/pulls/7/reviews/2': Response.json({ id: 2, state: 'DISMISSED', body: marker, commit_id: HEAD, user: { login: 'pointsman-checks[bot]', type: 'Bot' } }),
+      '/pulls/7/reviews/3': Response.json({ id: 3, state: 'APPROVED', body: marker, commit_id: HEAD, user: { login: 'other-app[bot]', type: 'Bot' } }),
+      '/pulls/7/reviews/4': new Response('{}', { status: 404 }),
+      '/pulls/7/reviews/5': new Response('{}', { status: 500 }),
+    };
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/installation')) return Response.json({ id: 9, app_slug: 'pointsman-checks', permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' } });
+      if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+      const path = url.replace(`https://api.github.com/repos/${REPO}`, '');
+      if (answers[path]) return answers[path] as Response;
+      throw new Error(`unexpected ${url}`);
+    }) as typeof fetch;
+    const gh = new AppGitHub(APP_ID, KEY, fetchFn, true);
+    expect(await gh.ownApproval(REPO, 7, 1)).toEqual({ id: 1, commit: HEAD, marker });
+    expect(await gh.ownApproval(REPO, 7, 2)).toBeNull();
+    expect(await gh.ownApproval(REPO, 7, 3)).toBeNull();
+    expect(await gh.ownApproval(REPO, 7, 4)).toBeNull();
+    await expect(gh.ownApproval(REPO, 7, 5)).rejects.toBeInstanceOf(GitHubError);
   });
 
   it('an open approve record: kept when its trace is found, and a trace that cannot be read leaves it open and is shown', async () => {

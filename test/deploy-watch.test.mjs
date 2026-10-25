@@ -38,7 +38,9 @@ async function pointsman(actions) {
       asked.push(JSON.parse(body));
       const action = actions[Math.min(asked.length - 1, actions.length - 1)];
       if (action === 500) return res.writeHead(500).end('{}');
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ decision_id: `d${asked.length}`, action }));
+      // An action name, or a whole answer ({ action, review }).
+      const answer = typeof action === 'object' ? action : { action };
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ decision_id: `d${asked.length}`, ...answer }));
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -122,6 +124,27 @@ test('cancel answers that are not consecutive do not stop the deploy', async (t)
   const r = await runWatch(t, { url: p.url, command: 'sleep 1' });
   assert.equal(r.code, 0, r.stdout);
   assert.match(r.output, /^result=finished$/m);
+});
+
+test('a cancel that a person still checks does not count', async (t) => {
+  const p = await pointsman([{ action: 'cancel', review: { status: 'pending' } }]);
+  t.after(p.close);
+  const r = await runWatch(t, { url: p.url, command: 'sleep 1' });
+  assert.equal(r.code, 0, r.stdout);
+  assert.ok(p.asked.length >= 2);
+  assert.match(r.output, /^result=finished$/m);
+  assert.match(r.stdout, /a person checks it first/);
+  assert.doesNotMatch(r.aws, /cancel-update-stack/);
+});
+
+test('a checked cancel in between resets the count; a resolved one counts', async (t) => {
+  const pending = { action: 'cancel', review: { status: 'pending' } };
+  const p = await pointsman(['cancel', pending, 'cancel', pending, 'cancel', pending, 'cancel', pending, 'cancel', pending, { action: 'cancel', review: { status: 'resolved' } }, 'cancel']);
+  t.after(p.close);
+  const r = await runWatch(t, { url: p.url, command: 'sleep 30' });
+  assert.equal(r.code, 1, r.stdout);
+  assert.equal(p.asked.length, 12);
+  assert.match(r.output, /^result=cancelled$/m);
 });
 
 test('a failing Pointsman never stops the deploy', async (t) => {

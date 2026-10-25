@@ -119,7 +119,11 @@ One property, named in the configuration (here `check`):
 - The value is the action, so other applications can subscribe to it or query
   it (`q=check=="urgent"`).
 - Each answer and its probability are sub-properties, one level deep (Orion-LD
-  drops a third level).
+  drops a third level). So a question must not be named like a field of the
+  result (`value`, `inputHash`, `decision`, `reviewStatus`, `finalAction`,
+  `reviewedAt` and the others above, or NGSI-LD's such as `observedAt` and
+  `createdAt`), and neither may `<name>Probability`: the bridge then writes
+  nothing for the decision and reports it, without a retry.
 - `decisionId` is Pointsman's decision id: use it to fetch the full record or
   to send feedback.
 - `policyRule` is the rule of the profile's policy that gave the action
@@ -206,7 +210,11 @@ sends it to the bridge's `/reviews`.
 - Who may resolve is decided by the broker's access control: the bridge takes
   `reviewedBy` as written.
 - Pointsman's resolution counts: if the review is already resolved there
-  with another action, the bridge reports it and writes nothing.
+  with another action, the bridge reports it and writes nothing. When
+  Pointsman refuses the resolve (`409`), the bridge goes on only if the
+  review is now resolved there with the same action; a review that is still
+  pending is tried again (not when its profile version is gone), and one
+  closed as superseded is reported.
 - Two notifications for the same Decision at the same moment can both send
   the same corrections as feedback (Pointsman's feedback has no key that
   makes a repeat harmless); the values are the same.

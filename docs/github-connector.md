@@ -124,6 +124,7 @@ For `approve` also:
 - After a push, the connector dismisses its own approvals of older commits, on every run. It dismisses only approvals it recorded giving, never someone else's review.
 - When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again. See [When the approval stays](#when-the-approval-stays).
 - If an old approval cannot be dismissed, it approves nothing in that run.
+- The reviews are read up to 1,000. A recorded approval that is not among them is read by its id before the connector takes it as gone; if that read fails, the record stays and the next run tries again.
 - **Required:** the branch's ruleset (or branch protection) must have "Dismiss stale pull request approvals when new commits are pushed" on. Otherwise an approval of an older commit counts for merging until the connector's next run dismisses it.
 - Its own approvals are reviews by its own bot account (`<app slug>[bot]`, the slug from GitHub's answer for the app's installation) with its marker. Another app's review with the same marker is never taken for its own.
 - **Code owners:** an app cannot be a code owner (`CODEOWNERS` names users, teams and email addresses). Where the ruleset requires a code owner's review and `CODEOWNERS` covers a changed file, a person must still approve; the app's approval can still count toward the required number of approvals (with the app's "Contents: write" permission, see below).

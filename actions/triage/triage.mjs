@@ -65,12 +65,13 @@ export function parseLabelMap(text) {
 }
 
 /**
- * Labels for a decision: only mapped answers, only for action "auto". When
- * nothing maps (for example an answer missing from the allow-list), the
- * review label is added, so no issue is left without a label.
+ * Labels for a decision: only mapped answers, only for action "auto", and
+ * not while a person checks the decision (review pending, the profile's
+ * people_check). When nothing maps (for example an answer missing from the
+ * allow-list), the review label is added, so no issue is left without a label.
  */
 export function labelsFor(decision, map, reviewLabel) {
-  if (decision.action !== 'auto') return [reviewLabel];
+  if (decision.action !== 'auto' || decision.review?.status === 'pending') return [reviewLabel];
   const answers = decision.answers !== null && typeof decision.answers === 'object' ? decision.answers : {};
   const labels = [];
   for (const [question, answer] of Object.entries(answers)) {
