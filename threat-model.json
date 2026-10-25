@@ -1,7 +1,7 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "8eea43df5b881e5a50b4f4c21a4235650e9db92a",
+  "commit": "b08aaf3756daefacfa6921ac8ddc065becdc049e",
   "date": "2026-10-25",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
@@ -1582,7 +1582,7 @@
       "property": "P-CONNECTOR-ACTIONS-MAPPED",
       "violation_symptom": "x-unauthorized-write, wrong-output",
       "severity_tier": "security",
-      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit",
+      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""
     },
@@ -1923,14 +1923,14 @@
     },
     {
       "property": "D-CONNECTOR-COPILOT-COST",
-      "reason": "since pointsman#220 each Copilot review the connector asks for uses Copilot premium requests billed as GitHub decides for an app's request; at most once per head and never for a fork, but no cap per pull request or per day; the profile's rules and the organization's Copilot budget limit it; basis: stated, and a maintainer ruling (2026-10-25, Q46)",
+      "reason": "since pointsman#220 (v0.17.0) each Copilot review the connector asks for uses Copilot premium requests billed as GitHub decides for an app's request; at most once per head and never for a fork, but no cap per pull request or per day; the profile's rules and the organization's Copilot budget limit it; basis: stated, and a maintainer ruling (2026-10-25, Q46)",
       "false_friend": false,
       "provenance": "documented",
       "source": "docs/github-connector.md \"Copilot reviews\", Cost"
     },
     {
       "property": "D-CONNECTOR-COPILOT-DATA",
-      "reason": "since pointsman#220 a Copilot review reads the pull request's code and text under the organization's Copilot policy; the connector only asks and never reads what Copilot writes; basis: stated",
+      "reason": "since pointsman#220 (v0.17.0) a Copilot review reads the pull request's code and text under the organization's Copilot policy; the connector only asks and never reads what Copilot writes; basis: stated",
       "false_friend": false,
       "provenance": "documented",
       "source": "docs/github-connector.md \"Copilot reviews\""

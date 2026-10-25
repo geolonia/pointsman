@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:08124cdafa2ca30e5d2e9535ea651bc78670c7fcfa6a5f315501d49eb3a1f965"
+prose_version: "threat-model.md@sha256:1828b86c773d800b93e77a07f3e62acfff750bd32deca33bea7d92e58b8543a5"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 459, maintainer: 83, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, and the amendment for copilot_review (pointsman#220, written before its release): Claude Opus 5.5 (claude-opus-5-5)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), and the re-binding to v0.17.0: Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -1090,7 +1090,7 @@ outputs:
     taint_provenance: {kind: documented, source: "docs/github-connector.md \"Actions\" table"}
     invariants:
       - id: mapped-actions-only
-        statement: "only mapped actions; fixed comment text with a marker and the decision id; labels and logins from the settings; since pointsman#220 a Copilot review request with the one fixed reviewer, at most one Copilot review per head, never for a fork"
+        statement: "only mapped actions; fixed comment text with a marker and the decision id; labels and logins from the settings; since pointsman#220 (v0.17.0) a Copilot review request with the one fixed reviewer, at most one Copilot review per head, never for a fork"
         property_id: P-CONNECTOR-ACTIONS-MAPPED
         provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}
     downstream_must_not_assume:
@@ -1824,7 +1824,7 @@ properties_claimed:
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit"
+    conditions: "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit"
     violation_symptoms: [x-unauthorized-write, wrong-output]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""}
   - id: P-CONNECTOR-APPROVE-HEAD
@@ -2119,13 +2119,13 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\", Personal data"}
   - id: D-CONNECTOR-COPILOT-COST
     components: [connector-github]
-    conditions: "since pointsman#220 each Copilot review the connector asks for uses Copilot premium requests billed as GitHub decides for an app's request; at most once per head and never for a fork, but no cap per pull request or per day; the profile's rules and the organization's Copilot budget limit it; basis: stated, and a maintainer ruling (2026-10-25, Q46)"
+    conditions: "since pointsman#220 (v0.17.0) each Copilot review the connector asks for uses Copilot premium requests billed as GitHub decides for an app's request; at most once per head and never for a fork, but no cap per pull request or per day; the profile's rules and the organization's Copilot budget limit it; basis: stated, and a maintainer ruling (2026-10-25, Q46)"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/github-connector.md \"Copilot reviews\", Cost"}
   - id: D-CONNECTOR-COPILOT-DATA
     components: [connector-github]
-    conditions: "since pointsman#220 a Copilot review reads the pull request's code and text under the organization's Copilot policy; the connector only asks and never reads what Copilot writes; basis: stated"
+    conditions: "since pointsman#220 (v0.17.0) a Copilot review reads the pull request's code and text under the organization's Copilot policy; the connector only asks and never reads what Copilot writes; basis: stated"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/github-connector.md \"Copilot reviews\""}

@@ -473,6 +473,20 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   (hand completed), `commit` kept at `8eea43d` until the next release.
 - **Validator**: passes (90 checks, one length warning).
 
+## Re-binding to `v0.17.0` (2026-10-25)
+
+- **What moved**: the binding to `v0.17.0` (`b08aaf3`, pointsman#226), the
+  six "since pointsman#220" markers in the prose (and those in the YAML and
+  JSON) now carry `v0.17.0`, the status and §1.16 no longer list
+  `copilot_review` as unreleased, and the JSON's `commit` is the bound
+  commit.
+- **Code**: between the merge of pointsman#225 (`e472f85`) and the tag
+  only version numbers and the changelog changed, so no citation moved;
+  the counts in §1.5 (29 fetch calls, 35 log lines in the connector) were
+  run again and are the same.
+- **Questions**: none.
+- **Validator**: passes (90 checks, one length warning).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
