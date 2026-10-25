@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:a8a6c8653e60cfe9d4d1447c46286066085d9291438c2dd3528a6f9be97432db"
+prose_version: "threat-model.md@sha256:0df32212a035bf15e454415f029943286187d42c1c739bd927fd0c3f97126a08"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 460, maintainer: 83, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, and the re-binding to v0.17.1 with pointsman#229 and R-PEOPLE-CHECK-PENDING (Q48): Claude Opus 5.5 (claude-opus-5-5)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, the re-binding to v0.17.1 with pointsman#229 and R-PEOPLE-CHECK-PENDING (Q48), and the re-binding to v0.17.2 with pointsman#232: Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -1936,7 +1936,7 @@ properties_claimed:
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported)"
+    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions"
     violation_symptoms: [wrong-output]
     provenance: {kind: documented, source: "bridge/README.md \"Safe to repeat\""}
   - id: P-TRIAGE-ALLOWLIST
@@ -2242,7 +2242,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "README \"API tokens\": \"nobody acts on them\""}
   - id: R-PEOPLE-CHECK-PENDING
     component: engine-api
-    statement: "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and by the FIWARE bridge when a route's reviewActions is unset or lists every people_check action (a broker consumer must read reviewStatus too); added with the re-binding to v0.17.1 (Q48)"
+    statement: "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and since pointsman#232 (v0.17.2) by the FIWARE bridge on every route, whatever its reviewActions, which only add actions to check (up to v0.17.1 a route whose reviewActions left out a people_check action marked it as taken; a broker consumer must read reviewStatus too); added with the re-binding to v0.17.1 (Q48)"
     enforces: [final-action-is-acted-on]
     provenance: {kind: documented, source: "docs/profile-format.md \"People: check and answers\""}
   - id: R-VERIFY-CALLBACK
