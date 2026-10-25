@@ -26,6 +26,10 @@ Owner: See catalog-info.yaml
 - Do not commit secrets.
 - Prefer small PRs with tests.
 
+## Changelog
+
+- Fix and feature PRs do not edit CHANGELOG.md; the release PR writes the whole entry, only adding lines, so `github_release` classes it as a release (an edited or removed line makes it a normal PR, as in #230).
+
 ## Issue intake (from Slack / Claude)
 
 When asked to create an issue in this repo from a Slack discussion (for example,
