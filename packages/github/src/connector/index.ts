@@ -12,7 +12,7 @@ import { ConfigError, type Connector } from '@pointsman/module-api';
 import type { EngineClient } from './engine.ts';
 import { AppGitHub, type ConnectorGitHub } from './github.ts';
 import { type Accepted, type ObjectStorage, PullRequestWork } from './pull-request.ts';
-import { actsOnGitHub, connectorSettings, readsDiff, type ConnectorSettings } from './settings.ts';
+import { actsOnGitHub, connectorSettings, readsContents, type ConnectorSettings } from './settings.ts';
 import { answerOf, bodyDigest, botReviewOf, MAX_BODY_BYTES, targetsOf, verifySignature, type PullRequestTarget } from './webhook.ts';
 
 /** The objects of the pull requests, one per pull request (a Durable Object namespace has this). */
@@ -80,7 +80,7 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
       const configured = (t: PullRequestTarget) => settings.repos.has(t.repo.toLowerCase());
       // Answers only where the deployment switched them on; never a run of their own.
       const hint = settings.answers ? answerOf(event, payload, settings.appId, settings.answers.command) : undefined;
-      const targets = hint ? hint.targets.filter(configured) : targetsOf(event, payload, settings.appId, settings.comment !== undefined).filter(configured);
+      const targets = hint ? hint.targets.filter(configured) : targetsOf(event, payload, settings.appId, settings.comment !== undefined || settings.answers !== undefined).filter(configured);
       if (targets.length === 0) return json(202, { ignored: true });
       const digest = await bodyDigest(body);
       const botReview = botReviewOf(event, payload);
@@ -101,7 +101,7 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
 
 /** The work of one pull request's object, from the same settings. */
 export function pullRequestWork(settings: ConnectorSettings, storage: ObjectStorage, engine: EngineClient, github?: ConnectorGitHub): PullRequestWork {
-  return new PullRequestWork(storage, settings, github ?? new AppGitHub(settings.appId, settings.privateKey, undefined, actsOnGitHub(settings), readsDiff(settings)), engine);
+  return new PullRequestWork(storage, settings, github ?? new AppGitHub(settings.appId, settings.privateKey, undefined, actsOnGitHub(settings), readsContents(settings)), engine);
 }
 
 /** Reads the settings, with the objects binding; undefined when the connector is off. */
@@ -113,10 +113,10 @@ export function settingsWithObjects(env: Record<string, unknown>): { settings: C
   return { settings, objects };
 }
 
-export { actsOnGitHub, asButtons, BUTTONS, readsDiff, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type AnswerSettings, type ConnectorSettings, type RunOptions, type SignalColour, type SignalSpec } from './settings.ts';
+export { actsOnGitHub, asButtons, BUTTONS, readsContents, readsDiff, connectorSettings, CONNECTOR_SETTINGS, checkName, ACTION_KINDS, type ActionSpec, type AnswerSettings, type ConnectorSettings, type RunOptions, type SignalColour, type SignalSpec } from './settings.ts';
 export { actionOf, checkDecision, engineSetting, httpEngine, ENGINE_BINDING, type CheckedAnswer, type DecideBody, type EngineAnswer, type EngineClient, type EngineSetting, type ResolveBody } from './engine.ts';
 export { COMMENT_MARKER, DEFAULT_SIGNALS, MAX_COLUMNS, SIGNAL_WORDS, STATIONS, answersOf, checkText, clean, columns, commentBody, CLOSED_TEXT, NO_REVIEWS, lineArt, positionOf, reviewStateOf, signalOf, switchArt, type Position, type ReviewRef, type ReviewSummary, type HeadReviews, type Signal, type Station } from './comment.ts';
 export { PullRequestWork, RetryError, authorText, checkOutput, notActedOnOutput, UNCLEAR_MS, type ActOutcome, type CheckView, type ObjectStorage, type Accepted, type Decision } from './pull-request.ts';
 export { AppGitHub, GitHubError, actingScope, connectorScope, scopeFor, ACTING_PERMISSIONS, CONNECTOR_PERMISSIONS, DIFF_PERMISSIONS, MARKER, markerOf, type GitHubAccount, type CheckRunButton, type ConnectorGitHub, type CheckRunOutput, type OwnApproval, type PullRequestInfo } from './github.ts';
 export { targetsOf, botReviewOf, answerOf, commandOf, verifySignature, bodyDigest, MAX_BODY_BYTES, type AnswerEvent, type AnswerHint, type Answerer, type BotReview, type PullRequestTarget } from './webhook.ts';
-export { ANSWER_CHECKS_PER_HOUR, buttonsFor, byOf, type QueuedAnswer } from './answers.ts';
+export { ANSWER_CHECKS_PER_HOUR, ANSWER_READS_PER_HOUR, ANSWERS_PER_ACCOUNT_PER_HOUR, buttonsFor, byOf, type QueuedAnswer } from './answers.ts';

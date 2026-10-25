@@ -118,7 +118,8 @@ export interface Answerer {
  */
 export type AnswerEvent =
   | { kind: 'button'; checkRun: number; head: string; externalId: string; identifier: string }
-  | { kind: 'command'; answer: string };
+  /** `head`: the first 7 characters of the commit the person answers about, as the command names it. */
+  | { kind: 'command'; answer: string; head: string };
 
 export interface AnswerHint {
   targets: PullRequestTarget[];
@@ -130,8 +131,12 @@ const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const SHA = /^[0-9a-f]{40}$/;
 /** The connector's button identifiers (answers.ts): nothing else is passed on. */
 const IDENTIFIER = /^[1-3]-[0-9a-f]{8}$/;
-/** The whole comment, trimmed: exactly this one line. An action name, lower case, as Pointsman writes it. */
-const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63})$/;
+/**
+ * The whole comment, trimmed: exactly this one line. An action name, lower
+ * case, as Pointsman writes it, and the head commit the answer is about (its
+ * first 7 characters, as the decision comment shows them).
+ */
+const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63}) ([0-9a-f]{7})$/;
 
 /**
  * A person's account, from an event's sender: only a `User` (never a bot, an
@@ -143,12 +148,14 @@ function userOf(v: unknown): Answerer | undefined {
 }
 
 /**
- * The answer of a `/pointsman <answer>` comment: only when the whole comment,
- * trimmed, is that one line (no other text, no quote, no code block, no upper
- * case). Anything else is not a command.
+ * The answer and short head of a `/pointsman <answer> <head>` comment: only
+ * when the whole comment, trimmed, is that one line (no other text, no
+ * quote, no code block, no upper case, the head given). Anything else is not
+ * a command.
  */
-export function commandOf(body: unknown): string | undefined {
-  return typeof body === 'string' ? COMMAND.exec(body.trim())?.[1] : undefined;
+export function commandOf(body: unknown): { answer: string; head: string } | undefined {
+  const m = typeof body === 'string' ? COMMAND.exec(body.trim()) : null;
+  return m ? { answer: m[1]!, head: m[2]! } : undefined;
 }
 
 /**
@@ -182,8 +189,8 @@ export function answerOf(event: string, payload: unknown, appId: number, command
     // A comment on a pull request (an issue has no pull_request), written by the sender.
     if (!isObject(issue) || !isObject(issue.pull_request) || !isNumber(issue.number) || !isObject(comment)) return undefined;
     if (userOf(comment.user)?.id !== by.id) return undefined;
-    const answer = commandOf(comment.body);
-    return answer === undefined ? undefined : { targets: [{ repo, number: issue.number }], by, answer: { kind: 'command', answer } };
+    const command = commandOf(comment.body);
+    return command === undefined ? undefined : { targets: [{ repo, number: issue.number }], by, answer: { kind: 'command', ...command } };
   }
   return undefined;
 }

@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ANSWER_CHECKS_PER_HOUR, AppGitHub, answerOf, buttonsFor, commandOf, connectorSettings, githubConnector, httpEngine, pullRequestWork,
+  ANSWER_CHECKS_PER_HOUR, ANSWER_READS_PER_HOUR, ANSWERS_PER_ACCOUNT_PER_HOUR, AppGitHub, answerOf, buttonsFor, checkDecision, commandOf, connectorSettings, GitHubError, githubConnector, httpEngine, pullRequestWork, readsContents,
   type Accepted, type AnswerEvent, type Answerer, type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type PullRequestInfo,
 } from '@pointsman/github';
 import type { EngineApi } from '@pointsman/module-api';
@@ -15,6 +15,9 @@ const APP_ID = 4242;
 const REPO = 'example/repo';
 const HEAD = 'a'.repeat(40);
 const HEAD2 = 'b'.repeat(40);
+/** The heads as a command names them. */
+const SHORT = HEAD.slice(0, 7);
+const SHORT2 = HEAD2.slice(0, 7);
 const PROFILE = 'pr-next-step';
 
 async function pemKey(): Promise<string> {
@@ -81,13 +84,13 @@ function fakeGitHub() {
     [AUTHOR.login]: { id: AUTHOR.id, permission: 'write' }, [PUSHER.login]: { id: PUSHER.id, permission: 'write' },
     [MAINTAINER.login]: { id: MAINTAINER.id, permission: 'admin' }, [READER.login]: { id: READER.id, permission: 'read' },
   };
-  const control: { pusher: Answerer | undefined | 'fail'; permission?: 'fail' } = { pusher: PUSHER };
+  const control: { pusher: Answerer | undefined | 'fail'; permission?: 'fail' | 404; update?: () => void } = { pusher: PUSHER };
   const github: ConnectorGitHub & { state: PullRequestInfo } = {
     state,
     pullRequest: async () => (calls.push({ op: 'get' }), { ...github.state }),
     findCheckRun: async () => undefined,
     createCheckRun: async (_r, head, _n, output) => { const id = nextId++; calls.push({ op: 'create', id, head, output }); return id; },
-    updateCheckRun: async (_r, id, output) => void calls.push({ op: 'update', id, output }),
+    updateCheckRun: async (_r, id, output) => { control.update?.(); calls.push({ op: 'update', id, output }); },
     findComment: async () => false,
     createComment: async (_r, _n, body) => (calls.push({ op: 'comment', body }), nextId++),
     findOwnComment: async () => undefined,
@@ -103,6 +106,7 @@ function fakeGitHub() {
     permission: async (_r, login) => {
       calls.push({ op: 'permission', login });
       if (control.permission === 'fail') throw new Error('GitHub permission: 502');
+      if (control.permission === 404) throw new GitHubError('GitHub permission: 404', false, 404);
       const p = people[login];
       return p ? { account: { id: p.id, login }, permission: p.permission } : { account: { id: 999, login }, permission: 'none' };
     },
@@ -124,6 +128,8 @@ function fakeEngine() {
   const logged = new Map<string, any>();
   const calls: { op: string; id?: string; body?: any }[] = [];
   const override: { get?: () => Response; resolve?: () => Response } = {};
+  /** Fields added to every decision it makes (a test spoofs one). */
+  const extra: Record<string, unknown> = {};
   const peopleAnswers = ['approve', 'reject'];
   const api: EngineApi = {
     url: 'https://pointsman.example.org',
@@ -131,7 +137,7 @@ function fakeEngine() {
       const m = /\/v1\/(decisions|reviews)\/([^/]+)(\/close|\/resolve)?$/.exec(url);
       if (!m) {
         const sent = JSON.parse(String(init.body));
-        const d = { ...decision(), ref: sent.ref };
+        const d = { ...decision(), ref: sent.ref, ...extra };
         logged.set(d.decision_id, structuredClone(d));
         calls.push({ op: 'decide' });
         return Response.json(d);
@@ -154,7 +160,7 @@ function fakeEngine() {
       return Response.json({ decision_id: id, action: body.action, resolved_by: body.by, answers: {}, resolved_at: 'now', callback: 'none' });
     },
   };
-  return { engine: httpEngine(api, `pm_${crypto.randomUUID()}`), logged, calls, override, peopleAnswers };
+  return { engine: httpEngine(api, `pm_${crypto.randomUUID()}`), logged, calls, override, peopleAnswers, extra };
 }
 
 /** A pull request with an open question on HEAD: its object, its check run and the decision asked. */
@@ -193,6 +199,9 @@ describe('the setting: answers in the pull request, off unless switched on', () 
     expect(connectorSettings(env({}))!.answers).toBeUndefined();
     expect(parse({ profiles: { [PROFILE]: ['approve', 'reject', 'approve'] } })).toEqual({ profiles: { [PROFILE]: ['approve', 'reject'] }, command: false });
     expect(parse({ profiles: { [PROFILE]: ['approve'] }, command: true })).toEqual({ profiles: { [PROFILE]: ['approve'] }, command: true });
+    // With answers on, the token may read contents: GitHub lists who pushed (the activity) only with contents: read.
+    expect(readsContents(connectorSettings(env({}))!)).toBe(false);
+    expect(readsContents(connectorSettings(env({ answers: { profiles: { [PROFILE]: ['approve'] } } }))!)).toBe(true);
   });
 
   it('more than three answers, or a name longer than a button label, needs the command', () => {
@@ -242,25 +251,27 @@ describe('the webhook: which events are answers', () => {
     expect(answerOf('check_run', click({ sender: sender({ type: 'Bot', login: 'pointsman-test[bot]' }) }), APP_ID, true)).toBeUndefined();
     expect(answerOf('check_run', click({ sender: sender({ login: 'ghost' }) }), APP_ID, true)).toBeUndefined();
     expect(answerOf('check_run', click({ sender: sender({ id: 'x' as never }) }), APP_ID, true)).toBeUndefined();
-    expect(answerOf('issue_comment', comment('/pointsman approve', { sender: sender({ type: 'Bot', login: 'github-actions[bot]' }) }), APP_ID, true)).toBeUndefined();
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { sender: sender({ type: 'Bot', login: 'github-actions[bot]' }) }), APP_ID, true)).toBeUndefined();
   });
 
   it('a comment only when the command is on, only when created, only on a pull request, only by the sender', () => {
-    expect(answerOf('issue_comment', comment('/pointsman approve'), APP_ID, true)).toEqual({ targets: [{ repo: REPO, number: 7 }], by: MAINTAINER, answer: { kind: 'command', answer: 'approve' } });
-    expect(answerOf('issue_comment', comment('/pointsman approve'), APP_ID, false)).toBeUndefined();
-    expect(answerOf('issue_comment', comment('/pointsman approve', { action: 'edited' }), APP_ID, true)).toBeUndefined();
-    expect(answerOf('issue_comment', comment('/pointsman approve', { action: 'deleted' }), APP_ID, true)).toBeUndefined();
-    expect(answerOf('issue_comment', comment('/pointsman approve', { issue: { number: 7 } }), APP_ID, true)).toBeUndefined();
-    expect(answerOf('issue_comment', comment('/pointsman approve', { comment: { body: '/pointsman approve', user: sender({ id: 9 }) } }), APP_ID, true)).toBeUndefined();
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`), APP_ID, true)).toEqual({ targets: [{ repo: REPO, number: 7 }], by: MAINTAINER, answer: { kind: 'command', answer: 'approve', head: SHORT } });
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`), APP_ID, false)).toBeUndefined();
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { action: 'edited' }), APP_ID, true)).toBeUndefined();
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { action: 'deleted' }), APP_ID, true)).toBeUndefined();
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { issue: { number: 7 } }), APP_ID, true)).toBeUndefined();
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { comment: { body: `/pointsman approve ${SHORT}`, user: sender({ id: 9 }) } }), APP_ID, true)).toBeUndefined();
   });
 
-  it('the command: the whole comment is one line, exactly; quotes, code blocks, other text and upper case are not', () => {
-    expect(commandOf('/pointsman approve')).toBe('approve');
-    expect(commandOf('  /pointsman approve\n')).toBe('approve');
-    expect(commandOf('/pointsman reject-now_2')).toBe('reject-now_2');
+  it('the command: the whole comment is one line with the answer and the head, exactly; quotes, code blocks, other text and upper case are not', () => {
+    expect(commandOf('/pointsman approve 0123abc')).toEqual({ answer: 'approve', head: '0123abc' });
+    expect(commandOf('  /pointsman approve 0123abc\n')).toEqual({ answer: 'approve', head: '0123abc' });
+    expect(commandOf('/pointsman reject-now_2 0123abc')).toEqual({ answer: 'reject-now_2', head: '0123abc' });
     for (const body of [
-      '> /pointsman approve', '```\n/pointsman approve\n```', '`/pointsman approve`', '    /pointsman approve x', 'yes\n/pointsman approve',
-      '/pointsman approve\nthanks', '/Pointsman approve', '/pointsman Approve', '/pointsman  approve', '/pointsman', '/pointsmanapprove', 'please /pointsman approve',
+      // Without the head, or with a head that is not 7 lower-case hex characters: not a command.
+      '/pointsman approve', '/pointsman approve 0123ab', '/pointsman approve 0123abcd', '/pointsman approve 0123ABC', '/pointsman approve main123',
+      '> /pointsman approve 0123abc', '```\n/pointsman approve 0123abc\n```', '`/pointsman approve 0123abc`', '    /pointsman approve 0123abc x', 'yes\n/pointsman approve 0123abc',
+      '/pointsman approve 0123abc\nthanks', '/Pointsman approve 0123abc', '/pointsman Approve 0123abc', '/pointsman  approve 0123abc', '/pointsman', '/pointsmanapprove 0123abc', 'please /pointsman approve 0123abc',
     ]) expect(commandOf(body), body).toBeUndefined();
     expect(commandOf(undefined)).toBeUndefined();
   });
@@ -280,14 +291,18 @@ describe('the webhook: which events are answers', () => {
     const on = connector(settings({ answers: { ...ANSWERS, command: true } }));
     expect(await (await post(on, 'check_run', click())).json()).toEqual({ results: ['answer'] });
     expect(seen[0]).toMatchObject({ target: { repo: REPO, number: 7 }, answer: { by: MAINTAINER, event: { kind: 'button', identifier: '1-0123abcd' } } });
-    await post(on, 'issue_comment', comment('/pointsman approve'));
-    expect(seen[1]).toMatchObject({ answer: { by: MAINTAINER, event: { kind: 'command', answer: 'approve' } } });
+    await post(on, 'issue_comment', comment(`/pointsman approve ${SHORT}`));
+    expect(seen[1]).toMatchObject({ answer: { by: MAINTAINER, event: { kind: 'command', answer: 'approve', head: SHORT } } });
     // Another repository; answers off; a comment that is not a command: ignored.
     expect(await (await post(on, 'check_run', click({ repository: { full_name: 'other/repo' } }))).json()).toEqual({ ignored: true });
     expect(await (await post(on, 'issue_comment', comment('LGTM'))).json()).toEqual({ ignored: true });
+    // A closed pull request reaches its object with answers on and the decision comment off: its question is closed.
+    const closed = { action: 'closed', repository: { full_name: REPO }, pull_request: { number: 7 }, sender: sender() };
+    expect(await (await post(connector(settings({ comment: undefined } as never)), 'pull_request', closed)).json()).toEqual({ results: ['answer'] });
+    seen.pop();
     const off = connector(settings({ answers: undefined }));
     expect(await (await post(off, 'check_run', click())).json()).toEqual({ ignored: true });
-    expect(await (await post(off, 'issue_comment', comment('/pointsman approve'))).json()).toEqual({ ignored: true });
+    expect(await (await post(off, 'issue_comment', comment(`/pointsman approve ${SHORT}`))).json()).toEqual({ ignored: true });
     expect(seen).toHaveLength(2);
   });
 });
@@ -324,6 +339,31 @@ describe('buttons on the check run', () => {
     expect(cleared.actions).toEqual([]);
     expect(cleared.summary).toContain('The pull request has newer commits: this question is closed.');
     expect(pm.logged.get(id).review).toEqual({ status: 'superseded' });
+  });
+
+  it('a closed pull request closes the question and removes the buttons, also with the decision comment off', async () => {
+    const { gh, pm, id, checkRun, accept, work } = await asking({ comment: undefined } as never);
+    gh.github.state.open = false;
+    await accept();
+    await work.run();
+    expect(pm.logged.get(id).review).toEqual({ status: 'superseded' });
+    const cleared = gh.calls.filter((c) => c.op === 'update' && c.id === checkRun).at(-1)!.output!;
+    expect(cleared.actions).toEqual([]);
+    expect(cleared.summary).toContain('The pull request is closed: this question is closed.');
+  });
+
+  it('a removal of buttons that fails while GitHub is busy is tried again on the next run', async () => {
+    const { gh, checkRun, accept, work, mem } = await asking();
+    gh.github.state.head = HEAD2;
+    let fail = true;
+    gh.control.update = () => { if (fail) { fail = false; throw new GitHubError('GitHub check run: 502', true, 502); } };
+    await logged(async () => { await accept(); await work.run(); });
+    expect(gh.calls.filter((c) => c.op === 'update' && c.id === checkRun)).toEqual([]);
+    expect((mem.data.get('clearing') as any[]).map((c) => c.id)).toEqual([checkRun]);
+    await accept();
+    await work.run();
+    expect(gh.calls.filter((c) => c.op === 'update' && c.id === checkRun).at(-1)!.output!.actions).toEqual([]);
+    expect(mem.data.get('clearing')).toEqual([]);
   });
 
   it('a deployment without answers sends no actions at all', async () => {
@@ -441,11 +481,41 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     expect(t.lastOutput().title).toBe('🟡 reject: a person\'s answer (shadow)');
   });
 
-  it(`at most ${ANSWER_CHECKS_PER_HOUR} answers an hour reach GitHub; more wait in no queue`, async () => {
+  it(`one account: at most ${ANSWERS_PER_ACCOUNT_PER_HOUR} answers an hour, noted once; it cannot block a maintainer`, async () => {
     const t = await asking();
-    const log = await logged(async () => { for (let i = 0; i < ANSWER_CHECKS_PER_HOUR + 3; i++) await t.click(1, READER); });
+    const log = await logged(async () => { for (let i = 0; i < ANSWERS_PER_ACCOUNT_PER_HOUR + 3; i++) await t.click(1, READER); });
+    expect(t.gh.calls.filter((c) => c.op === 'permission')).toHaveLength(ANSWERS_PER_ACCOUNT_PER_HOUR);
+    expect(log).toContain(`more than ${ANSWERS_PER_ACCOUNT_PER_HOUR} answers from one account this hour`);
+    expect(t.gh.calls.filter((c) => c.output?.summary.includes('answers from one account this hour; answer again in the next hour'))).toHaveLength(1);
+    await logged(() => t.click(1));
+    expect(t.resolves()).toHaveLength(1);
+  });
+
+  it(`all accounts: at most ${ANSWER_CHECKS_PER_HOUR} permission lookups and ${ANSWER_READS_PER_HOUR} reads of the pull request an hour`, async () => {
+    const t = await asking();
+    const stranger = (i: number): Answerer => ({ login: `stranger-${i}`, id: 1000 + i });
+    // Strangers that pass the checks of the pull request: one permission lookup each, up to the cap.
+    const log = await logged(async () => { for (let i = 0; i < ANSWER_CHECKS_PER_HOUR + 2; i++) await t.click(1, stranger(i)); });
     expect(t.gh.calls.filter((c) => c.op === 'permission')).toHaveLength(ANSWER_CHECKS_PER_HOUR);
-    expect(log).toContain(`more than ${ANSWER_CHECKS_PER_HOUR} answers this hour`);
+    expect(log).toContain(`more than ${ANSWER_CHECKS_PER_HOUR} answers checked this hour`);
+    // Answers refused by the pull request's own checks (the author) cost no lookup, but each reads the pull request.
+    const t2 = await asking();
+    t2.gh.github.state.authorId = 0;
+    const reads = () => t2.gh.calls.filter((c) => c.op === 'get').length;
+    const before = reads();
+    await logged(async () => { for (let i = 0; i < ANSWER_READS_PER_HOUR + 2; i++) await t2.click(1, stranger(i)); });
+    expect(reads() - before).toBe(ANSWER_READS_PER_HOUR);
+    expect(t2.gh.calls.filter((c) => c.op === 'permission')).toEqual([]);
+  });
+
+  it('a permission GitHub does not find (404) is no write access', async () => {
+    const t = await asking();
+    t.gh.control.permission = 404;
+    const log = await logged(() => t.click(1));
+    expect(t.lastOutput().summary).toContain('An answer was not taken: only people with write access can answer');
+    // The log has GitHub's status, never the login.
+    expect(log).toContain('(GitHub permission: 404)');
+    expect(log).not.toContain('Octo-Cat');
   });
 
   it('a replayed answer is dropped, and a full queue drops more', async () => {
@@ -455,9 +525,14 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     const send = () => t.work.accept({ target: { repo: REPO, number: 7 }, delivery, digest: crypto.randomUUID(), answer: { event, by: READER } }, Date.now());
     expect(await send()).toBe('answer');
     expect(await send()).toBe('replay');
+    // The same body again with a new delivery id: a second click on the same button, not a replay.
+    const digest = crypto.randomUUID();
+    const again = () => t.work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest, answer: { event, by: READER } }, Date.now());
+    expect(await again()).toBe('answer');
+    expect(await again()).toBe('answer');
     const more: string[] = [];
     await logged(async () => { for (let i = 0; i < 6; i++) more.push(await t.accept({ answer: { event, by: READER } })); });
-    expect(more.filter((r) => r === 'dropped')).toHaveLength(2);
+    expect(more.filter((r) => r === 'dropped')).toHaveLength(4);
   });
 });
 
@@ -467,32 +542,98 @@ describe('the comment command (when switched on)', () => {
   it('answers the one open question that offers the answer; the decision comment lists the commands', async () => {
     const t = await asking(on);
     const comment = t.gh.calls.filter((c) => c.op === 'comment').at(-1)!.body!;
-    expect(comment).toContain('<code>pr-next-step</code> waits for a person: answer with a comment of one line, `/pointsman approve` or `/pointsman reject`.');
-    expect(t.gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('or with a comment of one line: `/pointsman approve`, `/pointsman reject`');
-    await logged(() => t.answer({ kind: 'command', answer: 'reject' }));
+    expect(comment).toContain(`<code>pr-next-step</code> waits for a person about commit ${SHORT}: answer with a comment of one line, \`/pointsman approve ${SHORT}\` or \`/pointsman reject ${SHORT}\`.`);
+    expect(t.gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain(`or with a comment of one line: \`/pointsman approve ${SHORT}\`, \`/pointsman reject ${SHORT}\``);
+    await logged(() => t.answer({ kind: 'command', answer: 'reject', head: SHORT }));
     expect(t.resolves()).toEqual([{ op: 'resolve', id: t.id, body: { action: 'reject', by: 'github:Octo-Cat (5)' } }]);
     expect(t.lastOutput().title).toBe('🟡 reject: answered by Octo-Cat (shadow)');
   });
 
   it('a command that answers no open question does nothing, quietly; one that matches two is refused on both', async () => {
     const t = await asking(on);
-    await logged(() => t.answer({ kind: 'command', answer: 'wait' }));
+    await logged(() => t.answer({ kind: 'command', answer: 'wait', head: SHORT }));
     expect(t.gh.calls.filter((c) => c.op === 'permission')).toEqual([]);
     const updates = t.gh.calls.filter((c) => c.op === 'update').length;
     // A second open question offering the same answer.
     const asked = t.mem.data.get('asked') as any;
     asked.byProfile.other = { ...asked.byProfile[PROFILE], decision: { ...asked.byProfile[PROFILE].decision, decision_id: crypto.randomUUID() } };
     t.mem.data.set('asked', asked);
-    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve' }));
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
     expect(t.resolves()).toEqual([]);
     expect(log).toContain('more than one open question');
     expect(t.gh.calls.filter((c) => c.op === 'update').slice(updates).some((c) => c.output!.summary.includes('the command matches more than one open question'))).toBe(true);
   });
 
+  it('a command names the commit: one written for an older head never answers the question of a newer one', async () => {
+    const t = await asking(on);
+    // Pushed, not yet run: the command for the old head is bound to the old question, and refused (the head moved).
+    t.gh.github.state.head = HEAD2;
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
+    expect(t.resolves()).toEqual([]);
+    expect(t.lastOutput().summary).toContain('An answer was not taken: the pull request has newer commits');
+    // The run made the new question; the same command, late (or delivered out of order), is not about it.
+    await t.accept();
+    await t.work.run();
+    expect(t.pm.calls.filter((c) => c.op === 'decide')).toHaveLength(2);
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
+    expect(log).toContain(`a command for commit ${SHORT}, which has no open question; ignored`);
+    expect(t.resolves()).toEqual([]);
+    expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+    // Written for the new head: taken.
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT2 }));
+    expect(t.resolves()).toHaveLength(1);
+    expect(t.gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD2]);
+  });
+
+  it('a command for a commit with no question is ignored without a note', async () => {
+    const t = await asking(on);
+    const updates = t.gh.calls.filter((c) => c.op === 'update').length;
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: '0123abc' }));
+    expect(t.resolves()).toEqual([]);
+    expect(t.gh.calls.filter((c) => c.op === 'update')).toHaveLength(updates);
+    expect(t.gh.calls.filter((c) => c.op === 'permission' || c.op === 'get').length).toBeLessThanOrEqual(2);
+  });
+
   it('with the command off, a queued command is not taken', async () => {
     const t = await asking();
-    await t.answer({ kind: 'command', answer: 'approve' });
+    await t.answer({ kind: 'command', answer: 'approve', head: SHORT });
     expect(t.resolves()).toEqual([]);
+  });
+});
+
+describe('who answered is the connector\'s own note, never the engine\'s', () => {
+  it('checkDecision drops answered_by from any answer', () => {
+    const ref = `github:${REPO}#7@${HEAD}`;
+    const d = { ...decision(), ref, answered_by: 'mallory' };
+    const checked = checkDecision(d, { profile: PROFILE, ref });
+    expect(checked.kind).toBe('decision');
+    expect((checked as { decision: Decision }).decision.answered_by).toBeUndefined();
+    expect(d.answered_by).toBe('mallory');
+  });
+
+  it('a decision or a read-back that names someone shows nobody', async () => {
+    const t = await asking();
+    // A new decision (after a push) that names someone: not kept, not shown.
+    t.pm.extra.answered_by = 'mallory';
+    t.gh.github.state.head = HEAD2;
+    await t.accept();
+    await t.work.run();
+    expect((t.mem.data.get('asked') as any).byProfile[PROFILE].decision.answered_by).toBeUndefined();
+    expect(JSON.stringify(t.gh.calls)).not.toContain('mallory');
+    delete t.pm.extra.answered_by;
+    t.gh.github.state.head = HEAD;
+    await t.accept();
+    await t.work.run();
+    t.id = [...t.pm.logged.keys()].at(-1)!;
+    // A read-back of an answer given in the queue, with a spoofed answered_by.
+    t.pm.logged.get(t.id).review = { status: 'resolved', final_action: 'approve' };
+    t.pm.logged.get(t.id).answered_by = 'mallory';
+    await t.accept();
+    await t.work.run();
+    expect(t.lastOutput().title).toBe('🟢 approve: a person\'s answer');
+    const all = JSON.stringify(t.gh.calls);
+    expect(all).not.toContain('mallory');
+    expect((t.mem.data.get('asked') as any).byProfile[PROFILE].decision.answered_by).toBeUndefined();
   });
 });
 

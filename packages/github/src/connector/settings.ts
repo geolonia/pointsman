@@ -335,6 +335,12 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
 /** Whether a profile gets the diff: then the token may read contents (a private repository's diff needs it). */
 export const readsDiff = (s: ConnectorSettings) => Object.values(s.runs).some((r) => r.diff !== undefined);
 
+/**
+ * Whether the token may read contents: for the diff, and with answers on,
+ * for who pushed the head (GitHub's activity list needs contents: read).
+ */
+export const readsContents = (s: ConnectorSettings) => readsDiff(s) || s.answers !== undefined;
+
 const withValue = <K extends string, V>(key: K, v: V | undefined) => (v === undefined ? {} : { [key]: v } as Record<K, V>);
 
 /** Whether any action or the decision comment is switched on: then the token may write pull requests. */

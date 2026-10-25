@@ -158,6 +158,17 @@ export interface Shown {
   output: CheckRunOutput;
 }
 
+/** A removal of an older head's buttons, still to be done (#clearButtons). */
+interface Clearing {
+  id: number;
+  profile: string;
+  output: CheckRunOutput;
+  tries: number;
+}
+
+/** A removal of buttons that fails while GitHub is busy is tried again on this many runs. */
+const CLEAR_TRIES = 10;
+
 /** A close that fails (busy, down) is tried again on later runs: at most this often, this long, and once per CLOSE_SPACING_MS. */
 const CLOSE_TRIES = 10;
 const CLOSE_MS = 24 * 3600_000;
@@ -213,7 +224,9 @@ export class PullRequestWork {
    */
   async accept(event: Accepted, now: number): Promise<'accepted' | 'replay' | 'own' | 'answer' | 'dropped'> {
     const seen = (await this.#storage.get<Record<string, number>>('seen')) ?? {};
-    const keys = [`d:${event.delivery}`, `b:${event.digest}`];
+    // An answer by its delivery only: a second click on the same button has the same body, and is a new answer
+    // (the once-only resolve in Pointsman guards against a repeat).
+    const keys = event.answer ? [`d:${event.delivery}`] : [`d:${event.delivery}`, `b:${event.digest}`];
     if (keys.some((k) => seen[k] !== undefined && now - seen[k]! < SEEN_MS)) return 'replay';
     // Only reviews it recorded giving, sent by its own bot: an event that comes before the record (its own approval,
     // while the run still goes on), another bot's dismissal of its approval, or a failed read of its login starts a run, as before.
@@ -377,24 +390,37 @@ export class PullRequestWork {
 
   /**
    * The buttons of an older head's check runs (or of a closed pull request:
-   * head '') are removed once: a click on them is refused anyway (answers.ts),
-   * so a failure is only logged.
+   * head '') are removed. Each removal is listed first (`clearing`), then
+   * done: one that fails while GitHub is busy is tried again on later runs,
+   * at most CLEAR_TRIES times; a refused one is given up (a click on the old
+   * buttons is refused anyway, answers.ts).
    */
   async #clearButtons(target: PullRequestTarget, head: string): Promise<void> {
     if (!this.#settings.answers) return;
+    const clearing = (await this.#storage.get<Clearing[]>('clearing')) ?? [];
     const checks = await this.#storage.get<Checks>('checks');
-    if (!checks || checks.head === head) return;
-    for (const [profile, run] of Object.entries(checks.runs)) {
-      const shown = await this.#storage.get<Shown>(`shown:${profile}`);
-      if (run.id === undefined || shown?.head !== checks.head || !shown.output.actions?.length) continue;
-      const output: CheckRunOutput = { ...shown.output, actions: [], summary: `${shown.output.summary}\n\n${head === '' ? 'The pull request is closed' : 'The pull request has newer commits'}: this question is closed.` };
-      await this.#storage.put({ [`shown:${profile}`]: { head: checks.head, output } });
-      try {
-        await retrying(() => this.#github.updateCheckRun(target.repo, run.id!, output));
-      } catch (err) {
-        console.error(`github connector: ${target.repo}#${target.number} ${profile} removing the buttons of ${checks.head.slice(0, 7)}: ${err instanceof Error ? err.message : String(err)}`);
+    if (checks && checks.head !== head) {
+      for (const [profile, run] of Object.entries(checks.runs)) {
+        const shown = await this.#storage.get<Shown>(`shown:${profile}`);
+        if (run.id === undefined || shown?.head !== checks.head || !shown.output.actions?.length) continue;
+        const output: CheckRunOutput = { ...shown.output, actions: [], summary: `${shown.output.summary}\n\n${head === '' ? 'The pull request is closed' : 'The pull request has newer commits'}: this question is closed.` };
+        clearing.push({ id: run.id, profile, output, tries: 0 });
+        // Listed once: the record no longer shows buttons, the list keeps the removal until it is done.
+        await this.#storage.put({ clearing, [`shown:${profile}`]: { head: checks.head, output } });
       }
     }
+    if (clearing.length === 0) return;
+    const left: Clearing[] = [];
+    for (const c of clearing) {
+      try {
+        await retrying(() => this.#github.updateCheckRun(target.repo, c.id, c.output));
+      } catch (err) {
+        const again = err instanceof RetryError && c.tries + 1 < CLEAR_TRIES;
+        console.error(`github connector: ${target.repo}#${target.number} ${c.profile} removing the buttons of check run ${c.id}: ${err instanceof Error ? err.message : String(err)}; ${again ? 'tried again later' : 'given up'}`);
+        if (again) left.push({ ...c, tries: c.tries + 1 });
+      }
+    }
+    await this.#storage.put({ clearing: left });
   }
 
   /**
@@ -1135,7 +1161,7 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' },
       : `${outcome.kind === 'done' ? 'Done' : 'Not done'}: ${outcome.text}. This check never blocks.`,
     ...(missing.length > 0 ? ['', `Missing facts: ${missing.join(', ')}.`] : []),
     ...(d.review?.status === 'pending' ? ['', 'Waiting for a person: a person checks this decision before it counts. Their answer is used once they give it.'] : []),
-    ...(d.review?.status === 'pending' && view.asking ? ['', askingText(view.asking)] : []),
+    ...(d.review?.status === 'pending' && view.asking ? ['', askingText(view.asking, view.head ?? '')] : []),
     '',
     `Decision \`${d.decision_id}\``,
   ];
@@ -1149,10 +1175,11 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' },
 }
 
 /** How a person answers in the pull request: the buttons, and the command where it is on. */
-function askingText(asking: { offered: string[]; command: boolean }): string {
+function askingText(asking: { offered: string[]; command: boolean }, head: string): string {
   const ways = [
     ...(asButtons(asking.offered) ? ['with a button above'] : []),
-    ...(asking.command ? [`with a comment of one line: ${asking.offered.map((a) => `\`/pointsman ${a}\``).join(', ')}`] : []),
+    // The command names the commit, so it never answers a question about a later push.
+    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`/pointsman ${a} ${head.slice(0, 7)}\``).join(', ')}`] : []),
   ];
   return `Answer in the pull request ${ways.join(', or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`;
 }

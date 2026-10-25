@@ -352,7 +352,7 @@ export function commentBody(decisions: Decision[], signals: Record<string, Recor
   const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code>${d.review?.status === 'resolved' ? `; ${answeredBy(d) ? `answered by ${answeredBy(d)}:` : 'a person answered'} <code>${actionOf(d)}</code>` : ''}</summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
   // An open question that the command may answer: its answers, as fixed text (action names, checked in the settings).
   const asks = decisions.filter((d) => d.review?.status === 'pending' && Object.hasOwn(commands, d.profile))
-    .map((d) => `<code>${d.profile}</code> waits for a person: answer with a comment of one line, ${commands[d.profile]!.map((a) => `\`/pointsman ${a}\``).join(' or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`);
+    .map((d) => `<code>${d.profile}</code> waits for a person about commit ${head.slice(0, 7)}: answer with a comment of one line, ${commands[d.profile]!.map((a) => `\`/pointsman ${a} ${head.slice(0, 7)}\``).join(' or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`);
   return [
     COMMENT_MARKER,
     '### 🚦 Pointsman',

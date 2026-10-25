@@ -169,7 +169,7 @@ The connector cannot tell which rule gave the action. Map `keep_approval` only t
 
 A profile with `once_per_head` ([Chains](#chains)) is not asked again on the same commit, so its later decisions neither keep nor withdraw anything. Such a profile cannot map `approve` or `keep_approval` (a config error): a failed check or a change request on the same commit would not withdraw the approval.
 
-Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run). For its approval to count toward a ruleset's required approvals, the app also needs **Contents: Read and write**: GitHub counts approvals only from reviewers with write access (tested on #174, 2026-10-23). The connector's tokens ask for contents only to read a diff (`contents: read`, [Chains](#chains)), never to write.
+Actions need the connector app's permission **Pull requests: Read and write**. With only read, the token cannot write pull requests and every action fails (shown on the check run). For its approval to count toward a ruleset's required approvals, the app also needs **Contents: Read and write**: GitHub counts approvals only from reviewers with write access (tested on #174, 2026-10-23). The connector's tokens ask for contents only to read a diff (`contents: read`, [Chains](#chains)) or who pushed a commit ([Answering in the pull request](#answering-in-the-pull-request)), never to write.
 
 ## Asking a person
 
@@ -196,20 +196,22 @@ A person can answer an open question ([Asking a person](#asking-a-person)) insid
 }
 ```
 
-- `profiles`: the profiles that may be answered in the pull request, each with the answers offered (1 to 10 action names, not `review`). Each answer must also be in the profile's `people_answers`: Pointsman refuses any other answer, and the check run says so. List `people_answers` in the profile, so only the answers you mean can be given ([profile-format.md](profile-format.md#people-check-and-answers)). An answer that is mapped to no [action](#actions), for example `reject`, only answers the question.
+- `profiles`: the profiles that may be answered in the pull request, each with the answers offered (1 to 10 action names, not `review`). Each answer must also be in the profile's `people_answers`: Pointsman refuses any other answer, and the check run says so. List `people_answers` in the profile, so only the answers you mean can be given ([profile-format.md](profile-format.md#people-check-and-answers)). The connector cannot see `people_answers`: an answer listed here but not there still gets a button (and a command), which Pointsman then refuses. An answer that is mapped to no [action](#actions), for example `reject`, only answers the question.
 - **Buttons:** a profile with at most 3 answers, each at most 20 characters, gets one button per answer on its check run while its question is open. With more answers, or a longer name, it gets no buttons, and the command must be on (else the setting is refused).
-- `command`: the comment command `/pointsman <answer>`; off unless `true`.
+- `command`: the comment command `/pointsman <answer> <commit>`; off unless `true`.
 
 **The buttons.** Each button's label is the answer; its description is "Pointsman: answer <answer>". Its identifier is the answer's place and the first 8 characters of the decision id, for example `1-3f2a9c01`: nothing from the pull request. A click counts only on the connector's own check run of the current head, and only for the question that check run shows. Once the question is answered, the head moves or the pull request closes, the connector removes the buttons: it updates the check run with an empty list of buttons (that this removes them is to verify on GitHub: its docs do not say).
 
-**The command.** A comment counts only when the whole comment, trimmed, is exactly one line `/pointsman <answer>`: lower case, one space, and `<answer>` one of the answers offered for an open question. A comment with any other text, a quote (`>`), a code block or upper case is not a command and does nothing, and so does an edit or the deletion of a comment (an answer given stays given). A command whose answer more than one open question offers (two profiles) is refused: answer with a button. While a question is open, the [decision comment](#the-decision-comment) lists its commands.
+**The command.** A comment counts only when the whole comment, trimmed, is exactly one line `/pointsman <answer> <commit>`, for example `/pointsman approve 3f2a9c0`: lower case, one space between the parts, `<answer>` one of the answers offered for an open question, and `<commit>` the first 7 characters of the head commit the question is about. The commit binds the answer to what the person looked at: a command written for an older commit never answers the question about a newer one, also when it arrives late or out of order. A command for a commit with no open question does nothing (it is only logged), and so does a comment without the commit. A comment with any other text, a quote (`>`), a code block or upper case is not a command and does nothing, and so does an edit or the deletion of a comment (an answer given stays given). A command whose answer more than one open question offers (two profiles) is refused: answer with a button. While a question is open, the [decision comment](#the-decision-comment) and the check run list the exact commands, with the commit.
 
 **Who may answer.** Checked with GitHub every time an answer comes in; nothing is kept from one answer to the next. People are compared by their account id, not their login (a login can be renamed).
 
 - A person: GitHub sends the event for a `User`, never a bot, an app or a deleted account (`ghost`).
 - With write access to the repository: GitHub's collaborator permission is `write` or `admin` (maintain counts as write).
 - Not the author of the pull request.
-- Not the person who pushed the head commit: the newest push to the head branch in the repository's activity must have pushed this commit, and its pusher is refused. When this cannot be read, the answer is refused.
+- Not the person who pushed the head commit: the newest push to the head branch in the repository's activity must have pushed this commit, and its pusher is refused. When this cannot be read, the answer is refused. Only that newest push is looked at: someone who pushed earlier commits of the pull request may answer.
+
+GitHub answering "not found" for a person's permission counts as no write access.
 
 **What else is checked.** The pull request is still open, it is not from a fork, and its head is the commit the question is about. The question is still open: the connector's own record says so, and so does Pointsman when the connector reads it back. Then the connector resolves the question as `github:<login> (<account id>)`, without `correct`, so the answer adds no feedback on the model's answers ([reviews.md](reviews.md)). Pointsman resolves a question once: if someone answered first (in the review queue, or another person at the same moment), that answer stands, and the connector acts on it instead.
 
@@ -217,7 +219,7 @@ A person can answer an open question ([Asking a person](#asking-a-person)) insid
 
 **When an answer is not taken.** Nothing is resolved. The connector logs why, with the decision id and never the login, and adds a short fixed line to the check run, for example "An answer was not taken: the author of the pull request cannot answer." It writes no reply comment, so many comments cannot make it write many comments. When GitHub or Pointsman cannot be read, the answer is refused too ("answer again"): it is not tried again on its own. A second answer to a question that is answered already, a click on an older head's check run, and a command that no open question offers do nothing.
 
-**Limits.** Per pull request, at most 10 answers an hour are checked with GitHub, and at most 5 wait at a time; more are dropped. GitHub's rate limit is shared with the rest of the connector. A taken answer starts a run of the pull request, which may ask Pointsman about its other profiles. The answer is acted on only if what the question rests on did not change between the question and the answer (an edit of the title in between closes the question on the next run, and the answer is not acted on).
+**Limits.** Per pull request and hour: at most 3 answers from one account, at most 30 answers that read the pull request, and at most 10 that pass the checks of the pull request (open, head, author, fork) and so cost a permission lookup. So someone without write access cannot use up the lookups before a person who may answer. The first answer over a cap in the hour adds a line to the check run; more add nothing. At most 5 answers wait at a time; more are dropped. GitHub's rate limit is shared with the rest of the connector. A taken answer starts a run of the pull request, which may ask Pointsman about its other profiles. The answer is acted on only if what the question rests on did not change between the question and the answer (an edit of the title in between closes the question on the next run, and the answer is not acted on).
 
 **Not answered in the pull request:**
 
@@ -229,7 +231,7 @@ A person can answer an open question ([Asking a person](#asking-a-person)) insid
 
 **Switching it on.** In the connector app's settings on GitHub:
 
-- For the buttons: "Checks: Read and write" (the connector has it already), and subscribe to the event "Check run". The connector reads the permission and the activity with "Metadata: Read" (to verify on GitHub).
+- For the buttons: "Checks: Read and write" (the connector has it already), "Contents: Read", and subscribe to the event "Check run". The connector reads a person's permission with "Metadata: Read", and who pushed the head from the repository's activity, which GitHub lists only with "Contents: Read" (GitHub's [permissions for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps)). With answers on, the connector's tokens ask for `contents: read`; they never ask to write contents.
 - For the command as well: "Issues: Read", and subscribe to the event "Issue comment".
 - In the repository's ruleset, keep "Dismiss stale pull request approvals when new commits are pushed" and "Require approval of the most recent reviewable push". Switch answers on only where everyone with write access may approve the pull requests in question.
 
@@ -373,7 +375,7 @@ The part that reads pull-request text (the engine, with its AI questions) never 
 | App | Used by | Permissions (repository) | Webhook |
 | --- | --- | --- | --- |
 | Facts (read-only) | the Pointsman Worker, for its GitHub facts (`FACTS_GITHUB: app`) | Read: Metadata, Contents, Pull requests, Checks, Commit statuses, Actions, Custom properties. Organization: Members (read) | none |
-| Connector | the connector Worker | Read and write: Checks. Read: Pull requests (read and write for [actions](#actions) and [the decision comment](#the-decision-comment)), Metadata; Contents read for a profile with `diff` in a private repository ([Chains](#chains)); Contents read and write for an approval that counts ([Actions](#actions)); Issues read for the comment command ([Answering in the pull request](#answering-in-the-pull-request)) | on: Pull request, Pull request review, Check suite; Check run for the buttons, Issue comment for the command |
+| Connector | the connector Worker | Read and write: Checks. Read: Pull requests (read and write for [actions](#actions) and [the decision comment](#the-decision-comment)), Metadata; Contents read for a profile with `diff` in a private repository ([Chains](#chains)) and for answers in the pull request; Contents read and write for an approval that counts ([Actions](#actions)); Issues read for the comment command ([Answering in the pull request](#answering-in-the-pull-request)) | on: Pull request, Pull request review, Check suite; Check run for the buttons, Issue comment for the command |
 
 Notes:
 

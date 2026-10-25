@@ -2,8 +2,8 @@
 // installation token, down-scoped to what it needs: read the pull request,
 // write check runs, and only when the deployment switched actions on, write
 // pull requests (docs/github-connector.md). For an answer given in the pull
-// request it reads who may answer: a person's permission and who pushed the
-// head (metadata: read).
+// request it reads who may answer: a person's permission (metadata: read)
+// and who pushed the head (the activity list: contents: read).
 
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
@@ -190,7 +190,7 @@ export class AppGitHub implements ConnectorGitHub {
   readonly #appId: number;
   readonly #fetch: typeof fetch;
 
-  /** acting: actions are switched on, so the token may write pull requests; diff: a profile gets the diff, so it may read contents. */
+  /** acting: actions are switched on, so the token may write pull requests; diff: a profile gets the diff, or answers are on, so it may read contents. */
   constructor(appId: number, privateKey: string, fetchFn: typeof fetch = (u, i) => fetch(u, i), acting = false, diff = false) {
     // Each token only for the one repository, with only these permissions.
     this.#auth = new GitHubAppAuth(String(appId), privateKey, scopeFor(acting, diff), true);
