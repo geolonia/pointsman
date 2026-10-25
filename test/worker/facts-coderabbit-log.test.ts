@@ -54,14 +54,14 @@ function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
     ...over,
   };
   table['/graphql'] ??= async (url, init) => {
-    const list = async (path: string) => (await table[path]!(url, init)) as { id: number }[];
+    const list = async (path: string) => (await table[path]!(url, init)) as { id: number; body?: string }[];
     return {
       data: {
         repository: {
           pullRequest: {
             headRefOid: HEAD,
-            comments: { totalCount: (await list(COMMENTS)).length, nodes: (await list(COMMENTS)).map((c) => ({ databaseId: c.id, editor: null })) },
-            reviews: { totalCount: (await list(`${PR}/reviews`)).length, nodes: (await list(`${PR}/reviews`)).map((r) => ({ databaseId: r.id, editor: null })) },
+            comments: { totalCount: (await list(COMMENTS)).length, nodes: (await list(COMMENTS)).map((c) => ({ databaseId: c.id, body: c.body ?? '', editor: null })) },
+            reviews: { totalCount: (await list(`${PR}/reviews`)).length, nodes: (await list(`${PR}/reviews`)).map((r) => ({ databaseId: r.id, body: r.body ?? '', editor: null })) },
           },
         },
       },

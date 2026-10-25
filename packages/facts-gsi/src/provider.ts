@@ -134,6 +134,12 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
     const [, north] = offset([0, Math.max(...lats)], 0, SHELTERS.radius);
     const sw = tileOf([west, south], SHELTERS.zoom);
     const ne = tileOf([east, north], SHELTERS.zoom);
+    // Near a pole or the 180° meridian the box leaves the tile grid (NaN,
+    // reversed or out-of-range tile numbers), and the count below would not
+    // catch it.
+    const size = 2 ** SHELTERS.zoom;
+    const inGrid = (n: number) => Number.isInteger(n) && n >= 0 && n < size;
+    if (![sw.x, sw.y, ne.x, ne.y].every(inGrid) || ne.x < sw.x || sw.y < ne.y) throw new FactError('geometry is outside the tile grid');
     if ((ne.x - sw.x + 1) * (sw.y - ne.y + 1) > 9) throw new FactError('geometry spans too many tiles');
     const urls: string[] = [];
     for (let x = sw.x; x <= ne.x; x++) for (let y = ne.y; y <= sw.y; y++) urls.push(SHELTERS.url(SHELTERS.zoom, x, y));

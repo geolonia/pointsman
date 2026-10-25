@@ -257,6 +257,23 @@ describe('evacuation sites', () => {
     expect((await lookup(new GsiFactProvider({ fetch: fetchFn }), line)).values).toMatchObject({ found: true, name: 'Edge school' });
   });
 
+  it('refuse a geometry at or near a pole, as a missing fact, without fetching tiles', async () => {
+    const server = fakeServer(async () => null);
+    const p = new GsiFactProvider({ fetch: server.fetchFn });
+    for (const lat of [90, -90]) {
+      await expect(lookup(p, { type: 'Point', coordinates: [139.75, lat] })).rejects.toThrow(/outside the tile grid/);
+    }
+    // At the 180° meridian the box's east edge is past the last tile column.
+    for (const lon of [180, -180]) {
+      await expect(lookup(p, { type: 'Point', coordinates: [lon, 0] })).rejects.toThrow(/outside the tile grid/);
+    }
+    // Close to a pole the box is finite but very wide: too many tiles.
+    await expect(lookup(p, { type: 'Point', coordinates: [139.75, 89.99] })).rejects.toThrow(FactError);
+    const facts = await lookupFacts([{ name: 'shelter', type: 'nearest', layer: 'gsi-shelters-flood', at: '$.g' }], { g: { type: 'Point', coordinates: [0, 90] } }, p);
+    expect(facts.shelter).toEqual({ missing: true, reason: 'error' });
+    expect(server.calls).toHaveLength(0);
+  });
+
   it('find none farther than 5 km', async () => {
     const far = { type: 'FeatureCollection', features: [site(139.82, 35.6855, 'Far school')] };
     expect((await lookup(new GsiFactProvider({ fetch: fakeServer(async () => null, far).fetchFn }))).values).toEqual({ found: false, distance_m: null, name: null });

@@ -143,21 +143,27 @@ export function reviewState(v: unknown): ReviewState & { head: string } {
 
 /**
  * Who last edited each comment and review of the pull request (GraphQL):
- * by id, the editor's account, or null when it was never edited. People
- * with write access can edit a bot's comment; the text then is no longer
- * only the bot's.
+ * by id, the editor's account, or null when it was never edited, with the
+ * text GraphQL saw. People with write access can edit a bot's comment; the
+ * text then is no longer only the bot's. The text ties the editor to one
+ * version: a REST copy with other text was read before or after another edit.
  */
+export interface Edit {
+  by: Account | null;
+  body: string;
+}
+
 export interface Editors {
-  comments: Map<number, Account | null>;
-  reviews: Map<number, Account | null>;
+  comments: Map<number, Edit>;
+  reviews: Map<number, Edit>;
 }
 
 export const EDITORS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       headRefOid
-      comments(last: 100) { totalCount nodes { databaseId editor { __typename login ... on Bot { databaseId } ... on User { databaseId } } } }
-      reviews(last: 100) { totalCount nodes { databaseId editor { __typename login ... on Bot { databaseId } ... on User { databaseId } } } }
+      comments(last: 100) { totalCount nodes { databaseId body editor { __typename login ... on Bot { databaseId } ... on User { databaseId } } } }
+      reviews(last: 100) { totalCount nodes { databaseId body editor { __typename login ... on Bot { databaseId } ... on User { databaseId } } } }
     }
   }
 }`;
@@ -167,14 +173,18 @@ export function editors(v: unknown): Editors & { head: string } {
   const bad = () => new FactError('GitHub editors: unexpected answer');
   const pr = isObject(v) && isObject(v.repository) ? v.repository.pullRequest : undefined;
   if (!isObject(pr) || typeof pr.headRefOid !== 'string') throw bad();
-  const read = (conn: unknown, what: string): Map<number, Account | null> => {
+  const read = (conn: unknown, what: string): Map<number, Edit> => {
     if (!isObject(conn) || typeof conn.totalCount !== 'number' || !Array.isArray(conn.nodes)) throw bad();
     if (conn.totalCount > conn.nodes.length) throw new FactError(`GitHub ${what}: more than ${conn.nodes.length}, their editors are not known`);
-    const out = new Map<number, Account | null>();
+    const out = new Map<number, Edit>();
     for (const n of conn.nodes) {
-      const key = isObject(n) ? id(n.databaseId) : null;
-      if (key === null) throw bad();
-      out.set(key, isObject(n) && isObject(n.editor) ? account(n.editor) : null);
+      if (!isObject(n)) throw bad();
+      // A node without an id cannot be matched to a REST item: left out (a
+      // CodeRabbit item missing here counts as edited).
+      const key = id(n.databaseId);
+      if (key === null) continue;
+      // As REST's: no text is "".
+      out.set(key, { by: isObject(n.editor) ? account(n.editor) : null, body: typeof n.body === 'string' ? n.body : '' });
     }
     return out;
   };

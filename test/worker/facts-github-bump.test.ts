@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { lookupFacts } from '../../src/facts';
 import {
-  changesSource, GitHubFactProvider, lockfileChanges, lockfileSteps, NO_BUMP, stepOf, textBefore, TimeScanner, TokenAuth,
+  changesSource, GitHubFactProvider, lockfileChanges, lockfileSteps, NO_BUMP, stepOf, stripPeers, textBefore, TimeScanner, TokenAuth,
 } from '@pointsman/github';
 import type { FactSpec } from '../../src/types';
 
@@ -370,6 +370,31 @@ describe('github_bump', () => {
     // Lockfile v5 (/name/version) and other block keys are not understood: a change of source.
     expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,1 +1,1 @@\n+  /vitest/4.1.12:').sourceChanged).toBe(true);
     expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,1 +1,1 @@\n+  packages/new:').sourceChanged).toBe(true);
+  });
+
+  it('lockfiles: an escape in a changed line is a change of source', () => {
+    const entry = (resolved: string) => `@@ -10,3 +10,3 @@\n     "node_modules/vitest": {\n-      "version": "4.1.11",\n+      "version": "4.1.12",\n+      ${resolved}`;
+    expect(lockfileChanges('package-lock.json', entry('"resolved": "https://registry.npmjs.org/vitest/-/vitest-4.1.12.tgz",')).sourceChanged).toBe(false);
+    // JSON escapes: the same field and URL to npm, not to the checks.
+    expect(lockfileChanges('package-lock.json', entry('"resolv\\u0065d": "https:\\/\\/npm.example.org\\/x.tgz",')).sourceChanged).toBe(true);
+    expect(lockfileChanges('package-lock.json', entry('"resolved": "https:\\/\\/npm.example.org/vitest/-/vitest-4.1.12.tgz",')).sourceChanged).toBe(true);
+    // YAML double-quoted escapes in a pnpm-lock.yaml.
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,2 +1,2 @@\n-    resolution: {integrity: x}\n+    resolution: {"tarb\\x61ll": "https:\\/\\/npm.example.org/x.tgz"}').sourceChanged).toBe(true);
+    // An escape on an unchanged line changes nothing.
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,3 +1,3 @@\n     note: "a\\tb"\n-        version: 4.1.11\n+        version: 4.1.12').sourceChanged).toBe(false);
+  });
+
+  it('pnpm peers: stripped in one pass, nested or not; unbalanced is not pinned', () => {
+    expect(stripPeers('1.4.1(vitest@4.1.11(vite@8.3.2))(esbuild@0.28.2)')).toBe('1.4.1');
+    expect(stripPeers('4.1.12')).toBe('4.1.12');
+    for (const bad of ['1.0.0(a', '1.0.0)(a)', '1.0.0(a))']) expect(stripPeers(bad)).toBe(bad);
+    expect(lockfileChanges('pnpm-lock.yaml', '@@ -1,2 +1,2 @@\n-        version: 1.0.0\n+        version: 1.0.1(a').sourceChanged).toBe(true);
+    // Deep nesting: fast (the old loop took one pass per level, about 1 s here).
+    const deep = `1.0.1${'('.repeat(20_000)}${')'.repeat(20_000)}`;
+    const started = Date.now();
+    expect(lockfileChanges('pnpm-lock.yaml', `@@ -1,2 +1,2 @@\n-        version: 1.0.0\n+        version: ${deep}`).sourceChanged).toBe(false);
+    expect(lockfileSteps('pnpm-lock.yaml', `@@ -1,4 +1,4 @@ importers:\n   .:\n     devDependencies:\n       x:\n-        version: 1.0.0\n+        version: ${deep}`).semver).toBe('patch');
+    expect(Date.now() - started).toBeLessThan(200);
   });
 
   it('a transitive version in the lockfile counts for the age; a bundled dependency is not dev only', async () => {

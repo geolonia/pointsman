@@ -235,6 +235,24 @@ export function changesSource(line: string): boolean {
   return /(?:^|[\s"'@])(?:git\+|git:|github:|gitlab:|bitbucket:|file:|link:|npm:|workspace:)/.test(rest);
 }
 
+/**
+ * A pnpm version without its peers in parentheses, nested or not: the
+ * characters outside every parenthesis, in one pass. Unbalanced
+ * parentheses give the text back as it is, which is no pinned version.
+ */
+export function stripPeers(v: string): string {
+  let out = '';
+  let depth = 0;
+  for (const ch of v) {
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      if (depth === 0) return v;
+      depth--;
+    } else if (depth === 0) out += ch;
+  }
+  return depth === 0 ? out : v;
+}
+
 /** A version as a lockfile pins it: no range, no alias. */
 const PINNED = /^\d{1,10}\.\d{1,10}\.\d{1,10}(?:-[0-9A-Za-z.-]{1,60})?$/;
 /**
@@ -271,12 +289,12 @@ export function lockfileChanges(file: string, patch: string): { sourceChanged: b
       const mark = line[0];
       if (mark !== '+' && mark !== '-') continue;
       const text = line.slice(1);
-      if (changesSource(text)) sourceChanged = true;
+      // An escape ("\u0065", "\/") can spell a field or URL the checks here
+      // do not see; pnpm writes none in these lines.
+      if (changesSource(text) || text.includes('\\')) sourceChanged = true;
       const v = /^\s+version:\s*'?([^']*)'?\s*$/.exec(text);
       if (v) {
-        let pinned = v[1]!;
-        while (/\([^()]*\)/.test(pinned)) pinned = pinned.replace(/\([^()]*\)/g, '');
-        if (!PINNED.test(pinned)) sourceChanged = true;
+        if (!PINNED.test(stripPeers(v[1]!))) sourceChanged = true;
       }
       const key = PNPM_KEY.exec(text);
       if (key && mark === '+') add(key[1]!, key[2]!);
@@ -300,7 +318,8 @@ export function lockfileChanges(file: string, patch: string): { sourceChanged: b
       if (mark !== '-') after = key[1]!;
     }
     if (mark !== '+' && mark !== '-') continue;
-    if (changesSource(text) || /"link"\s*:/.test(text)) sourceChanged = true;
+    // An escape ("resolv\u0065d", "https:\/\/"), as in a pnpm-lock.yaml.
+    if (changesSource(text) || /"link"\s*:/.test(text) || text.includes('\\')) sourceChanged = true;
     const entry = mark === '+' ? after : before;
     const resolved = /^\s*"resolved":\s*"([^"]*)"/.exec(text);
     if (resolved) {

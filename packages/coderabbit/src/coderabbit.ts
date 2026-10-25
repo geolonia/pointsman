@@ -2,7 +2,7 @@
 // over what the GitHub snapshot read (provider.ts reads, this file decides).
 // Only CodeRabbit's own account counts.
 
-import { isService, latestVerdict, type Account, type Comment, type Editors, type Review, type ServiceAccount, type Status } from '@pointsman/github';
+import { isService, latestVerdict, type Account, type Comment, type Edit, type Editors, type Review, type ServiceAccount, type Status } from '@pointsman/github';
 
 /** CodeRabbit's bot account and its GitHub App (the same on every repository). */
 export const CODERABBIT: ServiceAccount = { login: 'coderabbitai[bot]', id: 136622811 };
@@ -103,17 +103,18 @@ export function latestStatus(head: Status[]): Status | undefined {
  * Whether someone other than CodeRabbit edited one of its comments or
  * reviews (people with write access can). Then its text is not only
  * CodeRabbit's, and nothing read from it can be trusted. A comment or
- * review of CodeRabbit's that the editors list does not have counts as
+ * review of CodeRabbit's that the editors list does not have, or has with
+ * other text than the copy read (edited between the two reads), counts as
  * edited (not known).
  */
 export function editedByOthers(comments: Comment[], reviews: Review[], editors: Editors): boolean {
-  const touched = (id: number | null, map: Map<number, Account | null>) => {
-    if (id === null || !map.has(id)) return true;
-    const by = map.get(id)!;
-    return by !== null && !isService(by, CODERABBIT);
+  const touched = (item: { id: number | null; body: string }, map: Map<number, Edit>) => {
+    const edit = item.id === null ? undefined : map.get(item.id);
+    if (edit === undefined || edit.body !== item.body) return true;
+    return edit.by !== null && !isService(edit.by, CODERABBIT);
   };
-  return comments.filter(commentByCodeRabbit).some((c) => touched(c.id, editors.comments))
-    || reviews.filter(byCodeRabbit).some((r) => touched(r.id, editors.reviews));
+  return comments.filter(commentByCodeRabbit).some((c) => touched(c, editors.comments))
+    || reviews.filter(byCodeRabbit).some((r) => touched(r, editors.reviews));
 }
 
 export interface ReviewValues {

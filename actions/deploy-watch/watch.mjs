@@ -151,8 +151,10 @@ export async function main() {
       log(`${err.message}; the deploy keeps running`);
       continue;
     }
-    cancels = decision.action === 'cancel' ? cancels + 1 : 0;
-    log(`no stack event for ${state.minutes_since_last_event} min; Pointsman: ${decision.action} (decision ${decision.decision_id}); cancel ${cancels}/${needed}`);
+    // A cancel a person still checks (the profile's people_check) does not count yet.
+    const pending = decision.review?.status === 'pending';
+    cancels = decision.action === 'cancel' && !pending ? cancels + 1 : 0;
+    log(`no stack event for ${state.minutes_since_last_event} min; Pointsman: ${decision.action}${pending ? ' (a person checks it first)' : ''} (decision ${decision.decision_id}); cancel ${cancels}/${needed}`);
     if (cancels < needed) continue;
 
     log('the deploy looks stuck; stopping it');

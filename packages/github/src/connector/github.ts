@@ -145,8 +145,10 @@ export interface ConnectorGitHub {
   copilotAsked(repo: string, number: number, head: string): Promise<boolean>;
   /** The app's bot login, "<app slug>[bot]", lower case. */
   botLogin(repo: string): Promise<string>;
-  /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. */
+  /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. At most 1,000 reviews are read. */
   ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
+  /** One review by its id, as `ownApprovals` would list it; null when it is not a standing approval of the app's own or is gone (404). */
+  ownApproval(repo: string, number: number, id: number): Promise<OwnApproval | null>;
   /** GitHub's review decision and the newest 100 reviews, without their text (one GraphQL query): where the train stands (comment.ts). */
   reviewSummary(repo: string, number: number): Promise<ReviewSummary>;
   /** The unified diff, cut to `max` characters; empty and cut when GitHub does not give one (too large). */
@@ -376,13 +378,20 @@ export class AppGitHub implements ConnectorGitHub {
 
   async ownApprovals(repo: string, number: number): Promise<OwnApproval[]> {
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
-    // Only this app's bot: another app's review with the same marker is not its own.
     const bot = await this.#botLogin(repo);
-    return reviews
-      .filter((r) => r.state === 'APPROVED' && typeof r.body === 'string' && r.body.startsWith(MARKER)
-        && isObject(r.user) && r.user.type === 'Bot' && typeof r.user.login === 'string' && r.user.login.toLowerCase() === bot
-        && typeof r.id === 'number' && typeof r.commit_id === 'string')
-      .map((r) => ({ id: r.id as number, commit: r.commit_id as string, marker: (r.body as string).split('\n', 1)[0]! }));
+    return reviews.map((r) => ownApprovalOf(r, bot)).filter((a): a is OwnApproval => a !== null);
+  }
+
+  async ownApproval(repo: string, number: number, id: number): Promise<OwnApproval | null> {
+    let review: unknown;
+    try {
+      review = await this.#call(repo, 'GET', `/pulls/${number}/reviews/${id}`, 'review');
+    } catch (err) {
+      if (err instanceof GitHubError && err.status === 404) return null; // gone
+      throw err;
+    }
+    if (!isObject(review)) throw new GitHubError('GitHub review: unexpected answer', false);
+    return ownApprovalOf(review, await this.#botLogin(repo));
   }
 
   async diff(repo: string, number: number, max: number): Promise<{ diff: string; truncated: boolean }> {
@@ -480,4 +489,12 @@ function checkRunBody(o: CheckRunOutput) {
     output: { title: o.title.slice(0, 255), summary: o.summary.slice(0, 60_000), ...(o.text !== undefined && { text: o.text.slice(0, 60_000) }) },
     ...(o.actions !== undefined && { actions: o.actions.slice(0, 3) }),
   };
+}
+
+/** A review as one of the app's own standing approvals, or null. Only this app's bot: another app's review with the same marker is not its own. */
+function ownApprovalOf(r: Record<string, unknown>, bot: string): OwnApproval | null {
+  if (r.state !== 'APPROVED' || typeof r.body !== 'string' || !r.body.startsWith(MARKER)) return null;
+  if (!isObject(r.user) || r.user.type !== 'Bot' || typeof r.user.login !== 'string' || r.user.login.toLowerCase() !== bot) return null;
+  if (typeof r.id !== 'number' || typeof r.commit_id !== 'string') return null;
+  return { id: r.id, commit: r.commit_id, marker: r.body.split('\n', 1)[0]! };
 }

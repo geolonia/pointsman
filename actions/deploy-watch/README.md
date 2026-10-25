@@ -15,7 +15,10 @@ How it decides:
    policy returns `cancel` when the deploy is stuck.
 3. **Cancel only when sure.** The deploy is stopped after `consecutive`
    (default 2) `cancel` answers in a row; any other answer starts the count
-   again. Then the command's process group is stopped and, for stacks in
+   again, and so does a `cancel` that a person still checks (`cancel` listed
+   in the profile's `people_check`: the answer has
+   `review: {status: pending}`). Then the command's process group is
+   stopped and, for stacks in
    `UPDATE_IN_PROGRESS`, `aws cloudformation cancel-update-stack` runs.
 
 If Pointsman cannot be reached, nothing is cancelled; the deploy keeps

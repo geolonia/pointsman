@@ -609,6 +609,14 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     return { id: entity.id, error: 'unexpected answer from pointsman', retry: true };
   }
 
+  // An answer named like a field of the result would overwrite it (an
+  // inputHash: decided again on each write). Nothing is written; a retry
+  // cannot pass (the same request gets the same logged decision), the
+  // profile needs another question name, and the entity's next change is
+  // decided again.
+  const clash = clashingAnswer(Object.keys(d.answers));
+  if (clash !== undefined) return { id: entity.id, decision: d.decision_id, error: answerClash(clash), retry: false };
+
   // From here on a decision exists: a failure keeps its id (a redirect
   // throws, see send).
   try {
@@ -701,6 +709,8 @@ interface Decision {
   review?: { status: 'pending' };
 }
 
+const answerClash = (name: string) => `answer "${name}": its name or "${name}Probability" is taken by a field of the result or another answer; rename the question in the profile`;
+
 /** "0", "1", ... for the rule that matched, "default" for the default action. */
 function policyRule(d: Decision): string | undefined {
   if (d.rule === undefined) return undefined;
@@ -708,11 +718,37 @@ function policyRule(d: Decision): string | undefined {
 }
 
 /**
+ * The names the result Property uses itself: the bridge's fields (also those
+ * a review writes) and NGSI-LD's. An answer is a sub-property of the same
+ * name, so it must not have one of these names.
+ */
+const RESULT_FIELDS = new Set([
+  'type', 'value', 'observedAt', 'decisionId', 'decision', 'profile', 'profileVersion', 'policyRule', 'model', 'inputHash',
+  'reviewStatus', 'finalAction', 'reviewedAt',
+  'id', 'object', 'datasetId', 'unitCode', 'createdAt', 'modifiedAt', 'deletedAt', 'instanceId',
+]);
+
+/** The first answer whose name, or `<name>Probability`, is a field of the result or another answer's; undefined when none. */
+export function clashingAnswer(names: string[]): string | undefined {
+  const taken = new Set(RESULT_FIELDS);
+  for (const name of names) {
+    for (const key of [name, `${name}Probability`]) {
+      if (taken.has(key)) return name;
+      taken.add(key);
+    }
+  }
+  return undefined;
+}
+
+/**
  * The result as one Property: the action as its value, the evidence as
  * sub-properties, so a consumer that only needs the action reads
- * `<attribute>.value` and can filter on it.
+ * `<attribute>.value` and can filter on it. An answer named like a field of
+ * the result is an error (see clashingAnswer).
  */
 export function toProperty(d: Decision, hash: string, now = new Date(), decisionRef?: string, checked = false): Record<string, unknown> {
+  const clash = clashingAnswer(Object.keys(d.answers));
+  if (clash !== undefined) throw new Error(answerClash(clash));
   const P = (value: unknown) => ({ type: 'Property', value });
   const rule = policyRule(d);
   const property: Record<string, unknown> = {
@@ -1013,9 +1049,21 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
     if (!res.ok && res.status !== 409) return { id, error: `pointsman answered ${res.status}`, retry: retryable(res.status) };
     review = res.ok ? 'resolved' : 'already resolved';
     if (!res.ok) {
+      // A 409 also comes for a review that stays open (profile_version_gone)
+      // or was closed: only a review resolved with this action goes on.
+      const code = ((await res.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code;
       const again = await pointsman(`/v1/decisions/${encodeURIComponent(decisionId)}`);
       if (!again.ok) return { id, error: `pointsman answered ${again.status}`, retry: retryable(again.status) };
       record = (await again.json()) as Record_;
+      if (record.review?.status === 'superseded') {
+        return { id, error: 'a newer decision replaced this one before the review reached Pointsman; answer the newer one', retry: false };
+      }
+      if (record.review?.status !== 'resolved') {
+        return { id, error: `pointsman answered 409${typeof code === 'string' ? ` ${code}` : ''} and the review is not resolved`, retry: code !== 'profile_version_gone' };
+      }
+      if (record.review.final_action !== finalAction) {
+        return { id, error: `the review is resolved in Pointsman as ${record.review.final_action ?? 'no action'}, not ${finalAction}`, retry: false };
+      }
     }
   } else if (record.review?.status === 'superseded') {
     // A newer decision replaced this one before the answer reached Pointsman:

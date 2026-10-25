@@ -139,6 +139,17 @@ test('review: adds only the review label, no team labels', async (t) => {
   assert.match(r.output, /^action=review$/m);
 });
 
+test('auto that a person still checks: only the review label', async (t) => {
+  const s = await servers([200, { ...AUTO, review: { status: 'pending' } }]);
+  t.after(s.close);
+  const r = await runAction(t, { url: s.url, event: issueEvent() });
+  assert.equal(r.code, 0, r.stdout);
+  assert.deepEqual(s.seen.labels.map((l) => l.body.labels), [['needs-triage']]);
+  assert.match(r.output, /^action=auto$/m);
+  // Resolved: the class labels again.
+  assert.deepEqual(labelsFor({ ...AUTO, review: { status: 'resolved' } }, parseLabelMap('team=frontend: team/frontend'), 'x'), ['team/frontend']);
+});
+
 test('a custom action is treated like review', async (t) => {
   const s = await servers([200, decision('escalate', AUTO.answers)]);
   t.after(s.close);

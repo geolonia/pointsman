@@ -6,6 +6,9 @@ and labels it:
 - Pointsman is sure (action `auto`): the labels you mapped to its answers.
 - Pointsman is not sure (any other action, usually `review`): only a review
   label (`needs-triage`), so a person decides.
+- A person checks the decision first (`auto` listed in the profile's
+  `people_check`, so the answer has `review: {status: pending}`): only the
+  review label, not the mapped labels.
 - Pointsman cannot be reached or fails: the review label, and the step fails
   so the problem is visible.
 

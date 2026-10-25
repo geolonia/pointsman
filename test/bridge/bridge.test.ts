@@ -1,7 +1,7 @@
 // The FIWARE bridge (packages/fiware, bridge/src) against a fake broker and a fake Pointsman.
 
 import { describe, expect, it } from 'vitest';
-import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity } from '../../packages/fiware/src/bridge.ts';
+import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, clashingAnswer, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity, toProperty } from '../../packages/fiware/src/bridge.ts';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
 
@@ -107,6 +107,22 @@ describe('requests', () => {
 });
 
 describe('a decision', () => {
+  it('writes nothing for an answer named like a field of the result, without a retry', async () => {
+    const answer = { type: 'noul', value: true, p: 0.9, yes: 0.9 };
+    for (const name of ['inputHash', 'value', 'decision', 'reviewStatus', 'createdAt']) {
+      const { notify, calls } = setup({ route: { decisionEntity: true }, pointsman: () => Response.json({ ...decision, answers: { ...decision.answers, [name]: answer } }) });
+      const res = await notify([entity()]);
+      expect(res.status, name).toBe(200);
+      expect(await res.json()).toEqual({ handled: [{ id: 'urn:ngsi-ld:RoadRestriction:1', decision: 'd-1', error: expect.stringContaining(`answer "${name}"`), retry: false }] });
+      expect(calls.filter((c) => c.url.startsWith('https://broker.test/')), name).toHaveLength(0);
+    }
+    // <name>Probability: of a field, or of another answer.
+    expect(clashingAnswer(['danger', 'dangerProbability'])).toBe('dangerProbability');
+    expect(clashingAnswer(['dangerProbability', 'danger'])).toBe('danger');
+    expect(clashingAnswer(['category', 'danger', 'input.hash', 'hash'])).toBeUndefined();
+    expect(() => toProperty({ ...decision, answers: { inputHash: answer } }, 'h')).toThrow(/answer "inputHash"/);
+  });
+
   it('asks Pointsman with the entity and appends the result the first time', async () => {
     const { notify, calls } = setup();
     const res = await notify([entity()]);
@@ -817,12 +833,18 @@ describe('reviews resolved in the broker', () => {
   const result = { type: 'Property', value: 'review', inputHash: P(hash), decision: { type: 'Relationship', object: D } };
 
   /** Pointsman with a decision record; the broker with the entity's result. */
-  function reviews(opts: { record?: Record<string, unknown>; resolve?: number; feedback?: number; entity?: unknown; task?: number; get?: number } = {}) {
+  function reviews(opts: { record?: Record<string, unknown>; again?: Record<string, unknown>; resolve?: number; code?: string; feedback?: number; entity?: unknown; task?: number; get?: number } = {}) {
+    let reads = 0;
     const t = setup({
       route: { decisionEntity: true, task: { actions: ['review', 'urgent'] } },
       pointsman: (_body, url) => {
-        if (url.endsWith('/resolve')) return new Response(opts.resolve === 200 || opts.resolve === undefined ? '{}' : null, { status: opts.resolve ?? 200 });
+        if (url.endsWith('/resolve')) {
+          if (opts.code) return Response.json({ error: { code: opts.code, message: 'x' } }, { status: opts.resolve ?? 409 });
+          return new Response(opts.resolve === 200 || opts.resolve === undefined ? '{}' : null, { status: opts.resolve ?? 200 });
+        }
         if (url.endsWith('/feedback')) return new Response(null, { status: opts.feedback ?? 204 });
+        // again: what a second read finds (after a 409).
+        if (++reads > 1 && opts.again) return Response.json(opts.again);
         return Response.json(opts.record ?? { decision_id: 'd-1', review: { status: 'pending' }, feedback: [] });
       },
       handler: (c) => {
@@ -894,9 +916,31 @@ describe('reviews resolved in the broker', () => {
     expect(await (await none.send([resolved()])).json()).toMatchObject({ handled: [{ review: 'nothing to send' }] });
   });
 
-  it('takes a review resolved in the meantime (409) as done', async () => {
-    const t = reviews({ resolve: 409 });
+  it('takes a review resolved in the meantime (409) with the same action as done', async () => {
+    const t = reviews({ resolve: 409, again: { review: { status: 'resolved', final_action: 'publish' } } });
     expect(await (await t.send([resolved()])).json()).toEqual({ handled: [{ id: D, review: 'already resolved', written: true }] });
+  });
+
+  it('writes nothing after a 409 when the review is not resolved in Pointsman', async () => {
+    const broker = (t: { calls: Call[] }) => t.calls.some((c) => c.url.startsWith('https://broker.test/'));
+    // Still pending, because the profile version is gone: a retry cannot pass.
+    const gone = reviews({ code: 'profile_version_gone' });
+    expect(await (await gone.send([resolved()])).json()).toEqual({ handled: [{ id: D, error: 'pointsman answered 409 profile_version_gone and the review is not resolved', retry: false }] });
+    expect(broker(gone)).toBe(false);
+    // Still pending for another reason: tried again.
+    const pending = reviews({ resolve: 409 });
+    const res = await pending.send([resolved()]);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ handled: [{ id: D, error: 'pointsman answered 409 and the review is not resolved', retry: true }] });
+    expect(broker(pending)).toBe(false);
+    // Closed in the meantime.
+    const closed = reviews({ code: 'not_pending', again: { review: { status: 'superseded' } } });
+    expect(await (await closed.send([resolved()])).json()).toMatchObject({ handled: [{ id: D, error: expect.stringContaining('a newer decision replaced this one'), retry: false }] });
+    expect(broker(closed)).toBe(false);
+    // Resolved, but without a final action.
+    const bare = reviews({ resolve: 409, again: { review: { status: 'resolved' } } });
+    expect(await (await bare.send([resolved()])).json()).toEqual({ handled: [{ id: D, error: 'the review is resolved in Pointsman as no action, not publish', retry: false }] });
+    expect(broker(bare)).toBe(false);
   });
 
   it('leaves the entity alone when a newer decision replaced this one', async () => {

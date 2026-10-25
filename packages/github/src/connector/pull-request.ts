@@ -808,7 +808,20 @@ export class PullRequestWork {
     let ok = true;
     const kept: Given[] = [];
     for (const a of given) {
-      if (!standing.some((s) => s.id === a.id)) continue; // dismissed or gone already
+      // Not listed: dismissed or gone, or past the reviews the list reads (1,000). Read by its id before it is forgotten.
+      if (!standing.some((s) => s.id === a.id)) {
+        let still: OwnApproval | null;
+        try {
+          still = await retrying(() => this.#github.ownApproval(target.repo, target.number, a.id));
+        } catch (err) {
+          if (err instanceof RetryError) throw err;
+          console.error(`github connector: ${target.repo}#${target.number} reading review ${a.id}: ${err instanceof Error ? err.message : String(err)}`);
+          if (which(a)) ok = false;
+          kept.push(a);
+          continue;
+        }
+        if (still === null) continue; // dismissed or gone already
+      }
       if (!which(a)) { kept.push(a); continue; }
       try {
         await retrying(() => this.#github.dismissReview(target.repo, target.number, a.id, message(a)));
