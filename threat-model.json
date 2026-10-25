@@ -1710,7 +1710,7 @@
       "property": "P-BRIDGE-SAFE-TO-REPEAT",
       "violation_symptom": "wrong-output",
       "severity_tier": "correctness",
-      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still pending with no final action, whatever reviewActions",
+      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions",
       "provenance": "documented",
       "source": "bridge/README.md \"Safe to repeat\""
     },

@@ -1821,7 +1821,8 @@ what voids it.
   a decision whose review is pending gets its Task under the same derived
   id also when `task.actions` leaves its action out
   (`packages/fiware/src/bridge.ts:656`), and a work order resolves only a
-  result that is still pending and has no final action, whatever the
+  result still waiting for a person (pending, or by the older action
+  rules) and without a final action, whatever the
   route's `reviewActions` (`packages/fiware/src/bridge.ts:1247`). Every decide request carries an `Idempotency-Key` from the route,
   the entity and the exact request, so a retry of the same request after
   Pointsman logged the decision gets the same decision; for a route with `requires`, which runs
