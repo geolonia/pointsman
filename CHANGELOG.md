@@ -23,7 +23,7 @@ For deployments:
 
 What changed:
 
-- **GitHub connector, `copilot_review`** (#225): requests a review from Copilot with one fixed reviewer and no settings. At most one Copilot review per head commit, whoever asked (another profile or a person; Copilot known by its account id). Done only when GitHub's answer lists Copilot, otherwise shown on the check run as refused and not tried again for that commit. The pull request is read again right before, and nothing is asked if its head moved. Never for a fork's or a closed pull request. When the connector cannot tell whether Copilot was already asked, it asks nothing and looks again 10 minutes later.
+- **GitHub connector, `copilot_review`** (#225): requests a review from Copilot with one fixed reviewer and no settings. At most one Copilot review per head commit, whoever asked (another profile or a person; Copilot known by its account id). Done only when GitHub's answer lists Copilot, otherwise shown on the check run as failed and not tried again for that commit. The pull request is read again right before, and nothing is asked if its head moved. Never for a fork's or a closed pull request. When the connector cannot tell whether Copilot was already asked, it asks nothing and looks again 10 minutes later.
 - **Not built** from #220: CodeRabbit commands and paid reviews, because CodeRabbit ignores commands from a GitHub App. A person or an agent still posts them.
 - **Threat model**: amended for `copilot_review` (Q44 to Q47); re-bound to this release in a separate pull request.
 
