@@ -2154,7 +2154,8 @@ One line each in this draft; expand before publication.
   `D-CONNECTOR-OWN-REVIEW-EVENTS` says).
 - Naming a profile question that the FIWARE bridge asks like a field of
   its result (`value`, `inputHash`, `decision`, `reviewStatus`,
-  `observedAt` and the others), or so that `<name>Probability` is one:
+  `observedAt` and the others), so that `<name>Probability` is one, or so
+  that one question's name or `<name>Probability` is another's:
   since pointsman#229 (`v0.17.1`) the bridge writes nothing for such a
   decision and reports it without a retry; before, the answer replaced
   the field (pointsman#228; bridge/README.md "The result on the entity").

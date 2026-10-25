@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:ad7744b747aef473183f1ebd54db8b9bec1c01520f9dcbd47f375d6f40373b3d"
+prose_version: "threat-model.md@sha256:a8a6c8653e60cfe9d4d1447c46286066085d9291438c2dd3528a6f9be97432db"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 460, maintainer: 83, inferred: 0, assumption: 0}
@@ -2504,8 +2504,8 @@ known_misuses:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: bridge-answer-named-like-result-field
     components: [bridge]
-    pattern: "a profile question the FIWARE bridge asks named like a field of its result (value, inputHash, decision, reviewStatus, observedAt and the others), or with <name>Probability one: since pointsman#229 (v0.17.1) nothing is written for such a decision; before, the answer replaced the field (pointsman#228)"
-    safer_alternative: "name questions so that neither the name nor <name>Probability is a field of the result"
+    pattern: "a profile question the FIWARE bridge asks named like a field of its result (value, inputHash, decision, reviewStatus, observedAt and the others), or with <name>Probability one, or clashing with another question's name or <name>Probability: since pointsman#229 (v0.17.1) nothing is written for such a decision; before, the answer replaced the field (pointsman#228)"
+    safer_alternative: "name questions so that neither the name nor <name>Probability is a field of the result or another question's name or <name>Probability"
     provenance: {kind: documented, source: "bridge/README.md \"The result on the entity\""}
   - id: coderabbit-fact-renamed
     components: [engine-facts]
