@@ -28,7 +28,7 @@ Owner: See catalog-info.yaml
 
 ## Changelog
 
-- Fix and feature PRs do not edit CHANGELOG.md; the release PR writes the whole entry, only adding lines, so `github_release` classes it as a release (an edited or removed line makes it a normal PR, as in #230).
+- Fix and feature PRs don't edit CHANGELOG.md. The release PR writes the whole entry, adding lines only; an edited line makes `github_release` class it as a normal PR (#230).
 
 ## Issue intake (from Slack / Claude)
 

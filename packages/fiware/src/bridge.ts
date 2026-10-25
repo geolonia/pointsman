@@ -653,7 +653,7 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     if (route.task) {
       const taskId = await taskEntityId(entity.id, route.attribute, hash);
       // A pending review always gets a Task, even for an action not in task.actions.
-      let failed = route.task.actions.includes(d.action) || d.review !== undefined
+      let failed = route.task.actions.includes(d.action) || isPending(d)
         ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
         : await cancelOpenTask(taskId, d.action, config);
       // A replaced decision's open Task (made for the earlier inputs) is not needed any more.
@@ -883,13 +883,18 @@ export function informedByOf(entity: Entity, route: Route): string | undefined {
  * Pointsman versions without `review`: the reviewActions, or else action review.
  */
 export function isChecked(d: Pick<Decision, 'action' | 'review' | 'requires'>, route: Route): boolean {
-  // A pending review is never treated as already decided (R-PEOPLE-CHECK-PENDING).
-  if (d.review !== undefined) return true;
+  // A pending review is never treated as already decided (threat-model.md `R-PEOPLE-CHECK-PENDING`).
+  if (isPending(d)) return true;
   if (route.reviewActions) return route.reviewActions.includes(d.action);
-  // The last case is for engines from before decision chains (#107), which
-  // send no review: a profile whose people_check leaves out review is then
-  // marked checked for action review. Set reviewActions for such a profile.
-  return d.review !== undefined || (d.requires === undefined && d.action === 'review');
+  // For engines from before decision chains (#107), which send no review: a
+  // profile whose people_check leaves out review is then marked checked for
+  // action review. Set reviewActions for such a profile.
+  return d.requires === undefined && d.action === 'review';
+}
+
+/** Whether Pointsman opened a review for the decision (`review: {status: pending}`); anything else is not. */
+export function isPending(d: Pick<Decision, 'review'>): boolean {
+  return d.review?.status === 'pending';
 }
 
 /**

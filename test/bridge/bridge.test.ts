@@ -691,7 +691,7 @@ describe('Task entities', () => {
   });
 
   it('treats a pending review as checked by a person, even for an action the route\'s reviewActions leave out', async () => {
-    // R-PEOPLE-CHECK-PENDING: while Pointsman says the review is pending, the bridge must not treat the action as taken.
+    // threat-model.md `R-PEOPLE-CHECK-PENDING`: while Pointsman says the review is pending, the bridge must not treat the action as taken.
     const pendingUrgent = () => Response.json({ ...decision, action: 'urgent', review: { status: 'pending' } });
     const { notify, calls } = setup({ pointsman: pendingUrgent, route: { decisionEntity: true, reviewActions: ['review'], task: { actions: ['review'] } } });
     expect((await notify([entity()])).status).toBe(200);
@@ -765,6 +765,26 @@ describe('Task entities', () => {
       return undefined;
     } });
     expect(await (await c2.notify([entity()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+  });
+
+  it('takes only review status pending as a pending review: other review values do not open a Task, and cancel an open one', async () => {
+    // undefined is a decision without review; the others could come from a proxy or another engine.
+    for (const review of [undefined, null, {}, { status: 'resolved' }]) {
+      let answer: Record<string, unknown> = { ...decision, action: 'urgent' };
+      const store = taskStore();
+      const t = setup({ pointsman: () => Response.json(answer), route: { decisionEntity: true, reviewActions: ['urgent'], task }, handler: store.handler });
+      await t.notify([entity()]);
+      const [id] = [...store.tasks.keys()];
+      answer = { ...decision, action: 'publish', ...(review !== undefined && { review }) };
+      t.calls.length = 0;
+      expect((await t.notify([entity()])).status, JSON.stringify(review)).toBe(200);
+      expect(store.tasks.get(id!), JSON.stringify(review)).toMatchObject({ progress: P('cancelled'), statusLabel: P('publish') });
+      expect(store.tasks.size).toBe(1);
+      const made = t.calls.find((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities' && (c.body as { type?: string }).type === 'Decision')!.body;
+      expect(made, JSON.stringify(review)).not.toHaveProperty('reviewStatus');
+      const result = t.calls.find((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/check'))!.body;
+      expect(result, JSON.stringify(review)).not.toHaveProperty('reviewStatus');
+    }
   });
 
   it('drops an old priority the new decision does not have', async () => {
@@ -1114,6 +1134,18 @@ describe('work orders from other apps', () => {
   it('resolves a result with a pending review even when its action is not in the route\'s reviewActions', async () => {
     const t = orders({ entity: { id: R, type: 'RoadRestriction', check: { ...pending, value: 'publish', reviewStatus: P('pending') } } });
     expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+  });
+
+  it('does not resolve a result whose review is resolved already, on a route with reviewActions', async () => {
+    for (const check of [
+      { ...pending, value: 'publish', reviewStatus: P('resolved') },
+      { ...pending, value: 'publish', reviewStatus: P('resolved'), finalAction: P('publish') },
+      { ...pending, value: 'urgent', reviewStatus: P('resolved'), finalAction: P('publish') },
+    ]) {
+      const t = orders({ entity: { id: R, type: 'RoadRestriction', check } });
+      expect(await (await t.send([order()])).json(), JSON.stringify(check)).toEqual({ handled: [{ id: W, skipped: 'nothing to resolve' }] });
+      expect(t.calls.some((c) => c.method === 'POST')).toBe(false);
+    }
   });
 
   it('reads full IRIs, and other apps’ ids as reviewedBy', async () => {
