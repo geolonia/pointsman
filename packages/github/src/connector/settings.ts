@@ -30,7 +30,27 @@ export interface ConnectorSettings {
   signals?: Record<string, Record<string, SignalSpec>>;
   /** The decision comment (docs/github-connector.md#the-decision-comment): off without it. */
   comment?: { profiles: string[] };
+  /** Answers inside the pull request (docs/github-connector.md#answering-in-the-pull-request): off without it. */
+  answers?: AnswerSettings;
 }
+
+/**
+ * Which questions a person may answer inside the pull request, and how. Buttons
+ * on the check run wherever answers are on (for a profile whose answers fit
+ * them, BUTTONS); the `/pointsman <answer>` comment only with `command`.
+ */
+export interface AnswerSettings {
+  /** The answers offered, by profile: each one must be in the profile's people_answers (Pointsman checks it on resolve). */
+  profiles: Record<string, string[]>;
+  /** The comment command, off unless switched on: it needs the app's Issues read and the issue_comment event. */
+  command: boolean;
+}
+
+/** GitHub's limits for a check run's buttons: at most 3, a label of at most 20 characters. */
+export const BUTTONS = { max: 3, label: 20 } as const;
+
+/** Whether a profile's answers are offered as buttons: at most 3, each name a label (BUTTONS). */
+export const asButtons = (answers: string[]) => answers.length <= BUTTONS.max && answers.every((a) => a.length <= BUTTONS.label);
 
 export type SignalColour = 'red' | 'yellow' | 'green';
 /** A signal set by the deployment: its colour, and the word shown next to it (else the colour's default word). */
@@ -235,6 +255,31 @@ function commentOf(v: unknown, profiles: string[]): { profiles: string[] } | und
   return { profiles: profiles.filter((p) => shown.includes(p)) };
 }
 
+function answersOf(v: unknown, profiles: string[]): AnswerSettings | undefined {
+  if (v === undefined) return undefined;
+  const { profiles: byProfile, command, ...more } = plainObject(v, 'GITHUB_CONNECTOR: "answers"');
+  if (Object.keys(more).length > 0) throw new ConfigError(`GITHUB_CONNECTOR: answers: unknown key ${Object.keys(more)[0]}`);
+  if (command !== undefined && typeof command !== 'boolean') throw new ConfigError('GITHUB_CONNECTOR: answers.command must be true or false');
+  const out: AnswerSettings = { profiles: {}, command: command === true };
+  const entries = Object.entries(plainObject(byProfile, 'GITHUB_CONNECTOR: answers.profiles'));
+  if (entries.length === 0) throw new ConfigError('GITHUB_CONNECTOR: answers.profiles must name at least one profile');
+  for (const [profile, list] of entries) {
+    const where = `GITHUB_CONNECTOR: answers.profiles.${profile}`;
+    if (!profiles.includes(profile)) throw new ConfigError(`${where}: not in "profiles"`);
+    // "review" is never an answer (Pointsman refuses it): a person's answer is the final action.
+    if (!Array.isArray(list) || list.length === 0 || list.length > 10 || !list.every((a) => typeof a === 'string' && ACTION.test(a) && a !== 'review')) {
+      throw new ConfigError(`${where} must be a list of 1 to 10 action names (not review)`);
+    }
+    const answers = [...new Set(list as string[])];
+    // Without buttons and without the command, nobody could answer.
+    if (!asButtons(answers) && !out.command) {
+      throw new ConfigError(`${where}: more than ${BUTTONS.max} answers, or one longer than ${BUTTONS.label} characters, gets no buttons; switch on answers.command or list fewer`);
+    }
+    out.profiles[profile] = answers;
+  }
+  return out;
+}
+
 const REPO = /^[a-z0-9-]{1,39}\/[a-z0-9._-]{1,100}$/;
 const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const text = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -254,7 +299,7 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
   } catch {
     throw new ConfigError('GITHUB_CONNECTOR is not valid JSON');
   }
-  const { repos, profiles, actions, runs, signals, comment, ...rest } = (config ?? {}) as Record<string, unknown>;
+  const { repos, profiles, actions, runs, signals, comment, answers, ...rest } = (config ?? {}) as Record<string, unknown>;
   const unknown = Object.keys(rest);
   if (unknown.length > 0) throw new ConfigError(`GITHUB_CONNECTOR: unknown key ${unknown[0]}`);
   if (!Array.isArray(repos) || repos.length === 0 || !repos.every((r) => typeof r === 'string' && REPO.test(r.toLowerCase()))) {
@@ -283,11 +328,18 @@ export function connectorSettings(env: Record<string, unknown>): ConnectorSettin
     runs: runOptions,
     ...withValue('signals', signalsOf(signals, profiles as string[])),
     ...withValue('comment', commentOf(comment, profiles as string[])),
+    ...withValue('answers', answersOf(answers, profiles as string[])),
   };
 }
 
 /** Whether a profile gets the diff: then the token may read contents (a private repository's diff needs it). */
 export const readsDiff = (s: ConnectorSettings) => Object.values(s.runs).some((r) => r.diff !== undefined);
+
+/**
+ * Whether the token may read contents: for the diff, and with answers on,
+ * for who pushed the head (GitHub's activity list needs contents: read).
+ */
+export const readsContents = (s: ConnectorSettings) => readsDiff(s) || s.answers !== undefined;
 
 const withValue = <K extends string, V>(key: K, v: V | undefined) => (v === undefined ? {} : { [key]: v } as Record<K, V>);
 

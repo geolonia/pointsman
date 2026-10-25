@@ -103,3 +103,95 @@ export function botReviewOf(event: string, payload: unknown): BotReview | undefi
   const review = payload.review;
   return isObject(review) && isNumber(review.id) ? { id: review.id, login: sender.login.toLowerCase() } : undefined;
 }
+
+/** The person who sent an answer: their account, from the event's `sender` (checked again with GitHub before it counts). */
+export interface Answerer {
+  login: string;
+  id: number;
+}
+
+/**
+ * An answer given inside the pull request (docs/github-connector.md#answering-in-the-pull-request):
+ * a click on a button of one of the connector's check runs, or a `/pointsman <answer>` comment.
+ * Only a hint: the pull request's object binds it to its own record of the question and checks
+ * the person with GitHub (answers.ts).
+ */
+export type AnswerEvent =
+  | { kind: 'button'; checkRun: number; head: string; externalId: string; identifier: string }
+  /** `head`: the first 12 characters of the commit the person answers about, as the command names it. */
+  | { kind: 'command'; answer: string; head: string };
+
+export interface AnswerHint {
+  targets: PullRequestTarget[];
+  answer: AnswerEvent;
+  by: Answerer;
+}
+
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const SHA = /^[0-9a-f]{40}$/;
+/** The connector's button identifiers (answers.ts): nothing else is passed on. */
+const IDENTIFIER = /^[1-3]-[0-9a-f]{8}$/;
+/**
+ * The whole comment, trimmed: exactly this one line. An action name, lower
+ * case, as Pointsman writes it, and the head commit the answer is about (its
+ * first 12 characters, as the decision comment and the check run show them: too
+ * many to find a second commit that starts the same).
+ */
+const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63}) ([0-9a-f]{12})$/;
+
+/**
+ * A person's account, from an event's sender: only a `User` (never a bot, an
+ * app or the `ghost` account of a deleted user) with a login and an id.
+ */
+function userOf(v: unknown): Answerer | undefined {
+  if (!isObject(v) || v.type !== 'User' || typeof v.login !== 'string' || !LOGIN.test(v.login) || !isNumber(v.id)) return undefined;
+  return v.login.toLowerCase() === 'ghost' ? undefined : { login: v.login, id: v.id };
+}
+
+/**
+ * The answer and short head of a `/pointsman <answer> <head>` comment: only
+ * when the whole comment, trimmed, is that one line (no other text, no
+ * quote, no code block, no upper case, the head given). Anything else is not
+ * a command.
+ */
+export function commandOf(body: unknown): { answer: string; head: string } | undefined {
+  const m = typeof body === 'string' ? COMMAND.exec(body.trim()) : null;
+  return m ? { answer: m[1]!, head: m[2]! } : undefined;
+}
+
+/**
+ * The answer an event carries, with the pull requests it may be about, or
+ * undefined. A click: `check_run` `requested_action` on one of the
+ * connector's own check runs (its app id), with one of its identifiers. A
+ * comment, only with `command`: `issue_comment` `created` on a pull request,
+ * by a person, that is exactly a command. Edits and deletions are never
+ * answers, and nothing from a bot or app is.
+ */
+export function answerOf(event: string, payload: unknown, appId: number, command: boolean): AnswerHint | undefined {
+  if (!isObject(payload)) return undefined;
+  const repo = repoOf(payload);
+  const by = userOf(payload.sender);
+  if (!repo || !by) return undefined;
+  if (event === 'check_run' && payload.action === 'requested_action') {
+    const run = payload.check_run;
+    const requested = payload.requested_action;
+    if (!isObject(run) || !isObject(run.app) || run.app.id !== appId || !isNumber(run.id)) return undefined;
+    if (typeof run.head_sha !== 'string' || !SHA.test(run.head_sha) || typeof run.external_id !== 'string') return undefined;
+    if (!isObject(requested) || typeof requested.identifier !== 'string' || !IDENTIFIER.test(requested.identifier)) return undefined;
+    // Only to find the pull request's object, which takes the click only for a check run it recorded.
+    const targets = [...new Set(numbersOf(run.pull_requests))].map((number) => ({ repo, number }));
+    return targets.length === 0 ? undefined : {
+      targets, by, answer: { kind: 'button', checkRun: run.id, head: run.head_sha, externalId: run.external_id, identifier: requested.identifier },
+    };
+  }
+  if (event === 'issue_comment' && command && payload.action === 'created') {
+    const issue = payload.issue;
+    const comment = payload.comment;
+    // A comment on a pull request (an issue has no pull_request), written by the sender.
+    if (!isObject(issue) || !isObject(issue.pull_request) || !isNumber(issue.number) || !isObject(comment)) return undefined;
+    if (userOf(comment.user)?.id !== by.id) return undefined;
+    const command = commandOf(comment.body);
+    return command === undefined ? undefined : { targets: [{ repo, number: issue.number }], by, answer: { kind: 'command', ...command } };
+  }
+  return undefined;
+}

@@ -91,7 +91,7 @@ An adapter must:
 
 ### Engine client (a connector's way to the engine)
 
-Interface: `EngineClient` in `packages/github/src/connector/engine.ts`, with the calls the GitHub connector makes: `decide(profile, body, { idempotencyKey })`, the same as `POST /v1/decide/{profile}`; `get(id)`, the same as `GET /v1/decisions/{id}`, to read back a decision a person checks; and `close(id)`, the same as `POST /v1/reviews/{id}/close`. Each answers the HTTP status and, with a 2xx status, the body. The connector's logic (`pull-request.ts`) uses only this interface. The settings choose the adapter (`engineSetting`):
+Interface: `EngineClient` in `packages/github/src/connector/engine.ts`, with the calls the GitHub connector makes: `decide(profile, body, { idempotencyKey })`, the same as `POST /v1/decide/{profile}`; `get(id)`, the same as `GET /v1/decisions/{id}`, to read back a decision a person checks; `resolve(id, { action, by })`, the same as `POST /v1/reviews/{id}/resolve`, for an answer given in the pull request ([github-connector.md](github-connector.md#answering-in-the-pull-request)); and `close(id)`, the same as `POST /v1/reviews/{id}/close`. Each answers the HTTP status and, with a 2xx status, the body. The connector's logic (`pull-request.ts`) uses only this interface. The settings choose the adapter (`engineSetting`):
 
 | Adapter | Where | Chosen by |
 | --- | --- | --- |

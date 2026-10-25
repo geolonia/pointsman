@@ -10,13 +10,16 @@
 // most once per head commit; otherwise nothing else is done on GitHub.
 // A decision a person checks is kept for its head and read back on every
 // run, so the question stays the same until it is answered or the head
-// moves; then the old question is closed in Pointsman.
+// moves; then the old question is closed in Pointsman. A person may answer
+// it inside the pull request where the deployment switched answers on: the
+// answer is queued and taken in the alarm, before the run (answers.ts).
 // The record of a check run is written before the check run is created, so a
 // run that stops in between does not create a second one: the next run looks
 // for the check run first.
 
+import { AnswerDesk, buttonsFor, type QueuedAnswer } from './answers.ts';
 import { actionOf, type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
-import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
+import { asButtons, checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
 import { checkText, clean, COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { BotReview, PullRequestTarget } from './webhook.ts';
@@ -39,6 +42,8 @@ export interface Accepted {
   digest: string;
   /** A review event sent by a bot account: the review's id and the bot's login (webhook.ts botReviewOf). */
   botReview?: BotReview;
+  /** An answer given in the pull request (webhook.ts answerOf): queued, never a run of its own. */
+  answer?: QueuedAnswer;
 }
 
 /** Same as the shadow poller: enough for the AI questions, keeps a very long description out of the model. */
@@ -102,7 +107,7 @@ export type ActOutcome =
   | { kind: 'skipped'; text: string };
 
 /** The check runs of one head, by profile: `id` once created; without it, a create may have happened. */
-interface Checks {
+export interface Checks {
   head: string;
   runs: Record<string, { decision: string; id?: number }>;
 }
@@ -136,13 +141,38 @@ interface CommentRecord {
  * the pending ones of an older head (or of a closed pull request), still to
  * be closed in Pointsman.
  */
-interface Asked {
+export interface Asked {
   head: string;
-  /** The decision, and the hash of what it rests on besides the head (#basisOf). */
-  byProfile: Record<string, { decision: Decision; basis: string }>;
+  /**
+   * The decision, and the hash of what it rests on besides the head (#basisOf);
+   * `offered`: the answers offered in the pull request (answers.ts), when answers are on for the profile.
+   */
+  byProfile: Record<string, { decision: Decision; basis: string; offered?: string[] }>;
   /** `since`: when it was listed; `tries`: closes that failed so far; `lastTry`: when the last one failed. */
   close: { id: string; since: number; tries: number; lastTry: number }[];
 }
+
+/** The output last written to a profile's check run on a head (`shown:<profile>`): a note on it (answers.ts) or its buttons removed keep the rest. */
+export interface Shown {
+  head: string;
+  output: CheckRunOutput;
+}
+
+/** A removal of an older head's buttons, still to be done (#clearButtons). */
+interface Clearing {
+  id: number;
+  profile: string;
+  /** The head of the check run. */
+  head: string;
+  output: CheckRunOutput;
+  tries: number;
+}
+
+/** The heads of a pull request kept for commands (#seeHead), newest last. */
+export const HEADS_KEPT = 100;
+
+/** A removal of buttons that fails while GitHub is busy is tried again on this many runs. */
+const CLEAR_TRIES = 10;
 
 /** A close that fails (busy, down) is tried again on later runs: at most this often, this long, and once per CLOSE_SPACING_MS. */
 const CLOSE_TRIES = 10;
@@ -180,12 +210,15 @@ export class PullRequestWork {
   now: () => number = () => Date.now();
   /** This run's read of the reviews (made when the line is first drawn; again after an approval or a dismissal); undefined inside: not readable. */
   #reviews: Promise<HeadReviews | undefined> | undefined;
+  /** Answers given in the pull request. */
+  readonly #answers: AnswerDesk;
 
   constructor(storage: ObjectStorage, settings: ConnectorSettings, github: ConnectorGitHub, engine: EngineClient) {
     this.#storage = storage;
     this.#settings = settings;
     this.#github = github;
     this.#engine = engine;
+    this.#answers = new AnswerDesk(storage, settings, github, engine, () => this.now());
   }
 
   /**
@@ -194,9 +227,11 @@ export class PullRequestWork {
    * approval or its dismissal: the run that made it already showed it);
    * otherwise the pull request is due for a run. Returns what happened.
    */
-  async accept(event: Accepted, now: number): Promise<'accepted' | 'replay' | 'own'> {
+  async accept(event: Accepted, now: number): Promise<'accepted' | 'replay' | 'own' | 'answer' | 'dropped'> {
     const seen = (await this.#storage.get<Record<string, number>>('seen')) ?? {};
-    const keys = [`d:${event.delivery}`, `b:${event.digest}`];
+    // An answer by its delivery only: a second click on the same button has the same body, and is a new answer
+    // (the once-only resolve in Pointsman guards against a repeat).
+    const keys = event.answer ? [`d:${event.delivery}`] : [`d:${event.delivery}`, `b:${event.digest}`];
     if (keys.some((k) => seen[k] !== undefined && now - seen[k]! < SEEN_MS)) return 'replay';
     // Only reviews it recorded giving, sent by its own bot: an event that comes before the record (its own approval,
     // while the run still goes on), another bot's dismissal of its approval, or a failed read of its login starts a run, as before.
@@ -205,6 +240,16 @@ export class PullRequestWork {
       if (own !== undefined && own === event.botReview.login) return 'own';
     }
     const kept = Object.entries(seen).filter(([, t]) => now - t < SEEN_MS).sort((a, b) => b[1] - a[1]).slice(0, SEEN_MAX - keys.length);
+    if (event.answer) {
+      // An answer is queued and taken in the alarm, one at a time with the runs; it starts a run only once taken.
+      await this.#storage.put({ seen: Object.fromEntries([...kept, ...keys.map((k) => [k, now] as const)]), target: event.target });
+      if (!(await this.#answers.queue(event.answer))) {
+        console.error(`github connector: ${event.target.repo}#${event.target.number}: too many answers waiting; one was dropped`);
+        return 'dropped';
+      }
+      await this.#storage.setAlarm(now);
+      return 'answer';
+    }
     const generation = ((await this.#storage.get<number>('generation')) ?? 0) + 1;
     // Each accepted event is a new generation; a run ends only when it has handled the newest.
     await this.#storage.put({ seen: Object.fromEntries([...kept, ...keys.map((k) => [k, now] as const)]), target: event.target, generation });
@@ -214,6 +259,10 @@ export class PullRequestWork {
 
   /** Runs until the newest event is handled. Throws RetryError when it should be tried again. */
   async run(): Promise<void> {
+    // Answers first: one that is taken (or answered elsewhere first) is acted on by this run.
+    if (await this.#answers.takeQueued(await this.#storage.get<PullRequestTarget>('target'))) {
+      await this.#storage.put({ generation: ((await this.#storage.get<number>('generation')) ?? 0) + 1 });
+    }
     for (let rounds = 0; rounds < 5; rounds++) {
       const generation = (await this.#storage.get<number>('generation')) ?? 0;
       const recheckAt = await this.#storage.get<number>('recheckAt');
@@ -257,6 +306,7 @@ export class PullRequestWork {
     // once (unchanged, no write). A reopen runs as usual and asks anew.
     if (!pr.open) {
       await this.#closeAsked(target, '');
+      await this.#clearButtons(target, '');
       return this.#settings.comment ? this.#closeComment(target, pr) : undefined;
     }
     const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
@@ -266,8 +316,10 @@ export class PullRequestWork {
       await this.#storage.put({ recheckAt: 0, recheckHead: pr.head });
       if (recheck) return;
     }
-    // The questions of an older head are closed before this head is decided on.
+    // The questions of an older head are closed before this head is decided on, and their buttons removed.
     await this.#closeAsked(target, pr.head);
+    await this.#clearButtons(target, pr.head);
+    await this.#seeHead(pr.head);
     // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
     const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
     // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
@@ -293,7 +345,10 @@ export class PullRequestWork {
           const d = decided[from]!;
           return [name, from, d.action, d.rule, d.review?.status ?? null, d.review?.final_action ?? null];
         });
-      const keyOf = await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, required, run, this.#settings.actions[profile] ?? null]));
+      // The answers offered in the pull request count only where they are on, so a deployment without them keeps its keys.
+      const offered = this.#offered(profile);
+      const keyOf = await sha256(JSON.stringify([state.title, state.body, pr.base, pr.draft, required, run, this.#settings.actions[profile] ?? null,
+        ...(offered ? [offered, this.#settings.answers!.command] : [])]));
       // A question to a person on this head: its decision is read back, not made anew (undefined: none open).
       const back = await this.#readBack(target, pr.head, profile, keyOf);
       let answer: CheckedAnswer | NotActed | null = back ?? null;
@@ -331,6 +386,61 @@ export class PullRequestWork {
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
     if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown, withdrawn);
+  }
+
+  /**
+   * Keeps the heads this pull request had, the newest HEADS_KEPT: a command
+   * whose commit prefix matches an earlier one too is refused (answers.ts).
+   */
+  async #seeHead(head: string): Promise<void> {
+    if (!this.#settings.answers) return;
+    const heads = (await this.#storage.get<string[]>('heads')) ?? [];
+    if (heads.at(-1) === head) return;
+    await this.#storage.put({ heads: [...heads.filter((h) => h !== head), head].slice(-HEADS_KEPT) });
+  }
+
+  /** The answers offered in the pull request for this profile; undefined where answers are off. */
+  #offered(profile: string): string[] | undefined {
+    const answers = this.#settings.answers;
+    return answers && Object.hasOwn(answers.profiles, profile) ? answers.profiles[profile] : undefined;
+  }
+
+  /**
+   * The buttons of an older head's check runs (or of a closed pull request:
+   * head '') are removed. Each removal is listed first (`clearing`), then
+   * done: one that fails while GitHub is busy is tried again on later runs,
+   * at most CLEAR_TRIES times; a refused one is given up (a click on the old
+   * buttons is refused anyway, answers.ts). One whose head is live again (a
+   * reopen on the same commit) is dropped, so a live question keeps its buttons.
+   */
+  async #clearButtons(target: PullRequestTarget, head: string): Promise<void> {
+    if (!this.#settings.answers) return;
+    const clearing = (await this.#storage.get<Clearing[]>('clearing')) ?? [];
+    const checks = await this.#storage.get<Checks>('checks');
+    if (checks && checks.head !== head) {
+      for (const [profile, run] of Object.entries(checks.runs)) {
+        const shown = await this.#storage.get<Shown>(`shown:${profile}`);
+        if (run.id === undefined || shown?.head !== checks.head || !shown.output.actions?.length) continue;
+        const output: CheckRunOutput = { ...shown.output, actions: [], summary: `${shown.output.summary}\n\n${head === '' ? 'The pull request is closed' : 'The pull request has newer commits'}: this question is closed.` };
+        clearing.push({ id: run.id, profile, head: checks.head, output, tries: 0 });
+        // Listed once: the record no longer shows buttons, the list keeps the removal until it is done.
+        await this.#storage.put({ clearing, [`shown:${profile}`]: { head: checks.head, output } });
+      }
+    }
+    if (clearing.length === 0) return;
+    const left: Clearing[] = [];
+    for (const c of clearing) {
+      // Its head is the live one again (closed and reopened on the same commit): its check run shows the question again.
+      if (c.head === head) continue;
+      try {
+        await retrying(() => this.#github.updateCheckRun(target.repo, c.id, c.output));
+      } catch (err) {
+        const again = err instanceof RetryError && c.tries + 1 < CLEAR_TRIES;
+        console.error(`github connector: ${target.repo}#${target.number} ${c.profile} removing the buttons of check run ${c.id}: ${err instanceof Error ? err.message : String(err)}; ${again ? 'tried again later' : 'given up'}`);
+        if (again) left.push({ ...c, tries: c.tries + 1 });
+      }
+    }
+    await this.#storage.put({ clearing: left });
   }
 
   /**
@@ -406,7 +516,10 @@ export class PullRequestWork {
     const decisions = profiles.filter((p) => record.entries[p]).map((p) => record.entries[p]!);
     // Nothing to show and no comment yet: none is written. A comment that exists is updated to say so, never left stale.
     if (decisions.length === 0 && record.id === undefined && record.hash === undefined && record.pending === undefined) return this.#storage.put({ comment: record });
-    await this.#writeIfChanged(target, pr.head, record, commentBody(decisions, this.#settings.signals, pr.head, await this.#position(target, pr)), shown);
+    // With the command on, an open question lists its answers as commands.
+    const answers = this.#settings.answers;
+    const commands = answers?.command ? answers.profiles : {};
+    await this.#writeIfChanged(target, pr.head, record, commentBody(decisions, this.#settings.signals, pr.head, await this.#position(target, pr), commands), shown);
   }
 
   /** The write of the comment: only when its text changed; the record first, then the write. */
@@ -511,7 +624,8 @@ export class PullRequestWork {
     const asked = (await this.#storage.get<Asked>('asked')) ?? { head, byProfile: {}, close: [] };
     // #closeAsked ran for this head at the start of the run, so the record is this head's.
     if (asked.head !== head) throw new Error('the questions of an older head were not closed');
-    asked.byProfile[profile] = { decision: slim(decision), basis };
+    const offered = this.#offered(profile);
+    asked.byProfile[profile] = { decision: slim(decision), basis, ...(offered && { offered }) };
     await this.#storage.put({ asked });
   }
 
@@ -569,7 +683,7 @@ export class PullRequestWork {
     if (checked.decision.review?.status !== 'resolved') return { kind: 'decision', decision: kept.decision };
     // The person's answer is kept with the question: it stands for this head and basis, and is not read again.
     const answered: Decision = { ...kept.decision, review: { status: 'resolved', final_action: checked.decision.review.final_action! } };
-    asked.byProfile[profile] = { decision: answered, basis };
+    asked.byProfile[profile] = { ...kept, decision: answered };
     await this.#storage.put({ asked });
     return { kind: 'decision', decision: answered };
   }
@@ -922,7 +1036,11 @@ export class PullRequestWork {
 
   /** Writes the decision's check run: its output. */
   async #showCheck(repo: string, number: number, pr: PullRequestInfo, profile: string, decision: Decision, outcome: ActOutcome = { kind: 'none' }): Promise<CheckRunOutput> {
-    const output = checkOutput(decision, outcome, { signals: this.#settings.signals, head: pr.head, station: await this.#position({ repo, number }, pr) });
+    const offered = this.#offered(profile);
+    const asking = offered && decision.review?.status === 'pending' ? { offered, command: this.#settings.answers!.command } : undefined;
+    const output = checkOutput(decision, outcome, { signals: this.#settings.signals, head: pr.head, station: await this.#position({ repo, number }, pr), ...(asking && { asking }) });
+    // Buttons only while the question is open; [] removes them once it is answered (any profile: answers are on).
+    if (this.#settings.answers) output.actions = asking ? buttonsFor(decision.decision_id, asking.offered) : [];
     await this.#writeCheck(repo, pr.head, profile, decision.decision_id, output);
     return output;
   }
@@ -948,8 +1066,10 @@ export class PullRequestWork {
     return withdrawn;
   }
 
-  async #writeCheck(repo: string, head: string, profile: string, decisionId: string, output: CheckRunOutput): Promise<void> {
+  async #writeCheck(repo: string, head: string, profile: string, decisionId: string, given: CheckRunOutput): Promise<void> {
     const name = checkName(profile);
+    // Where answers are on, a check run without buttons of its own has none (an earlier question's are removed).
+    const output = given.actions === undefined && this.#settings.answers ? { ...given, actions: [] } : given;
     let checks = (await this.#storage.get<Checks>('checks')) ?? { head, runs: {} };
     if (checks.head !== head) checks = { head, runs: {} };
     const record = checks.runs[profile];
@@ -968,7 +1088,7 @@ export class PullRequestWork {
       }
     }
     checks.runs[profile] = { decision: decisionId, id };
-    await this.#storage.put({ checks });
+    await this.#storage.put({ checks, [`shown:${profile}`]: { head, output } satisfies Shown });
   }
 
   /** The record first, then the check run. */
@@ -997,11 +1117,16 @@ function slim(d: Decision): Decision {
     : undefined;
   return {
     decision_id: d.decision_id, action: d.action, profile: d.profile, profile_version: d.profile_version, rule: d.rule,
+    ...(typeof d.answered_by === 'string' && LOGIN.test(d.answered_by) && { answered_by: d.answered_by }),
     ...(d.facts && { facts: Object.fromEntries(Object.entries(d.facts).slice(0, 50).map(([k, f]) => [k, { ...(f.missing !== undefined && { missing: f.missing }), ...(f.reason !== undefined && { reason: f.reason.slice(0, 100) }) }])) }),
     ...(d.review && { review: { status: d.review.status, ...(typeof d.review.final_action === 'string' && { final_action: d.review.final_action }) } }),
     ...(answers && { answers }),
   };
 }
+
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+/** How much of the head a command names (webhook.ts). */
+const COMMAND_HEAD = 12;
 
 /** A GitHub failure that may pass becomes a RetryError; others stay errors (logged by the caller, not retried). */
 async function retrying<T>(f: () => Promise<T>): Promise<T> {
@@ -1039,31 +1164,51 @@ export interface CheckView {
   /** With the head: the line and the switch in the details. */
   head?: string;
   station?: Position | Station;
+  /** A question open in the pull request (answers.ts): the answers offered, and whether the command is on. */
+  asking?: { offered: string[]; command: boolean };
 }
 
 export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }, view: CheckView = {}): CheckRunOutput {
   const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${clean(f.reason ?? 'missing', 300)})`);
   const answered = d.review?.status === 'resolved';
   const action = actionOf(d);
+  // Who answered in the pull request, without "@" (no mention); an answer given in Pointsman's queue names nobody.
+  const by = answered ? answererOf(d) : undefined;
   const lines = [
     `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
-    ...(answered ? ['', `A person answered **${action}** in Pointsman's review queue; that answer is the action.`] : []),
+    ...(answered ? ['', by ? `Answered by ${by} in the pull request: **${action}**; that answer is the action.` : `A person answered **${action}** in Pointsman's review queue; that answer is the action.`] : []),
     '',
     outcome.kind === 'none'
       ? 'Shadow mode: this check shows the decision and never blocks; Pointsman acts on nothing for it.'
       : `${outcome.kind === 'done' ? 'Done' : 'Not done'}: ${outcome.text}. This check never blocks.`,
     ...(missing.length > 0 ? ['', `Missing facts: ${missing.join(', ')}.`] : []),
     ...(d.review?.status === 'pending' ? ['', 'Waiting for a person: a person checks this decision before it counts. Their answer is used once they give it.'] : []),
+    ...(d.review?.status === 'pending' && view.asking ? ['', askingText(view.asking, view.head ?? '')] : []),
     '',
     `Decision \`${d.decision_id}\``,
   ];
   // The signal and the action, as the comment shows them: "🟢 approve", "🔴 review (shadow)".
   const signal = signalOf(view.signals, d);
-  const title = `${signalMark(signal)} ${action}${d.review?.status === 'pending' ? ': a person checks first' : answered ? ': a person\'s answer' : ''}${outcome.kind === 'none' ? ' (shadow)' : ''}`;
+  const title = `${signalMark(signal)} ${action}${d.review?.status === 'pending' ? ': a person checks first' : by ? `: answered by ${by}` : answered ? ': a person\'s answer' : ''}${outcome.kind === 'none' ? ' (shadow)' : ''}`;
   return {
     externalId: d.decision_id, conclusion: 'neutral', title, summary: lines.join('\n'),
     ...(view.head !== undefined && { text: checkText(d, view.head, view.station) }),
   };
+}
+
+/** How a person answers in the pull request: the buttons, and the command where it is on. */
+function askingText(asking: { offered: string[]; command: boolean }, head: string): string {
+  const ways = [
+    ...(asButtons(asking.offered) ? ['with a button above'] : []),
+    // The command names the commit, so it never answers a question about a later push.
+    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`/pointsman ${a} ${head.slice(0, COMMAND_HEAD)}\``).join(', ')}`] : []),
+  ];
+  return `Answer in the pull request ${ways.join(', or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`;
+}
+
+/** The login of the person who answered in the pull request, when it is one. */
+function answererOf(d: Decision): string | undefined {
+  return typeof d.answered_by === 'string' && LOGIN.test(d.answered_by) ? d.answered_by : undefined;
 }
 
 /** The check run for a test decision or an answer that is not a decision: neutral, and nothing was done. */

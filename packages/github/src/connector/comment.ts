@@ -7,7 +7,8 @@
 //
 // Only what the check run shows goes in: the action, the rule, the facts'
 // names and why one is missing, the AI answers' values, a pending review or
-// a person's answer (never who gave it).
+// a person's answer (with the login of who gave it in the pull request, never
+// with "@").
 // Never text from the pull request, and every value is checked or cleaned
 // first, so nothing in it can add markdown, HTML or a mention.
 
@@ -257,6 +258,11 @@ const listed = (items: string[]) => (items.length > MAX_LISTED ? [...items.slice
 /** A profile's or an action's name as the engine checked it (engine.ts); anything else is cleaned. */
 const label = (name: string) => (NAME.test(name) ? name : clean(name, 64));
 
+/** A GitHub login: shown without "@", so it mentions nobody. */
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+/** Who answered in the pull request (the connector's note), when it is a login. */
+const answeredBy = (d: Decision) => (typeof d.answered_by === 'string' && LOGIN.test(d.answered_by) ? d.answered_by : undefined);
+
 /** The legs of the points: the track taken is heavy, the one not taken light. */
 const TAKEN = '━━━┿━━━┿━━━';
 const NOT_TAKEN = '───┼───┼───';
@@ -308,7 +314,8 @@ export function switchArt(d: Decision, head: string): string {
     ...aiLines,
     ...points,
     ...(d.review?.status === 'pending' ? ['waiting for a person to check this decision'] : []),
-    ...(d.review?.status === 'resolved' ? [`a person answered: ${cut(label(actionOf(d)), MAX_COLUMNS - 20)}`] : []),
+    ...(d.review?.status === 'resolved'
+      ? [answeredBy(d) ? fit(`answered by ${answeredBy(d)}: ${label(actionOf(d))}`) : `a person answered: ${cut(label(actionOf(d)), MAX_COLUMNS - 20)}`] : []),
   ].join('\n');
 }
 
@@ -324,7 +331,7 @@ export function checkText(d: Decision, head: string, at: Position | Station | un
  * Nothing in it changes from run to run unless a decision, its signal or the
  * pull request's station does: no decision ids, no times.
  */
-export function commentBody(decisions: Decision[], signals: Record<string, Record<string, SignalSpec>> | undefined, head: string, at: Position | Station | undefined): string {
+export function commentBody(decisions: Decision[], signals: Record<string, Record<string, SignalSpec>> | undefined, head: string, at: Position | Station | undefined, commands: Record<string, string[]> = {}): string {
   // None (all skipped on this commit, or the last one no longer stands): a short neutral text, so an older one is not left standing.
   if (decisions.length === 0) {
     return [
@@ -338,11 +345,14 @@ export function commentBody(decisions: Decision[], signals: Record<string, Recor
   }
   const rows = decisions.map((d) => {
     const s = signalOf(signals, d);
-    const by = d.review?.status === 'resolved' ? 'a person' : d.rule === null ? 'default' : `rule ${d.rule + 1}`;
+    const by = d.review?.status === 'resolved' ? (answeredBy(d) ? `answered by ${answeredBy(d)}` : 'a person') : d.rule === null ? 'default' : `rule ${d.rule + 1}`;
     return `| \`${d.profile}\` | ${signalMark(s)} ${s.text} | \`${actionOf(d)}\` | ${by} |`;
   });
   // The row shows what is acted on (a person's answer once given); the switch shows why the rules gave their action, and the answer below it.
-  const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code>${d.review?.status === 'resolved' ? `; a person answered <code>${actionOf(d)}</code>` : ''}</summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
+  const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code>${d.review?.status === 'resolved' ? `; ${answeredBy(d) ? `answered by ${answeredBy(d)}:` : 'a person answered'} <code>${actionOf(d)}</code>` : ''}</summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
+  // An open question that the command may answer: its answers, as fixed text (action names, checked in the settings).
+  const asks = decisions.filter((d) => d.review?.status === 'pending' && Object.hasOwn(commands, d.profile))
+    .map((d) => `<code>${d.profile}</code> waits for a person about commit ${head.slice(0, 12)}: answer with a comment of one line, ${commands[d.profile]!.map((a) => `\`/pointsman ${a} ${head.slice(0, 12)}\``).join(' or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`);
   return [
     COMMENT_MARKER,
     '### 🚦 Pointsman',
@@ -353,6 +363,7 @@ export function commentBody(decisions: Decision[], signals: Record<string, Recor
     '',
     fence(lineArt(at)),
     '',
+    ...asks.flatMap((a) => [a, '']),
     ...switches.flatMap((s) => [s, '']),
     `<sub>For commit ${head.slice(0, 7)}. One comment, updated when a decision changes; the check runs \`Pointsman: <profile>\` have the decision ids.</sub>`,
   ].join('\n');

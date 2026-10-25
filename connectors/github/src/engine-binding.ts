@@ -10,6 +10,7 @@ import { ENGINE_BINDING, type EngineAnswer, type EngineClient } from '@pointsman
 export interface EngineBinding {
   decide(profile: string, body: unknown, options: { idempotencyKey: string }): Promise<unknown>;
   get(decisionId: string): Promise<unknown>;
+  resolve(decisionId: string, body: unknown): Promise<unknown>;
   close(decisionId: string): Promise<unknown>;
 }
 
@@ -48,6 +49,7 @@ export function bindingEngine(binding: EngineBinding, timeoutMs = TIMEOUT_MS): E
   return {
     decide: (profile, body, options) => call('decide', () => binding.decide(profile, body, { idempotencyKey: options.idempotencyKey })),
     get: (id) => call('get', () => binding.get(id)),
+    resolve: (id, body) => call('resolve', () => binding.resolve(id, { action: body.action, by: body.by })),
     close: (id) => call('close', () => binding.close(id)),
   };
 }
