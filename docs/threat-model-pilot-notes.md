@@ -518,19 +518,30 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   matrix row for the facts' resource complexity, one misuse pattern (an
   answer named like a field of the bridge's result), §1.16, and the §1.1
   backtest note, which no longer says the repository has no advisories.
-  No disclaimer, obligation or known non-finding changed.
+  One new obligation, `R-PEOPLE-CHECK-PENDING` (Q48); no disclaimer or
+  known non-finding changed.
 - **Citations**: 19 cited lines in 5 changed files moved; a script
   compared each cited line at `v0.17.0` with the tag and rewrote the
   numbers, and the two lines that #229 rewrote were placed by hand. The
   validator flagged only 9 of the 19 (those that now land on a comment or
   a brace); the other 10 pointed at other code and passed. Map citations
-  by content on every re-binding, not by the validator's list.
+  by content on every re-binding, not by the validator's list. Citations
+  written in words ("at line 179 of `github.ts`", "lines 38 and 225") must
+  be mapped too: neither the validator nor the script sees them, and two in
+  `P-CONNECTOR-ACTIONS-MAPPED` were still at the `v0.17.0` numbers until the
+  review of pointsman#231 found them (now lines 181 and 330). The other
+  four such citations, in `src/app.ts`, did not move.
 - **Counts**: the connector has one more `console.error` (36, 20 in
   `pull-request.ts`); the fetch count is still 29.
-- **Questions**: none in the model. Two were left for the maintainer
-  outside it: whether every client of the engine should be held to
-  `review: pending` by a claim, and whether advisories found by a scan
-  should be added to the backtest corpus.
+- **Questions**: two, from the routing, answered by the maintainer on
+  2026-10-26. Q48: hold every engine client to `review: {status: pending}`
+  by an obligation; yes, added in this re-binding as
+  `R-PEOPLE-CHECK-PENDING` (§1.13), which closes the `MODEL-GAP` of
+  GHSA-h4jj-2x7q-m6fv. The GitHub connector and both Actions meet it; the
+  FIWARE bridge meets it unless a route's `reviewActions` leaves out an
+  action of `people_check`. Q49: make the eight reports the backtest's
+  historical corpus; yes, at the next amendment, which re-runs the
+  backtest with them and reports the fail-safe figure.
 - **Validator**: passes (90 checks, one length warning).
 
 ## Files

@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:fb0f9e375d53a1c1445e63e1a3293a382732c50e60783430e9dd4294b962e558"
+prose_version: "threat-model.md@sha256:ad7744b747aef473183f1ebd54db8b9bec1c01520f9dcbd47f375d6f40373b3d"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 459, maintainer: 83, inferred: 0, assumption: 0}
+confidence: {documented: 460, maintainer: 83, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, and the re-binding to v0.17.1 with pointsman#229: Claude Opus 5.5 (claude-opus-5-5)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, and the re-binding to v0.17.1 with pointsman#229 and R-PEOPLE-CHECK-PENDING (Q48): Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -2240,6 +2240,11 @@ downstream_responsibilities:
     statement: "never act on a decision marked test: true; keep test tokens out of production clients"
     enforces: [test-decision-is-logged]
     provenance: {kind: documented, source: "README \"API tokens\": \"nobody acts on them\""}
+  - id: R-PEOPLE-CHECK-PENDING
+    component: engine-api
+    statement: "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and by the FIWARE bridge when a route's reviewActions is unset or lists every people_check action (a broker consumer must read reviewStatus too); added with the re-binding to v0.17.1 (Q48)"
+    enforces: [final-action-is-acted-on]
+    provenance: {kind: documented, source: "docs/profile-format.md \"People: check and answers\""}
   - id: R-VERIFY-CALLBACK
     component: engine-callbacks
     statement: "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id"

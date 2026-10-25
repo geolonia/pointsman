@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 542,
+    "documented": 543,
     "inferred": 0
   },
   "components": [
@@ -2075,6 +2075,7 @@
     "rate-limit and budget at the edge and in the AI Gateway; the engine does not",
     "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default",
     "never act on a decision marked test: true; keep test tokens out of production clients",
+    "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and by the FIWARE bridge when a route's reviewActions is unset or lists every people_check action (a broker consumer must read reviewStatus too); added with the re-binding to v0.17.1 (Q48)",
     "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
     "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept",
