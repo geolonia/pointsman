@@ -88,9 +88,14 @@ export type ActionSpec =
    * withdrawn). For a decision that says "already approved". Only in a
    * profile that also maps an action to approve.
    */
-  | { do: 'keep_approval' };
+  | { do: 'keep_approval' }
+  /**
+   * Ask Copilot for a review of the head (no settings: the reviewer is fixed).
+   * At most one Copilot review per head, whoever asked; never for a fork.
+   */
+  | { do: 'copilot_review' };
 
-export const ACTION_KINDS = ['comment', 'label', 'request_reviewer', 'approve', 'keep_approval'] as const;
+export const ACTION_KINDS = ['comment', 'label', 'request_reviewer', 'approve', 'keep_approval', 'copilot_review'] as const;
 
 const LABEL = /^\S(?:.{0,48}\S)?$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
@@ -126,6 +131,9 @@ function actionSpec(v: unknown, where: string): ActionSpec {
     case 'keep_approval':
       only([]);
       return { do: 'keep_approval' };
+    case 'copilot_review':
+      only([]);
+      return { do: 'copilot_review' };
     default:
       throw new ConfigError(`${where}: "do" must be one of ${ACTION_KINDS.join(', ')}`);
   }

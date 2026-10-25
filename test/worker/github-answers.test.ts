@@ -97,6 +97,8 @@ function fakeGitHub() {
     updateComment: async (_r, _id, body) => void calls.push({ op: 'updateComment', body }),
     addLabels: async () => {},
     requestReviewers: async () => {},
+    requestCopilot: async () => {},
+    copilotAsked: async () => false,
     botLogin: async () => 'pointsman-test[bot]',
     ownApprovals: async () => [],
     reviewSummary: async () => ({ head: github.state.head, decision: null, reviews: [] }),

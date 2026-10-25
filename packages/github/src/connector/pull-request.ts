@@ -894,6 +894,8 @@ export class PullRequestWork {
     }
     if (spec.do === 'approve' && (pr.draft || pr.fork)) return { kind: 'skipped', text: 'approve: not done for a draft or a pull request from a fork' };
     if (spec.do === 'approve' && approveBlocked) return { kind: 'skipped', text: 'approve: not done, an older approval could not be dismissed' };
+    // An outsider's pushes never spend the Copilot allowance.
+    if (spec.do === 'copilot_review' && (pr.fork || !pr.open)) return { kind: 'skipped', text: 'copilot_review: not done for a closed pull request or one from a fork' };
 
     const key = `${profile}:${spec.do}`;
     const record = acts.done[key];
@@ -918,6 +920,16 @@ export class PullRequestWork {
           await this.#storage.setAlarm(at);
         }
         return { kind: 'skipped', text: `${spec.do}: result unclear, checked again later` };
+      }
+    }
+    if (spec.do === 'copilot_review' && record === undefined) {
+      // At most one Copilot review per head, whoever asked (another profile, a person).
+      const asked = await this.#tracedOrUnknown(target, pr, profile, spec);
+      if (asked === 'unknown') return { kind: 'skipped', text: 'copilot_review: whether Copilot was asked is unclear, tried again on the next run' };
+      if (asked) {
+        acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now() };
+        await this.#storage.put({ acts });
+        return { kind: 'done', text: 'Copilot already asked or reviewed this commit' };
       }
     }
     if (spec.do === 'approve') {
@@ -960,6 +972,8 @@ export class PullRequestWork {
       }
       case 'keep_approval':
         return;
+      case 'copilot_review':
+        return this.#github.requestCopilot(repo, number);
     }
   }
 
@@ -985,6 +999,8 @@ export class PullRequestWork {
       }
       case 'keep_approval':
         return false;
+      case 'copilot_review':
+        return this.#github.copilotAsked(repo, number, pr.head);
     }
   }
 
@@ -1155,6 +1171,7 @@ function describe(spec: ActionSpec): string {
     case 'request_reviewer': return `review requested from ${spec.reviewers.join(', ')}`;
     case 'approve': return 'approved this commit';
     case 'keep_approval': return 'approval of this commit kept';
+    case 'copilot_review': return 'review requested from Copilot';
   }
 }
 

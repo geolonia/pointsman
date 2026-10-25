@@ -105,6 +105,7 @@ The connector carries out an action only where the deployment maps a profile's d
 | `request_reviewer` | `reviewers` (1 to 10 GitHub logins) | Asks them for a review. |
 | `approve` | none | Approves the head commit the decision was made on. |
 | `keep_approval` | none | Does nothing on GitHub: the app's approval of the head commit, if it gave one, is not withdrawn. For a decision that says "already approved". Only in a profile that also maps an action to `approve`. |
+| `copilot_review` | none | Asks Copilot for a review of the pull request ([below](#copilot-reviews)). |
 
 This is the whole list: a deployment can switch actions on, never add one. A decision action that is not mapped gets only its check run, as in shadow mode, and the check run says which action was done or why not.
 
@@ -126,6 +127,17 @@ For `approve` also:
 - **Required:** the branch's ruleset (or branch protection) must have "Dismiss stale pull request approvals when new commits are pushed" on. Otherwise an approval of an older commit counts for merging until the connector's next run dismisses it.
 - Its own approvals are reviews by its own bot account (`<app slug>[bot]`, the slug from GitHub's answer for the app's installation) with its marker. Another app's review with the same marker is never taken for its own.
 - **Code owners:** an app cannot be a code owner (`CODEOWNERS` names users, teams and email addresses). Where the ruleset requires a code owner's review and `CODEOWNERS` covers a changed file, a person must still approve; the app's approval can still count toward the required number of approvals (with the app's "Contents: write" permission, see below).
+
+### Copilot reviews
+
+For `copilot_review` also:
+
+- **One Copilot review per commit, whoever asked.** Before asking, the connector reads the pull request: if Copilot is already requested, or already reviewed the head commit (asked by a person or another profile), it asks nothing and the action counts as done. It knows Copilot by its account id, not its name.
+- **Checked:** GitHub can accept the request and still not add Copilot (for example when Copilot code review is not on for the repository). The connector counts it as done only when GitHub's answer lists Copilot. Otherwise it is refused: shown on the check run, not tried again for that commit.
+- Never for a pull request from a fork, so an outsider's pushes do not use your Copilot allowance.
+- **Cost:** each Copilot review uses Copilot premium requests, billed as GitHub decides for a request made by an app. The connector asks at most once per commit; how many commits get a review is up to the profile. Use `skip_drafts` ([Chains](#chains)) and a rule on [`github_copilot`](profile-format.md#github-pull-requests) (for example its `reviews` count) to limit it, and keep a Copilot budget in the organization.
+- Copilot reads the pull request's code and text. Map `copilot_review` only where your organization allows Copilot code review for these repositories. The connector never reads what Copilot writes.
+- Not yet tried with a GitHub App (only with `github-actions[bot]`): check the first request when you switch it on.
 
 ### When the approval stays
 
@@ -413,7 +425,7 @@ The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `F
 ## Not yet
 
 - **Check-run conclusions** other than `neutral` (for example `failure` for a decision that should block): the design leaves them open.
-- **Paid reviews and review-service commands** (the design's `pay`, `coderabbit-approve`, `copilot`): not in the list of actions.
+- **Paid reviews and CodeRabbit commands** (the design's `pay`, `coderabbit-approve`, `check`, `request-review`): not in the list of actions. CodeRabbit ignores commands from a GitHub App (pointsman#220), so a person or an agent posts them. Copilot reviews are [`copilot_review`](#copilot-reviews).
 - **Commit statuses.** A `status` event names a commit, not a pull request, so it starts no run; a finished check suite does.
 - **One commit in two pull requests** (one branch to two bases) gets a check run from each.
 - **Pull requests from forks.** GitHub lists no pull requests on a fork's check suites, so only the pull request's own events start a run.

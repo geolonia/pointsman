@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 538,
+    "documented": 542,
     "inferred": 0
   },
   "components": [
@@ -1582,7 +1582,7 @@
       "property": "P-CONNECTOR-ACTIONS-MAPPED",
       "violation_symptom": "x-unauthorized-write, wrong-output",
       "severity_tier": "security",
-      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval; fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit",
+      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""
     },
@@ -1922,6 +1922,20 @@
       "source": "docs/github-connector.md \"Answering in the pull request\", Personal data"
     },
     {
+      "property": "D-CONNECTOR-COPILOT-COST",
+      "reason": "since pointsman#220 each Copilot review the connector asks for uses Copilot premium requests billed as GitHub decides for an app's request; at most once per head and never for a fork, but no cap per pull request or per day; the profile's rules and the organization's Copilot budget limit it; basis: stated, and a maintainer ruling (2026-10-25, Q46)",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/github-connector.md \"Copilot reviews\", Cost"
+    },
+    {
+      "property": "D-CONNECTOR-COPILOT-DATA",
+      "reason": "since pointsman#220 a Copilot review reads the pull request's code and text under the organization's Copilot policy; the connector only asks and never reads what Copilot writes; basis: stated",
+      "false_friend": false,
+      "provenance": "documented",
+      "source": "docs/github-connector.md \"Copilot reviews\""
+    },
+    {
       "property": "D-COMMAND-SHORT-COMMIT",
       "reason": "since pointsman#222 (v0.16.0) a command names the head by its first 12 hex characters and is refused when they start more than one of the pull request's last 100 heads; a second commit with the same 12 characters (about 2^48 tries) still binds when the meant commit is not in that list (pushed out by 100 later heads, within one burst of events, or before answers were on); buttons not affected; basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change)",
       "false_friend": true,
@@ -2080,6 +2094,7 @@
     "two GitHub Apps, the connector app only in the connector Worker; install only on the connector's repositories; only the permissions its settings need; secrets only in wrangler; its own token, never a test token",
     "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis; keep_approval only for an action of its own from a rule that requires what the approving rule requires; approve and keep_approval with once_per_head are refused by the settings since pointsman#216 (v0.15.0)",
     "list people_answers in every profile the connector asks a person about; offer only answers a person's yes may lead to; switch answers on only where every writer may approve; keep the ruleset's stale-approval and most-recent-push rules and code-owner reviews; the app's Contents read and Check run event, Issues read and Issue comment event only for the command; give other clients the connector's profiles only if they may answer; deploy the engine first",
+    "map copilot_review only where the organization allows Copilot code review for every repository in repos; limit reviews with skip_drafts and a rule on github_copilot; keep a Copilot budget in the organization; check the first request when switching it on",
     "set bot_id in a github_app_approval fact",
     "send privileged, unparsed and local_unresolved workflow changes to a person; never approve on zero counts alone",
     "pair github_release with github_pr; name exact version and changelog files; no files that run in version_text_files",
@@ -2272,6 +2287,11 @@
       "pattern": "counting on answers in the pull request always being possible",
       "why_unsafe": "Counting on answers in the pull request always being possible, for example as the only way to unblock a release (`D-CONNECTOR-ANSWER-CAPS`).",
       "instead": "keep the review queue as the fallback"
+    },
+    {
+      "pattern": "mapping copilot_review to an action decided on every push, with no rule on github_copilot and no organization budget",
+      "why_unsafe": "Mapping `copilot_review` to an action a profile decides on every push, with no rule on `github_copilot` and no organization budget, so every push uses a Copilot review (`D-CONNECTOR-COPILOT-COST`, `R-CONNECTOR-COPILOT`).",
+      "instead": "limit reviews with skip_drafts and a rule on github_copilot; keep a Copilot budget"
     }
   ],
   "known_non_findings": [
@@ -2296,7 +2316,7 @@
     {
       "reported_as": "the same callback arrived twice",
       "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
-      "cites": "properties_not_provided[37]",
+      "cites": "properties_not_provided[39]",
       "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
     },
     {
