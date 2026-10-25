@@ -26,12 +26,15 @@ export interface QueuedAnswer {
 }
 
 /**
- * Caps per pull request and hour, so nobody can use up GitHub's rate limit or
- * block the people who may answer. Checked in this order: answers of one
- * account (before any call to GitHub), all answers that read the pull
- * request, and answers that pass the checks of the pull request (open, head,
- * author, fork) and so cost a permission lookup. Over a cap, an answer is
- * dropped until the next hour.
+ * Caps per pull request and clock hour, so nobody can use up GitHub's rate
+ * limit or block the people who may answer. Checked in this order, before any
+ * call to GitHub: answers of one account, and all answers that call GitHub (a
+ * read of the pull request, or a note on the check run); after the checks of
+ * the pull request (open, head, author, fork), answers that cost a permission
+ * lookup. Over a cap, an answer is dropped until the next hour; only the first
+ * drop in the hour adds a note to the check run. An account is counted only
+ * with a call to GitHub, so the hour's counts keep at most
+ * ANSWER_READS_PER_HOUR accounts.
  */
 export const ANSWERS_PER_ACCOUNT_PER_HOUR = 3;
 export const ANSWER_READS_PER_HOUR = 30;
@@ -64,6 +67,15 @@ interface Counts {
   accounts: Record<string, number>;
   reads: number;
   checks: number;
+  /** A drop over a cap was noted on the check run this hour. */
+  noted?: boolean;
+}
+
+/** A note on a check run (#bind): written only once the caps allow it. */
+interface Note {
+  profile: string;
+  head: string;
+  text: string;
 }
 
 /** A failure, for the log: its message (GitHub's status), never who answered. */
@@ -130,22 +142,29 @@ export class AnswerDesk {
     const where = `${target.repo}#${target.number}`;
     // Off since it was queued (settings changed): nothing.
     if (!this.#settings.answers || (q.event.kind === 'command' && !this.#settings.answers.command)) return 'dropped';
-    const bound = await this.#bind(target, q.event);
-    if (!bound) return 'dropped';
+    // Bound from the connector's own records only: nothing is written on GitHub yet.
+    const bind = await this.#bind(target, q.event);
+    if (!bind) return 'dropped';
+    // Before any call to GitHub: one account's answers, and all answers that call GitHub (a new account is kept only with one).
+    const account = String(q.by.id);
+    const counts = await this.#counts();
+    const at = 'bound' in bind ? bind.bound : bind.notes[0]!;
+    const mine = counts.accounts[account] ?? 0;
+    if (mine >= ANSWERS_PER_ACCOUNT_PER_HOUR) return this.#capped(target, at, `more than ${ANSWERS_PER_ACCOUNT_PER_HOUR} answers from one account this hour`);
+    if (counts.reads >= ANSWER_READS_PER_HOUR) return this.#capped(target, at, `more than ${ANSWER_READS_PER_HOUR} answers this hour`);
+    await this.#storage.put({ answerCounts: { ...counts, accounts: { ...counts.accounts, [account]: mine + 1 }, reads: counts.reads + 1 } });
+    if (!('bound' in bind)) {
+      for (const n of bind.notes) await this.#note(target, n.profile, n.head, n.text);
+      return 'dropped';
+    }
+    const { bound } = bind;
     const refuse = async (text: string, err?: unknown): Promise<Outcome> => {
       console.error(`github connector: ${where}: an answer to decision ${bound.decisionId} was not taken: ${text}${err === undefined ? '' : ` (${why(err)})`}`);
+      // GitHub or Pointsman failed, not the person: the answer does not count toward their answers of the hour.
+      if (err !== undefined && text.endsWith('answer again')) await this.#refund(account);
       await this.#note(target, bound.profile, bound.head, text);
       return 'dropped';
     };
-    // Before any call to GitHub: one account's answers, and all answers that read the pull request.
-    const counts = await this.#counts();
-    const mine = counts.accounts[String(q.by.id)] ?? 0;
-    counts.accounts[String(q.by.id)] = mine + 1;
-    await this.#storage.put({ answerCounts: counts });
-    // The note only for the first answer over a cap in the hour: more answers write nothing more.
-    if (mine >= ANSWERS_PER_ACCOUNT_PER_HOUR) return this.#capped(target, bound, `more than ${ANSWERS_PER_ACCOUNT_PER_HOUR} answers from one account this hour`, mine === ANSWERS_PER_ACCOUNT_PER_HOUR);
-    if (counts.reads >= ANSWER_READS_PER_HOUR) return this.#capped(target, bound, `more than ${ANSWER_READS_PER_HOUR} answers this hour`, false);
-    await this.#storage.put({ answerCounts: { ...counts, reads: counts.reads + 1 } });
 
     let pr: PullRequestInfo;
     try {
@@ -161,7 +180,7 @@ export class AnswerDesk {
     if (pr.authorId === q.by.id) return refuse('the author of the pull request cannot answer');
     // Only answers that passed the checks above cost a permission lookup.
     const now = await this.#counts();
-    if (now.checks >= ANSWER_CHECKS_PER_HOUR) return this.#capped(target, bound, `more than ${ANSWER_CHECKS_PER_HOUR} answers checked this hour`, now.checks === ANSWER_CHECKS_PER_HOUR);
+    if (now.checks >= ANSWER_CHECKS_PER_HOUR) return this.#capped(target, bound, `more than ${ANSWER_CHECKS_PER_HOUR} answers checked this hour`);
     await this.#storage.put({ answerCounts: { ...now, checks: now.checks + 1 } });
     let permission: { account: { id: number }; permission: string };
     try {
@@ -197,7 +216,7 @@ export class AnswerDesk {
       return 'read';
     }
     if (res.status === 404 || (res.status >= 200 && res.status < 300 && status !== 'pending')) return refuse('this question is no longer open');
-    if (res.status < 200 || res.status >= 300) return refuse(`Pointsman could not read the question (${res.status}); answer again`);
+    if (res.status < 200 || res.status >= 300) return refuse('Pointsman could not read the question; answer again', `status ${res.status}`);
     try {
       res = await this.#engine.resolve(bound.decisionId, { action: bound.answer, by: byOf(q.by) });
     } catch (err) {
@@ -209,7 +228,7 @@ export class AnswerDesk {
       return 'read';
     }
     if (res.status === 400) return refuse('Pointsman did not accept this answer for the profile (is it in people_answers?)');
-    if (res.status < 200 || res.status >= 300) return refuse(`Pointsman did not take the answer (${res.status}); answer again`);
+    if (res.status < 200 || res.status >= 300) return refuse('Pointsman did not take the answer; answer again', `status ${res.status}`);
     if ((res.body as { action?: unknown } | undefined)?.action !== bound.answer) {
       console.error(`github connector: ${where}: Pointsman's answer to the resolve of ${bound.decisionId} names another action; read back on the run`);
       return 'read';
@@ -232,10 +251,20 @@ export class AnswerDesk {
     return counts?.hour === hour ? counts : { hour, accounts: {}, reads: 0, checks: 0 };
   }
 
-  /** An answer dropped over a cap: logged; noted on the check run only when `note` (the first one over it). */
-  async #capped(target: PullRequestTarget, bound: Bound, text: string, note: boolean): Promise<Outcome> {
-    console.error(`github connector: ${target.repo}#${target.number}: an answer to decision ${bound.decisionId} was dropped: ${text}`);
-    if (note) await this.#note(target, bound.profile, bound.head, `${text}; answer again in the next hour`);
+  /** One answer less for this account this hour (its answer failed on GitHub's or Pointsman's side). */
+  async #refund(account: string): Promise<void> {
+    const counts = await this.#counts();
+    const mine = counts.accounts[account] ?? 0;
+    if (mine > 0) await this.#storage.put({ answerCounts: { ...counts, accounts: { ...counts.accounts, [account]: mine - 1 } } });
+  }
+
+  /** An answer dropped over a cap: logged; noted on the check run only for the first drop of the hour, whichever cap. */
+  async #capped(target: PullRequestTarget, at: { profile: string; head: string; decisionId?: string }, text: string): Promise<Outcome> {
+    console.error(`github connector: ${target.repo}#${target.number}: an answer${at.decisionId ? ` to decision ${at.decisionId}` : ''} was dropped: ${text}`);
+    const counts = await this.#counts();
+    if (counts.noted) return 'dropped';
+    await this.#storage.put({ answerCounts: { ...counts, noted: true } });
+    await this.#note(target, at.profile, at.head, `${text}; answer again in the next hour`);
     return 'dropped';
   }
 
@@ -243,10 +272,11 @@ export class AnswerDesk {
    * The open question an answer is about, from the connector's own records:
    * a button by its check run (its id, head and decision) and identifier; a
    * command by the head it names and the one open question on that head that
-   * offers its answer. Undefined, with
-   * the reason logged (and noted where a question is known), when there is none.
+   * offers its answer. Nothing is written on GitHub here: an answer that is
+   * not bound gives the notes to write, if any (once the caps allow them), or
+   * undefined (ignored); the reason is logged.
    */
-  async #bind(target: PullRequestTarget, event: AnswerEvent): Promise<Bound | undefined> {
+  async #bind(target: PullRequestTarget, event: AnswerEvent): Promise<{ bound: Bound } | { notes: Note[] } | undefined> {
     const where = `${target.repo}#${target.number}`;
     const asked = await this.#storage.get<Asked>('asked');
     if (event.kind === 'button') {
@@ -265,10 +295,9 @@ export class AnswerDesk {
         const text = kept?.decision.review?.status === 'resolved' ? 'this question is answered already' : 'this question is no longer open';
         console.error(`github connector: ${where}: a click on check run ${event.checkRun} was not taken: ${text}`);
         // Answered: the check run shows the answer already; nothing more is written.
-        if (kept?.decision.review?.status !== 'resolved') await this.#note(target, profile, event.head, text);
-        return undefined;
+        return kept?.decision.review?.status === 'resolved' ? undefined : { notes: [{ profile, head: event.head, text }] };
       }
-      return { profile, head: event.head, decisionId: id, answer };
+      return { bound: { profile, head: event.head, decisionId: id, answer } };
     }
     // Written for another commit (an older head, or one pushed since): not about this question, whatever it answers.
     if (!asked || !asked.head.startsWith(event.head)) {
@@ -279,11 +308,11 @@ export class AnswerDesk {
     if (open.length !== 1) {
       // None: not an answer to anything (a command for an answered or closed question too); quiet. Several: which one is not known.
       console.error(`github connector: ${where}: a command that matches ${open.length === 0 ? 'no open question' : 'more than one open question'}; ignored`);
-      for (const [profile] of open) await this.#note(target, profile, asked.head, 'the command matches more than one open question; answer with a button');
-      return undefined;
+      if (open.length === 0) return undefined;
+      return { notes: open.map(([profile]) => ({ profile, head: asked.head, text: 'the command matches more than one open question; answer with a button' })) };
     }
     const [profile, kept] = open[0]!;
-    return { profile, head: asked.head, decisionId: kept.decision.decision_id, answer: event.answer };
+    return { bound: { profile, head: asked.head, decisionId: kept.decision.decision_id, answer: event.answer } };
   }
 
   /** Notes on the profile's check run why an answer was not taken; only a hint, so a failure is logged. */

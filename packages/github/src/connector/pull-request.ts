@@ -162,6 +162,8 @@ export interface Shown {
 interface Clearing {
   id: number;
   profile: string;
+  /** The head of the check run. */
+  head: string;
   output: CheckRunOutput;
   tries: number;
 }
@@ -393,7 +395,8 @@ export class PullRequestWork {
    * head '') are removed. Each removal is listed first (`clearing`), then
    * done: one that fails while GitHub is busy is tried again on later runs,
    * at most CLEAR_TRIES times; a refused one is given up (a click on the old
-   * buttons is refused anyway, answers.ts).
+   * buttons is refused anyway, answers.ts). One whose head is live again (a
+   * reopen on the same commit) is dropped, so a live question keeps its buttons.
    */
   async #clearButtons(target: PullRequestTarget, head: string): Promise<void> {
     if (!this.#settings.answers) return;
@@ -404,7 +407,7 @@ export class PullRequestWork {
         const shown = await this.#storage.get<Shown>(`shown:${profile}`);
         if (run.id === undefined || shown?.head !== checks.head || !shown.output.actions?.length) continue;
         const output: CheckRunOutput = { ...shown.output, actions: [], summary: `${shown.output.summary}\n\n${head === '' ? 'The pull request is closed' : 'The pull request has newer commits'}: this question is closed.` };
-        clearing.push({ id: run.id, profile, output, tries: 0 });
+        clearing.push({ id: run.id, profile, head: checks.head, output, tries: 0 });
         // Listed once: the record no longer shows buttons, the list keeps the removal until it is done.
         await this.#storage.put({ clearing, [`shown:${profile}`]: { head: checks.head, output } });
       }
@@ -412,6 +415,8 @@ export class PullRequestWork {
     if (clearing.length === 0) return;
     const left: Clearing[] = [];
     for (const c of clearing) {
+      // Its head is the live one again (closed and reopened on the same commit): its check run shows the question again.
+      if (c.head === head) continue;
       try {
         await retrying(() => this.#github.updateCheckRun(target.repo, c.id, c.output));
       } catch (err) {
@@ -1105,6 +1110,8 @@ function slim(d: Decision): Decision {
 }
 
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+/** How much of the head a command names (webhook.ts). */
+const COMMAND_HEAD = 12;
 
 /** A GitHub failure that may pass becomes a RetryError; others stay errors (logged by the caller, not retried). */
 async function retrying<T>(f: () => Promise<T>): Promise<T> {
@@ -1179,7 +1186,7 @@ function askingText(asking: { offered: string[]; command: boolean }, head: strin
   const ways = [
     ...(asButtons(asking.offered) ? ['with a button above'] : []),
     // The command names the commit, so it never answers a question about a later push.
-    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`/pointsman ${a} ${head.slice(0, 7)}\``).join(', ')}`] : []),
+    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`/pointsman ${a} ${head.slice(0, COMMAND_HEAD)}\``).join(', ')}`] : []),
   ];
   return `Answer in the pull request ${ways.join(', or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`;
 }

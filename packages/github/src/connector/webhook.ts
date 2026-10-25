@@ -118,7 +118,7 @@ export interface Answerer {
  */
 export type AnswerEvent =
   | { kind: 'button'; checkRun: number; head: string; externalId: string; identifier: string }
-  /** `head`: the first 7 characters of the commit the person answers about, as the command names it. */
+  /** `head`: the first 12 characters of the commit the person answers about, as the command names it. */
   | { kind: 'command'; answer: string; head: string };
 
 export interface AnswerHint {
@@ -134,9 +134,10 @@ const IDENTIFIER = /^[1-3]-[0-9a-f]{8}$/;
 /**
  * The whole comment, trimmed: exactly this one line. An action name, lower
  * case, as Pointsman writes it, and the head commit the answer is about (its
- * first 7 characters, as the decision comment shows them).
+ * first 12 characters, as the decision comment and the check run show them: too
+ * many to find a second commit that starts the same).
  */
-const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63}) ([0-9a-f]{7})$/;
+const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63}) ([0-9a-f]{12})$/;
 
 /**
  * A person's account, from an event's sender: only a `User` (never a bot, an

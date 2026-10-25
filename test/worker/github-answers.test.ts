@@ -16,8 +16,8 @@ const REPO = 'example/repo';
 const HEAD = 'a'.repeat(40);
 const HEAD2 = 'b'.repeat(40);
 /** The heads as a command names them. */
-const SHORT = HEAD.slice(0, 7);
-const SHORT2 = HEAD2.slice(0, 7);
+const SHORT = HEAD.slice(0, 12);
+const SHORT2 = HEAD2.slice(0, 12);
 const PROFILE = 'pr-next-step';
 
 async function pemKey(): Promise<string> {
@@ -264,14 +264,14 @@ describe('the webhook: which events are answers', () => {
   });
 
   it('the command: the whole comment is one line with the answer and the head, exactly; quotes, code blocks, other text and upper case are not', () => {
-    expect(commandOf('/pointsman approve 0123abc')).toEqual({ answer: 'approve', head: '0123abc' });
-    expect(commandOf('  /pointsman approve 0123abc\n')).toEqual({ answer: 'approve', head: '0123abc' });
-    expect(commandOf('/pointsman reject-now_2 0123abc')).toEqual({ answer: 'reject-now_2', head: '0123abc' });
+    expect(commandOf('/pointsman approve 0123456789ab')).toEqual({ answer: 'approve', head: '0123456789ab' });
+    expect(commandOf('  /pointsman approve 0123456789ab\n')).toEqual({ answer: 'approve', head: '0123456789ab' });
+    expect(commandOf('/pointsman reject-now_2 0123456789ab')).toEqual({ answer: 'reject-now_2', head: '0123456789ab' });
     for (const body of [
       // Without the head, or with a head that is not 7 lower-case hex characters: not a command.
-      '/pointsman approve', '/pointsman approve 0123ab', '/pointsman approve 0123abcd', '/pointsman approve 0123ABC', '/pointsman approve main123',
-      '> /pointsman approve 0123abc', '```\n/pointsman approve 0123abc\n```', '`/pointsman approve 0123abc`', '    /pointsman approve 0123abc x', 'yes\n/pointsman approve 0123abc',
-      '/pointsman approve 0123abc\nthanks', '/Pointsman approve 0123abc', '/pointsman Approve 0123abc', '/pointsman  approve 0123abc', '/pointsman', '/pointsmanapprove 0123abc', 'please /pointsman approve 0123abc',
+      '/pointsman approve', '/pointsman approve 0123abc', '/pointsman approve 0123456789a', '/pointsman approve 0123456789abc', '/pointsman approve 0123456789AB', '/pointsman approve main12345678',
+      '> /pointsman approve 0123456789ab', '```\n/pointsman approve 0123456789ab\n```', '`/pointsman approve 0123456789ab`', '    /pointsman approve 0123456789ab x', 'yes\n/pointsman approve 0123456789ab',
+      '/pointsman approve 0123456789ab\nthanks', '/Pointsman approve 0123456789ab', '/pointsman Approve 0123456789ab', '/pointsman  approve 0123456789ab', '/pointsman', '/pointsmanapprove 0123456789ab', 'please /pointsman approve 0123456789ab',
     ]) expect(commandOf(body), body).toBeUndefined();
     expect(commandOf(undefined)).toBeUndefined();
   });
@@ -366,6 +366,23 @@ describe('buttons on the check run', () => {
     expect(mem.data.get('clearing')).toEqual([]);
   });
 
+  it('a removal left from a close is dropped when the pull request is reopened on the same commit: the live question keeps its buttons', async () => {
+    const { gh, checkRun, accept, work, mem } = await asking();
+    gh.github.state.open = false;
+    gh.control.update = () => { throw new GitHubError('GitHub check run: 502', true, 502); };
+    await logged(async () => { await accept(); await work.run(); });
+    expect((mem.data.get('clearing') as any[]).map((c) => c.id)).toEqual([checkRun]);
+    delete gh.control.update;
+    gh.github.state.open = true;
+    const before = gh.calls.length;
+    await accept();
+    await work.run();
+    expect(mem.data.get('clearing')).toEqual([]);
+    const after = gh.calls.slice(before).filter((c) => c.op === 'update' && c.id === checkRun);
+    expect(after.some((c) => c.output!.summary.includes('The pull request is closed'))).toBe(false);
+    expect(after.at(-1)!.output!.actions).toHaveLength(2);
+  });
+
   it('a deployment without answers sends no actions at all', async () => {
     const { gh } = await asking({ answers: undefined });
     expect(gh.calls.filter((c) => c.output).every((c) => c.output!.actions === undefined)).toBe(true);
@@ -416,7 +433,7 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     ['a closed pull request', (t) => { t.gh.github.state.open = false; }, MAINTAINER, 'the pull request is closed'],
     ['a question closed in Pointsman', (t) => { t.pm.logged.get(t.id).review = { status: 'superseded' }; }, MAINTAINER, 'this question is no longer open'],
     ['an answer Pointsman does not take (not in people_answers)', (t) => { t.pm.peopleAnswers.splice(0); }, MAINTAINER, 'Pointsman did not accept this answer for the profile'],
-    ['Pointsman down on resolve', (t) => { t.pm.override.resolve = () => new Response('', { status: 503 }); }, MAINTAINER, 'Pointsman did not take the answer (503); answer again'],
+    ['Pointsman down on resolve', (t) => { t.pm.override.resolve = () => new Response('', { status: 503 }); }, MAINTAINER, 'Pointsman did not take the answer; answer again'],
   ];
   for (const [what, arrange, by, text] of refusals) {
     it(`refuses ${what}`, async () => {
@@ -498,6 +515,11 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     const log = await logged(async () => { for (let i = 0; i < ANSWER_CHECKS_PER_HOUR + 2; i++) await t.click(1, stranger(i)); });
     expect(t.gh.calls.filter((c) => c.op === 'permission')).toHaveLength(ANSWER_CHECKS_PER_HOUR);
     expect(log).toContain(`more than ${ANSWER_CHECKS_PER_HOUR} answers checked this hour`);
+    const capNotes = (x: typeof t) => x.gh.calls.filter((c) => c.output?.summary.includes('answer again in the next hour')).length;
+    expect(capNotes(t)).toBe(1);
+    // Other accounts over their own cap later in the hour: no second note, whichever cap.
+    await logged(async () => { for (let i = 0; i < ANSWERS_PER_ACCOUNT_PER_HOUR + 1; i++) await t.click(1, READER); });
+    expect(capNotes(t)).toBe(1);
     // Answers refused by the pull request's own checks (the author) cost no lookup, but each reads the pull request.
     const t2 = await asking();
     t2.gh.github.state.authorId = 0;
@@ -506,6 +528,35 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     await logged(async () => { for (let i = 0; i < ANSWER_READS_PER_HOUR + 2; i++) await t2.click(1, stranger(i)); });
     expect(reads() - before).toBe(ANSWER_READS_PER_HOUR);
     expect(t2.gh.calls.filter((c) => c.op === 'permission')).toEqual([]);
+    // The reads cap notes once too, and the hour's counts keep only the accounts that were let through.
+    expect(capNotes(t2)).toBe(1);
+    expect(Object.keys((t2.mem.data.get('answerCounts') as any).accounts)).toHaveLength(ANSWER_READS_PER_HOUR);
+    // The next clock hour starts anew.
+    const later = Date.now() + 3600_000;
+    t2.work.now = () => later;
+    await logged(() => t2.click(1, stranger(99)));
+    expect(reads() - before).toBe(ANSWER_READS_PER_HOUR + 1);
+  });
+
+  it('a failure on GitHub\'s or Pointsman\'s side does not use up the person\'s answers', async () => {
+    const t = await asking();
+    t.gh.control.permission = 'fail';
+    await logged(async () => { for (let i = 0; i < ANSWERS_PER_ACCOUNT_PER_HOUR + 2; i++) await t.click(1, MAINTAINER); });
+    expect(t.gh.calls.filter((c) => c.op === 'permission')).toHaveLength(ANSWERS_PER_ACCOUNT_PER_HOUR + 2);
+    delete t.gh.control.permission;
+    await logged(() => t.click(1));
+    expect(t.resolves()).toHaveLength(1);
+  });
+
+  it('notes for answers that bind to nothing count under the caps: an ambiguous command cannot make it write without end', async () => {
+    const t = await asking({ answers: { ...ANSWERS, command: true } });
+    const asked = t.mem.data.get('asked') as any;
+    asked.byProfile.other = { ...asked.byProfile[PROFILE], decision: { ...asked.byProfile[PROFILE].decision, decision_id: crypto.randomUUID() } };
+    t.mem.data.set('asked', asked);
+    await logged(async () => { for (let i = 0; i < 10; i++) await t.answer({ kind: 'command', answer: 'approve', head: SHORT }, READER); });
+    // Two profiles match: notes for the account's 3 answers of the hour, then nothing more (the cap's own note: once).
+    expect(t.gh.calls.filter((c) => c.output?.summary.includes('more than one open question')).length).toBeLessThanOrEqual(2 * ANSWERS_PER_ACCOUNT_PER_HOUR + 1);
+    expect((t.mem.data.get('answerCounts') as any).reads).toBe(ANSWERS_PER_ACCOUNT_PER_HOUR);
   });
 
   it('a permission GitHub does not find (404) is no write access', async () => {
@@ -588,7 +639,7 @@ describe('the comment command (when switched on)', () => {
   it('a command for a commit with no question is ignored without a note', async () => {
     const t = await asking(on);
     const updates = t.gh.calls.filter((c) => c.op === 'update').length;
-    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: '0123abc' }));
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: '0123456789ab' }));
     expect(t.resolves()).toEqual([]);
     expect(t.gh.calls.filter((c) => c.op === 'update')).toHaveLength(updates);
     expect(t.gh.calls.filter((c) => c.op === 'permission' || c.op === 'get').length).toBeLessThanOrEqual(2);
