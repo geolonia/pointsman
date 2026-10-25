@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:fc57743f64f78002523f93d1835e9b3ef6caa1f524335835ff8aac0d653e7e07"
+prose_version: "threat-model.md@sha256:80dc0b46eddfdf4325cf49a5221cbc925ddc8854b3b2fcc4d6f97e146e30f0b0"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 455, maintainer: 83, inferred: 0, assumption: 0}
+confidence: {documented: 456, maintainer: 82, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, and the amendment of 2026-10-25 (unreleased pointsman#221 and #222, binding kept at v0.14.2): Claude Opus 5.5 (claude-opus-5-5)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217: Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -21,7 +21,7 @@ generation:
 components:
   - name: engine-api
     scope: in
-    reachability_precondition: "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response; the internal call (InternalEngine) only from a Worker in the same Cloudflare account with a binding, and only with INTERNAL_CLIENT set; /connectors/<id>/ from any request, under the connector's own authentication, and the queue consumer from the Worker's queue; since pointsman#221 also InternalEngine get, resolve and close, and POST /v1/reviews/{id}/close"
+    reachability_precondition: "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response; the internal call (InternalEngine) only from a Worker in the same Cloudflare account with a binding, and only with INTERNAL_CLIENT set; /connectors/<id>/ from any request, under the connector's own authentication, and the queue consumer from the Worker's queue; since pointsman#221 (v0.16.0) also InternalEngine get, resolve and close, and POST /v1/reviews/{id}/close"
     provenance: {kind: documented, source: "README \"API\""}
   # GitHub facts here means all nine types of @pointsman/github; CodeRabbit facts the four types of
   # @pointsman/coderabbit; facts from the decision log and connectors inside the engine Worker are covered
@@ -44,7 +44,7 @@ components:
     provenance: {kind: documented, source: "bridge/README.md \"Why a bridge\""}
   - name: connector-github
     scope: in
-    reachability_precondition: "reachable from a webhook with a valid X-Hub-Signature-256 (pull-request, review and check-suite events; closed only with the decision comment or answers), from the pull request it then reads (title, description, diff by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer; since pointsman#221 from a decision read back; since pointsman#222, where answers are on, from check_run requested_action and (with the command) issue_comment created webhooks, their sender and the comment's text, and GitHub's answers about the person's permission and the head's newest push"
+    reachability_precondition: "reachable from a webhook with a valid X-Hub-Signature-256 (pull-request, review and check-suite events; closed only with the decision comment or answers), from the pull request it then reads (title, description, diff by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer; since pointsman#221 (v0.16.0) from a decision read back; since pointsman#222 (v0.16.0), where answers are on, from check_run requested_action and (with the command) issue_comment created webhooks, their sender and the comment's text, and GitHub's answers about the person's permission and the head's newest push"
     provenance: {kind: documented, source: "docs/github-connector.md \"Safety\""}
   - name: action-triage
     scope: in
@@ -71,7 +71,7 @@ host_side_effects:
   - effect: network-sockets
     stance: conditional
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, action-triage, action-deploy-watch, config-repo, connector-github]
-    conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub and CodeRabbit facts: REST GET, two fixed GraphQL queries, one installation-token POST), registry.npmjs.org (github_bump: GET only, no credential) and OAuth client-ID metadata URLs (engine), a fact source only when engine.json chooses its module; the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); api.github.com with the connector app (reads, one GraphQL query for the review decision, check runs, the decision comment, comments, labels, review requests, reviews, dismissals; since pointsman#222 a person's permission, the head branch's newest activity entry, check runs with buttons); connectors inside the engine Worker reach the engine in process, not by the network and Pointsman at POINTSMAN_URL or through the InternalEngine binding (connector-github); the Cloudflare API through wrangler (config-repo); all public addresses only"
+    conditions: "only the model backend, the GSI tile hosts, the Valhalla server, callback_url, github.com/api.github.com (OAuth, and GitHub and CodeRabbit facts: REST GET, two fixed GraphQL queries, one installation-token POST), registry.npmjs.org (github_bump: GET only, no credential) and OAuth client-ID metadata URLs (engine), a fact source only when engine.json chooses its module; the broker and Pointsman (bridge); Pointsman and the GitHub API (actions); api.github.com with the connector app (reads, one GraphQL query for the review decision, check runs, the decision comment, comments, labels, review requests, reviews, dismissals; since pointsman#222 (v0.16.0) a person's permission, the head branch's newest activity entry, check runs with buttons); connectors inside the engine Worker reach the engine in process, not by the network and Pointsman at POINTSMAN_URL or through the InternalEngine binding (connector-github); the Cloudflare API through wrangler (config-repo); all public addresses only"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: child-processes
     stance: absent
@@ -111,7 +111,7 @@ host_side_effects:
   - effect: storage-writes
     stance: present
     components: [connector-github]
-    conditions: "the PullRequest Durable Object's storage: seen delivery ids and body hashes, check-run and action records, its own approvals, the decision comment's record and the last read of the reviews; since pointsman#221 the questions asked and those still to be closed; since pointsman#222 the answers waiting, the hour's answer counts and pending button removals; in the connector's own Worker"
+    conditions: "the PullRequest Durable Object's storage: seen delivery ids and body hashes, check-run and action records, its own approvals, the decision comment's record and the last read of the reviews; since pointsman#221 (v0.16.0) the questions asked and those still to be closed; since pointsman#222 (v0.16.0) the answers waiting, the hour's answer counts and pending button removals; in the connector's own Worker"
     provenance: {kind: documented, source: "packages/github/src/connector/pull-request.ts header comment"}
   - effect: redirect-following
     stance: absent
@@ -645,7 +645,7 @@ entry_points:
       - name: decision-id-and-resolve-body
         attacker_controllable: true
         control_kinds: [resource-name, data]
-        caller_must_enforce: "none — P-INTERNAL-CLIENT-FROM-ENGINE; checked as GET /v1/decisions/{id}, POST /v1/reviews/{id}/resolve and /close after the token check (since pointsman#221)"
+        caller_must_enforce: "none — P-INTERNAL-CLIENT-FROM-ENGINE; checked as GET /v1/decisions/{id}, POST /v1/reviews/{id}/resolve and /close after the token check (since pointsman#221, v0.16.0)"
         provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; src/internal.ts byIdInternal and resolveInternal comments"}
   - id: "POST /v1/reviews/{id}/close"
     component: engine-api
@@ -653,7 +653,7 @@ entry_points:
       - name: decision-id
         attacker_controllable: true
         control_kinds: [resource-name]
-        caller_must_enforce: "none — P-TOKEN-SCOPE (only the client that made the decision; others 404), P-REVIEW-RESOLVED-ONCE (since pointsman#221)"
+        caller_must_enforce: "none — P-TOKEN-SCOPE (only the client that made the decision; others 404), P-REVIEW-RESOLVED-ONCE (since pointsman#221, v0.16.0)"
         provenance: {kind: documented, source: "docs/reviews.md \"Closing a review\""}
   - id: "engine-facts github_bump"
     component: engine-facts
@@ -684,7 +684,7 @@ entry_points:
       - name: delivery-event-payload
         attacker_controllable: false
         control_kinds: [data, resource-name]
-        caller_must_enforce: "none — replays dropped for 7 days (at most 500 entries per pull request); other repositories and own check suites ignored; the event is only a hint"
+        caller_must_enforce: "none — replays dropped for 7 days (at most 500 entries per pull request); other repositories and own check suites ignored; since pointsman#216 (v0.15.0) review events about its own reviews, sent by its own bot, start no run (D-CONNECTOR-OWN-REVIEW-EVENTS); the event is only a hint"
         provenance: {kind: documented, source: "docs/github-connector.md \"Safety\"; packages/github/src/connector/webhook.ts header comment"}
   - id: "connector-github answers (check_run requested_action, issue_comment created)"
     component: connector-github
@@ -692,7 +692,7 @@ entry_points:
       - name: button-click
         attacker_controllable: true
         control_kinds: [data, resource-name]
-        caller_must_enforce: "none — a User sender, the connector's own check run of the current head and the open question's decision id (P-CONNECTOR-ANSWER-BOUND), then P-CONNECTOR-ANSWER-AUTHORIZED (since pointsman#222)"
+        caller_must_enforce: "none — a User sender, the connector's own check run of the current head and the open question's decision id (P-CONNECTOR-ANSWER-BOUND), then P-CONNECTOR-ANSWER-AUTHORIZED (since pointsman#222, v0.16.0)"
         provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\", The buttons"}
       - name: command-comment
         attacker_controllable: true
@@ -789,7 +789,7 @@ contract_dimensions:
   - {component: engine-api, dimension: callback-execution, status: claimed, conditions: "policy conditions are parsed and evaluated as data; nothing runs as code", property_id: P-POLICY-NOT-CODE, provenance: {kind: documented, source: "docs/profile-format.md \"nothing is run as code\""}}
   - {component: engine-api, dimension: serialization-reconstruction, status: claimed, conditions: "plain JSON only; the HTTP model server's model field is not stored", property_id: P-ANSWER-SHAPE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: reference-lifecycle, status: not-applicable, conditions: "stateless per request; module-level caches hold profiles and adapters, not request data", provenance: {kind: maintainer, date: "2026-10"}}
-  - {component: engine-api, dimension: concurrency-reentrancy, status: claimed, conditions: "concurrent resolves of one review (since pointsman#221 also closes): exactly one succeeds", property_id: P-REVIEW-RESOLVED-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A second resolve, also at the same moment, answers 409\""}}
+  - {component: engine-api, dimension: concurrency-reentrancy, status: claimed, conditions: "concurrent resolves of one review (since pointsman#221 (v0.16.0) also closes): exactly one succeeds", property_id: P-REVIEW-RESOLVED-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A second resolve, also at the same moment, answers 409\""}}
   - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited; the maintainer chose to disclaim the bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
@@ -861,12 +861,12 @@ contract_dimensions:
   - {component: action-deploy-watch, dimension: x-probabilistic-result, status: disclaimed, conditions: "the profile's policy threshold decides cancel", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Pointsman for unclear cases\""}}
   # connector-github
   - {component: connector-github, dimension: numeric-domain, status: claimed, conditions: "pull-request number a positive whole number, head a 40-character SHA, app id a number; diff 1,000–100,000; recheck 5–120 minutes", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"Chains\", \"Settings\""}}
-  - {component: connector-github, dimension: failure-atomicity, status: claimed, conditions: "the record of a check run or action is written first; a stopped run is settled by its trace or redone after 10 minutes; refused actions not retried for that commit; since pointsman#222 an answer that fails a check resolves nothing", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
-  - {component: connector-github, dimension: recursive-cyclic-topology, status: claimed, conditions: "its own check suites' events are ignored, so its check runs do not start the next run; its own review events are not ignored (D-CONNECTOR-OWN-REVIEW-EVENTS)", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"Safety\""}}
+  - {component: connector-github, dimension: failure-atomicity, status: claimed, conditions: "the record of a check run or action is written first; a stopped run is settled by its trace or redone after 10 minutes; refused actions not retried for that commit; since pointsman#222 (v0.16.0) an answer that fails a check resolves nothing", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
+  - {component: connector-github, dimension: recursive-cyclic-topology, status: claimed, conditions: "its own check suites' events are ignored, so its check runs do not start the next run; since pointsman#216 (v0.15.0) so are events about its own reviews sent by its own bot, except one before the record, one about a review older than the newest 50, or one while its bot's login cannot be read (D-CONNECTOR-OWN-REVIEW-EVENTS)", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"Safety\", \"How it works\", 1"}}
   - {component: connector-github, dimension: callback-execution, status: not-applicable, conditions: "no caller code runs; the action kinds are a fixed list", provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"a deployment can switch actions on, never add one\""}}
   - {component: connector-github, dimension: serialization-reconstruction, status: claimed, conditions: "webhook bodies parsed only after the signature check; GitHub answers checked field by field; every field of the engine's answer the connector reads is checked and test decisions are refused; the comment and check runs carry only checked names, cleaned reasons and known answer shapes", property_id: P-CONNECTOR-ANSWER-CHECKED, provenance: {kind: documented, source: "docs/github-connector.md \"Safety\""}}
-  - {component: connector-github, dimension: reference-lifecycle, status: claimed, conditions: "its approvals stand only for the commit they were given on; dismissed after a push, withdrawn when a later decision on that commit neither approves nor keeps it, waits for a person, is a test decision or not valid; since pointsman#221 a question is kept per head and profile until answered or closed", property_id: P-CONNECTOR-APPROVE-HEAD, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
-  - {component: connector-github, dimension: concurrency-reentrancy, status: claimed, conditions: "one Durable Object per pull request, one run at a time; a burst of events becomes one run; since pointsman#222 answers are taken one at a time before the run, and the engine's first resolve wins", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\""}}
+  - {component: connector-github, dimension: reference-lifecycle, status: claimed, conditions: "its approvals stand only for the commit they were given on; dismissed after a push, withdrawn when a later decision on that commit neither approves nor keeps it, waits for a person, is a test decision or not valid; since pointsman#221 (v0.16.0) a question is kept per head and profile until answered or closed", property_id: P-CONNECTOR-APPROVE-HEAD, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
+  - {component: connector-github, dimension: concurrency-reentrancy, status: claimed, conditions: "one Durable Object per pull request, one run at a time; a burst of events becomes one run; since pointsman#222 (v0.16.0) answers are taken one at a time before the run, and the engine's first resolve wins", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\""}}
   - {component: connector-github, dimension: resource-complexity, status: claimed, conditions: "2 MB per webhook; one run at a time per pull request, 20 s after the last event; lists up to 10 pages; recheck at most max times per commit", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\", \"Chains\""}}
   - {component: connector-github, dimension: x-prompt-injection, status: disclaimed, conditions: "the pull-request author writes the title, description and diff the profile's model reads; a steered answer gets any action the policy allows for those answers", property_id: D-APPROVAL-ON-FACTS, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: connector-github, dimension: x-probabilistic-result, status: not-applicable, conditions: "the connector maps the decision's action; the comment and check runs show answer values, not probabilities", provenance: {kind: documented, source: "docs/github-connector.md \"The decision comment\", Switch"}}
@@ -1154,7 +1154,7 @@ outputs:
     taint_provenance: {kind: documented, source: "docs/reviews.md \"Closing a review\""}
     invariants:
       - id: close-own-client-only
-        statement: "since pointsman#221 only the client that made the decision closes its pending review; superseded, no callback, a later resolve 409"
+        statement: "since pointsman#221 (v0.16.0) only the client that made the decision closes its pending review; superseded, no callback, a later resolve 409"
         property_id: P-REVIEW-RESOLVED-ONCE
         provenance: {kind: documented, source: "docs/reviews.md \"Closing a review\""}
     downstream_must_not_assume:
@@ -1167,7 +1167,7 @@ outputs:
     taint_provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\""}
     invariants:
       - id: answer-texts-fixed
-        statement: "since pointsman#222 buttons, commands and notes are fixed text, offered action names, the decision id's first 8 and the head's first 12 characters; who answered only as a checked login without @"
+        statement: "since pointsman#222 (v0.16.0) buttons, commands and notes are fixed text, offered action names, the decision id's first 8 and the head's first 12 characters; who answered only as a checked login without @"
         property_id: P-CONNECTOR-COMMENT-NO-PR-TEXT
         provenance: {kind: documented, source: "docs/github-connector.md \"The buttons\", \"What follows\""}
     downstream_must_not_assume:
@@ -1775,7 +1775,7 @@ properties_claimed:
     kind: correctness
     components: [engine-api]
     tier: correctness-only
-    conditions: "a pending review; concurrent or repeated resolves answer 409; a superseded review cannot be resolved; since pointsman#221 the decision's own client can close it (superseded, no callback), and of a close and a resolve only one succeeds"
+    conditions: "a pending review; concurrent or repeated resolves answer 409; a superseded review cannot be resolved; since pointsman#221 (v0.16.0) the decision's own client can close it (superseded, no callback), and of a close and a resolve only one succeeds"
     violation_symptoms: [data-race, x-double-resolution]
     provenance: {kind: documented, source: "docs/reviews.md \"A review can be resolved once\""}
   - id: P-CALLBACK-SIGNED
@@ -1810,42 +1810,42 @@ properties_claimed:
     kind: x-authorization
     components: [engine-api, connector-github]
     tier: security-critical
-    conditions: "internal calls through InternalEngine (decide; since pointsman#221 get, resolve, close); the client and profiles come from INTERNAL_CLIENT only; refused without it; profiles listed, wildcard refused; never a test token; the same checks as the HTTP routes after the token check; the body goes through JSON"
+    conditions: "internal calls through InternalEngine (decide; since pointsman#221 (v0.16.0) get, resolve, close); the client and profiles come from INTERNAL_CLIENT only; refused without it; profiles listed, wildcard refused; never a test token; the same checks as the HTTP routes after the token check; the body goes through JSON"
     violation_symptoms: [x-authorization-bypass, x-unlogged-decision-acted-on]
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; src/internal.ts header comment"}
   - id: P-CONNECTOR-WEBHOOK-SIGNED
     kind: authentication
     components: [connector-github]
     tier: security-critical
-    conditions: "a valid X-Hub-Signature-256 over the body before anything is read from it; bodies over 2 MB refused while read; delivery ids and body hashes kept 7 days against replays, at most the 500 newest per pull request; other repositories and own check suites ignored; the pull request read again with the connector's token; since pointsman#222 answer events replay-checked by delivery id only, queued and never runs of their own; voided by a leaked webhook secret"
+    conditions: "a valid X-Hub-Signature-256 over the body before anything is read from it; bodies over 2 MB refused while read; delivery ids and body hashes kept 7 days against replays, at most the 500 newest per pull request; other repositories and own check suites ignored; since pointsman#216 (v0.15.0) a review event about one of its newest 50 own reviews, sent by its own bot (login read from GitHub), starts no run; the pull request read again with the connector's token; since pointsman#222 (v0.16.0) answer events replay-checked by delivery id only, queued and never runs of their own; voided by a leaked webhook secret"
     violation_symptoms: [x-authentication-bypass, x-replay]
     provenance: {kind: documented, source: "docs/github-connector.md \"Safety\""}
   - id: P-CONNECTOR-ACTIONS-MAPPED
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval; fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 their answer is the action through the same table; refused actions not retried for that commit"
+    conditions: "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval; fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit"
     violation_symptoms: [x-unauthorized-write, wrong-output]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""}
   - id: P-CONNECTOR-APPROVE-HEAD
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 an approval from a person's answer only on the question's head; voided for merging by a ruleset without dismissal of stale approvals"
+    conditions: "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
     violation_symptoms: [x-toctou, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}
   - id: P-CONNECTOR-TOKEN-SCOPED
     kind: x-authorization
     components: [connector-github]
     tier: security-critical
-    conditions: "installation tokens for the one repository, with Metadata and Pull requests read and Checks write; Pull requests write only with actions or the decision comment; Contents read only with diff or, since pointsman#222, answers; never Contents write, never more than the app has; the key only in the connector Worker"
+    conditions: "installation tokens for the one repository, with Metadata and Pull requests read and Checks write; Pull requests write only with actions or the decision comment; Contents read only with diff or, since pointsman#222 (v0.16.0), answers; never Contents write, never more than the app has; the key only in the connector Worker"
     violation_symptoms: [x-privilege-escalation, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Safety\"; \"The two GitHub apps\""}
   - id: P-CONNECTOR-ANSWER-CHECKED
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "every field the connector reads of a 2xx engine answer is checked before anything is done (since pointsman#221 review pending or resolved with an action-name final_action, the question's decision id when read back, answered_by never taken from the engine); an invalid answer or a test decision is not acted on, kept or sent on, and an approval of the head is withdrawn"
+    conditions: "every field the connector reads of a 2xx engine answer is checked before anything is done (since pointsman#221 (v0.16.0) review pending or resolved with an action-name final_action, the question's decision id when read back, answered_by never taken from the engine); an invalid answer or a test decision is not acted on, kept or sent on, and an approval of the head is withdrawn"
     violation_symptoms: [x-unlogged-decision-acted-on, bad-data-accepted, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Safety\": \"The engine's answer is checked\"; \"No test decisions\""}
   - id: P-CONNECTOR-COMMENT-NO-PR-TEXT
@@ -1859,21 +1859,21 @@ properties_claimed:
     kind: x-authorization
     components: [connector-github]
     tier: security-critical
-    conditions: "since pointsman#222 an answer in the pull request only from a User sender with write or admin permission read at answer time, by account id, not the pull request's author, not the actor of the head branch's newest push (which must end at the head); unreadable is refused; forks never; nothing kept"
+    conditions: "since pointsman#222 (v0.16.0) an answer in the pull request only from a User sender with write or admin permission read at answer time, by account id, not the pull request's author, not the actor of the head branch's newest push (which must end at the head); unreadable is refused; forks never; nothing kept"
     violation_symptoms: [x-authorization-bypass, x-self-approval]
     provenance: {kind: documented, source: "docs/github-connector.md \"Who may answer\""}
   - id: P-CONNECTOR-ANSWER-BOUND
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "since pointsman#221 and #222 an answer counts only for the question kept for the current head and profile (read back, not decided anew, while its basis holds): a click on the recorded check run of the current head with the open question's decision id; a command for the one open question on the named head, refused when its 12 characters start more than one of the last 100 heads; the pull request read again and the engine's question still pending; the engine resolves once; questions closed on a push, a close, a changed basis or a profile removed, and their buttons removed; the answer passes the action table"
+    conditions: "since pointsman#221 and #222 (v0.16.0) an answer counts only for the question kept for the current head and profile (read back, not decided anew, while its basis holds): a click on the recorded check run of the current head with the open question's decision id; a command for the one open question on the named head, refused when its 12 characters start more than one of the last 100 heads; the pull request read again and the engine's question still pending; the engine resolves once; questions closed on a push, a close, a changed basis or a profile removed, and their buttons removed; the answer passes the action table"
     violation_symptoms: [x-toctou, x-replay, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Asking a person\", \"What else is checked\""}
   - id: P-CONNECTOR-COMMAND-EXACT
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "since pointsman#222 a comment answers only with answers.command, from issue_comment created by a User who wrote it, when the whole trimmed comment is one line /pointsman <action name> <12 hex characters of the head>; edits and deletions never; ambiguous commands (two open questions, or a prefix shared by two of the last 100 heads) refused; button identifiers are the connector's own codes; nothing from the comment written back"
+    conditions: "since pointsman#222 (v0.16.0) a comment answers only with answers.command, from issue_comment created by a User who wrote it, when the whole trimmed comment is one line /pointsman <action name> <12 hex characters of the head>; edits and deletions never; ambiguous commands (two open questions, or a prefix shared by two of the last 100 heads) refused; button identifiers are the connector's own codes; nothing from the comment written back"
     violation_symptoms: [x-command-injection, x-spoofing]
     provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\", The command, The buttons"}
   - id: P-LOG-FACTS-OWN-CLIENT
@@ -2023,7 +2023,7 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/mcp.md \"People may use every MCP-visible profile\""}
   - id: D-REVIEWER-IDENTITY
     components: [engine-api, bridge, connector-github]
-    conditions: "by, resolved_by and reviewedBy are client-asserted; the client's token is authenticated, not the person; MCP people are the exception; since pointsman#222 the GitHub connector checks the person before it sends github:<login> (<id>), but the engine records it as the connector's claim; basis: stated"
+    conditions: "by, resolved_by and reviewedBy are client-asserted; the client's token is authenticated, not the person; MCP people are the exception; since pointsman#222 (v0.16.0) the GitHub connector checks the person before it sends github:<login> (<id>), but the engine records it as the connector's claim; basis: stated"
     tier: security-critical
     false_friend: true
     provenance: {kind: documented, source: "migrations/0001_decisions.sql comment \"who corrected it, as given by the client\"; bridge/README.md \"the bridge takes reviewedBy as written\""}
@@ -2089,37 +2089,37 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-INTERNAL-ACCOUNT-TRUST
     components: [engine-api, connector-github]
-    conditions: "every Worker in the engine's account with a binding decides as INTERNAL_CLIENT (since pointsman#221 also reads its decisions, resolves the pending reviews of its profiles and closes its own), without a token or expiry; one history and idempotency space; no per-caller revocation; edge rules do not see internal calls; off by removing INTERNAL_CLIENT; basis: stated"
+    conditions: "every Worker in the engine's account with a binding decides as INTERNAL_CLIENT (since pointsman#221 (v0.16.0) also reads its decisions, resolves the pending reviews of its profiles and closes its own), without a token or expiry; one history and idempotency space; no per-caller revocation; edge rules do not see internal calls; off by removing INTERNAL_CLIENT; basis: stated"
     tier: security-critical
     false_friend: false
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; docs/github-connector.md \"Internal call\""}
   - id: D-RESOLVE-BY-SCOPE
     components: [engine-api, connector-github]
-    conditions: "since pointsman#221 any token whose scope has the profile, and any Worker bound to InternalEngine with it, can resolve the connector's pending question with any people_answers value; the connector carries out the mapped action, approve too, without P-CONNECTOR-ANSWER-AUTHORIZED; basis: stated, and a maintainer ruling (2026-10-25, Q38, Q39)"
+    conditions: "since pointsman#221 (v0.16.0) any token whose scope has the profile, and any Worker bound to InternalEngine with it, can resolve the connector's pending question with any people_answers value; the connector carries out the mapped action, approve too, without P-CONNECTOR-ANSWER-AUTHORIZED; basis: stated, and a maintainer ruling (2026-10-25, Q38, Q39)"
     tier: security-critical
     false_friend: true
     provenance: {kind: documented, source: "docs/github-connector.md \"Asking a person\", Who can answer"}
   - id: D-CONNECTOR-ANSWER-WINDOW
     components: [connector-github]
-    conditions: "since pointsman#222 permission and pusher are read once at answer time; access removed before the action still counts; a stolen writer session answers; only the newest push is looked at, commit authors not checked; basis: stated, and a maintainer ruling (2026-10-25, Q36, Q37)"
+    conditions: "since pointsman#222 (v0.16.0) permission and pusher are read once at answer time; access removed before the action still counts; a stolen writer session answers; only the newest push is looked at, commit authors not checked; basis: stated, and a maintainer ruling (2026-10-25, Q36, Q37)"
     tier: security-critical
     false_friend: false
     provenance: {kind: documented, source: "docs/github-connector.md \"Who may answer\""}
   - id: D-CONNECTOR-ANSWER-CAPS
     components: [connector-github]
-    conditions: "since pointsman#222 answers are capped per pull request and clock hour; about 10 accounts can use up the hour's reads and block answers in the pull request until the next hour; the review queue still works; basis: stated"
+    conditions: "since pointsman#222 (v0.16.0) answers are capped per pull request and clock hour; about 10 accounts can use up the hour's reads and block answers in the pull request until the next hour; the review queue still works; basis: stated"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\", Limits"}
   - id: D-ANSWERER-RECORDED
     components: [engine-api, connector-github]
-    conditions: "since pointsman#222 the answerer's login and account id are kept as resolved_by as long as the log keeps decisions, shown to every token with the profile, sent to callbacks and shown in the pull request; basis: stated, and a maintainer ruling (2026-10-25, Q40)"
+    conditions: "since pointsman#222 (v0.16.0) the answerer's login and account id are kept as resolved_by as long as the log keeps decisions, shown to every token with the profile, sent to callbacks and shown in the pull request; basis: stated, and a maintainer ruling (2026-10-25, Q40)"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\", Personal data"}
   - id: D-COMMAND-SHORT-COMMIT
     components: [connector-github]
-    conditions: "since pointsman#222 a command names the head by its first 12 hex characters and is refused when they start more than one of the pull request's last 100 heads; a second commit with the same 12 characters (about 2^48 tries) still binds when the meant commit is not in that list (pushed out by 100 later heads, within one burst of events, or before answers were on); buttons not affected; basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change)"
+    conditions: "since pointsman#222 (v0.16.0) a command names the head by its first 12 hex characters and is refused when they start more than one of the pull request's last 100 heads; a second commit with the same 12 characters (about 2^48 tries) still binds when the meant commit is not in that list (pushed out by 100 later heads, within one burst of events, or before answers were on); buttons not affected; basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change)"
     tier: security-critical
     false_friend: true
     provenance: {kind: documented, source: "docs/github-connector.md \"Answering in the pull request\", The command"}
@@ -2155,7 +2155,7 @@ properties_disclaimed:
     provenance: {kind: documented, source: "docs/profile-format.md github_release row: \"It says nothing about who made the change\""}
   - id: D-SERVICE-STATE-AS-STATED
     components: [engine-facts]
-    conditions: "Copilot, app approval and CodeRabbit facts are what the services' accounts did and wrote; CodeRabbit's budget, price and billable count read from its words; ignored is the author's line; basis: stated"
+    conditions: "Copilot, app approval and CodeRabbit facts are what the services' accounts did and wrote; CodeRabbit's budget, price and billable count read from its words; ignored is the author's line outside CodeRabbit's whole summary blocks (since pointsman#217, v0.15.0, a lone start marker hides nothing); basis: stated"
     tier: correctness-only
     false_friend: false
     provenance: {kind: documented, source: "docs/profile-format.md \"CodeRabbit reviews\""}
@@ -2173,10 +2173,10 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CONNECTOR-OWN-REVIEW-EVENTS
     components: [connector-github]
-    conditions: "its own approvals and dismissals start one more run each; a profile that depends on its own approval without keep_approval can approve and withdraw in turn"
+    conditions: "since pointsman#216 (v0.15.0) events about its own approvals and dismissals, sent by its own bot, start no run; one that arrives before the approving run recorded the review, one about a review older than the newest 50, or one while its bot's login cannot be read still starts one more run; a person's or another app's dismissal always does; a profile that depends on its own approval without keep_approval can approve and withdraw in turn on runs other events start; basis: a maintainer ruling (2026-10-24, Q33), narrowed by pointsman#216"
     tier: correctness-only
     false_friend: false
-    provenance: {kind: maintainer, date: "2026-10"}
+    provenance: {kind: documented, source: "docs/github-connector.md \"How it works\", 1"}
   - id: D-EXACTLY-ONCE
     components: [engine-callbacks]
     conditions: "a callback can arrive more than once when a 2xx is lost; basis: stated"
@@ -2315,7 +2315,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/github-connector.md \"The two GitHub apps\"; \"Setting it up\""}
   - id: R-CONNECTOR-APPROVE
     component: connector-github
-    statement: "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis; keep_approval only for an action of its own from a rule that requires what the approving rule requires; neither approve nor keep_approval with once_per_head"
+    statement: "before mapping approve: dismiss stale approvals in the ruleset; keep code-owner reviews where required; map approve only from profiles with positive rules that require the facts; AI answers may add conditions, never be the basis; keep_approval only for an action of its own from a rule that requires what the approving rule requires; approve and keep_approval with once_per_head are refused by the settings since pointsman#216 (v0.15.0)"
     enforces: [P-CONNECTOR-APPROVE-HEAD, github-rules-known-positive]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"Required\"; \"Code owners\""}
   - id: R-CONNECTOR-ANSWERS
@@ -2475,16 +2475,16 @@ known_misuses:
     pattern: "keep_approval mapped to an action the profile also gives where the approval should not stand, or from a rule that does not require what the approving rule requires"
     safer_alternative: "an action of its own for the already-approved rule, after every blocking rule"
     provenance: {kind: documented, source: "docs/github-connector.md \"When the approval stays\""}
-  - id: approve-with-once-per-head
-    components: [connector-github]
-    pattern: "approve or keep_approval in a profile with once_per_head"
-    safer_alternative: "map approve only in profiles asked on every run"
-    provenance: {kind: documented, source: "docs/github-connector.md \"When the approval stays\""}
   - id: approval-depends-on-own-approval
     components: [connector-github]
-    pattern: "an approving decision that changes because of the connector's own approval, without keep_approval"
+    pattern: "an approving decision that changes because of the connector's own approval, without keep_approval: it approves and withdraws in turn on the runs other events start"
     safer_alternative: "github_app_approval with a keep_approval rule"
     provenance: {kind: maintainer, date: "2026-10"}
+  - id: coderabbit-fact-renamed
+    components: [engine-facts]
+    pattern: "renaming a profile's coderabbit_budget, coderabbit_queue or coderabbit_spend fact while its earlier decisions are still in the window: taken_by_other_pr, the queue's history and the spend are read by fact name and start from nothing"
+    safer_alternative: "keep the fact names, or rename only once the window has passed"
+    provenance: {kind: documented, source: "docs/modules.md \"Facts from the decision log\""}
   - id: app-approval-without-bot-id
     components: [engine-facts]
     pattern: "github_app_approval without bot_id"

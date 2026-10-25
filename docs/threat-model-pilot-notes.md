@@ -415,6 +415,42 @@ Candidate issues kept out of the model (not filed):
 The command's 12-character binding (Q43) was a candidate too; it was
 fixed in pointsman#222 before the amendment was finished.
 
+## Re-binding of 2026-10-25: `v0.16.0`
+
+The model was re-bound from `v0.14.2` to `v0.16.0` (`8eea43d`), which
+released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
+#217), which had never been bound.
+
+- **Released claims**: the 88 "since pointsman#221" and "since
+  pointsman#222" markers in the prose (32 in the sidecar) now name the
+  release, `v0.16.0`, by script; the header no longer says they hold only
+  for a commit that has the code. The mermaid label and the quoted marker
+  in §1.1 were left as they were.
+- **pointsman#216**: the settings now refuse `approve` or `keep_approval`
+  in a profile with `once_per_head`, so `P-CONNECTOR-APPROVE-HEAD` lost
+  that narrowing and §1.14 lost its misuse pattern; review events about
+  the connector's own reviews, sent by its own bot, start no run, so
+  `D-CONNECTOR-OWN-REVIEW-EVENTS` (Q33) now covers only what is left: an
+  event before the run recorded the review, a review older than the 50 it
+  keeps, a failed read of the bot's login. Both were hardening candidates
+  of earlier amendments (pointsman#212, #213).
+- **pointsman#217**: `ignored` leaves out only whole CodeRabbit summary
+  blocks (candidate pointsman#215); docs/modules.md now says the budget
+  readings are found by their fields under any fact name (candidate
+  pointsman#214, a documentation fix). A misuse pattern was added for
+  renaming a CodeRabbit fact, which resets what is read by name.
+- **Citations**: all 135 unique `file:line` citations checked at the tag;
+  between the merge of pointsman#222 and the tag only version strings
+  moved, so none had to move. Re-running the "Search:" commands found one
+  more `console.error` in `answers.ts` (35 in the connector, not 34),
+  added by the Q43 fix after the count was made.
+- **JSON**: the hand completion now sets the boundary texts from fixed
+  strings and asserts each added phrase once, because the earlier script
+  appended to the previous export's text and so could repeat it on every
+  run.
+- **Questions**: none; the code left nothing open.
+- **Validator**: passes (90 checks, one length warning).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
