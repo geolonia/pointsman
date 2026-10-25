@@ -1,13 +1,13 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:1828b86c773d800b93e77a07f3e62acfff750bd32deca33bea7d92e58b8543a5"
+prose_version: "threat-model.md@sha256:fb0f9e375d53a1c1445e63e1a3293a382732c50e60783430e9dd4294b962e558"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 459, maintainer: 83, inferred: 0, assumption: 0}
 
 generation:
-  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), and the re-binding to v0.17.0: Claude Opus 5.5 (claude-opus-5-5)"
+  model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, and the re-binding to v0.17.1 with pointsman#229: Claude Opus 5.5 (claude-opus-5-5)"
   effort: default
   plugins:
     - threat-model
@@ -801,7 +801,7 @@ contract_dimensions:
   - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, patterns or section headers it does not read make the fact missing; anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept; GitHub App installation tokens kept in memory until 5 minutes before they expire, never stored", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\"; \"Settings\""}}
   - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout; one GitHub snapshot per decision, each part read once, the pull request read again after its files", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher, ≤128 KiB file, ≤1024-character patterns, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, registry documents streamed ≤64 MB, 8 s for all registry reads", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher, ≤128 KiB file, ≤1024-character patterns, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
@@ -1733,14 +1733,14 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; the model never sees facts"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
     kind: resource-bound
     components: [engine-facts]
     tier: correctness-only
-    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout"
+    conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout"
     violation_symptoms: [hang, unbounded-allocation]
     provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}
   - id: P-DECISION-LOGGED-FIRST
@@ -1831,7 +1831,7 @@ properties_claimed:
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
+    conditions: "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
     violation_symptoms: [x-toctou, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}
   - id: P-CONNECTOR-TOKEN-SCOPED
@@ -1887,7 +1887,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "review-service facts count only the service's own account (login and account id; CodeRabbit comments through its app; github_app_approval by Bot type, slug and optional bot_id); an edit by anyone else makes the CodeRabbit facts missing"
+    conditions: "review-service facts count only the service's own account (login and account id; CodeRabbit comments through its app; github_app_approval by Bot type, slug and optional bot_id); an edit by anyone else makes the CodeRabbit facts missing; since pointsman#229 (v0.17.1) the editors are read with the text, and a text that differs from the copy read before counts as edited"
     violation_symptoms: [x-spoofing, wrong-output]
     provenance: {kind: documented, source: "docs/modules.md \"Facts from reviews and comments\"; docs/profile-format.md \"CodeRabbit reviews\""}
   - id: P-CONNECTORS-IN-ENGINE-API-ONLY
@@ -1929,28 +1929,28 @@ properties_claimed:
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused"
+    conditions: "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused; since pointsman#229 (v0.17.1) an answer named like a field of the result (or its Probability) is refused before anything is written, so it cannot replace the hash"
     violation_symptoms: [x-decision-loop]
     provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}
   - id: P-BRIDGE-SAFE-TO-REPEAT
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written"
+    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported)"
     violation_symptoms: [wrong-output]
     provenance: {kind: documented, source: "bridge/README.md \"Safe to repeat\""}
   - id: P-TRIAGE-ALLOWLIST
     kind: output-sanitization
     components: [action-triage]
     tier: security-critical
-    conditions: "labels only from the allow-list and only for action auto; issue text never in a shell or the summary"
+    conditions: "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary"
     violation_symptoms: [x-command-injection, x-unlisted-label]
     provenance: {kind: documented, source: "actions/triage/README.md \"Only labels you list in labels are ever applied\""}
   - id: P-WATCH-FAILSAFE
     kind: availability
     components: [action-deploy-watch]
     tier: correctness-only
-    conditions: "consecutive cancel answers while quiet; an unreachable Pointsman never cancels"
+    conditions: "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels"
     violation_symptoms: [x-unwarranted-cancel]
     provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Cancel only when sure\""}
 
@@ -2497,6 +2497,11 @@ known_misuses:
     pattern: "an approving decision that changes because of the connector's own approval, without keep_approval: it approves and withdraws in turn on the runs other events start"
     safer_alternative: "github_app_approval with a keep_approval rule"
     provenance: {kind: maintainer, date: "2026-10"}
+  - id: bridge-answer-named-like-result-field
+    components: [bridge]
+    pattern: "a profile question the FIWARE bridge asks named like a field of its result (value, inputHash, decision, reviewStatus, observedAt and the others), or with <name>Probability one: since pointsman#229 (v0.17.1) nothing is written for such a decision; before, the answer replaced the field (pointsman#228)"
+    safer_alternative: "name questions so that neither the name nor <name>Probability is a field of the result"
+    provenance: {kind: documented, source: "bridge/README.md \"The result on the entity\""}
   - id: coderabbit-fact-renamed
     components: [engine-facts]
     pattern: "renaming a profile's coderabbit_budget, coderabbit_queue or coderabbit_spend fact while its earlier decisions are still in the window: taken_by_other_pr, the queue's history and the spend are read by fact name and start from nothing"
