@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ANSWER_CHECKS_PER_HOUR, ANSWER_READS_PER_HOUR, ANSWERS_PER_ACCOUNT_PER_HOUR, AppGitHub, answerOf, buttonsFor, checkDecision, commandOf, connectorSettings, GitHubError, githubConnector, httpEngine, pullRequestWork, readsContents,
+  ANSWER_CHECKS_PER_HOUR, ANSWER_READS_PER_HOUR, ANSWERS_PER_ACCOUNT_PER_HOUR, AppGitHub, answerOf, buttonsFor, checkDecision, commandOf, connectorSettings, GitHubError, githubConnector, httpEngine, pullRequestWork, readsContents, HEADS_KEPT,
   type Accepted, type AnswerEvent, type Answerer, type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type PullRequestInfo,
 } from '@pointsman/github';
 import type { EngineApi } from '@pointsman/module-api';
@@ -634,6 +634,39 @@ describe('the comment command (when switched on)', () => {
     await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT2 }));
     expect(t.resolves()).toHaveLength(1);
     expect(t.gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD2]);
+  });
+
+  it('a commit prefix shared by two heads of the pull request is refused; the list of heads is bounded', async () => {
+    const t = await asking(on);
+    // Two heads that start with the same 12 characters (an author could make such a pair).
+    const prefix = 'c'.repeat(12);
+    const first = `${prefix}${'d'.repeat(28)}`;
+    const second = `${prefix}${'e'.repeat(28)}`;
+    for (const head of [first, second]) {
+      t.gh.github.state.head = head;
+      await t.accept();
+      await t.work.run();
+    }
+    expect((t.mem.data.get('asked') as any).head).toBe(second);
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: prefix }));
+    expect(log).toContain(`a command for commit ${prefix}, a prefix of more than one commit of this pull request; refused`);
+    expect(t.resolves()).toEqual([]);
+    expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+    expect(t.lastOutput().summary).toContain('An answer was not taken: the command names a commit prefix used by more than one commit of this pull request; answer with a button');
+    // Buttons are bound to the check run and decision, not to a prefix: still taken.
+    const run = t.gh.calls.filter((c) => c.op === 'create' && c.head === second).at(-1)!.id!;
+    const id = (t.mem.data.get('asked') as any).byProfile[PROFILE].decision.decision_id as string;
+    await logged(() => t.answer({ kind: 'button', checkRun: run, head: second, externalId: id, identifier: `1-${id.slice(0, 8)}` }));
+    expect(t.resolves()).toHaveLength(1);
+    // At most HEADS_KEPT heads, the oldest dropped.
+    t.mem.data.set('heads', Array.from({ length: HEADS_KEPT }, (_, i) => i.toString(16).padStart(40, '0')));
+    t.gh.github.state.head = HEAD2;
+    await t.accept();
+    await t.work.run();
+    const heads = t.mem.data.get('heads') as string[];
+    expect(heads).toHaveLength(HEADS_KEPT);
+    expect(heads.at(-1)).toBe(HEAD2);
+    expect(heads[0]).toBe((1).toString(16).padStart(40, '0'));
   });
 
   it('a command for a commit with no question is ignored without a note', async () => {

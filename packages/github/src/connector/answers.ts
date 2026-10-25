@@ -305,6 +305,12 @@ export class AnswerDesk {
       return undefined;
     }
     const open = Object.entries(asked.byProfile).filter(([, k]) => k.decision.review?.status === 'pending' && k.offered?.includes(event.answer));
+    // The prefix is shared with an earlier head of this pull request (pull-request.ts `heads`): which commit the person meant is not known.
+    const heads = (await this.#storage.get<string[]>('heads')) ?? [];
+    if (heads.some((h) => h !== asked.head && h.startsWith(event.head))) {
+      console.error(`github connector: ${where}: a command for commit ${event.head}, a prefix of more than one commit of this pull request; refused`);
+      return open.length === 0 ? undefined : { notes: open.map(([profile]) => ({ profile, head: asked.head, text: 'the command names a commit prefix used by more than one commit of this pull request; answer with a button' })) };
+    }
     if (open.length !== 1) {
       // None: not an answer to anything (a command for an answered or closed question too); quiet. Several: which one is not known.
       console.error(`github connector: ${where}: a command that matches ${open.length === 0 ? 'no open question' : 'more than one open question'}; ignored`);

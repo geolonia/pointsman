@@ -168,6 +168,9 @@ interface Clearing {
   tries: number;
 }
 
+/** The heads of a pull request kept for commands (#seeHead), newest last. */
+export const HEADS_KEPT = 100;
+
 /** A removal of buttons that fails while GitHub is busy is tried again on this many runs. */
 const CLEAR_TRIES = 10;
 
@@ -316,6 +319,7 @@ export class PullRequestWork {
     // The questions of an older head are closed before this head is decided on, and their buttons removed.
     await this.#closeAsked(target, pr.head);
     await this.#clearButtons(target, pr.head);
+    await this.#seeHead(pr.head);
     // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
     const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
     // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
@@ -382,6 +386,17 @@ export class PullRequestWork {
       await this.#scheduleRecheck(profile, pr.head, decision, run);
     }
     if (this.#settings.comment) await this.#updateComment(target, pr, decided, shown, withdrawn);
+  }
+
+  /**
+   * Keeps the heads this pull request had, the newest HEADS_KEPT: a command
+   * whose commit prefix matches an earlier one too is refused (answers.ts).
+   */
+  async #seeHead(head: string): Promise<void> {
+    if (!this.#settings.answers) return;
+    const heads = (await this.#storage.get<string[]>('heads')) ?? [];
+    if (heads.at(-1) === head) return;
+    await this.#storage.put({ heads: [...heads.filter((h) => h !== head), head].slice(-HEADS_KEPT) });
   }
 
   /** The answers offered in the pull request for this profile; undefined where answers are off. */
