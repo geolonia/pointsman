@@ -12,6 +12,31 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.16.0 (2026-10-25)
+
+Asking a person inside the pull request (#147): the engine can close a waiting review, the GitHub connector keeps one question per head commit and acts on the person's answer, and, where a deployment switches it on, a person with write access answers from the pull request itself. Nothing changes until a deployment switches answers on.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.16.0`. No migration, no new secrets. The engine is deployed before the connector, as the config template's deploy workflow does: the connector calls the engine's new `get`, `close` and (for answers) `resolve`.
+- Without `answers` in `GITHUB_CONNECTOR`, the GitHub App needs no new permission and no new event. A profile that asks a person (`people_check`) now keeps one question per head instead of opening a new review on every run, and the connector acts on the answer.
+- To switch answers on: add `answers` to `GITHUB_CONNECTOR`; give the connector's GitHub App **Contents: Read** (for the last pusher) and subscribe it to **Check run**; for the `/pointsman` command also **Issues: Read** and **Issue comment**; list `people_answers` in the profiles answered this way; keep the ruleset's "dismiss stale approvals" and "approval of the most recent push"; switch it on only where everyone with write access may approve.
+
+What changed:
+
+- **Engine** (#221): `POST /v1/reviews/{id}/close` closes a pending review as `superseded`. Only the client that made the decision may do it: no callback, a later resolve gets 409, and the review leaves the queue. `InternalEngine` gains `get`, `resolve` and `close`, running the same code as the HTTPS routes after the token check.
+- **GitHub connector, a question per head** (#221): a decision that waits for a person is kept and read back instead of decided again. The person's answer (`final_action`) is acted on with the same guards: an approval only on the unchanged head, once per head. The question is closed and asked anew when what it rests on changes: a push, the title or description, the base, the run settings, the mapped actions, or what a required decision says. Closing a question never holds up a run.
+- **GitHub connector, answers in the pull request** (#222), off by default:
+  - buttons on the check run, and a `/pointsman <answer> <12 characters of the head>` command (only with `"command": true`);
+  - each answer is checked: by a person with write access, not the author, not the last pusher, on the unchanged head, while the question is still open;
+  - caps per pull request and clock hour;
+  - the answerer is recorded as `github:<login> (<id>)` and shown as "answered by <login>", without a mention;
+  - a command whose 12 characters start more than one commit of the pull request is refused.
+- **Threat model**: amended for #221 and #222 (`P-CONNECTOR-ANSWER-AUTHORIZED`, `P-CONNECTOR-ANSWER-BOUND`, `P-CONNECTOR-COMMAND-EXACT`, the Answerer, `R-CONNECTOR-ANSWERS`), accepted; it is re-bound to this release in a follow-up, which also covers 0.15.0.
+- **Repository**: CodeRabbit reviews only when asked (#219).
+
+Known limits: an answer is picked up on the pull request's next run; a new profile version on the same head does not re-ask an open question; about 10 accounts can use up the hour's answer reads on one pull request; pull requests from forks cannot be answered in the pull request.
+
 ## 0.15.0 (2026-10-24)
 
 Fixes in the GitHub connector and the CodeRabbit facts, found with the threat model's amendment for `v0.14.2` (#211). A minor release because a connector setting that loaded until now can be refused.
