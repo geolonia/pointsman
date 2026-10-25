@@ -487,6 +487,63 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Questions**: none.
 - **Validator**: passes (90 checks, one length warning).
 
+## Re-binding to `v0.17.1` (2026-10-26)
+
+- **What it covers**: pointsman#229, the hardening after a CodeRabbit
+  Security Deep Scan of `6656b47`, released as `v0.17.1` (`f783c0b`,
+  pointsman#230). It fixes seven findings published as low-severity
+  advisories (GHSA-hmc8-qxw6-ffmm, GHSA-p2pc-wjm2-vw8v,
+  GHSA-ccgv-4369-cf3f, GHSA-58v7-78v8-74q8, GHSA-h9xp-cmqm-4cx3,
+  GHSA-vf58-574r-q9cg, GHSA-h4jj-2x7q-m6fv; affected up to `v0.17.0`,
+  patched in `v0.17.1`) and one filed as an issue (pointsman#228).
+- **First external reports**: these were the first reports from an
+  outside tool triaged against the model. Each was routed by hand against
+  the model as bound to `v0.17.0`, and the result is a new table in §1.17,
+  "Reports triaged against this model". Six are `VALID` against a claimed
+  property (`P-FACT-LOOKUP-BOUNDED` twice, `P-FACTS-NEVER-GUESSED`,
+  `P-SERVICE-ACCOUNT-ONLY`, `P-CONNECTOR-APPROVE-HEAD`,
+  `P-BRIDGE-SAFE-TO-REPEAT`). One is a `MODEL-GAP`: the claims for the two
+  Actions said nothing about `review: {status: pending}`, so the Actions
+  acting on an answer a person still checks matched no claim. The issue is
+  `OUT-OF-MODEL: trusted-input` (the operator names the questions) and was
+  hardened anyway. No advisory routes to a closing disposition, so the
+  model did not hide any of them.
+- **What the routing showed**: the claims held up as a triage tool; each
+  finding named the property it broke. Two wordings were too narrow:
+  `P-BRIDGE-SAFE-TO-REPEAT` covered a recorded resolution that disagrees,
+  not a 409 for a review that has none, and the Actions' claims did not
+  mention `people_check`. Both are now explicit.
+- **What changed**: eight wider properties (each new part marked "since
+  pointsman#229 (`v0.17.1`)"), the §1.7 and §1.8 rows they rest on, the
+  matrix row for the facts' resource complexity, one misuse pattern (an
+  answer named like a field of the bridge's result), §1.16, and the §1.1
+  backtest note, which no longer says the repository has no advisories.
+  One new obligation, `R-PEOPLE-CHECK-PENDING` (Q48); no disclaimer or
+  known non-finding changed.
+- **Citations**: 19 cited lines in 5 changed files moved; a script
+  compared each cited line at `v0.17.0` with the tag and rewrote the
+  numbers, and the two lines that #229 rewrote were placed by hand. The
+  validator flagged only 9 of the 19 (those that now land on a comment or
+  a brace); the other 10 pointed at other code and passed. Map citations
+  by content on every re-binding, not by the validator's list. Citations
+  written in words ("at line 179 of `github.ts`", "lines 38 and 225") must
+  be mapped too: neither the validator nor the script sees them, and two in
+  `P-CONNECTOR-ACTIONS-MAPPED` were still at the `v0.17.0` numbers until the
+  review of pointsman#231 found them (now lines 181 and 330). The other
+  four such citations, in `src/app.ts`, did not move.
+- **Counts**: the connector has one more `console.error` (36, 20 in
+  `pull-request.ts`); the fetch count is still 29.
+- **Questions**: two, from the routing, answered by the maintainer on
+  2026-10-26. Q48: hold every engine client to `review: {status: pending}`
+  by an obligation; yes, added in this re-binding as
+  `R-PEOPLE-CHECK-PENDING` (§1.13), which closes the `MODEL-GAP` of
+  GHSA-h4jj-2x7q-m6fv. The GitHub connector and both Actions meet it; the
+  FIWARE bridge meets it unless a route's `reviewActions` leaves out an
+  action of `people_check`. Q49: make the eight reports the backtest's
+  historical corpus; yes, at the next amendment, which re-runs the
+  backtest with them and reports the fail-safe figure.
+- **Validator**: passes (90 checks, one length warning).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "b08aaf3756daefacfa6921ac8ddc065becdc049e",
-  "date": "2026-10-25",
+  "commit": "f783c0b2c2718d251374ab56a6474e85e3508277",
+  "date": "2026-10-26",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 542,
+    "documented": 543,
     "inferred": 0
   },
   "components": [
@@ -1478,7 +1478,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; the model never sees facts",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
@@ -1486,7 +1486,7 @@
       "property": "P-FACT-LOOKUP-BOUNDED",
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
-      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles, ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout",
       "provenance": "documented",
       "source": "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"
     },
@@ -1590,7 +1590,7 @@
       "property": "P-CONNECTOR-APPROVE-HEAD",
       "violation_symptom": "x-toctou, x-unauthorized-write",
       "severity_tier": "security",
-      "conditions": "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals",
+      "conditions": "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\""
     },
@@ -1654,7 +1654,7 @@
       "property": "P-SERVICE-ACCOUNT-ONLY",
       "violation_symptom": "x-spoofing, wrong-output",
       "severity_tier": "security",
-      "conditions": "review-service facts count only the service's own account (login and account id; CodeRabbit comments through its app; github_app_approval by Bot type, slug and optional bot_id); an edit by anyone else makes the CodeRabbit facts missing",
+      "conditions": "review-service facts count only the service's own account (login and account id; CodeRabbit comments through its app; github_app_approval by Bot type, slug and optional bot_id); an edit by anyone else makes the CodeRabbit facts missing; since pointsman#229 (v0.17.1) the editors are read with the text, and a text that differs from the copy read before counts as edited",
       "provenance": "documented",
       "source": "docs/modules.md \"Facts from reviews and comments\"; docs/profile-format.md \"CodeRabbit reviews\""
     },
@@ -1702,7 +1702,7 @@
       "property": "P-BRIDGE-LOOP-GUARD",
       "violation_symptom": "x-decision-loop",
       "severity_tier": "correctness",
-      "conditions": "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused",
+      "conditions": "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused; since pointsman#229 (v0.17.1) an answer named like a field of the result (or its Probability) is refused before anything is written, so it cannot replace the hash",
       "provenance": "documented",
       "source": "bridge/README.md \"How it avoids loops\""
     },
@@ -1710,7 +1710,7 @@
       "property": "P-BRIDGE-SAFE-TO-REPEAT",
       "violation_symptom": "wrong-output",
       "severity_tier": "correctness",
-      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written",
+      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported)",
       "provenance": "documented",
       "source": "bridge/README.md \"Safe to repeat\""
     },
@@ -1718,7 +1718,7 @@
       "property": "P-TRIAGE-ALLOWLIST",
       "violation_symptom": "x-command-injection, x-unlisted-label",
       "severity_tier": "security",
-      "conditions": "labels only from the allow-list and only for action auto; issue text never in a shell or the summary",
+      "conditions": "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary",
       "provenance": "documented",
       "source": "actions/triage/README.md \"Only labels you list in labels are ever applied\""
     },
@@ -1726,7 +1726,7 @@
       "property": "P-WATCH-FAILSAFE",
       "violation_symptom": "x-unwarranted-cancel",
       "severity_tier": "correctness",
-      "conditions": "consecutive cancel answers while quiet; an unreachable Pointsman never cancels",
+      "conditions": "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels",
       "provenance": "documented",
       "source": "actions/deploy-watch/README.md \"Cancel only when sure\""
     }
@@ -2075,6 +2075,7 @@
     "rate-limit and budget at the edge and in the AI Gateway; the engine does not",
     "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default",
     "never act on a decision marked test: true; keep test tokens out of production clients",
+    "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and by the FIWARE bridge when a route's reviewActions is unset or lists every people_check action (a broker consumer must read reviewStatus too); added with the re-binding to v0.17.1 (Q48)",
     "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
     "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept",
@@ -2227,6 +2228,11 @@
       "pattern": "an approving decision that changes because of the connector's own approval, without keep_approval: it approves and withdraws in turn on the runs other events start",
       "why_unsafe": "A profile whose approving decision depends on the connector's own approval without a `keep_approval` rule, so the connector approves and withdraws in turn on every run that another event starts (a finished check suite, a push, a person's review; since pointsman#216, `v0.15.0`, its own review events start no run, except as `D-CONNECTOR-OWN-REVIEW-EVENTS` says).",
       "instead": "github_app_approval with a keep_approval rule"
+    },
+    {
+      "pattern": "a profile question the FIWARE bridge asks named like a field of its result (value, inputHash, decision, reviewStatus, observedAt and the others), or with <name>Probability one, or clashing with another question's name or <name>Probability: since pointsman#229 (v0.17.1) nothing is written for such a decision; before, the answer replaced the field (pointsman#228)",
+      "why_unsafe": "Naming a profile question that the FIWARE bridge asks like a field of its result (`value`, `inputHash`, `decision`, `reviewStatus`, `observedAt` and the others), or so that `<name>Probability` is one: since pointsman#229 (`v0.17.1`) the bridge writes nothing for such a decision and reports it without a retry; before, the answer replaced the field (pointsman#228; bridge/README.md \"The result on the entity\").",
+      "instead": "name questions so that neither the name nor <name>Probability is a field of the result or another question's name or <name>Probability"
     },
     {
       "pattern": "renaming a profile's coderabbit_budget, coderabbit_queue or coderabbit_spend fact while its earlier decisions are still in the window: taken_by_other_pr, the queue's history and the spend are read by fact name and start from nothing",
