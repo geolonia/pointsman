@@ -482,7 +482,7 @@ write to GitHub, and it reaches the engine only as a client, through its
 token or the internal call *(documented, docs/github-connector.md "The two
 GitHub apps": "The part that reads pull-request text ... never holds a key
 that can write")*. Its adversary is the pull-request author and, since
-pointsman#222, whoever clicks its buttons or comments a command; the
+pointsman#222 (`v0.16.0`), whoever clicks its buttons or comments a command; the
 engine is its trusted collaborator.
 
 The bridge shares the engine's release cadence and maintainer but has its own
@@ -527,7 +527,7 @@ family, with a question whether it should become a sibling model
   `build-openapi-validators.mjs`) do run in the config repository's
   workflows and belong to the `config-repo` family (§1.2).
 - **Other ways to answer the GitHub connector's question** (since
-  pointsman#222): a GitHub review (an approval or a change request) does
+  pointsman#222, `v0.16.0`): a GitHub review (an approval or a change request) does
   not answer it, code owners have no say beyond write access, and a pull
   request from a fork cannot be answered inside the pull request
   *(documented, docs/github-connector.md "Not answered in the pull

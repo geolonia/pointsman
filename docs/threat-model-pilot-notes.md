@@ -421,8 +421,8 @@ The model was re-bound from `v0.14.2` to `v0.16.0` (`8eea43d`), which
 released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 #217), which had never been bound.
 
-- **Released claims**: the 88 "since pointsman#221" and "since
-  pointsman#222" markers in the prose (32 in the sidecar) now name the
+- **Released claims**: about 90 "since pointsman#221" and "since
+  pointsman#222" markers in the prose (about 30 in the sidecar) now name the
   release, `v0.16.0`, by script; the header no longer says they hold only
   for a commit that has the code. The mermaid label and the quoted marker
   in §1.1 were left as they were.
