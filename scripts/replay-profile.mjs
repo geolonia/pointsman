@@ -154,7 +154,7 @@ if (result.changes.length) {
   for (const c of result.changes) {
     const extra = [c.ref && shown(c.ref), c.person !== undefined && (ja ? `人の答え：${shown(c.person)}` : `person: ${shown(c.person)}`)].filter(Boolean).join(', ');
     out.push(`    ${shown(day(c.created_at))} ${shown(c.before.action)} → ${shown(c.after.action)}${extra ? ` (${extra})` : ''}`);
-    out.push(`      ${ruleText(c.after.rule)}`);
+    out.push(`      ${shown(ruleText(c.after.rule))}`);
   }
   if (result.changed > result.changes.length) {
     out.push(ja ? `    ほか ${result.changed - result.changes.length} 件（--json でも最大 50 件）` : `    and ${result.changed - result.changes.length} more (at most 50 are listed)`);
