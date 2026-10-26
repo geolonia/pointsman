@@ -177,27 +177,51 @@ describe('CodeRabbit (coderabbit)', () => {
   });
 
   it('rebase only: the head has the same change as the approved commit', async () => {
-    const compare = (head: string) => (url: URL) => (url.pathname.endsWith(`...${OLD}`) ? patch('@@ -1 +1 @@\n-a\n+b') : patch(head));
-    const table = (head: string) => routes({
+    const MB1 = '1'.repeat(40);
+    const MB2 = '2'.repeat(40);
+    const files = (lines: string, mergeBase: string) => ({ ...patch(lines), merge_base_commit: { sha: mergeBase } });
+    const content = (text: string) => () => ({ type: 'file', encoding: 'base64', size: text.length, content: btoa(text) });
+    // Both from the same merge base: the line numbers count too.
+    const same = (old: string, head: string) => routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
-      [`${REPO}/compare/${BASE}...${OLD}`]: compare(head),
-      [`${REPO}/compare/${BASE}...${HEAD}`]: compare(head),
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => files(old, MB1),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => files(head, MB1),
     });
-    expect(await values(table('@@ -5 +5 @@\n-a\n+b'))).toMatchObject({ rebase_only: true, approved_head: false });
-    expect(await values(table('@@ -1 +1 @@\n-a\n+c'))).toMatchObject({ rebase_only: false });
-    // The same removed line at another place (other context) is another change.
-    const at = (ctx: string) => (url: URL) => (url.pathname.endsWith(`...${OLD}`) ? patch('@@ -1,2 +1,1 @@\n helper()\n-check()') : patch(`@@ -9,2 +9,1 @@\n ${ctx}\n-check()`));
-    const placed = (ctx: string) => routes({ [`${PR}/reviews`]: () => [review('APPROVED', OLD)], [`${REPO}/compare/${BASE}...${OLD}`]: at(ctx), [`${REPO}/compare/${BASE}...${HEAD}`]: at(ctx) });
-    expect(await values(placed('handler()'))).toMatchObject({ rebase_only: false });
-    expect(await values(placed('helper()'))).toMatchObject({ rebase_only: true });
+    expect(await values(same('@@ -1 +1 @@\n-a\n+b', '@@ -1 +1 @@\n-a\n+b'))).toMatchObject({ rebase_only: true, approved_head: false });
+    expect(await values(same('@@ -1 +1 @@\n-a\n+b', '@@ -1 +1 @@\n-a\n+c'))).toMatchObject({ rebase_only: false });
+    // The same edit with the same surrounding lines at another place (two identical blocks), without a rebase: another change.
+    expect(await values(same('@@ -1,2 +1,1 @@\n helper()\n-check()', '@@ -9,2 +9,1 @@\n helper()\n-check()'))).toMatchObject({ rebase_only: false });
+
+    // A rebase: the base moved from MB1 to MB2. Where the base did not change the file, the numbers still count.
+    const rebased = (head: string, baseChanged: string[], atBase: string) => routes({
+      [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => files('@@ -1,2 +1,1 @@\n helper()\n-check()', MB1),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => files(head, MB2),
+      [`${REPO}/compare/${MB1}...${MB2}`]: () => ({ status: 'ahead', files: baseChanged.map((filename) => ({ filename })) }),
+      [`${REPO}/contents/docs/guide.md`]: (url) => (expect(url.searchParams.get('ref')).toBe(MB2), content(atBase)()),
+    });
+    expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['src/other.ts'], ''))).toMatchObject({ rebase_only: false });
+    expect(await values(rebased('@@ -1,2 +1,1 @@\n helper()\n-check()', ['src/other.ts'], ''))).toMatchObject({ rebase_only: true });
+    // The base changed the file (lines moved): the same lines once at the base, so the place is clear.
+    expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'new\nlines\nhelper()\ncheck()\nend\n'))).toMatchObject({ rebase_only: true });
+    // The same lines twice at the base: the approved edit may have moved to the other block, so it cannot be told.
+    expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'helper()\ncheck()\nmid\nhelper()\ncheck()\n'))).toMatchObject({ rebase_only: null });
+    // The base comparison not listed (too large): cannot tell.
+    const unlisted = routes({
+      [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => files('@@ -1 +1 @@\n-a\n+b', MB1),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => files('@@ -5 +5 @@\n-a\n+b', MB2),
+      [`${REPO}/compare/${MB1}...${MB2}`]: () => ({ status: 'ahead', files: [] }),
+    });
+    expect(await values(unlisted)).toMatchObject({ rebase_only: null });
     // No files listed (a very large comparison): cannot tell.
     expect(await values(routes({ [`${PR}/reviews`]: () => [review('APPROVED', OLD)], [`${REPO}/compare/${BASE}...${OLD}`]: () => ({ files: [] }), [`${REPO}/compare/${BASE}...${HEAD}`]: () => ({ files: [] }) })))
       .toMatchObject({ rebase_only: null });
     // A file without a patch (binary, too large): cannot tell.
     const noPatch = routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
-      [`${REPO}/compare/${BASE}...${OLD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }] }),
-      [`${REPO}/compare/${BASE}...${HEAD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }] }),
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }], merge_base_commit: { sha: MB1 } }),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => ({ files: [{ filename: 'logo.png', status: 'modified' }], merge_base_commit: { sha: MB1 } }),
     });
     expect(await values(noPatch)).toMatchObject({ rebase_only: null });
   });

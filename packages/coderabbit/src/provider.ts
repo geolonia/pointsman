@@ -76,10 +76,7 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     const installed = await installedFrom(here, () => s.recentHeadStatuses(RECENT_PULL_REQUESTS));
     // The head has the same change as the commit CodeRabbit approved: a rebase, nothing new to review.
     let rebaseOnly: boolean | null = false;
-    if (r.approved !== null && r.approved !== head) {
-      const [a, b] = await Promise.all([s.changeOf(r.approved), s.changeOf(head)]);
-      rebaseOnly = a === null || b === null ? null : a === b;
-    }
+    if (r.approved !== null && r.approved !== head) rebaseOnly = await s.sameChange(r.approved, head);
     const stated = statedBillable(comments, head, pushedAt);
     return {
       installed,

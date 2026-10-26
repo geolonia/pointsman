@@ -606,21 +606,44 @@ export function nextCursor(link: string | null): string | null {
  * A change as text that two changes can be compared by, like `git
  * patch-id`: per file its path, status, earlier name, and every line of its
  * patch (context, removed and added lines, in order, with a mark where each
- * hunk starts), only without the hunks' line numbers. So the same edit at
- * another place differs, and a rebase that does not touch the lines around
- * the edit gives the same text. Null when a file has no patch (binary, too
- * large, or a rename without changes).
+ * hunk starts). The hunks' line numbers are kept, except in the files of
+ * `loose`, which the base changed between the two changes (a rebase moves
+ * the lines there): in those, the same edit at another place with the same
+ * surrounding lines gives the same text, so sameChange checks the place
+ * itself. Null when a file has no patch (binary, too large, or a rename
+ * without changes).
  */
-export function changeSignature(files: unknown[]): string | null {
+export function changeSignature(files: unknown[], loose: ReadonlySet<string> = new Set()): string | null {
   const out: { path: string; status: string | null; from: string | null; lines: string[] }[] = [];
   for (const f of files) {
     if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub compare: unexpected answer');
     if (typeof f.patch !== 'string') return null;
-    // "@@ -12,3 +14,4 @@ function name": the numbers go, the mark (and the text after it) stays.
-    const lines = f.patch.split('\n').map((line) => (line.startsWith('@@') ? line.replace(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/, '@@') : line));
+    // "@@ -12,3 +14,4 @@ function name": in a loose file the numbers go, the mark (and the text after it) stays.
+    const lines = loose.has(f.filename)
+      ? f.patch.split('\n').map((line) => (line.startsWith('@@') ? line.replace(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/, '@@') : line))
+      : f.patch.split('\n');
     out.push({ path: f.filename, status: typeof f.status === 'string' ? f.status : null, from: typeof f.previous_filename === 'string' ? f.previous_filename : null, lines });
   }
   return JSON.stringify(out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)));
+}
+
+/** The text each hunk of a patch had before it (its context and removed lines), one block per hunk. */
+export function hunksBefore(patch: string): string[] {
+  const blocks: string[][] = [];
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('@@')) blocks.push([]);
+    else if ((line.startsWith(' ') || line.startsWith('-')) && blocks.length > 0) blocks.at(-1)!.push(line.slice(1));
+  }
+  return blocks.filter((b) => b.length > 0).map((b) => b.join('\n'));
+}
+
+/** How often `block` occurs in `text` as whole lines (overlaps count). */
+export function occurrences(text: string, block: string): number {
+  const hay = `\n${text.replace(/\r\n/g, '\n')}\n`;
+  const needle = `\n${block}\n`;
+  let n = 0;
+  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + 1)) n++;
+  return n;
 }
 
 const base64Bytes = (b64: string): Uint8Array => Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0));
@@ -722,9 +745,14 @@ export class Snapshot {
    * not UTF-8 text. Larger than MAX_MANIFEST_BYTES fails the fact.
    */
   private textAtHead(path: string): Promise<string | null> {
-    return this.part(`text:${path}`, async () => {
+    return this.textAt(path, this.ref.head);
+  }
+
+  /** A file's text at a commit, as textAtHead. */
+  private textAt(path: string, sha: string): Promise<string | null> {
+    return this.part(`text:${sha}:${path}`, async () => {
       const encoded = path.split('/').map(encodeURIComponent).join('/');
-      const v = await this.json(`${this.repoPath}/contents/${encoded}?ref=${this.ref.head}`, 'file');
+      const v = await this.json(`${this.repoPath}/contents/${encoded}?ref=${sha}`, 'file');
       if (!isObject(v) || v.type !== 'file' || v.encoding !== 'base64' || typeof v.content !== 'string') throw new FactError('GitHub file: unexpected answer');
       const tooLarge = new FactError(`GitHub file: larger than ${MAX_MANIFEST_BYTES} bytes`);
       if ((typeof v.size === 'number' && v.size > MAX_MANIFEST_BYTES) || v.content.length > MAX_MANIFEST_BYTES * 2) throw tooLarge;
@@ -1120,12 +1148,10 @@ export class Snapshot {
 
   /**
    * The change from the base branch to a commit, as the compare API shows it
-   * (from their merge base): each file's added and removed lines, its status
-   * and earlier name, without context lines or line numbers. Null when it
-   * cannot be compared: a file without a patch (binary, too large), or more
-   * files than the API lists.
+   * (from their merge base): the merge base and the changed files. Null when
+   * it cannot be compared: more files than the API lists, or no merge base.
    */
-  changeOf(sha: string): Promise<string | null> {
+  private changeOf(sha: string): Promise<{ mergeBase: string; files: unknown[] } | null> {
     return this.part(`change:${sha}`, async () => {
       const { pr } = await this.base;
       // The base commit read with the pull request, not the branch: both commits are compared with the same base.
@@ -1134,8 +1160,58 @@ export class Snapshot {
       if (!isObject(v) || !Array.isArray(v.files)) throw new FactError('GitHub compare: unexpected answer');
       // The API lists at most 300 files, and none for a very large comparison: a list that may be cut short cannot be compared.
       if (v.files.length === 0 || v.files.length >= COMPARE_MAX_FILES) return null;
-      return changeSignature(v.files);
+      const mergeBase = isObject(v.merge_base_commit) && typeof v.merge_base_commit.sha === 'string' ? v.merge_base_commit.sha : null;
+      return mergeBase === null ? null : { mergeBase, files: v.files };
     });
+  }
+
+  /** The paths the base branch changed from one merge base to another; null when not known (too many, or not listed). */
+  private async baseMoved(from: string, to: string): Promise<Set<string> | null> {
+    const v = await this.json(`${this.repoPath}/compare/${from}...${to}`, 'compare');
+    if (!isObject(v) || !Array.isArray(v.files)) throw new FactError('GitHub compare: unexpected answer');
+    if (v.files.length >= COMPARE_MAX_FILES || (v.files.length === 0 && v.status !== 'identical')) return null;
+    const paths = new Set<string>();
+    for (const f of v.files) {
+      if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub compare: unexpected answer');
+      paths.add(f.filename);
+      if (typeof f.previous_filename === 'string') paths.add(f.previous_filename);
+    }
+    return paths;
+  }
+
+  /**
+   * Whether commit `b` makes the same change as commit `a` (rebase_only):
+   * the same files with the same patches, line numbers included. Where the
+   * base changed a file between the two merge bases (a rebase), the lines
+   * may have moved: there the numbers are left out, and each hunk of `b`
+   * must have its lines before it once in the file at `b`'s merge base, so
+   * the place is not in doubt (an edit moved to an identical block is not the
+   * same change). Null when it cannot be told.
+   */
+  async sameChange(a: string, b: string): Promise<boolean | null> {
+    const [x, y] = await Promise.all([this.changeOf(a), this.changeOf(b)]);
+    if (x === null || y === null) return null;
+    let loose = new Set<string>();
+    if (x.mergeBase !== y.mergeBase) {
+      const moved = await this.baseMoved(x.mergeBase, y.mergeBase);
+      if (moved === null) return null;
+      const touched = (y.files as Record<string, unknown>[]).filter((f) => moved.has(String(f.filename)) || (typeof f.previous_filename === 'string' && moved.has(f.previous_filename)));
+      for (const f of touched) {
+        if (typeof f.patch !== 'string') return null;
+        const path = typeof f.previous_filename === 'string' ? f.previous_filename : String(f.filename);
+        let text: string | null;
+        try {
+          text = await this.textAt(path, y.mergeBase);
+        } catch (err) {
+          if (err instanceof FactError) return null;
+          throw err;
+        }
+        if (text === null || hunksBefore(f.patch).some((block) => occurrences(text!, block) !== 1)) return null;
+      }
+      loose = new Set(touched.map((f) => String(f.filename)));
+    }
+    const [sa, sb] = [changeSignature(x.files, loose), changeSignature(y.files, loose)];
+    return sa === null || sb === null ? null : sa === sb;
   }
 
   properties(): Promise<unknown> {
