@@ -6,7 +6,9 @@
 // every file. In version files that line must set a version (a key such as
 // version, VERSION or ENGINE_VERSION), so a dependency, a URL or a minimum
 // version that happens to move by the same pair does not count. Only in the
-// listed text files (docs, comments) may any line carry the version.
+// listed text files (docs, comments) may any line carry the version. A
+// package.json is also read at the head (onlyVersionMoves), so a dependency
+// named "version" is not taken for the package's own version.
 
 import { matchesAny } from './glob';
 
@@ -28,6 +30,7 @@ export interface ReleaseFacts {
 }
 
 const NOT: ReleaseFacts = { version_only: false, from: '', to: '', level: 'none' };
+export { NOT as NOT_RELEASE };
 // Not inside a longer dotted number (an address such as 1.2.3.4) or a word.
 const SEMVER = /(?<![0-9A-Za-z.-])(\d{1,6})\.(\d{1,6})\.(\d{1,6})(-[0-9A-Za-z]{1,20}(?:\.[0-9A-Za-z]{1,20}){0,4})?(?![0-9A-Za-z-]|\.[0-9A-Za-z])/g;
 const MAX_VERSIONS_PER_LINE = 8;
@@ -69,6 +72,49 @@ function pairsOf(before: string, after: string): [string, string][] {
     }
   }
   return out;
+}
+
+const isManifest = (name: string) => name === 'package.json' || name.endsWith('/package.json');
+
+/** The changed package.json files of a pull request that releaseFacts calls version only: read them at the head for onlyVersionMoves. */
+export function manifestsOf(files: ReleaseFile[]): string[] {
+  return files.map((f) => f.names[0]!).filter(isManifest);
+}
+
+/**
+ * Whether each changed package.json, with its patch taken back at the head,
+ * differs only in the top-level "version", from `from` to `to`. A line the
+ * patch adds must occur once at the head, or the place is in doubt; a file
+ * missing from `heads` (or not text) fails.
+ */
+export function onlyVersionMoves(files: ReleaseFile[], heads: ReadonlyMap<string, string | null>, from: string, to: string): boolean {
+  for (const f of files) {
+    const name = f.names[0]!;
+    if (!isManifest(name)) continue;
+    const head = heads.get(name);
+    if (typeof head !== 'string' || f.patch === null) return false;
+    const lines = head.split('\n');
+    const base = [...lines];
+    for (const r of runs(f.patch)) {
+      for (let i = 0; i < r.added.length; i++) {
+        const at = lines.indexOf(r.added[i]!);
+        if (at === -1 || lines.indexOf(r.added[i]!, at + 1) !== -1 || r.removed[i] === undefined) return false;
+        base[at] = r.removed[i]!;
+      }
+    }
+    let before: unknown;
+    let after: unknown;
+    try {
+      before = JSON.parse(base.join('\n'));
+      after = JSON.parse(head);
+    } catch {
+      return false;
+    }
+    const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isObject(before) || !isObject(after) || before.version !== from || after.version !== to) return false;
+    if (JSON.stringify({ ...before, version: to }) !== JSON.stringify(after)) return false;
+  }
+  return true;
 }
 
 const parse = (v: string) => v.match(/^(\d+)\.(\d+)\.(\d+)/)!.slice(1).map(Number) as [number, number, number];
@@ -114,7 +160,7 @@ export function releaseFacts(files: ReleaseFile[], changelogs: string[], version
     // A version file: edited in place, each line replaced by the same line with the new version.
     const text = matchesAny(name, textFiles);
     if (!(text || matchesAny(name, versionFiles)) || f.status !== 'modified' || lines.length === 0) return NOT;
-    const manifest = name === 'package.json' || name.endsWith('/package.json');
+    const manifest = isManifest(name);
     for (const r of lines) {
       if (r.removed.length === 0 || r.removed.length !== r.added.length) return NOT;
       for (let i = 0; i < r.removed.length; i++) {

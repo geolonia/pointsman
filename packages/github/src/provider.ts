@@ -28,7 +28,7 @@ import {
 import { APP_SLUG as APP_SLUG_PATTERN, GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
-import { releaseFacts } from './release';
+import { manifestsOf, NOT_RELEASE, onlyVersionMoves, releaseFacts, type ReleaseFacts } from './release';
 import { ageInDays, bumpFacts, devOnlyInRepository, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
 import { publishTimes, REGISTRY_TIMEOUT_MS } from './npm';
 import {
@@ -689,9 +689,17 @@ export class Snapshot {
     return (await this.changes()).map((c) => c.names);
   }
 
-  /** The changed files with their status and patch (null when GitHub gives none), for github_release. */
-  async releaseFiles(): Promise<Change[]> {
-    return this.changes();
+  /**
+   * github_release (release.ts): from the changed files and their patches,
+   * then, for a version-only change, each changed package.json at the head.
+   */
+  async release(changelogs: string[], versionFiles: string[], textFiles: string[]): Promise<ReleaseFacts> {
+    const files = await this.changes();
+    const facts = releaseFacts(files, changelogs, versionFiles, textFiles);
+    const manifests = manifestsOf(files);
+    if (!facts.version_only || manifests.length === 0) return facts;
+    const heads = new Map(await Promise.all(manifests.map(async (path) => [path, await this.textAtHead(path)] as const)));
+    return onlyVersionMoves(files, heads, facts.from, facts.to) ? facts : NOT_RELEASE;
   }
 
   /**
@@ -1277,7 +1285,7 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       }
       case 'github_release': {
         if (!query.versionFiles) throw new FactError('no version files');
-        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
+        return { values: { ...await s.release(query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
       }
       case 'github_bump': {
         const values = await s.bump(this.now());
