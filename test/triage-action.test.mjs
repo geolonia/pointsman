@@ -150,6 +150,14 @@ test('auto that a person still checks: only the review label', async (t) => {
   assert.deepEqual(labelsFor({ ...AUTO, review: { status: 'resolved' } }, parseLabelMap('team=frontend: team/frontend'), 'x'), ['team/frontend']);
 });
 
+test('auto for a test token: only the review label', async (t) => {
+  const s = await servers([200, { ...AUTO, test: true }]);
+  t.after(s.close);
+  const r = await runAction(t, { url: s.url, event: issueEvent() });
+  assert.equal(r.code, 0, r.stdout);
+  assert.deepEqual(s.seen.labels.map((l) => l.body.labels), [['needs-triage']]);
+});
+
 test('a custom action is treated like review', async (t) => {
   const s = await servers([200, decision('escalate', AUTO.answers)]);
   t.after(s.close);

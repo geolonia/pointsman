@@ -152,9 +152,12 @@ export async function main() {
       continue;
     }
     // A cancel a person still checks (the profile's people_check) does not count yet.
+    // A test token's answer never counts: it skips the person's check.
     const pending = decision.review?.status === 'pending';
-    cancels = decision.action === 'cancel' && !pending ? cancels + 1 : 0;
-    log(`no stack event for ${state.minutes_since_last_event} min; Pointsman: ${decision.action}${pending ? ' (a person checks it first)' : ''} (decision ${decision.decision_id}); cancel ${cancels}/${needed}`);
+    const test = decision.test === true;
+    cancels = decision.action === 'cancel' && !pending && !test ? cancels + 1 : 0;
+    const note = test ? ' (answer for a test token; ignored)' : pending ? ' (a person checks it first)' : '';
+    log(`no stack event for ${state.minutes_since_last_event} min; Pointsman: ${decision.action}${note} (decision ${decision.decision_id}); cancel ${cancels}/${needed}`);
     if (cancels < needed) continue;
 
     log('the deploy looks stuck; stopping it');

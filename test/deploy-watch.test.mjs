@@ -137,6 +137,17 @@ test('a cancel that a person still checks does not count', async (t) => {
   assert.doesNotMatch(r.aws, /cancel-update-stack/);
 });
 
+test('a cancel for a test token never counts', async (t) => {
+  const p = await pointsman([{ action: 'cancel', test: true }]);
+  t.after(p.close);
+  const r = await runWatch(t, { url: p.url, command: 'sleep 1' });
+  assert.equal(r.code, 0, r.stdout);
+  assert.ok(p.asked.length >= 2);
+  assert.match(r.output, /^result=finished$/m);
+  assert.match(r.stdout, /answer for a test token; ignored/);
+  assert.doesNotMatch(r.aws, /cancel-update-stack/);
+});
+
 test('a checked cancel in between resets the count; a resolved one counts', async (t) => {
   const pending = { action: 'cancel', review: { status: 'pending' } };
   const p = await pointsman(['cancel', pending, 'cancel', pending, 'cancel', pending, 'cancel', pending, 'cancel', pending, { action: 'cancel', review: { status: 'resolved' } }, 'cancel']);
