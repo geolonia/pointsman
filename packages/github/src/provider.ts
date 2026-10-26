@@ -51,8 +51,6 @@ export const MAX_PUSH_PAGES = 5;
 const MAX_COMMITS = 250;
 /** The compare API lists at most this many files. */
 const COMPARE_MAX_FILES = 300;
-/** rebase_only: at most this many files the base moved are checked for where a change is, each read at both merge bases (sameChange). */
-const SAME_CHANGE_MAX_READS = 10;
 /** Check runs and statuses on the head: more fail `github_checks` (`error`). */
 const MAX_CHECKS = 300;
 /** Pages of reviews and of comments (100 each) read; a pull request with more fails the facts that need them (`error`). */
@@ -610,9 +608,7 @@ export function nextCursor(link: string | null): string | null {
  * patch (context, removed and added lines, in order, with a mark where each
  * hunk starts). The hunks' line numbers are kept, except in the files of
  * `loose`, which the base changed between the two changes (a rebase moves
- * the lines there): in those, the same edit at another place with the same
- * surrounding lines gives the same text, so sameChange checks the place
- * itself. Null when a file has no patch (binary, too large, or a rename
+ * the lines there): sameChange has checked the places there itself. Null when a file has no patch (binary, too large, or a rename
  * without changes).
  */
 export function changeSignature(files: unknown[], loose: ReadonlySet<string> = new Set()): string | null {
@@ -629,23 +625,35 @@ export function changeSignature(files: unknown[], loose: ReadonlySet<string> = n
   return JSON.stringify(out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)));
 }
 
-/** The text each hunk of a patch had before it (its context and removed lines), one block per hunk. */
-export function hunksBefore(patch: string): string[] {
-  const blocks: string[][] = [];
-  for (const line of patch.split('\n')) {
-    if (line.startsWith('@@')) blocks.push([]);
-    else if ((line.startsWith(' ') || line.startsWith('-')) && blocks.length > 0) blocks.at(-1)!.push(line.slice(1));
-  }
-  return blocks.filter((b) => b.length > 0).map((b) => b.join('\n'));
+/** Each hunk's start and length on the old side of a patch ("@@ -start,length ..."), in order. */
+export function hunkRanges(patch: string): { start: number; length: number }[] {
+  const out: { start: number; length: number }[] = [];
+  for (const m of patch.matchAll(/^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/gm)) out.push({ start: Number(m[1]), length: m[2] === undefined ? 1 : Number(m[2]) });
+  return out;
 }
 
-/** How often `block` occurs in `text` as whole lines (overlaps count). */
-export function occurrences(text: string, block: string): number {
-  const hay = `\n${text.replace(/\r\n/g, '\n')}\n`;
-  const needle = `\n${block.replace(/\r$/gm, '')}\n`;
-  let n = 0;
-  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + 1)) n++;
-  return n;
+/**
+ * Where lines `start`..`start + length - 1` of a file are after the base's
+ * own change of that file (its patch from one merge base to the other); null
+ * when the base changed any of them, so the place cannot be followed.
+ */
+export function movedStart(start: number, length: number, basePatch: string): number | null {
+  const end = start + Math.max(length, 1) - 1;
+  let offset = 0;
+  for (const m of basePatch.matchAll(/^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@/gm)) {
+    const a = Number(m[1]);
+    const removed = m[2] === undefined ? 1 : Number(m[2]);
+    const added = m[3] === undefined ? 1 : Number(m[3]);
+    if (removed === 0) {
+      // Lines inserted after line a.
+      if (a < start) offset += added;
+      else if (a >= end) break;
+      else return null;
+    } else if (a + removed - 1 < start) offset += added - removed;
+    else if (a > end) break;
+    else return null;
+  }
+  return start + offset;
 }
 
 const base64Bytes = (b64: string): Uint8Array => Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0));
@@ -1167,28 +1175,31 @@ export class Snapshot {
     });
   }
 
-  /** The paths the base branch changed from one merge base to another; null when not known (too many, or not listed). */
-  private async baseMoved(from: string, to: string): Promise<Set<string> | null> {
+  /** The base branch's change of each file from one merge base to another (its patch, null when none is given); null when not known (too many, or not listed). */
+  private async baseMoved(from: string, to: string): Promise<Map<string, string | null> | null> {
     const v = await this.json(`${this.repoPath}/compare/${from}...${to}`, 'compare');
     if (!isObject(v) || !Array.isArray(v.files)) throw new FactError('GitHub compare: unexpected answer');
     if (v.files.length >= COMPARE_MAX_FILES || (v.files.length === 0 && v.status !== 'identical')) return null;
-    const paths = new Set<string>();
+    const changed = new Map<string, string | null>();
     for (const f of v.files) {
       if (!isObject(f) || typeof f.filename !== 'string') throw new FactError('GitHub compare: unexpected answer');
-      paths.add(f.filename);
-      if (typeof f.previous_filename === 'string') paths.add(f.previous_filename);
+      const patch = typeof f.patch === 'string' ? f.patch : null;
+      changed.set(f.filename, patch);
+      // A rename by the base: the place under the old name is not followed.
+      if (typeof f.previous_filename === 'string') changed.set(f.previous_filename, null);
     }
-    return paths;
+    return changed;
   }
 
   /**
    * Whether commit `b` makes the same change as commit `a` (rebase_only):
    * the same files with the same patches, line numbers included. Where the
    * base changed a file between the two merge bases (a rebase), the lines
-   * may have moved: there the numbers are left out, and each hunk of `b`
-   * must have its lines before it once in the file at `b`'s merge base, so
-   * the place is not in doubt (an edit moved to an identical block is not the
-   * same change). Null when it cannot be told.
+   * may have moved: there each hunk of `a` is followed through the base's
+   * own change of the file, and must land where the hunk of `b` is (else
+   * false, another place), on lines the base did not change (else null). So
+   * an edit moved to an identical block is not the same change. Null when it
+   * cannot be told.
    */
   async sameChange(a: string, b: string): Promise<boolean | null> {
     const [x, y] = await Promise.all([this.changeOf(a), this.changeOf(b)]);
@@ -1197,37 +1208,29 @@ export class Snapshot {
     if (x.mergeBase !== y.mergeBase) {
       const moved = await this.baseMoved(x.mergeBase, y.mergeBase);
       if (moved === null) return null;
-      const touched = (y.files as Record<string, unknown>[]).filter((f) => moved.has(String(f.filename)) || (typeof f.previous_filename === 'string' && moved.has(f.previous_filename)));
-      // Each such file is read once: beyond a few, it cannot be told (a bounded number of reads).
-      if (touched.length > SAME_CHANGE_MAX_READS || touched.some((f) => typeof f.patch !== 'string')) return null;
-      // The place of each hunk must be clear on both sides: the head's at its merge base, and the
-      // approved change's at its own (else an old base with two identical blocks lets the edit move
-      // to the other one once the new base changed the first).
-      const unique = async (f: Record<string, unknown>, at: string): Promise<boolean> => {
-        if (typeof f.patch !== 'string') return false;
-        const path = typeof f.previous_filename === 'string' ? f.previous_filename : String(f.filename);
-        let text: string | null;
-        try {
-          text = await this.textAt(path, at);
-        } catch (err) {
-          // Not at the base (added there or here): the place cannot be checked. Any other failure fails the fact, as for the comparisons.
-          if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return false;
-          throw err;
-        }
-        return text !== null && hunksBefore(f.patch).every((block) => occurrences(text!, block) === 1);
-      };
       const approved = new Map((x.files as Record<string, unknown>[]).map((f) => [String(f.filename), f]));
-      const clear = await Promise.all(touched.flatMap((f) => {
-        const before = approved.get(String(f.filename));
+      for (const f of y.files as Record<string, unknown>[]) {
+        const path = String(f.filename);
+        if (!moved.has(path) && !(typeof f.previous_filename === 'string' && moved.has(f.previous_filename))) continue;
+        const before = approved.get(path);
         // Not in the approved change: the signatures differ anyway.
-        return before ? [unique(f, y.mergeBase), unique(before, x.mergeBase)] : [];
-      }));
-      if (!clear.every(Boolean)) return null;
-      loose = new Set(touched.map((f) => String(f.filename)));
+        if (!before) continue;
+        const basePatch = moved.get(path) ?? null;
+        if (basePatch === null || typeof f.patch !== 'string' || typeof before.patch !== 'string') return null;
+        const [was, now] = [hunkRanges(before.patch), hunkRanges(f.patch)];
+        if (was.length !== now.length) return false;
+        for (let i = 0; i < was.length; i++) {
+          const at = movedStart(was[i]!.start, was[i]!.length, basePatch);
+          if (at === null) return null;
+          if (at !== now[i]!.start || was[i]!.length !== now[i]!.length) return false;
+        }
+        loose.add(path);
+      }
     }
     const [sa, sb] = [changeSignature(x.files, loose), changeSignature(y.files, loose)];
     return sa === null || sb === null ? null : sa === sb;
   }
+
 
   properties(): Promise<unknown> {
     return this.part('properties', () => this.json(`${this.repoPath}/properties/values`, 'custom properties'));
