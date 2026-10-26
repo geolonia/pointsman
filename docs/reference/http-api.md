@@ -361,7 +361,7 @@ A required decision of a profile the reader may not see.
 | `test` | true | no | Present (true) only for a test token's decision, which is not logged. |
 | `requires` | object | no | For a profile with `requires`, by name. A required decision of a profile the token may no longer use is hidden. |
 | `replaces` | string | no | The earlier decision of the same profile, ref and client that this one replaces. |
-| `review` | object | no | Present when a person checks the decision before it counts (the profile's people_check). |
+| `review` | object | no | Present when a person checks the decision before it counts (the profile's people_check). A new decision is pending. A repeated request (the same Idempotency-Key) gets the review as it is now: resolved with the person's action, or superseded by a newer decision. |
 | `versions` | `Versions` | no | The engine version and the fact modules that answered the decision's facts, with their versions (docs/modules.md). Missing for decisions made before fact modules. |
 
 ### Versions

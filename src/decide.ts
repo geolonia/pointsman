@@ -369,6 +369,16 @@ export function connected(id: string, summaries: { id: string; requires?: string
 export const NO_MODEL = 'none';
 const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,200}$/;
 
+/** The review as the decide response shows it: its status and, once resolved, the person's action. */
+function reviewOf(review: NonNullable<DecisionRecord['review']>): NonNullable<Decision['review']> {
+  if (review.status !== 'resolved') return { status: review.status };
+  return {
+    status: 'resolved',
+    ...(review.final_action !== undefined && { final_action: review.final_action }),
+    ...(review.resolved_at !== undefined && { resolved_at: review.resolved_at }),
+  };
+}
+
 /** A logged decision as the decide response (an idempotent repeat). */
 function decisionOf(r: DecisionRecord): Decision {
   return {
@@ -384,7 +394,7 @@ function decisionOf(r: DecisionRecord): Decision {
     ...(r.facts && { facts: r.facts }),
     ...(r.requires && { requires: r.requires }),
     ...(r.replaces !== undefined && { replaces: r.replaces }),
-    ...(r.review?.status === 'pending' && { review: { status: 'pending' as const } }),
+    ...(r.review && { review: reviewOf(r.review) }),
     ...(r.versions && { versions: r.versions }),
   };
 }

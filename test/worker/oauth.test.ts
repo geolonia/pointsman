@@ -20,9 +20,9 @@ const oauthEnv = { ...(env as object), OAUTH_KV } as unknown as Env;
 const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const s256 = async (v: string) => b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))));
 
-/** A fake GitHub: one valid code per login; `members` are active members of geolonia. */
+/** A fake GitHub: one valid code per login; `members` are active members of geolonia. Account ids: `ids`, else 1000. */
 function fakeGithub(members: string[]) {
-  const codes = new Map<string, { login: string; challenge: string }>();
+  const codes = new Map<string, { login: string; challenge: string; id: number }>();
   const calls: string[] = [];
   const fetch = async (url: string, init: RequestInit): Promise<Response> => {
     calls.push(url);
@@ -33,16 +33,16 @@ function fakeGithub(members: string[]) {
       const ok = entry && form.get('client_id') === 'cid' && form.get('client_secret') === CLIENT_SECRET
         && form.get('redirect_uri') === `${BASE}/callback`
         && (await s256(form.get('code_verifier') ?? '')) === entry.challenge;
-      return Response.json(ok ? { access_token: `gh-token-${entry.login}` } : { error: 'bad_verification_code' });
+      return Response.json(ok ? { access_token: `gh-token-${entry.id}-${entry.login}` } : { error: 'bad_verification_code' });
     }
-    const login = auth.replace('Bearer gh-token-', '');
-    if (url === 'https://api.github.com/user') return Response.json({ login });
+    const [, id, login = ''] = /^Bearer gh-token-(\d+)-(.*)$/.exec(auth) ?? [];
+    if (url === 'https://api.github.com/user') return Response.json({ login, id: Number(id) });
     if (url === 'https://api.github.com/user/memberships/orgs/geolonia') {
       return members.includes(login) ? Response.json({ state: 'active' }) : new Response('{}', { status: 404 });
     }
     return new Response('unexpected', { status: 500 });
   };
-  return { fetch, calls, issue: (code: string, login: string, challenge: string) => codes.set(code, { login, challenge }) };
+  return { fetch, calls, issue: (code: string, login: string, challenge: string, id = 1000) => codes.set(code, { login, challenge, id }) };
 }
 
 function setup(members = ['octo']) {
@@ -104,21 +104,22 @@ async function allow(t: Setup, handle: string) {
 }
 
 /** The whole sign-in as `login`; returns an access token. */
-async function signIn(t: Setup, who = 'octo') {
+async function signIn(t: Setup, who = 'octo', id?: number) {
   const { handle, clientId, verifier } = await startLogin(t);
   const github = await allow(t, handle);
-  t.github.issue('gh-code', who, github.searchParams.get('code_challenge')!);
+  t.github.issue('gh-code', who, github.searchParams.get('code_challenge')!, id);
   const back = await t.send(`/callback?code=gh-code&state=${github.searchParams.get('state')}`);
   expect(back.status).toBe(302);
   const to = new URL(back.headers.get('location')!);
   const code = to.searchParams.get('code');
-  if (!code) return { to, token: null };
+  if (!code) return { to, token: null, refresh: undefined, clientId };
   const res = await t.send('/oauth/token', {
     method: 'POST',
     body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: CLIENT_REDIRECT, client_id: clientId, code_verifier: verifier }),
   });
   expect(res.status).toBe(200);
-  return { to, token: (await res.json<{ access_token: string }>()).access_token };
+  const tokens = await res.json<{ access_token: string; refresh_token?: string }>();
+  return { to, token: tokens.access_token, refresh: tokens.refresh_token, clientId };
 }
 
 let nextId = 1;
@@ -177,12 +178,42 @@ describe('GitHub login for /mcp', () => {
 
     const d = JSON.parse((await call(t, token, 'decide', { profile: 'issue-triage', state: { title: 'Login page is blank' } })).text);
     const row = await DB.prepare('SELECT client FROM decisions WHERE id = ?').bind(d.decision_id).first();
-    expect(row).toEqual({ client: 'github:octo' });
+    // By the account id, which never changes; the login only names the person in feedback.
+    expect(row).toEqual({ client: 'github:1000' });
 
     const fb = await call(t, token, 'submit_feedback', { decision_id: d.decision_id, correct: { team: 'frontend' }, note: 'UI bug' });
     expect(fb).toEqual({ isError: false, text: JSON.stringify({ recorded: true }, null, 2) });
     const stored = await DB.prepare('SELECT client, by, correct, note FROM feedback WHERE decision_id = ?').bind(d.decision_id).first();
-    expect(stored).toEqual({ client: 'github:octo', by: 'octo', correct: '{"team":"frontend"}', note: 'UI bug' });
+    expect(stored).toEqual({ client: 'github:1000', by: 'octo', correct: '{"team":"frontend"}', note: 'UI bug' });
+  });
+
+  it('another account that takes over a login is not the earlier owner', async () => {
+    const t = setup();
+    const first = (await signIn(t, 'octo', 1000)).token as string;
+    const d = JSON.parse((await call(t, first, 'decide', { profile: 'issue-triage', state: { title: 'Login page is blank' } })).text);
+    const later = (await signIn(t, 'octo', 2000)).token as string;
+    const e = JSON.parse((await call(t, later, 'decide', { profile: 'issue-triage', state: { title: 'Login page is blank' } })).text);
+    const rows = await DB.prepare('SELECT id, client FROM decisions WHERE id IN (?, ?)').bind(d.decision_id, e.decision_id).all();
+    expect(Object.fromEntries(rows.results.map((r) => [r.id, r.client]))).toEqual({ [d.decision_id]: 'github:1000', [e.decision_id]: 'github:2000' });
+  });
+
+  it('a grant with the account id can be refreshed', async () => {
+    const t = setup();
+    const { refresh, clientId } = await signIn(t);
+    expect(typeof refresh).toBe('string');
+    const res = await t.send('/oauth/token', { method: 'POST', body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh!, client_id: clientId }) });
+    expect(res.status).toBe(200);
+    const token = (await res.json<{ access_token: string }>()).access_token;
+    expect((await rpc(t, token, 'tools/list')).status).toBe(200);
+  });
+
+  it('refuses a GitHub user without an account id', async () => {
+    const t = setup();
+    const { handle } = await startLogin(t);
+    const github = await allow(t, handle);
+    t.github.issue('gh-code', 'octo', github.searchParams.get('code_challenge')!, 0);
+    const back = await t.send(`/callback?code=gh-code&state=${github.searchParams.get('state')}`);
+    expect(back.status).toBeGreaterThanOrEqual(400);
   });
 
   it('refuses invalid feedback and decisions that are not visible', async () => {

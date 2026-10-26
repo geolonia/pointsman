@@ -700,12 +700,17 @@ components:
           type: string
           format: uuid
         review:
-          description: Present when a person checks the decision before it counts (the profile's people_check).
+          description: >-
+            Present when a person checks the decision before it counts (the profile's people_check).
+            A new decision is pending. A repeated request (the same Idempotency-Key) gets the review as
+            it is now: resolved with the person's action, or superseded by a newer decision.
           type: object
           additionalProperties: false
           required: [status]
           properties:
-            status: { type: string, const: pending }
+            status: { type: string, enum: [pending, resolved, superseded] }
+            final_action: { type: string, description: The person's action, once resolved. }
+            resolved_at: { type: string, format: date-time }
         versions: { $ref: '#/components/schemas/Versions' }
     Versions:
       description: >-

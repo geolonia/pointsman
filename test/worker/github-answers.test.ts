@@ -259,6 +259,7 @@ describe('the webhook: which events are answers', () => {
 
   it('a comment only when the command is on, only when created, only on a pull request, only by the sender', () => {
     expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`), APP_ID, true)).toEqual({ targets: [{ repo: REPO, number: 7 }], by: MAINTAINER, answer: { kind: 'command', answer: 'approve', head: SHORT } });
+    expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT} 0a1b2c3d`), APP_ID, true)).toMatchObject({ answer: { kind: 'command', answer: 'approve', head: SHORT, question: '0a1b2c3d' } });
     expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`), APP_ID, false)).toBeUndefined();
     expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { action: 'edited' }), APP_ID, true)).toBeUndefined();
     expect(answerOf('issue_comment', comment(`/pointsman approve ${SHORT}`, { action: 'deleted' }), APP_ID, true)).toBeUndefined();
@@ -270,6 +271,8 @@ describe('the webhook: which events are answers', () => {
     expect(commandOf('/pointsman approve 0123456789ab')).toEqual({ answer: 'approve', head: '0123456789ab' });
     expect(commandOf('  /pointsman approve 0123456789ab\n')).toEqual({ answer: 'approve', head: '0123456789ab' });
     expect(commandOf('/pointsman reject-now_2 0123456789ab')).toEqual({ answer: 'reject-now_2', head: '0123456789ab' });
+    expect(commandOf('/pointsman approve 0123456789ab 89abcdef')).toEqual({ answer: 'approve', head: '0123456789ab', question: '89abcdef' });
+    for (const body of ['/pointsman approve 0123456789ab 89abcde', '/pointsman approve 0123456789ab 89ABCDEF', '/pointsman approve 0123456789ab 89abcdef0', '/pointsman approve 0123456789ab  89abcdef']) expect(commandOf(body), body).toBeUndefined();
     for (const body of [
       // Without the head, or with a head that is not 7 lower-case hex characters: not a command.
       '/pointsman approve', '/pointsman approve 0123abc', '/pointsman approve 0123456789a', '/pointsman approve 0123456789abc', '/pointsman approve 0123456789AB', '/pointsman approve main12345678',
@@ -557,8 +560,8 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     asked.byProfile.other = { ...asked.byProfile[PROFILE], decision: { ...asked.byProfile[PROFILE].decision, decision_id: crypto.randomUUID() } };
     t.mem.data.set('asked', asked);
     await logged(async () => { for (let i = 0; i < 10; i++) await t.answer({ kind: 'command', answer: 'approve', head: SHORT }, READER); });
-    // Two profiles match: notes for the account's 3 answers of the hour, then nothing more (the cap's own note: once).
-    expect(t.gh.calls.filter((c) => c.output?.summary.includes('more than one open question')).length).toBeLessThanOrEqual(2 * ANSWERS_PER_ACCOUNT_PER_HOUR + 1);
+    // No question named, two open: notes for the account's 3 answers of the hour, then nothing more (the cap's own note: once).
+    expect(t.gh.calls.filter((c) => c.output?.summary.includes('the command names no question')).length).toBeLessThanOrEqual(2 * ANSWERS_PER_ACCOUNT_PER_HOUR + 1);
     expect((t.mem.data.get('answerCounts') as any).reads).toBe(ANSWERS_PER_ACCOUNT_PER_HOUR);
   });
 
@@ -596,23 +599,24 @@ describe('the comment command (when switched on)', () => {
   it('answers the one open question that offers the answer; the decision comment lists the commands', async () => {
     const t = await asking(on);
     const comment = t.gh.calls.filter((c) => c.op === 'comment').at(-1)!.body!;
-    expect(comment).toContain(`<code>pr-next-step</code> waits for a person about commit ${SHORT}: answer with a comment of one line, \`/pointsman approve ${SHORT}\` or \`/pointsman reject ${SHORT}\`.`);
-    expect(t.gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain(`or with a comment of one line: \`/pointsman approve ${SHORT}\`, \`/pointsman reject ${SHORT}\``);
-    await logged(() => t.answer({ kind: 'command', answer: 'reject', head: SHORT }));
+    const q = t.id.slice(0, 8);
+    expect(comment).toContain(`<code>pr-next-step</code> waits for a person about commit ${SHORT}: answer with a comment of one line, \`/pointsman approve ${SHORT} ${q}\` or \`/pointsman reject ${SHORT} ${q}\`.`);
+    expect(t.gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain(`or with a comment of one line: \`/pointsman approve ${SHORT} ${q}\`, \`/pointsman reject ${SHORT} ${q}\``);
+    await logged(() => t.answer({ kind: 'command', answer: 'reject', head: SHORT, question: q }));
     expect(t.resolves()).toEqual([{ op: 'resolve', id: t.id, body: { action: 'reject', by: 'github:Octo-Cat (5)' } }]);
     expect(t.lastOutput().title).toBe('🟡 reject: answered by Octo-Cat (shadow)');
   });
 
   it('a command that answers no open question does nothing, quietly; one that matches two is refused on both', async () => {
     const t = await asking(on);
-    await logged(() => t.answer({ kind: 'command', answer: 'wait', head: SHORT }));
+    await logged(() => t.answer({ kind: 'command', answer: 'wait', head: SHORT, question: t.id.slice(0, 8) }));
     expect(t.gh.calls.filter((c) => c.op === 'permission')).toEqual([]);
     const updates = t.gh.calls.filter((c) => c.op === 'update').length;
-    // A second open question offering the same answer.
+    // A second open question offering the same answer, whose decision id starts the same.
     const asked = t.mem.data.get('asked') as any;
-    asked.byProfile.other = { ...asked.byProfile[PROFILE], decision: { ...asked.byProfile[PROFILE].decision, decision_id: crypto.randomUUID() } };
+    asked.byProfile.other = { ...asked.byProfile[PROFILE], decision: { ...asked.byProfile[PROFILE].decision, decision_id: `${t.id.slice(0, 8)}${crypto.randomUUID().slice(8)}` } };
     t.mem.data.set('asked', asked);
-    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT, question: t.id.slice(0, 8) }));
     expect(t.resolves()).toEqual([]);
     expect(log).toContain('more than one open question');
     expect(t.gh.calls.filter((c) => c.op === 'update').slice(updates).some((c) => c.output!.summary.includes('the command matches more than one open question'))).toBe(true);
@@ -622,19 +626,20 @@ describe('the comment command (when switched on)', () => {
     const t = await asking(on);
     // Pushed, not yet run: the command for the old head is bound to the old question, and refused (the head moved).
     t.gh.github.state.head = HEAD2;
-    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT, question: t.id.slice(0, 8) }));
     expect(t.resolves()).toEqual([]);
     expect(t.lastOutput().summary).toContain('An answer was not taken: the pull request has newer commits');
     // The run made the new question; the same command, late (or delivered out of order), is not about it.
     await t.accept();
     await t.work.run();
     expect(t.pm.calls.filter((c) => c.op === 'decide')).toHaveLength(2);
-    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT, question: t.id.slice(0, 8) }));
     expect(log).toContain(`a command for commit ${SHORT}, which has no open question; ignored`);
     expect(t.resolves()).toEqual([]);
     expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
-    // Written for the new head: taken.
-    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT2 }));
+    // Written for the new head and its question: taken.
+    const next = (t.mem.data.get('asked') as any).byProfile[PROFILE].decision.decision_id as string;
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT2, question: next.slice(0, 8) }));
     expect(t.resolves()).toHaveLength(1);
     expect(t.gh.calls.filter((c) => c.op === 'approve').map((c) => c.head)).toEqual([HEAD2]);
   });
@@ -651,7 +656,7 @@ describe('the comment command (when switched on)', () => {
       await t.work.run();
     }
     expect((t.mem.data.get('asked') as any).head).toBe(second);
-    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: prefix }));
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: prefix, question: 'ffffffff' }));
     expect(log).toContain(`a command for commit ${prefix}, a prefix of more than one commit of this pull request; refused`);
     expect(t.resolves()).toEqual([]);
     expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
@@ -672,6 +677,25 @@ describe('the comment command (when switched on)', () => {
     expect(heads[0]).toBe((1).toString(16).padStart(40, '0'));
   });
 
+  it('a command names the question: one for a question that was replaced on the same head, or none, is refused with a note', async () => {
+    const t = await asking(on);
+    // The author changed the description: a new decision for the same head replaced the question the person read.
+    const asked = t.mem.data.get('asked') as any;
+    const replacement = crypto.randomUUID();
+    asked.byProfile[PROFILE].decision = { ...asked.byProfile[PROFILE].decision, decision_id: replacement };
+    t.mem.data.set('asked', asked);
+    const log = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT, question: t.id.slice(0, 8) }));
+    expect(log).toContain('the command names a question that is no longer open');
+    expect(t.resolves()).toEqual([]);
+    expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+    // Without the question (a command from before it was named): refused too.
+    await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT }));
+    expect(t.resolves()).toEqual([]);
+    // Naming the open question: bound to it (the engine here does not know this made-up decision, so nothing is resolved).
+    const taken = await logged(() => t.answer({ kind: 'command', answer: 'approve', head: SHORT, question: replacement.slice(0, 8) }));
+    expect(taken).not.toContain('a command not taken');
+  });
+
   it('a command for a commit with no question is ignored without a note', async () => {
     const t = await asking(on);
     const updates = t.gh.calls.filter((c) => c.op === 'update').length;
@@ -679,6 +703,17 @@ describe('the comment command (when switched on)', () => {
     expect(t.resolves()).toEqual([]);
     expect(t.gh.calls.filter((c) => c.op === 'update')).toHaveLength(updates);
     expect(t.gh.calls.filter((c) => c.op === 'permission' || c.op === 'get').length).toBeLessThanOrEqual(2);
+  });
+
+  it('an answer the settings no longer offer for the profile is not taken', async () => {
+    const t = await asking();
+    // The settings changed after the question was asked: approve is no longer offered.
+    const now = pullRequestWork(settings({ answers: { profiles: { [PROFILE]: ['reject'] }, command: false } }), t.mem.storage, t.pm.engine, t.gh.github);
+    await now.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID(), answer: { event: { kind: 'button', checkRun: t.checkRun, head: HEAD, externalId: t.id, identifier: `1-${t.id.slice(0, 8)}` }, by: MAINTAINER } }, Date.now());
+    const log = await logged(() => now.run());
+    expect(log).toContain('that the settings no longer offer; not taken');
+    expect(t.resolves()).toEqual([]);
+    expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
   });
 
   it('with the command off, a queued command is not taken', async () => {

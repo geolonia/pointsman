@@ -61,7 +61,10 @@ required decision of a profile outside the token's scope as
 A client that may send a request twice (a queue that retries) sends an
 `Idempotency-Key` header (1 to 200 printable ASCII characters). The same key
 from the same client returns the decision already logged, when the request is
-the same; with another request it answers `409 idempotency_conflict`. Keys of
+the same, with its review as it is now (`review: {status: resolved,
+final_action}` once a person answered, `superseded` once a newer decision
+replaced it), so a retry never shows a checked decision as unchecked; with
+another request it answers `409 idempotency_conflict`. Keys of
 different clients do not meet. Test tokens are not logged, so a key does
 nothing for them.
 

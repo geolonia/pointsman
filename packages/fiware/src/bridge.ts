@@ -128,7 +128,7 @@ export interface BridgeMessage {
 
 /** What happened to one entity of a notification. */
 export type EntityResult =
-  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | 'no route' | 'waiting for decisions' | 'resolved by person' | WorkOrderSkip }
+  | { id: string; skipped: 'inputs unchanged' | 'deleted' | 'not resolved' | 'no route' | 'waiting for decisions' | 'resolved by person' | 'superseded' | WorkOrderSkip }
   | { id: string; resolves: string; finalAction: string }
   | { id: string; review: ReviewOutcome; written: boolean }
   | { id: string; action: string; decision: string; write: number }
@@ -617,6 +617,8 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
   // decided again.
   const clash = clashingAnswer(Object.keys(d.answers));
   if (clash !== undefined) return { id: entity.id, decision: d.decision_id, error: answerClash(clash), retry: false };
+  // A retry of a decision that a newer one replaced while its first write failed: the newer one stands.
+  if (d.review?.status === 'superseded') return { id: entity.id, skipped: 'superseded' };
 
   // From here on a decision exists: a failure keeps its id (a redirect
   // throws, see send).
@@ -638,6 +640,13 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
       if (!created.ok && created.status !== 409) {
         return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
       }
+      // A person resolved it since that first try: the existing entity still says pending.
+      if (created.status === 409 && resolvedOf(d)) {
+        const failed = await resolveDecisionEntity(decisionEntityId(d.decision_id), d, config);
+        if (failed) {
+          return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision update: ${failed.status}`, retry: retryable(failed.status) };
+        }
+      }
       decisionRef = decisionEntityId(d.decision_id);
       // The replaced decision's check is no longer needed (Pointsman closed its review).
       if (d.replaces) {
@@ -652,10 +661,14 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     // and the Task always follows the latest decision for these inputs.
     if (route.task) {
       const taskId = await taskEntityId(entity.id, route.attribute, hash);
-      // A pending review always gets a Task, even for an action not in task.actions.
-      let failed = route.task.actions.includes(d.action) || isPending(d)
-        ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
-        : await cancelOpenTask(taskId, d.action, config);
+      // A pending review always gets a Task, even for an action not in task.actions;
+      // a resolved one (a retry after a person answered) gets it completed with their action.
+      const done = resolvedOf(d);
+      let failed = done
+        ? await putTask(completedTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), done, decidedAt), config)
+        : route.task.actions.includes(d.action) || isPending(d)
+          ? await putTask(toTaskEntity(d, entity, route.task, taskId, decidedAt), config)
+          : await cancelOpenTask(taskId, d.action, config);
       // A replaced decision's open Task (made for the earlier inputs) is not needed any more.
       const earlier = valueOf(previous?.inputHash);
       if (!failed && route.requires && d.replaces && typeof earlier === 'string' && earlier !== hash) {
@@ -707,8 +720,13 @@ interface Decision {
   requires?: Record<string, { decision: string | null }>;
   /** The earlier decision of the same profile and entity that this one replaces. */
   replaces?: string;
-  /** Present when a person checks the decision (the profile's people_check). */
-  review?: { status: 'pending' };
+  /**
+   * Present when a person checks the decision (the profile's people_check).
+   * Pending for a new decision; a repeated request (the same idempotency
+   * key, a retry) gets it as it is now: resolved, with the person's action,
+   * or superseded.
+   */
+  review?: { status: string; final_action?: string; resolved_at?: string };
 }
 
 const answerClash = (name: string) => `answer "${name}": its name or "${name}Probability" is taken by a field of the result or another answer; rename the question in the profile`;
@@ -764,8 +782,8 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
     ...(rule !== undefined && { policyRule: P(rule) }),
     model: P(d.model),
     inputHash: P(hash),
-    // A person checks it first: work orders (#85) look for this.
-    ...(checked && { reviewStatus: P('pending') }),
+    // A person checks it first: work orders (#85) look for this. Resolved on a retry after they answered.
+    ...(checked && reviewFields(d, 'result')),
   };
   for (const [name, a] of Object.entries(d.answers)) {
     // One level of sub-properties: Orion-LD drops a third level (#14).
@@ -883,8 +901,9 @@ export function informedByOf(entity: Entity, route: Route): string | undefined {
  * Pointsman versions without `review`: the reviewActions, or else action review.
  */
 export function isChecked(d: Pick<Decision, 'action' | 'review' | 'requires'>, route: Route): boolean {
-  // A pending review is never treated as already decided (threat-model.md `R-PEOPLE-CHECK-PENDING`).
-  if (isPending(d)) return true;
+  // A pending review is never treated as already decided (threat-model.md `R-PEOPLE-CHECK-PENDING`),
+  // and a resolved one (a retry) stays a checked decision, with the person's action.
+  if (isPending(d) || resolvedOf(d)) return true;
   if (route.reviewActions) return route.reviewActions.includes(d.action);
   // For engines from before decision chains (#107), which send no review: a
   // profile whose people_check leaves out review is then marked checked for
@@ -895,6 +914,33 @@ export function isChecked(d: Pick<Decision, 'action' | 'review' | 'requires'>, r
 /** Whether Pointsman opened a review for the decision (`review: {status: pending}`); anything else is not. */
 export function isPending(d: Pick<Decision, 'review'>): boolean {
   return d.review?.status === 'pending';
+}
+
+/**
+ * The person's answer when the review is resolved (a repeated request after
+ * a person answered); undefined otherwise. Only with the person's action, as
+ * Pointsman sends it: anything else is not a review (as for isPending).
+ */
+export function resolvedOf(d: Pick<Decision, 'review'>): { action: string; at?: string } | undefined {
+  if (d.review?.status !== 'resolved' || typeof d.review.final_action !== 'string' || d.review.final_action === '') return undefined;
+  return { action: d.review.final_action, ...(typeof d.review.resolved_at === 'string' && { at: d.review.resolved_at }) };
+}
+
+/**
+ * The review fields for a checked decision: pending, or resolved with the
+ * person's action and when, as a resolution writes them: on the result
+ * (handleReview) the time as text, on the Decision entity (handleWorkOrder)
+ * as a DateTime.
+ */
+function reviewFields(d: Pick<Decision, 'review'>, on: 'result' | 'decision'): Record<string, unknown> {
+  const P = (value: unknown) => ({ type: 'Property', value });
+  const done = resolvedOf(d);
+  if (!done) return { reviewStatus: P('pending') };
+  return {
+    reviewStatus: P('resolved'),
+    finalAction: P(done.action),
+    ...(done.at !== undefined && { reviewedAt: P(on === 'result' ? done.at : { '@type': 'DateTime', '@value': done.at }) }),
+  };
 }
 
 /**
@@ -940,7 +986,7 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
       requiredDecisions: { type: 'JsonProperty', json: required },
     }),
     ...(d.replaces && { replaces: { type: 'Relationship', object: decisionEntityId(d.replaces) } }),
-    ...(checked && { reviewStatus: P('pending') }),
+    ...(checked && reviewFields(d, 'decision')),
   };
 }
 
@@ -1319,6 +1365,31 @@ export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, 
 }
 
 /**
+ * Marks an existing Decision entity resolved with the person's answer, as
+ * toDecisionEntity would have written it, only while it is still pending: a
+ * resolution already there (another writer, a work order) is left alone.
+ * Returns the failed response, or null.
+ */
+async function resolveDecisionEntity(id: string, d: Decision, config: BridgeConfig): Promise<Response | null> {
+  const seen = await brokerRequest('GET', id, config, undefined, undefined, DECISION_CONTEXT);
+  if (!seen.ok) return seen;
+  if (valueOf((await seen.json() as Entity).reviewStatus) !== 'pending') return null;
+  const res = await brokerRequest('POST', id, config, { '@context': [DECISION_CONTEXT, CORE_CONTEXT], ...reviewFields(d, 'decision') });
+  return updatedAll(res) ? null : res;
+}
+
+/** A Task for a decision a person has resolved already: completed, with their action, as handleReview completes one. */
+function completedTask(task: Record<string, unknown>, done: { action: string; at?: string }, now: Date): Record<string, unknown> {
+  const P = (value: unknown) => ({ type: 'Property', value });
+  return {
+    ...task,
+    progress: P('completed'),
+    statusLabel: P(done.action),
+    completedAt: P({ '@type': 'DateTime', '@value': done.at ?? now.toISOString() }),
+  };
+}
+
+/**
  * Creates the Task, or updates one with the same id in place: from a retry,
  * or from earlier input values that came back (A, B, A), where the old Task
  * may be done already and the work is new. In place, so a failure leaves the
@@ -1332,7 +1403,7 @@ async function putTask(task: Record<string, unknown>, config: BridgeConfig): Pro
   const updated = await brokerRequest('POST', id as string, config, attributes);
   if (!updatedAll(updated)) return updated;
   // What the new state does not have: the old completion, an old priority.
-  for (const name of ['completedAt', ...(task.priority ? [] : ['priority'])]) {
+  for (const name of [...(task.completedAt ? [] : ['completedAt']), ...(task.priority ? [] : ['priority'])]) {
     const removed = await brokerRequest('DELETE', id as string, config, undefined, name);
     if (!removed.ok && removed.status !== 404) return removed;
   }

@@ -407,6 +407,21 @@ describe('decision chains', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('a repeated Idempotency-Key after a person resolved the review gives the review as it is now', async () => {
+    // A client whose first write failed retries: it must see the person's answer, not an unchecked decision.
+    const id = await decideFirst();
+    const key = { 'idempotency-key': `resolved-${crypto.randomUUID()}` };
+    const a = await decideFinal({ triage: id }, {}, ALL, key);
+    expect(a.data.review).toEqual({ status: 'pending' });
+    expect((await s.call('POST', `/v1/reviews/${a.data.decision_id}/resolve`, { action: 'ship', by: 'x' })).status).toBe(200);
+    const b = await decideFinal({ triage: id }, {}, ALL, key);
+    expect(b.status).toBe(200);
+    expect(b.data.decision_id).toBe(a.data.decision_id);
+    expect(b.data.review).toMatchObject({ status: 'resolved', final_action: 'ship' });
+    expect(typeof b.data.review.resolved_at).toBe('string');
+    expect(contract.decision(b.data), JSON.stringify(contract.decision.errors)).toBe(true);
+  });
+
   it('hides required decisions of profiles out of the reader\'s scope, and the request digest', async () => {
     const id = await decideFirst();
     const made = await decideFinal({ triage: id }, {}, ALL, { 'idempotency-key': `k-${crypto.randomUUID()}` });

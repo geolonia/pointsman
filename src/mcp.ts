@@ -21,11 +21,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type McpDeps = Pick<Deps, 'store' | 'adapterFor' | 'log'>;
 
-/** The scope a caller acts with; people are recorded as "github:<login>". */
+/**
+ * The scope a caller acts with; people are recorded as "github:<account id>",
+ * which never changes: a login can be renamed and then taken by another
+ * account, which must not own the earlier holder's decisions.
+ */
 export function clientOf(caller: Caller): TokenRecord {
   return caller.kind === 'token'
     ? caller.record
-    : { client: `github:${caller.login}`, profiles: ['*'], created_at: '' };
+    : { client: `github:${caller.id}`, profiles: ['*'], created_at: '' };
 }
 
 function json(value: unknown) {

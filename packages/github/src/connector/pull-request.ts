@@ -20,8 +20,8 @@
 import { AnswerDesk, buttonsFor, type QueuedAnswer } from './answers.ts';
 import { actionOf, type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
 import { asButtons, checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
-import { checkText, clean, COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
-import { type CheckRunOutput, type ConnectorGitHub, GitHubError, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
+import { checkText, clean, COMMENT_MARKER, commandFor, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
+import { type CheckRunOutput, type ConnectorGitHub, GitHubError, GitHubHistoryLimit, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { BotReview, PullRequestTarget } from './webhook.ts';
 
 /** What a run needs of the object's storage (a Durable Object's storage has it). */
@@ -937,7 +937,21 @@ export class PullRequestWork {
     }
     if (spec.do === 'copilot_review' && record === undefined) {
       // At most one Copilot review per head, whoever asked (another profile, a person).
-      const asked = await this.#tracedOrUnknown(target, pr, profile, spec);
+      let asked: boolean | 'unknown';
+      try {
+        asked = await retrying(() => this.#traced(target, pr, profile, spec));
+      } catch (err) {
+        if (err instanceof RetryError) throw err;
+        console.error(`github connector: ${target.repo}#${target.number} ${profile} ${spec.do} trace: ${err instanceof Error ? err.message : String(err)}`);
+        // GitHub's answer will not change for this commit (more than 1,000 reviews): looking again
+        // would decide and read the reviews without end. Not asked, and not tried again for this commit.
+        if (err instanceof GitHubHistoryLimit) {
+          acts.done[key] = { decision: decision.decision_id, state: 'failed', at: this.now() };
+          await this.#storage.put({ acts });
+          return { kind: 'skipped', text: 'copilot_review: whether Copilot was asked cannot be told; not tried again for this commit' };
+        }
+        asked = 'unknown';
+      }
       if (asked === 'unknown') {
         // Nothing recorded: looked at again once the time is up, also without a new event.
         const at = this.now() + UNCLEAR_MS;
@@ -1163,8 +1177,6 @@ function slim(d: Decision): Decision {
 }
 
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-/** How much of the head a command names (webhook.ts). */
-const COMMAND_HEAD = 12;
 
 /** A GitHub failure that may pass becomes a RetryError; others stay errors (logged by the caller, not retried). */
 async function retrying<T>(f: () => Promise<T>): Promise<T> {
@@ -1222,7 +1234,7 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' },
       : `${outcome.kind === 'done' ? 'Done' : 'Not done'}: ${outcome.text}. This check never blocks.`,
     ...(missing.length > 0 ? ['', `Missing facts: ${missing.join(', ')}.`] : []),
     ...(d.review?.status === 'pending' ? ['', 'Waiting for a person: a person checks this decision before it counts. Their answer is used once they give it.'] : []),
-    ...(d.review?.status === 'pending' && view.asking ? ['', askingText(view.asking, view.head ?? '')] : []),
+    ...(d.review?.status === 'pending' && view.asking ? ['', askingText(view.asking, view.head ?? '', d.decision_id)] : []),
     '',
     `Decision \`${d.decision_id}\``,
   ];
@@ -1236,11 +1248,11 @@ export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' },
 }
 
 /** How a person answers in the pull request: the buttons, and the command where it is on. */
-function askingText(asking: { offered: string[]; command: boolean }, head: string): string {
+function askingText(asking: { offered: string[]; command: boolean }, head: string, decisionId: string): string {
   const ways = [
     ...(asButtons(asking.offered) ? ['with a button above'] : []),
-    // The command names the commit, so it never answers a question about a later push.
-    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`/pointsman ${a} ${head.slice(0, COMMAND_HEAD)}\``).join(', ')}`] : []),
+    // The command names the commit and the question, so it never answers a question about a later push or one that replaced this one.
+    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`${commandFor(a, head, decisionId)}\``).join(', ')}`] : []),
   ];
   return `Answer in the pull request ${ways.join(', or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`;
 }

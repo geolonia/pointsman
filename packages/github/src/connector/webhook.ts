@@ -112,14 +112,14 @@ export interface Answerer {
 
 /**
  * An answer given inside the pull request (docs/github-connector.md#answering-in-the-pull-request):
- * a click on a button of one of the connector's check runs, or a `/pointsman <answer>` comment.
+ * a click on a button of one of the connector's check runs, or a `/pointsman <answer> <head> <question>` comment.
  * Only a hint: the pull request's object binds it to its own record of the question and checks
  * the person with GitHub (answers.ts).
  */
 export type AnswerEvent =
   | { kind: 'button'; checkRun: number; head: string; externalId: string; identifier: string }
   /** `head`: the first 12 characters of the commit the person answers about, as the command names it. */
-  | { kind: 'command'; answer: string; head: string };
+  | { kind: 'command'; answer: string; head: string; question?: string };
 
 export interface AnswerHint {
   targets: PullRequestTarget[];
@@ -133,11 +133,13 @@ const SHA = /^[0-9a-f]{40}$/;
 const IDENTIFIER = /^[1-3]-[0-9a-f]{8}$/;
 /**
  * The whole comment, trimmed: exactly this one line. An action name, lower
- * case, as Pointsman writes it, and the head commit the answer is about (its
+ * case, as Pointsman writes it, the head commit the answer is about (its
  * first 12 characters, as the decision comment and the check run show them: too
- * many to find a second commit that starts the same).
+ * many to find a second commit that starts the same), and the question (the
+ * first 8 characters of its decision id, as the buttons carry it). A command
+ * without the question is read, so that answers.ts can say why it is refused.
  */
-const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63}) ([0-9a-f]{12})$/;
+const COMMAND = /^\/pointsman ([a-z0-9][a-z0-9_-]{0,63}) ([0-9a-f]{12})(?: ([0-9a-f]{8}))?$/;
 
 /**
  * A person's account, from an event's sender: only a `User` (never a bot, an
@@ -149,14 +151,14 @@ function userOf(v: unknown): Answerer | undefined {
 }
 
 /**
- * The answer and short head of a `/pointsman <answer> <head>` comment: only
- * when the whole comment, trimmed, is that one line (no other text, no
- * quote, no code block, no upper case, the head given). Anything else is not
- * a command.
+ * The answer, short head and question of a `/pointsman <answer> <head>
+ * <question>` comment: only when the whole comment, trimmed, is that one line
+ * (no other text, no quote, no code block, no upper case, the head given).
+ * Anything else is not a command. Without the question, `question` is left out.
  */
-export function commandOf(body: unknown): { answer: string; head: string } | undefined {
+export function commandOf(body: unknown): { answer: string; head: string; question?: string } | undefined {
   const m = typeof body === 'string' ? COMMAND.exec(body.trim()) : null;
-  return m ? { answer: m[1]!, head: m[2]! } : undefined;
+  return m ? { answer: m[1]!, head: m[2]!, ...(m[3] !== undefined && { question: m[3] }) } : undefined;
 }
 
 /**

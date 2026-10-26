@@ -37,7 +37,7 @@ export interface ConnectorSettings {
 /**
  * Which questions a person may answer inside the pull request, and how. Buttons
  * on the check run wherever answers are on (for a profile whose answers fit
- * them, BUTTONS); the `/pointsman <answer>` comment only with `command`.
+ * them, BUTTONS); the `/pointsman <answer> <commit> <question>` comment only with `command`.
  */
 export interface AnswerSettings {
   /** The answers offered, by profile: each one must be in the profile's people_answers (Pointsman checks it on resolve). */

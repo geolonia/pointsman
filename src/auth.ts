@@ -112,4 +112,4 @@ export interface OAuthConfig {
 /** Who is calling /mcp: an API token, or a person logged in through OAuth. */
 export type Caller =
   | { kind: 'token'; record: TokenRecord }
-  | { kind: 'person'; login: string };
+  | { kind: 'person'; login: string; id: number };

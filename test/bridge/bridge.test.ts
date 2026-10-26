@@ -704,6 +704,48 @@ describe('Task entities', () => {
     expect(JSON.stringify(calls.filter((c) => c.url.startsWith('https://broker.test/')).map((c) => c.body))).not.toContain('finalAction');
   });
 
+  it('a retry of a decision a person has resolved writes their action as resolved, never the machine action as unchecked', async () => {
+    // The first write failed; a person answered; the retry gets the stored decision with the review as it is now.
+    const resolved = () => Response.json({ ...decision, action: 'urgent', review: { status: 'resolved', final_action: 'reject', resolved_at: '2026-10-26T06:00:00.000Z' } });
+    const { notify, calls } = setup({ pointsman: resolved, route: { decisionEntity: true, reviewActions: ['review'], task: { actions: ['review'] } } });
+    expect((await notify([entity()])).status).toBe(200);
+    const created = calls.filter((c) => c.url === 'https://broker.test/ngsi-ld/v1/entities').map((c) => c.body as Record<string, unknown>);
+    expect(created.find((b) => b.type === 'Decision')).toMatchObject({
+      humanInvolvement: { vocab: 'dpv:HumanInvolvementForVerification' }, reviewStatus: P('resolved'), finalAction: P('reject'),
+      reviewedAt: P({ '@type': 'DateTime', '@value': '2026-10-26T06:00:00.000Z' }),
+    });
+    expect(created.find((b) => b.type === 'Task')).toMatchObject({ progress: P('completed'), statusLabel: P('reject') });
+    const result = calls.find((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/check'))!.body as Record<string, unknown>;
+    // On the result the time is text, as handleReview writes it; on the Decision entity a DateTime.
+    expect(result).toMatchObject({ value: 'urgent', reviewStatus: P('resolved'), finalAction: P('reject'), reviewedAt: P('2026-10-26T06:00:00.000Z') });
+  });
+
+  it('a resolved retry marks a Decision entity left pending by the first try, and leaves a resolution already there', async () => {
+    const resolved = () => Response.json({ ...decision, action: 'urgent', review: { status: 'resolved', final_action: 'reject', resolved_at: '2026-10-26T06:00:00.000Z' } });
+    for (const [status, written] of [['pending', true], ['resolved', false]] as const) {
+      const { notify, calls } = setup({
+        pointsman: resolved, route: { decisionEntity: true, reviewActions: ['review'] },
+        handler: (c) => {
+          const body = c.body as { type?: string } | undefined;
+          if (c.url === 'https://broker.test/ngsi-ld/v1/entities' && body?.type === 'Decision') return new Response(null, { status: 409 });
+          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: { type: 'Property', value: status } });
+          return undefined;
+        },
+      });
+      expect((await notify([entity()])).status).toBe(200);
+      const update = calls.find((c) => c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A'));
+      if (written) expect(update?.body).toMatchObject({ reviewStatus: P('resolved'), finalAction: P('reject') });
+      else expect(update, status).toBeUndefined();
+    }
+  });
+
+  it('a retry of a decision that a newer one replaced writes nothing', async () => {
+    const superseded = () => Response.json({ ...decision, action: 'urgent', review: { status: 'superseded' } });
+    const { notify, calls } = setup({ pointsman: superseded, route: { decisionEntity: true, task: { actions: ['urgent'] } } });
+    expect((await notify([entity()])).status).toBe(200);
+    expect(calls.filter((c) => c.url.startsWith('https://broker.test/') && c.method !== 'GET')).toEqual([]);
+  });
+
   /** A broker that keeps Tasks: 409 for an id it has, DELETE removes it or an attribute, GET reads, POST …/attrs updates. */
   function taskStore() {
     const tasks = new Map<string, Record<string, unknown>>();
