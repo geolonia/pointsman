@@ -771,7 +771,7 @@ Permissions (all read) for a fine-grained token or an app:
 | Permission | For |
 |---|---|
 | Pull requests | `github_pr`, `github_paths`, `github_workflows`, `github_release`, `github_bump`, `github_copilot` (reviews, review requests, review threads, conversation comments), `github_app_approval` (reviews) |
-| Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS`, the files `github_workflows` reads, the `package.json` files `github_bump` reads |
+| Contents | the commits of the pull request, pushes to its branch, `CODEOWNERS`, the files `github_workflows` reads, the `package.json` files `github_bump` and `github_release` read |
 | Metadata | always (every app has it) |
 | Checks (apps only), Commit statuses | `github_checks`; commit statuses also for facts of other modules that read the snapshot |
 | Actions | `github_checks`, when a ruleset requires workflows |
