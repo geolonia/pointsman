@@ -575,6 +575,79 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Questions**: none in the model.
 - **Validator**: passes (90 checks, one length warning).
 
+## Re-binding to `v0.18.0` (2026-10-26)
+
+- **What it covers**: pointsman#235 (`93c235f`) and #236 (`c986869`),
+  released as `v0.18.0` (`9dec36e`, pointsman#237, which changed only
+  versions and the changelog). #235: the triage and deploy-watch Actions
+  never act on an answer for a test token (the triage `action` output is
+  `test`); the decide request refuses a `ref` with control characters,
+  line separators or direction marks, and `replay-profile.mjs` shows them
+  escaped; profile validation's check for circles of `requires` visits
+  each profile once; `github_release` also reads a changed `package.json`
+  at the head; `github_checks` fails for two required workflows with the
+  same path from another repository or ref. #236: people on MCP are
+  recorded as `github:<account id>`, and an OAuth grant without the id is
+  refused and cannot be refreshed; the GitHub connector's command is
+  `/pointsman <answer> <commit> <question>`, and an answer counts only
+  while the current `answers.profiles` offer it; `copilot_review` with
+  more than 1,000 reviews is recorded as failed for the commit; a
+  repeated decide request gets the review as it is now; the FIWARE bridge
+  writes a retry after a person's answer as resolved and skips a
+  superseded one; `paid_for_head` counts an edited command from its last
+  edit, and only when its author made it; `rebase_only` compares line
+  numbers and follows hunks through the base's own change.
+- **What changed**: the properties `P-OAUTH-ORG-MEMBERSHIP`,
+  `P-CHAIN-INPUTS-FROM-LOG`, `P-FACTS-NEVER-GUESSED`,
+  `P-FACT-LOOKUP-BOUNDED`, `P-GITHUB-REQUIRED-CHECKS`,
+  `P-CONNECTOR-ACTIONS-MAPPED`, `P-CONNECTOR-ANSWER-BOUND`,
+  `P-CONNECTOR-COMMAND-EXACT`, `P-BRIDGE-SAFE-TO-REPEAT`,
+  `P-TRIAGE-ALLOWLIST` and `P-WATCH-FAILSAFE`; the disclaimers
+  `D-REVIEWER-IDENTITY` and `D-COMMAND-SHORT-COMMIT`, which is narrower:
+  a command now also names the question by 8 characters of its decision
+  id, which the engine draws at random; the obligations
+  `R-IGNORE-TEST-DECISIONS`, `R-PEOPLE-CHECK-PENDING` and
+  `R-RELEASE-PAIR`; the §1.2 commenter, the §1.6 `answers` row, the §1.7
+  rows for `ref`, `Idempotency-Key`, `/mcp`, the OAuth token routes, the
+  CodeRabbit reads, the comment command and both Actions' answers, the
+  §1.8 rows for the decision, the bridge's result, check runs, the
+  decision comment, review requests, the triage labels and the Actions'
+  outputs, the §1.10 roles and the threat about answers; §1.1 and §1.16.
+  Each new part is marked "since pointsman#235 (`v0.18.0`)" or "since
+  pointsman#236 (`v0.18.0`)"; where #236 replaced a behaviour, the old one
+  is named "up to `v0.17.2`". One misuse pattern was added (a test token
+  in the triage or deploy-watch Action); no property, disclaimer or
+  obligation was added or removed. The confidence counts are now 463 / 83
+  / 0 / 0 (three new documented tags: the commenter's edits,
+  `P-CHAIN-INPUTS-FROM-LOG` and `R-IGNORE-TEST-DECISIONS`).
+- **Not in the model**: profile validation's check for circles and
+  `replay-profile.mjs` are operator tools on trusted input; the model
+  claims nothing about them, so only the `ref` row names the escaping.
+- **Citations**: 55 cited lines were affected, in 14 files (`provider.ts`
+  of the GitHub module 11, `answers.ts` 10, `bridge.ts` 6, `github.ts` 6,
+  `decide.ts` 4, `webhook.ts` 4 and 8 more). 50 moved and were mapped by
+  content with the script; 5 were rewritten by #235 or #236 and placed
+  by meaning: `triage.mjs:74` (now 75), `bridge.ts:656` (now 669),
+  `bridge.ts:887` (now 906), `webhook.ts:140` (the command pattern, now
+  142) and `src/mcp.ts:26` (now 32, the people's line). Before the
+  update the validator flagged 10 of them; the others still resolved to
+  other code. Of the citations written in words, the two in
+  `packages/github/src/connector/github.ts` moved (181 to 189, 330 to
+  338); those in `src/app.ts` did not.
+- **Counts**: the fetch count is unchanged (29). The connector's log
+  lines are now 39 (36 before: two more in `answers.ts`, one in
+  `pull-request.ts`); the bridge's are unchanged (7 in `bridge.ts`).
+  `P-SECRETS-NOT-LOGGED` still gave the count of `v0.14.2` (34 hits); it
+  now gives 58 at `v0.18.0`.
+- **Candidate issue, kept out of the model**: docs/github-connector.md
+  "The decision comment" still says the comment holds no decision ids.
+  With the command on, an open question's command now holds the first 8
+  characters of its decision id, so a new decision on the same head also
+  changes the comment. The model's §1.8 row says so.
+- **Backtest**: not run again; Q49 waits for the next amendment.
+- **Questions**: none in the model.
+- **Validator**: passes (90 checks, one length warning).
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
