@@ -41,7 +41,12 @@ claude mcp add --transport http pointsman https://pointsman.example.workers.dev/
 The client opens a Pointsman page that asks whether it may act for you, then
 GitHub's login. Only active members of the allowed GitHub organizations get
 in. People may use every MCP-visible profile; their decisions and feedback are
-recorded as `github:<login>`.
+recorded as `github:<account id>`, GitHub's numeric id of the account. A login
+can be renamed and then taken by another account; the id never changes, so
+that account does not get the earlier holder's decisions. Feedback also names
+the person by login (`by`). Earlier versions recorded `github:<login>`: a
+person logged in with such a version logs in again, and decisions recorded
+that way do not count as theirs in chains.
 
 Pointsman is its own OAuth 2.1 authorization server
 ([workers-oauth-provider](https://github.com/cloudflare/workers-oauth-provider)),
@@ -83,6 +88,6 @@ caller sends.
 `decisions` works as in the REST API
 ([profile-format.md](profile-format.md#decision-chains)): the earlier
 decisions must come from the same client, so a person (client
-`github:<login>`) can build only on their own decisions. `get_decision`
+`github:<account id>`) can build only on their own decisions. `get_decision`
 shows an earlier decision of a profile that is not MCP-visible, or not in the
 caller's scope, as `{"decision": null}`.

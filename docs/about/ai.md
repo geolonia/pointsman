@@ -69,7 +69,7 @@ An agent cannot:
   configuration repository;
 - use a profile outside its client's scope: such a profile looks unknown;
 - make a decision over MCP that is not recorded: every such decision is
-  logged under the client that asked (`github:<login>` for a person). MCP
+  logged under the client that asked (`github:<account id>` for a person). MCP
   refuses test tokens, whose decisions over the HTTP API are not logged;
 - decide a review through MCP: a decision with the action `review` waits for
   a person, and MCP has no tool to resolve it. Over the HTTP API, a client

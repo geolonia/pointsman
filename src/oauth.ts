@@ -26,9 +26,14 @@ export interface OAuthEnv {
   OAUTH_KV: KVNamespace;
 }
 
-/** Props stored with an OAuth grant (encrypted by the library). */
+/**
+ * Props stored with an OAuth grant (encrypted by the library). `id` is the
+ * GitHub account id, which never changes; a login can be renamed and then
+ * taken by another account. Grants from before `id` have none.
+ */
 interface PersonProps {
   login: string;
+  id?: number;
 }
 
 const ACCESS_TOKEN_TTL = 60 * 60;
@@ -84,7 +89,9 @@ export function serveProtectedMcp(
         return record && { props: { kind: 'token', record }, audience: res };
       }
       const valid = await server.validateToken<PersonProps>(res, token, e);
-      return valid && { ...valid, props: { kind: 'person', login: valid.props.login } };
+      // A grant without the account id (from before it was kept): the person logs in again.
+      if (!valid || !isAccountId(valid.props.id)) return null;
+      return { ...valid, props: { kind: 'person', login: valid.props.login, id: valid.props.id } };
     },
     handler: { fetch: (req, _env, c) => handle(req, c.props) },
   });
@@ -196,8 +203,8 @@ const GITHUB_API = {
   'x-github-api-version': '2022-11-28',
 };
 
-/** The GitHub login of the person behind a GitHub code, or null when GitHub refuses the code. */
-async function githubLogin(code: string, verifier: string, config: OAuthConfig): Promise<{ login: string; token: string } | null> {
+/** The GitHub login and account id of the person behind a GitHub code, or null when GitHub refuses the code. */
+async function githubLogin(code: string, verifier: string, config: OAuthConfig): Promise<{ login: string; id: number; token: string } | null> {
   const { clientId, clientSecret, fetch } = config.github;
   const res = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
@@ -217,10 +224,13 @@ async function githubLogin(code: string, verifier: string, config: OAuthConfig):
   const token = body.access_token;
   const user = await fetch('https://api.github.com/user', { headers: { ...GITHUB_API, authorization: `Bearer ${token}` } });
   if (!user.ok) throw new Error(`GitHub user lookup failed: HTTP ${user.status}`);
-  const { login } = await user.json<{ login?: unknown }>();
+  const { login, id } = await user.json<{ login?: unknown; id?: unknown }>();
   if (typeof login !== 'string' || login === '') throw new Error('GitHub user has no login');
-  return { login, token };
+  if (!isAccountId(id)) throw new Error('GitHub user has no account id');
+  return { login, id, token };
 }
+
+const isAccountId = (id: unknown): id is number => typeof id === 'number' && Number.isSafeInteger(id) && id > 0;
 
 /** True when the person is an active member of one of the allowed organizations. */
 async function isMember(token: string, config: OAuthConfig): Promise<boolean> {
@@ -261,11 +271,12 @@ export async function finishLogin(request: Request, env: OAuthEnv, config: OAuth
   }
   const { redirectTo } = await oauth.completeAuthorization({
     request: original,
-    // GitHub logins have no ":" (the library's separator).
-    userId: `github-${person.login}`,
-    metadata: { login: person.login },
+    // By the account id, not the login: a login can pass to another account.
+    // No ":" (the library's separator).
+    userId: `github-${person.id}`,
+    metadata: { login: person.login, id: person.id },
     scope: [],
-    props: { login: person.login } satisfies PersonProps,
+    props: { login: person.login, id: person.id } satisfies PersonProps,
   });
   headers.set('location', redirectTo);
   return new Response(null, { status: 302, headers });
