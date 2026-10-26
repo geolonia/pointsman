@@ -206,6 +206,15 @@ describe('CodeRabbit (coderabbit)', () => {
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'new\nlines\nhelper()\ncheck()\nend\n'))).toMatchObject({ rebase_only: true });
     // The same lines twice at the base: the approved edit may have moved to the other block, so it cannot be told.
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'helper()\ncheck()\nmid\nhelper()\ncheck()\n'))).toMatchObject({ rebase_only: null });
+    // More files the base moved than are read: cannot tell, and none is read.
+    const many = Array.from({ length: 11 }, (_, i) => ({ filename: `docs/p${i}.md`, status: 'modified', patch: '@@ -1 +1 @@\n-a\n+b' }));
+    const wide = routes({
+      [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => ({ files: many, merge_base_commit: { sha: MB1 } }),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => ({ files: many, merge_base_commit: { sha: MB2 } }),
+      [`${REPO}/compare/${MB1}...${MB2}`]: () => ({ status: 'ahead', files: many.map((f) => ({ filename: f.filename })) }),
+    });
+    expect(await values(wide)).toMatchObject({ rebase_only: null });
     // The base comparison not listed (too large): cannot tell.
     const unlisted = routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],

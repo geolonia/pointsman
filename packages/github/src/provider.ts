@@ -51,6 +51,8 @@ export const MAX_PUSH_PAGES = 5;
 const MAX_COMMITS = 250;
 /** The compare API lists at most this many files. */
 const COMPARE_MAX_FILES = 300;
+/** rebase_only: at most this many files the base moved are read to check where a change is (sameChange). */
+const SAME_CHANGE_MAX_READS = 10;
 /** Check runs and statuses on the head: more fail `github_checks` (`error`). */
 const MAX_CHECKS = 300;
 /** Pages of reviews and of comments (100 each) read; a pull request with more fails the facts that need them (`error`). */
@@ -1196,18 +1198,20 @@ export class Snapshot {
       const moved = await this.baseMoved(x.mergeBase, y.mergeBase);
       if (moved === null) return null;
       const touched = (y.files as Record<string, unknown>[]).filter((f) => moved.has(String(f.filename)) || (typeof f.previous_filename === 'string' && moved.has(f.previous_filename)));
-      for (const f of touched) {
-        if (typeof f.patch !== 'string') return null;
+      // Each such file is read once: beyond a few, it cannot be told (a bounded number of reads).
+      if (touched.length > SAME_CHANGE_MAX_READS || touched.some((f) => typeof f.patch !== 'string')) return null;
+      const clear = await Promise.all(touched.map(async (f) => {
         const path = typeof f.previous_filename === 'string' ? f.previous_filename : String(f.filename);
         let text: string | null;
         try {
           text = await this.textAt(path, y.mergeBase);
         } catch (err) {
-          if (err instanceof FactError) return null;
+          if (err instanceof FactError) return false;
           throw err;
         }
-        if (text === null || hunksBefore(f.patch).some((block) => occurrences(text!, block) !== 1)) return null;
-      }
+        return text !== null && hunksBefore(f.patch as string).every((block) => occurrences(text!, block) === 1);
+      }));
+      if (!clear.every(Boolean)) return null;
       loose = new Set(touched.map((f) => String(f.filename)));
     }
     const [sa, sb] = [changeSignature(x.files, loose), changeSignature(y.files, loose)];

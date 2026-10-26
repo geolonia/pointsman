@@ -1,6 +1,6 @@
 // Answers given inside the pull request (docs/github-connector.md#answering-in-the-pull-request):
 // a click on a button of the connector's check run, or (when switched on) a
-// `/pointsman <answer>` comment. The webhook passes the event on as a hint
+// `/pointsman <answer> <commit> <question>` comment. The webhook passes the event on as a hint
 // (webhook.ts answerOf); the pull request's object queues it and takes it in
 // its alarm, one at a time with its runs (pull-request.ts).
 //

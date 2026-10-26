@@ -14,6 +14,7 @@ import {
   authorizationErrorRedirect,
   CimdFetchError,
   OAuthAuthorizationServer,
+  OAuthError,
   OAuthResourceServer,
   type ConsentDescription,
 } from '@cloudflare/workers-oauth-provider';
@@ -53,6 +54,13 @@ function authorizationServer(config: OAuthConfig): OAuthAuthorizationServer<OAut
       clientIdMetadataDocumentEnabled: true,
       accessTokenTTL: ACCESS_TOKEN_TTL,
       refreshTokenTTL: GRANT_TTL,
+      // A grant from before the account id was kept: refreshing it would only give tokens
+      // that /mcp refuses. invalid_grant revokes it, so the client starts a new login.
+      tokenExchangeCallback: ({ grantType, props }) => {
+        if (grantType === 'refresh_token' && !isAccountId((props as Partial<PersonProps> | undefined)?.id)) {
+          throw new OAuthError('invalid_grant', { description: 'log in again' });
+        }
+      },
     });
     servers.set(config.issuer, server);
   }

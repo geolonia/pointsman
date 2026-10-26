@@ -112,13 +112,14 @@ async function signIn(t: Setup, who = 'octo', id?: number) {
   expect(back.status).toBe(302);
   const to = new URL(back.headers.get('location')!);
   const code = to.searchParams.get('code');
-  if (!code) return { to, token: null };
+  if (!code) return { to, token: null, refresh: undefined, clientId };
   const res = await t.send('/oauth/token', {
     method: 'POST',
     body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: CLIENT_REDIRECT, client_id: clientId, code_verifier: verifier }),
   });
   expect(res.status).toBe(200);
-  return { to, token: (await res.json<{ access_token: string }>()).access_token };
+  const tokens = await res.json<{ access_token: string; refresh_token?: string }>();
+  return { to, token: tokens.access_token, refresh: tokens.refresh_token, clientId };
 }
 
 let nextId = 1;
@@ -194,6 +195,16 @@ describe('GitHub login for /mcp', () => {
     const e = JSON.parse((await call(t, later, 'decide', { profile: 'issue-triage', state: { title: 'Login page is blank' } })).text);
     const rows = await DB.prepare('SELECT id, client FROM decisions WHERE id IN (?, ?)').bind(d.decision_id, e.decision_id).all();
     expect(Object.fromEntries(rows.results.map((r) => [r.id, r.client]))).toEqual({ [d.decision_id]: 'github:1000', [e.decision_id]: 'github:2000' });
+  });
+
+  it('a grant with the account id can be refreshed', async () => {
+    const t = setup();
+    const { refresh, clientId } = await signIn(t);
+    expect(typeof refresh).toBe('string');
+    const res = await t.send('/oauth/token', { method: 'POST', body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh!, client_id: clientId }) });
+    expect(res.status).toBe(200);
+    const token = (await res.json<{ access_token: string }>()).access_token;
+    expect((await rpc(t, token, 'tools/list')).status).toBe(200);
   });
 
   it('refuses a GitHub user without an account id', async () => {
