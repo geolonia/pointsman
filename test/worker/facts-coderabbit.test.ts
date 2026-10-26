@@ -211,6 +211,14 @@ describe('CodeRabbit (coderabbit)', () => {
     expect(await values(rebased(edit(1), { 'docs/guide.md': '@@ -2 +2 @@\n-check()\n+changed()' }))).toMatchObject({ rebase_only: null });
     // Lines changed by the base below the hunk do not move it.
     expect(await values(rebased(edit(1), { 'docs/guide.md': '@@ -10 +10,3 @@\n-x\n+y\n+y\n+y' }))).toMatchObject({ rebase_only: true });
+    // The new merge base is not after the old one (diverged): the base's patches don't start at the old one.
+    const diverged = routes({
+      [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => files(edit(1), MB1),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => files(edit(9), MB2),
+      [`${REPO}/compare/${MB1}...${MB2}`]: () => ({ status: 'diverged', files: [{ filename: 'docs/guide.md', patch: above }] }),
+    });
+    expect(await values(diverged)).toMatchObject({ rebase_only: null });
     // The base's change of the file has no patch: cannot tell.
     expect(await values(rebased(edit(1), { 'docs/guide.md': null }))).toMatchObject({ rebase_only: null });
     expect(movedStart(1, 2, '@@ -0,0 +1,8 @@')).toBe(9);

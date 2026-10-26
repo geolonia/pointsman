@@ -1179,6 +1179,9 @@ export class Snapshot {
   private async baseMoved(from: string, to: string): Promise<Map<string, string | null> | null> {
     const v = await this.json(`${this.repoPath}/compare/${from}...${to}`, 'compare');
     if (!isObject(v) || !Array.isArray(v.files)) throw new FactError('GitHub compare: unexpected answer');
+    // Only a base that moved forward from `from` gives patches from it; otherwise (behind,
+    // diverged) the patches start at another commit and the places cannot be followed.
+    if (v.status !== 'ahead' && v.status !== 'identical') return null;
     if (v.files.length >= COMPARE_MAX_FILES || (v.files.length === 0 && v.status !== 'identical')) return null;
     const changed = new Map<string, string | null>();
     for (const f of v.files) {
