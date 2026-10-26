@@ -193,17 +193,20 @@ describe('CodeRabbit (coderabbit)', () => {
     expect(await values(same('@@ -1,2 +1,1 @@\n helper()\n-check()', '@@ -9,2 +9,1 @@\n helper()\n-check()'))).toMatchObject({ rebase_only: false });
 
     // A rebase: the base moved from MB1 to MB2. Where the base did not change the file, the numbers still count.
-    const rebased = (head: string, baseChanged: string[], atBase: string) => routes({
+    const rebased = (head: string, baseChanged: string[], atBase: string, atOld = 'helper()\ncheck()\nend\n') => routes({
       [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
       [`${REPO}/compare/${BASE}...${OLD}`]: () => files('@@ -1,2 +1,1 @@\n helper()\n-check()', MB1),
       [`${REPO}/compare/${BASE}...${HEAD}`]: () => files(head, MB2),
       [`${REPO}/compare/${MB1}...${MB2}`]: () => ({ status: 'ahead', files: baseChanged.map((filename) => ({ filename })) }),
-      [`${REPO}/contents/docs/guide.md`]: (url) => (expect(url.searchParams.get('ref')).toBe(MB2), content(atBase)()),
+      [`${REPO}/contents/docs/guide.md`]: (url) => content(url.searchParams.get('ref') === MB2 ? atBase : atOld)(),
     });
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['src/other.ts'], ''))).toMatchObject({ rebase_only: false });
     expect(await values(rebased('@@ -1,2 +1,1 @@\n helper()\n-check()', ['src/other.ts'], ''))).toMatchObject({ rebase_only: true });
     // The base changed the file (lines moved): the same lines once at the base, so the place is clear.
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'new\nlines\nhelper()\ncheck()\nend\n'))).toMatchObject({ rebase_only: true });
+    // Two identical blocks at the old base: the new base changed the approved one, so the head's block is
+    // unique at the new base, but the approved edit's place was not clear: it cannot be told.
+    expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'new\nhelper()\ncheck()\n', 'helper()\ncheck()\nmid\nhelper()\ncheck()\n'))).toMatchObject({ rebase_only: null });
     // The same lines twice at the base: the approved edit may have moved to the other block, so it cannot be told.
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'helper()\ncheck()\nmid\nhelper()\ncheck()\n'))).toMatchObject({ rebase_only: null });
     // A file with CRLF line ends: the patch keeps the \r, and the place is still found.

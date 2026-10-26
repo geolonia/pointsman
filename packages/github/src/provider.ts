@@ -51,7 +51,7 @@ export const MAX_PUSH_PAGES = 5;
 const MAX_COMMITS = 250;
 /** The compare API lists at most this many files. */
 const COMPARE_MAX_FILES = 300;
-/** rebase_only: at most this many files the base moved are read to check where a change is (sameChange). */
+/** rebase_only: at most this many files the base moved are checked for where a change is, each read at both merge bases (sameChange). */
 const SAME_CHANGE_MAX_READS = 10;
 /** Check runs and statuses on the head: more fail `github_checks` (`error`). */
 const MAX_CHECKS = 300;
@@ -1200,17 +1200,27 @@ export class Snapshot {
       const touched = (y.files as Record<string, unknown>[]).filter((f) => moved.has(String(f.filename)) || (typeof f.previous_filename === 'string' && moved.has(f.previous_filename)));
       // Each such file is read once: beyond a few, it cannot be told (a bounded number of reads).
       if (touched.length > SAME_CHANGE_MAX_READS || touched.some((f) => typeof f.patch !== 'string')) return null;
-      const clear = await Promise.all(touched.map(async (f) => {
+      // The place of each hunk must be clear on both sides: the head's at its merge base, and the
+      // approved change's at its own (else an old base with two identical blocks lets the edit move
+      // to the other one once the new base changed the first).
+      const unique = async (f: Record<string, unknown>, at: string): Promise<boolean> => {
+        if (typeof f.patch !== 'string') return false;
         const path = typeof f.previous_filename === 'string' ? f.previous_filename : String(f.filename);
         let text: string | null;
         try {
-          text = await this.textAt(path, y.mergeBase);
+          text = await this.textAt(path, at);
         } catch (err) {
           // Not at the base (added there or here): the place cannot be checked. Any other failure fails the fact, as for the comparisons.
           if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return false;
           throw err;
         }
-        return text !== null && hunksBefore(f.patch as string).every((block) => occurrences(text!, block) === 1);
+        return text !== null && hunksBefore(f.patch).every((block) => occurrences(text!, block) === 1);
+      };
+      const approved = new Map((x.files as Record<string, unknown>[]).map((f) => [String(f.filename), f]));
+      const clear = await Promise.all(touched.flatMap((f) => {
+        const before = approved.get(String(f.filename));
+        // Not in the approved change: the signatures differ anyway.
+        return before ? [unique(f, y.mergeBase), unique(before, x.mergeBase)] : [];
       }));
       if (!clear.every(Boolean)) return null;
       loose = new Set(touched.map((f) => String(f.filename)));

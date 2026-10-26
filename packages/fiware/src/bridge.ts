@@ -640,6 +640,13 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
       if (!created.ok && created.status !== 409) {
         return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision entity: ${created.status}`, retry: retryable(created.status) };
       }
+      // A person resolved it since that first try: the existing entity still says pending.
+      if (created.status === 409 && resolvedOf(d)) {
+        const failed = await resolveDecisionEntity(decisionEntityId(d.decision_id), d, config);
+        if (failed) {
+          return { id: entity.id, decision: d.decision_id, error: `broker refused the Decision update: ${failed.status}`, retry: retryable(failed.status) };
+        }
+      }
       decisionRef = decisionEntityId(d.decision_id);
       // The replaced decision's check is no longer needed (Pointsman closed its review).
       if (d.replaces) {
@@ -1355,6 +1362,20 @@ export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, 
     ...(priority !== undefined && { priority: P(priority) }),
     dateCreated: P({ '@type': 'DateTime', '@value': d.created_at ?? now.toISOString() }),
   };
+}
+
+/**
+ * Marks an existing Decision entity resolved with the person's answer, as
+ * toDecisionEntity would have written it, only while it is still pending: a
+ * resolution already there (another writer, a work order) is left alone.
+ * Returns the failed response, or null.
+ */
+async function resolveDecisionEntity(id: string, d: Decision, config: BridgeConfig): Promise<Response | null> {
+  const seen = await brokerRequest('GET', id, config, undefined, undefined, DECISION_CONTEXT);
+  if (!seen.ok) return seen;
+  if (valueOf((await seen.json() as Entity).reviewStatus) !== 'pending') return null;
+  const res = await brokerRequest('POST', id, config, { '@context': [DECISION_CONTEXT, CORE_CONTEXT], ...reviewFields(d, 'decision') });
+  return updatedAll(res) ? null : res;
 }
 
 /** A Task for a decision a person has resolved already: completed, with their action, as handleReview completes one. */
