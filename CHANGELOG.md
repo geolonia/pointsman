@@ -12,6 +12,31 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.18.0 (2026-10-26)
+
+Hardening of the Actions, the decide request, profile validation, MCP logins, the GitHub connector, the FIWARE bridge, and the GitHub and CodeRabbit facts (#235, #236).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.18.0`. No migration, no new secrets, no new GitHub App permission or event.
+- MCP: people are recorded as `github:<account id>` instead of `github:<login>`. Everyone logs in again once (old grants are refused, and refreshing one fails with `invalid_grant`). Decisions recorded as `github:<login>` stay as they are and no longer count as the person's own in chains.
+- GitHub connector: the comment command now names the question: `/pointsman <answer> <commit> <question>`, where `<question>` is the first 8 characters of the decision id. The decision comment and the check run show the full command; a command without the question is refused with a note. Buttons are unchanged.
+- Decide: a `ref` with control characters, line separators or direction marks is refused with `400 invalid_request`.
+
+What changed:
+
+- **deploy-watch and triage Actions**: an answer for a test token (`test: true`) never counts. deploy-watch does not count its `cancel`; triage adds only the review label, and its `action` output is `test`.
+- **Decide request**: `ref` may not contain control characters, line separators or direction marks. `replay-profile.mjs` shows such characters in stored text (refs, answers, actions, rule text) escaped.
+- **Repeated decide request (`Idempotency-Key`)**: the answer has the review as it is now: `resolved` with `final_action` and `resolved_at` once a person answered, `superseded` once a newer decision replaced it.
+- **Profile validation**: the check for profiles that require each other in a circle visits each profile once (it was exponential with shared `requires`).
+- **MCP login**: the OAuth grant keeps the GitHub account id, and the decision owner is `github:<account id>`. The login still names the person in feedback (`by`).
+- **GitHub connector**: a comment command must name the question it answers, so it never answers a question that replaced the one the person read. An answer is taken only when the current settings (`answers.profiles`) still offer it. `copilot_review` on a pull request with more than 1,000 reviews is recorded as failed for the commit instead of being checked again every 10 minutes.
+- **FIWARE bridge**: a retry after a person resolved the review writes it as resolved with their action (the result, the Decision entity, also one left pending by the first try, and the Task). A retry of a superseded decision writes nothing.
+- **`github_release`**: a changed `package.json` is also read at the head, and must differ only in its top-level `"version"`; a dependency named `version` no longer counts.
+- **`github_checks`**: two required workflows with the same path from another repository or ref fail the fact (`error`). The same workflow required by more than one ruleset counts once.
+- **CodeRabbit `paid_for_head`**: an edited paid-review comment counts from its last edit, and only when its author made that edit.
+- **CodeRabbit `rebase_only`**: line numbers are compared too. In a file the base branch changed between the two commits, each approved hunk is followed through the base's own change and must land where the head's hunk is; a hunk on lines the base changed, or a base that is not ahead of the old one, gives no value.
+
 ## 0.17.2 (2026-10-26)
 
 FIWARE bridge: a decision a person still checks is always treated as pending (#232).
