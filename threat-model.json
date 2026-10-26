@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "b1ad3e62485255f47905f79dc708a552418bb505",
+  "commit": "9dec36e67788c15d320152ac3e2be91d065a4822",
   "date": "2026-10-26",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 543,
+    "documented": 546,
     "inferred": 0
   },
   "components": [
@@ -317,7 +317,7 @@
       "parameter": "ref",
       "attacker_controllable": "yes",
       "component": "engine-api",
-      "caller_must_enforce": "1–200 characters; it is logged and returned, so no secrets",
+      "caller_must_enforce": "1–200 characters; since pointsman#235 (v0.18.0) no control characters, line separators or direction marks (400 invalid_request); it is logged and returned, so no secrets",
       "provenance": "documented",
       "source": "openapi.yaml DecideRequest.ref"
     },
@@ -335,7 +335,7 @@
       "parameter": "Idempotency-Key",
       "attacker_controllable": "yes",
       "component": "engine-api",
-      "caller_must_enforce": "1–200 printable ASCII characters; keys are per client",
+      "caller_must_enforce": "1–200 printable ASCII characters; keys are per client; since pointsman#236 (v0.18.0) a repeat gets the review as it is now (resolved with final_action, or superseded)",
       "provenance": "documented",
       "source": "docs/decision-log.md \"Repeated requests\""
     },
@@ -992,7 +992,7 @@
       "parameter": "command-comment",
       "attacker_controllable": "yes",
       "component": "connector-github",
-      "caller_must_enforce": "none — only with answers.command; the whole comment one exact line (P-CONNECTOR-COMMAND-EXACT); D-COMMAND-SHORT-COMMIT for the 12 characters",
+      "caller_must_enforce": "none — only with answers.command; the whole comment one exact line, since pointsman#236 (v0.18.0) with the question (P-CONNECTOR-COMMAND-EXACT); D-COMMAND-SHORT-COMMIT for the 12 characters",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Answering in the pull request\", The command"
     },
@@ -1462,7 +1462,7 @@
       "property": "P-CHAIN-INPUTS-FROM-LOG",
       "violation_symptom": "x-authorization-bypass, x-unauthorized-action, info-leak",
       "severity_tier": "security",
-      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400",
+      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""
     },
@@ -1478,7 +1478,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
@@ -1486,7 +1486,7 @@
       "property": "P-FACT-LOOKUP-BOUNDED",
       "violation_symptom": "hang, unbounded-allocation",
       "severity_tier": "correctness",
-      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout",
+      "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout; since pointsman#235 (v0.18.0) github_release reads each changed package.json at the head (≤512 KB) only when the patches look version-only; since pointsman#236 (v0.18.0) rebase_only reads at most one more comparison and no file contents",
       "provenance": "documented",
       "source": "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"
     },
@@ -1558,7 +1558,7 @@
       "property": "P-GITHUB-REQUIRED-CHECKS",
       "violation_symptom": "x-check-bypass, wrong-output",
       "severity_tier": "security",
-      "conditions": "only the base branch's required checks and ruleset-required workflows on the head; app-tied checks only from that app; required workflows only through GitHub's run for the ruleset; disagreeing results give the stricter one; no required checks is not green; only FACTS_GITHUB_IGNORE_CHECK is left out",
+      "conditions": "only the base branch's required checks and ruleset-required workflows on the head; app-tied checks only from that app; required workflows only through GitHub's run for the ruleset; disagreeing results give the stricter one; no required checks is not green; only FACTS_GITHUB_IGNORE_CHECK is left out; since pointsman#235 (v0.18.0) two required workflows with the same path from another repository or ref fail the fact; the same workflow required twice counts once",
       "provenance": "documented",
       "source": "docs/profile-format.md \"One snapshot\": \"A workflow that a ruleset requires counts only through a run that GitHub started for the ruleset\""
     },
@@ -1582,7 +1582,7 @@
       "property": "P-CONNECTOR-ACTIONS-MAPPED",
       "violation_symptom": "x-unauthorized-write, wrong-output",
       "severity_tier": "security",
-      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit",
+      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit; since pointsman#236 (v0.18.0) copilot_review on a pull request with more than 1,000 reviews asks nothing and is recorded as failed for that commit",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""
     },
@@ -1630,7 +1630,7 @@
       "property": "P-CONNECTOR-ANSWER-BOUND",
       "violation_symptom": "x-toctou, x-replay, x-unauthorized-write",
       "severity_tier": "security",
-      "conditions": "since pointsman#221 and #222 (v0.16.0) an answer counts only for the question kept for the current head and profile (read back, not decided anew, while its basis holds): a click on the recorded check run of the current head with the open question's decision id; a command for the one open question on the named head, refused when its 12 characters start more than one of the last 100 heads; the pull request read again and the engine's question still pending; the engine resolves once; questions closed on a push, a close, a changed basis or a profile removed, and their buttons removed; the answer passes the action table",
+      "conditions": "since pointsman#221 and #222 (v0.16.0) an answer counts only for the question kept for the current head and profile (read back, not decided anew, while its basis holds): a click on the recorded check run of the current head with the open question's decision id; a command for an open question on the named head, refused when its 12 characters start more than one of the last 100 heads, and since pointsman#236 (v0.18.0) only for the question whose decision id starts with the 8 characters it names; since pointsman#236 (v0.18.0) only an answer the current answers.profiles still offer; the pull request read again and the engine's question still pending; the engine resolves once; questions closed on a push, a close, a changed basis or a profile removed, and their buttons removed; the answer passes the action table",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Asking a person\", \"What else is checked\""
     },
@@ -1638,7 +1638,7 @@
       "property": "P-CONNECTOR-COMMAND-EXACT",
       "violation_symptom": "x-command-injection, x-spoofing",
       "severity_tier": "security",
-      "conditions": "since pointsman#222 (v0.16.0) a comment answers only with answers.command, from issue_comment created by a User who wrote it, when the whole trimmed comment is one line /pointsman <action name> <12 hex characters of the head>; edits and deletions never; ambiguous commands (two open questions, or a prefix shared by two of the last 100 heads) refused; button identifiers are the connector's own codes; nothing from the comment written back",
+      "conditions": "since pointsman#222 (v0.16.0) a comment answers only with answers.command, from issue_comment created by a User who wrote it, when the whole trimmed comment is one line /pointsman <action name> <12 hex characters of the head>, since pointsman#236 (v0.18.0) followed by <8 hex characters of the question's decision id>; edits and deletions never; ambiguous commands (since pointsman#236 (v0.18.0) without the question, for a question no longer open, or matching two open questions; before, an answer two open questions offered; or a prefix shared by two of the last 100 heads) refused; button identifiers are the connector's own codes; nothing from the comment written back",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Answering in the pull request\", The command, The buttons"
     },
@@ -1686,7 +1686,7 @@
       "property": "P-OAUTH-ORG-MEMBERSHIP",
       "violation_symptom": "x-authentication-bypass",
       "severity_tier": "security",
-      "conditions": "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request",
+      "conditions": "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request; since pointsman#236 (v0.18.0) the grant keeps the GitHub account id, people are recorded as github:<account id>, and a grant without it is refused at /mcp and cannot be refreshed",
       "provenance": "documented",
       "source": "docs/mcp.md \"Only active members of the allowed GitHub organizations get in\""
     },
@@ -1710,7 +1710,7 @@
       "property": "P-BRIDGE-SAFE-TO-REPEAT",
       "violation_symptom": "wrong-output",
       "severity_tier": "correctness",
-      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions",
+      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions; since pointsman#236 (v0.18.0) a retry that gets the review resolved writes it as resolved with the person's action (result, Decision entity also when left pending, Task completed), and a retry of a superseded decision writes nothing",
       "provenance": "documented",
       "source": "bridge/README.md \"Safe to repeat\""
     },
@@ -1718,7 +1718,7 @@
       "property": "P-TRIAGE-ALLOWLIST",
       "violation_symptom": "x-command-injection, x-unlisted-label",
       "severity_tier": "security",
-      "conditions": "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary",
+      "conditions": "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary; since pointsman#235 (v0.18.0) not for an answer for a test token, and the action output is test",
       "provenance": "documented",
       "source": "actions/triage/README.md \"Only labels you list in labels are ever applied\""
     },
@@ -1726,7 +1726,7 @@
       "property": "P-WATCH-FAILSAFE",
       "violation_symptom": "x-unwarranted-cancel",
       "severity_tier": "correctness",
-      "conditions": "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels",
+      "conditions": "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels; since pointsman#235 (v0.18.0) a cancel for a test token does not count",
       "provenance": "documented",
       "source": "actions/deploy-watch/README.md \"Cancel only when sure\""
     }
@@ -1811,7 +1811,7 @@
     },
     {
       "property": "D-REVIEWER-IDENTITY",
-      "reason": "by, resolved_by and reviewedBy are client-asserted; the client's token is authenticated, not the person; MCP people are the exception; since pointsman#222 (v0.16.0) the GitHub connector checks the person before it sends github:<login> (<id>), but the engine records it as the connector's claim; basis: stated",
+      "reason": "by, resolved_by and reviewedBy are client-asserted; the client's token is authenticated, not the person; MCP people are the exception; since pointsman#222 (v0.16.0) the GitHub connector checks the person before it sends github:<login> (<id>), but the engine records it as the connector's claim; basis: stated; since pointsman#236 (v0.18.0) MCP people are recorded as github:<account id> (before, github:<login>)",
       "false_friend": true,
       "provenance": "documented",
       "source": "migrations/0001_decisions.sql comment \"who corrected it, as given by the client\"; bridge/README.md \"the bridge takes reviewedBy as written\""
@@ -1937,7 +1937,7 @@
     },
     {
       "property": "D-COMMAND-SHORT-COMMIT",
-      "reason": "since pointsman#222 (v0.16.0) a command names the head by its first 12 hex characters and is refused when they start more than one of the pull request's last 100 heads; a second commit with the same 12 characters (about 2^48 tries) still binds when the meant commit is not in that list (pushed out by 100 later heads, within one burst of events, or before answers were on); buttons not affected; basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change)",
+      "reason": "since pointsman#222 (v0.16.0) a command names the head by its first 12 hex characters and is refused when they start more than one of the pull request's last 100 heads; a second commit with the same 12 characters (about 2^48 tries) still binds when the meant commit is not in that list (pushed out by 100 later heads, within one burst of events, or before answers were on); buttons not affected; basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change); since pointsman#236 (v0.18.0) the command also names the question by 8 characters of its random decision id, so it binds to the other commit only when that question's id starts the same",
       "false_friend": true,
       "provenance": "documented",
       "source": "docs/github-connector.md \"Answering in the pull request\", The command"
@@ -2074,8 +2074,8 @@
     "one token per client limited to its profiles; --profiles '*' only for administration; store as a secret; revoke on a leak",
     "rate-limit and budget at the edge and in the AI Gateway; the engine does not",
     "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default",
-    "never act on a decision marked test: true; keep test tokens out of production clients",
-    "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and since pointsman#232 (v0.17.2) by the FIWARE bridge on every route, whatever its reviewActions, which only add actions to check (up to v0.17.1 a route whose reviewActions left out a people_check action marked it as taken; a broker consumer must read reviewStatus too); added with the re-binding to v0.17.1 (Q48)",
+    "never act on a decision marked test: true; keep test tokens out of production clients; since pointsman#235 (v0.18.0) the triage and deploy-watch Actions never act on an answer for a test token",
+    "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and since pointsman#232 (v0.17.2) by the FIWARE bridge on every route, whatever its reviewActions, which only add actions to check (up to v0.17.1 a route whose reviewActions left out a people_check action marked it as taken; a broker consumer must read reviewStatus too); since pointsman#236 (v0.18.0) a repeated request may get the review resolved, then act on final_action, or superseded, then act on nothing, and the bridge writes a resolved retry as resolved; added with the re-binding to v0.17.1 (Q48)",
     "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
     "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept",
@@ -2098,7 +2098,7 @@
     "map copilot_review only where the organization allows Copilot code review for every repository in repos; limit reviews with skip_drafts and a rule on github_copilot; keep a Copilot budget in the organization; check the first request when switching it on",
     "set bot_id in a github_app_approval fact",
     "send privileged, unparsed and local_unresolved workflow changes to a person; never approve on zero counts alone",
-    "pair github_release with github_pr; name exact version and changelog files; no files that run in version_text_files",
+    "pair github_release with github_pr; name exact version and changelog files; no files that run in version_text_files; since pointsman#235 (v0.18.0) list in version_files only files whose version lines are the package's own",
     "accept that check runs and the comment show decisions and AI answers to the pull request's readers, or do not ask that profile there",
     "choose connectors for the engine Worker only after review; their own token, never a test token; their secrets as engine Worker secrets; edge limits on /connectors/; write keys only in an own Worker",
     "run tokens.mjs with --remote only on purpose and keep the printed token out of history and logs; deploy only through the template's workflows"
@@ -2203,6 +2203,11 @@
       "pattern": "giving the GitHub connector a test token, so it acts on decisions that are not logged",
       "why_unsafe": "Giving the GitHub connector a test token: since `v0.13.1` it acts on none of its decisions (each check run says `test decision: nothing done` and its approvals are withdrawn), so the deployment silently does nothing (`P-CONNECTOR-ANSWER-CHECKED`, `R-CONNECTOR-APPS`).",
       "instead": "its own normal token limited to its profiles, or the internal call"
+    },
+    {
+      "pattern": "giving the triage or deploy-watch Action a test token: since pointsman#235 (v0.18.0) neither acts on its answers, so the workflow silently does less",
+      "why_unsafe": "Giving the triage or deploy-watch Action a test token: since pointsman#235 (`v0.18.0`) neither acts on its answers (triage adds only the review label and sets `action` to `test`; deploy-watch never counts its `cancel`), so the workflow silently does less (`R-IGNORE-TEST-DECISIONS`).",
+      "instead": "a live token limited to the profile"
     },
     {
       "pattern": "one GitHub App for the facts and the connector, so the Worker that sends pull-request text to a model holds a key that can write",
