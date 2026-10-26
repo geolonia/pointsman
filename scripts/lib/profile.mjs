@@ -158,11 +158,16 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
 
 /** The first circle of requires through `profile`, as a list of ids, or null. */
 function requiresCycle(profile, profiles) {
+  // Each profile is visited once: one that did not lead back the first time
+  // will not the next time, and shared requires would otherwise be walked
+  // once per path (exponential in the depth).
+  const seen = new Set([profile.id]);
   const visit = (id, path) => {
     const p = id === profile.id ? profile : profiles.get(id);
     for (const r of p?.requires ?? []) {
       if (r.profile === profile.id) return [...path, r.profile];
-      if (path.includes(r.profile) || r.profile === id) continue;
+      if (seen.has(r.profile)) continue;
+      seen.add(r.profile);
       const found = visit(r.profile, [...path, r.profile]);
       if (found) return found;
     }

@@ -126,6 +126,9 @@ if (values.json) {
 const explained = explainProfile(profile, values.lang, Object.fromEntries(others));
 const ruleText = (rule) => (rule === null ? explained.default : explained.rules[rule]?.text ?? `rule ${rule}`);
 const day = (iso) => iso?.slice(0, 16).replace('T', ' ');
+// Stored text (refs, answers, actions) is shown with control characters made
+// visible, so it cannot add lines to the report or drive the terminal.
+const shown = (text) => String(text).replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 const ja = values.lang === 'ja';
 const out = [];
 out.push(ja
@@ -137,7 +140,7 @@ if (result.inexact || result.skipped) {
     : `  Not replayed: ${result.inexact} (a value of an earlier decision was not kept), ${result.skipped} (an answer is not in the log).`);
 }
 out.push(ja ? `  アクションが変わる判定：${result.changed} 件。` : `  ${result.changed} would get another action.`);
-for (const t of result.transitions) out.push(`    ${t.from} → ${t.to}: ${t.count}`);
+for (const t of result.transitions) out.push(`    ${shown(t.from)} → ${shown(t.to)}: ${t.count}`);
 out.push(ja
   ? `  人に回る判定：今は ${result.people.before} 件、新しいルールでは ${result.people.after} 件。`
   : `  To a person: ${result.people.before} now, ${result.people.after} with the new rules.`);
@@ -149,9 +152,9 @@ if (result.people.checked) {
 if (result.changes.length) {
   out.push(ja ? '  変わる判定（新しい順）：' : '  Changed decisions (newest first):');
   for (const c of result.changes) {
-    const extra = [c.ref, c.person !== undefined && (ja ? `人の答え：${c.person}` : `person: ${c.person}`)].filter(Boolean).join(', ');
-    out.push(`    ${day(c.created_at)} ${c.before.action} → ${c.after.action}${extra ? ` (${extra})` : ''}`);
-    out.push(`      ${ruleText(c.after.rule)}`);
+    const extra = [c.ref && shown(c.ref), c.person !== undefined && (ja ? `人の答え：${shown(c.person)}` : `person: ${shown(c.person)}`)].filter(Boolean).join(', ');
+    out.push(`    ${shown(day(c.created_at))} ${shown(c.before.action)} → ${shown(c.after.action)}${extra ? ` (${extra})` : ''}`);
+    out.push(`      ${shown(ruleText(c.after.rule))}`);
   }
   if (result.changed > result.changes.length) {
     out.push(ja ? `    ほか ${result.changed - result.changes.length} 件（--json でも最大 50 件）` : `    and ${result.changed - result.changes.length} more (at most 50 are listed)`);

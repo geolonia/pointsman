@@ -17,9 +17,10 @@ How it decides:
    (default 2) `cancel` answers in a row; any other answer starts the count
    again, and so does a `cancel` that a person still checks (`cancel` listed
    in the profile's `people_check`: the answer has
-   `review: {status: pending}`). Then the command's process group is
-   stopped and, for stacks in
-   `UPDATE_IN_PROGRESS`, `aws cloudformation cancel-update-stack` runs.
+   `review: {status: pending}`). A `cancel` for a test token
+   (`test: true`) never counts: use a live token here. Then the command's
+   process group is stopped and, for stacks in `UPDATE_IN_PROGRESS`,
+   `aws cloudformation cancel-update-stack` runs.
 
 If Pointsman cannot be reached, nothing is cancelled; the deploy keeps
 running. The step's exit code is the command's, or 1 after a cancel.

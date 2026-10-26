@@ -67,11 +67,12 @@ export function parseLabelMap(text) {
 /**
  * Labels for a decision: only mapped answers, only for action "auto", and
  * not while a person checks the decision (review pending, the profile's
- * people_check). When nothing maps (for example an answer missing from the
- * allow-list), the review label is added, so no issue is left without a label.
+ * people_check), and never for a test token's answer, which skips that check.
+ * When nothing maps (for example an answer missing from the allow-list), the
+ * review label is added, so no issue is left without a label.
  */
 export function labelsFor(decision, map, reviewLabel) {
-  if (decision.action !== 'auto' || decision.review?.status === 'pending') return [reviewLabel];
+  if (decision.action !== 'auto' || decision.review?.status === 'pending' || decision.test === true) return [reviewLabel];
   const answers = decision.answers !== null && typeof decision.answers === 'object' ? decision.answers : {};
   const labels = [];
   for (const [question, answer] of Object.entries(answers)) {
@@ -152,7 +153,8 @@ export async function run() {
   const labels = labelsFor(decision, map, reviewLabel);
   await addLabels(labels, github);
   setOutput('decision-id', decision.decision_id);
-  setOutput('action', decision.action);
+  // A test token's answer is not acted on: a later step that reads "auto" must not act on it either.
+  setOutput('action', decision.test === true ? 'test' : decision.action);
 
   const rows = Object.entries(decision.answers ?? {})
     .map(([q, a]) => `| ${q} | ${String(a?.value)} | ${Number(a?.p).toFixed(2)} |`)

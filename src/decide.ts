@@ -22,6 +22,8 @@ import type { Decision, Profile } from './types';
 import { ENGINE_VERSION } from './version';
 
 const MAX_REF_LENGTH = 200;
+// Control characters, and the line separators and direction marks that can reorder or split a printed line.
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/;
 
 type Body = { state: unknown; ref?: string; callback_url?: string; decisions?: Record<string, string> };
 
@@ -42,6 +44,8 @@ function parseBody(body: unknown): Body | string {
   if (b.ref !== undefined && (typeof b.ref !== 'string' || b.ref.length === 0 || b.ref.length > MAX_REF_LENGTH)) {
     return `"ref" must be a string of 1 to ${MAX_REF_LENGTH} characters`;
   }
+  // A ref is an id: no line breaks or terminal escape codes in reports that print it.
+  if (typeof b.ref === 'string' && CONTROL.test(b.ref)) return '"ref" must not contain control characters';
   if (b.decisions !== undefined) {
     const problem = decisionsError(b.decisions);
     if (problem) return problem;

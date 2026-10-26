@@ -29,7 +29,7 @@ outputs:
   decision-id:
     description: The Pointsman decision id.
   action:
-    description: The action Pointsman returned (auto, review, ...), or "error".
+    description: The action Pointsman returned (auto, review, ...), "test" for an answer for a test token, or "error".
 runs:
   using: node24
   main: triage.mjs

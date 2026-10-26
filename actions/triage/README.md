@@ -9,6 +9,8 @@ and labels it:
 - A person checks the decision first (`auto` listed in the profile's
   `people_check`, so the answer has `review: {status: pending}`): only the
   review label, not the mapped labels.
+- The answer is for a test token (`test: true`, no person's check): only the
+  review label. Use a live token here.
 - Pointsman cannot be reached or fails: the review label, and the step fails
   so the problem is visible.
 
@@ -66,7 +68,7 @@ jobs:
 | Output | Meaning |
 |---|---|
 | `decision-id` | The Pointsman decision id (for feedback: `POST /v1/decisions/{id}/feedback`) |
-| `action` | `auto`, `review`, another profile action, or `error` |
+| `action` | `auto`, `review`, another profile action, `test` (an answer for a test token, not acted on), or `error` |
 
 The job summary shows the answers, their probabilities and the labels added.
 GitHub creates labels that do not exist yet.

@@ -28,7 +28,7 @@ import {
 import { APP_SLUG as APP_SLUG_PATTERN, GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
-import { releaseFacts } from './release';
+import { manifestsOf, NOT_RELEASE, onlyVersionMoves, releaseFacts, type ReleaseFacts } from './release';
 import { ageInDays, bumpFacts, devOnlyInRepository, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
 import { publishTimes, REGISTRY_TIMEOUT_MS } from './npm';
 import {
@@ -431,22 +431,37 @@ function treeFiles(v: unknown): Map<string, TreeFile> {
 
 /** A required check: its name, and the app that must report it (null: any). */
 type Required = { context: string; app: number | null };
-/** A workflow that a ruleset requires: its path, and the repository it comes from. */
-type RequiredWorkflow = { path: string };
+/** A workflow that a ruleset requires: its path, the repository it comes from, and the ref or commit it runs at. */
+type RequiredWorkflow = { path: string; repository: number | null; ref: string };
 
+/**
+ * The workflows the rulesets require, each once. A workflow run names its
+ * file by path only (workflowRuns), so two required workflows with the same
+ * path from another repository or ref could not be told apart: one run would
+ * count for both. That fails the fact instead.
+ */
 function requiredWorkflows(v: unknown): RequiredWorkflow[] {
   if (!Array.isArray(v)) throw new FactError('GitHub rules: unexpected answer');
-  const out: RequiredWorkflow[] = [];
+  const out = new Map<string, RequiredWorkflow>();
   for (const rule of v) {
     if (!isObject(rule) || rule.type !== 'workflows') continue;
     const workflows = isObject(rule.parameters) ? rule.parameters.workflows : undefined;
     if (!Array.isArray(workflows)) throw new FactError('GitHub rules: unexpected answer');
     for (const w of workflows) {
       if (!isObject(w) || typeof w.path !== 'string') throw new FactError('GitHub rules: unexpected answer');
-      out.push({ path: w.path });
+      const found: RequiredWorkflow = {
+        path: w.path,
+        repository: typeof w.repository_id === 'number' ? w.repository_id : null,
+        ref: typeof w.sha === 'string' ? w.sha : typeof w.ref === 'string' ? w.ref : '',
+      };
+      const same = out.get(found.path);
+      if (same && (same.repository !== found.repository || same.ref !== found.ref)) {
+        throw new FactError(`GitHub rules: two required workflows have the path ${found.path}`);
+      }
+      out.set(found.path, found);
     }
   }
-  return out;
+  return [...out.values()];
 }
 
 function requiredFromRules(v: unknown): Required[] {
@@ -689,9 +704,17 @@ export class Snapshot {
     return (await this.changes()).map((c) => c.names);
   }
 
-  /** The changed files with their status and patch (null when GitHub gives none), for github_release. */
-  async releaseFiles(): Promise<Change[]> {
-    return this.changes();
+  /**
+   * github_release (release.ts): from the changed files and their patches,
+   * then, for a version-only change, each changed package.json at the head.
+   */
+  async release(changelogs: string[], versionFiles: string[], textFiles: string[]): Promise<ReleaseFacts> {
+    const files = await this.changes();
+    const facts = releaseFacts(files, changelogs, versionFiles, textFiles);
+    const manifests = manifestsOf(files);
+    if (!facts.version_only || manifests.length === 0) return facts;
+    const heads = new Map(await Promise.all(manifests.map(async (path) => [path, await this.textAtHead(path)] as const)));
+    return onlyVersionMoves(files, heads, facts.from, facts.to) ? facts : NOT_RELEASE;
   }
 
   /**
@@ -1277,7 +1300,7 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
       }
       case 'github_release': {
         if (!query.versionFiles) throw new FactError('no version files');
-        return { values: { ...releaseFacts(await s.releaseFiles(), query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
+        return { values: { ...await s.release(query.changelogs ?? RELEASE_CHANGELOGS, query.versionFiles, query.textFiles ?? []) }, source };
       }
       case 'github_bump': {
         const values = await s.bump(this.now());

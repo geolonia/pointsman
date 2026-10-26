@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { lookupFacts } from '../../src/facts';
-import { GitHubFactProvider, levelOf, releaseFacts, TokenAuth, type ReleaseFile } from '@pointsman/github';
+import { GitHubFactProvider, levelOf, onlyVersionMoves, releaseFacts, TokenAuth, type ReleaseFile } from '@pointsman/github';
 import type { FactSpec } from '../../src/types';
 import release080 from './fixtures/release-0.8.0-files.json';
 
@@ -108,22 +108,49 @@ describe('github_release', () => {
       base: { ref: 'main', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } },
       user: { login: 'alice', type: 'User' }, additions: 4, deletions: 1, changed_files: 2, commits: 1,
     };
-    const listed = [
-      { filename: 'package.json', status: 'modified', patch: pkg.patch },
-      { filename: 'CHANGELOG.md', status: 'modified', patch: changelog.patch },
-    ];
-    const fetchFn = (async (input: RequestInfo | URL) => {
-      const url = new URL(String(input));
-      if (url.pathname === PR) return Response.json(pr);
-      if (url.pathname === `${PR}/files`) return Response.json(listed);
-      if (url.pathname === `${PR}/commits`) return Response.json([{ sha: HEAD, commit: { verification: { verified: true } } }]);
-      return new Response('{"message":"Not Found"}', { status: 404 });
-    }) as typeof fetch;
-    const specs: FactSpec[] = [{ name: 'rel', type: 'github_release', at: '$.pull_request', version_files: ['package.json'] } as FactSpec];
-    const state = { pull_request: { repo: 'octo-org/demo', number: 7, head: HEAD } };
-    const facts = await lookupFacts(specs, state, new GitHubFactProvider({ auth: new TokenAuth(`test-${crypto.randomUUID()}`), fetch: fetchFn }));
-    const rel = facts.rel!;
-    if (rel.missing) throw new Error(`missing: ${rel.reason}`);
-    expect(rel.values).toEqual({ version_only: true, from: '0.8.0', to: '0.9.0', level: 'minor' });
+    const lookup = async (patch: string, manifest: string) => {
+      const listed = [
+        { filename: 'package.json', status: 'modified', patch },
+        { filename: 'CHANGELOG.md', status: 'modified', patch: changelog.patch },
+      ];
+      const fetchFn = (async (input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        if (url.pathname === PR) return Response.json(pr);
+        if (url.pathname === `${PR}/files`) return Response.json(listed);
+        if (url.pathname === `${PR}/commits`) return Response.json([{ sha: HEAD, commit: { verification: { verified: true } } }]);
+        if (url.pathname === '/repos/octo-org/demo/contents/package.json' && url.searchParams.get('ref') === HEAD) {
+          return Response.json({ type: 'file', encoding: 'base64', size: manifest.length, content: btoa(manifest) });
+        }
+        return new Response('{"message":"Not Found"}', { status: 404 });
+      }) as typeof fetch;
+      const specs: FactSpec[] = [{ name: 'rel', type: 'github_release', at: '$.pull_request', version_files: ['package.json'] } as FactSpec];
+      const state = { pull_request: { repo: 'octo-org/demo', number: 7, head: HEAD } };
+      const facts = await lookupFacts(specs, state, new GitHubFactProvider({ auth: new TokenAuth(`test-${crypto.randomUUID()}`), fetch: fetchFn }));
+      const rel = facts.rel!;
+      if (rel.missing) throw new Error(`missing: ${rel.reason}`);
+      return rel.values;
+    };
+    expect(await lookup(pkg.patch!, '{\n  "version": "0.9.0",\n  "private": true\n}\n')).toEqual({ version_only: true, from: '0.8.0', to: '0.9.0', level: 'minor' });
+    // A dependency named "version" moves; the package's own version does not.
+    const dependency = '{\n  "version": "0.9.0",\n  "dependencies": {\n    "version": "0.9.0",\n    "left-pad": "1.3.0"\n  }\n}\n';
+    const nested = '@@ -3,4 +3,4 @@\n   "dependencies": {\n-    "version": "0.8.0",\n+    "version": "0.9.0",\n     "left-pad": "1.3.0"';
+    expect(await lookup(nested, dependency)).toEqual({ version_only: false, from: '', to: '', level: 'none' });
+  });
+
+  it('a package.json at the head must differ only in its own version', () => {
+    const one = (patch: string) => [edit('package.json', patch)];
+    const head = '{\n  "version": "0.9.0",\n  "private": true\n}';
+    expect(onlyVersionMoves(one(pkg.patch!), new Map([['package.json', head]]), '0.8.0', '0.9.0')).toBe(true);
+    // Not read, or not text: not a release.
+    expect(onlyVersionMoves(one(pkg.patch!), new Map(), '0.8.0', '0.9.0')).toBe(false);
+    expect(onlyVersionMoves(one(pkg.patch!), new Map([['package.json', null]]), '0.8.0', '0.9.0')).toBe(false);
+    // Written so that the nested line looks like the top-level one: the line occurs twice, so the place is in doubt.
+    const flat = '{\n"version": "0.9.0",\n"dependencies": {\n"version": "0.9.0"\n}\n}';
+    expect(onlyVersionMoves(one('@@ -4 +4 @@\n-"version": "0.8.0"\n+"version": "0.9.0"'), new Map([['package.json', flat]]), '0.8.0', '0.9.0')).toBe(false);
+    // The patch does not match the head: not a release.
+    expect(onlyVersionMoves(one(pkg.patch!), new Map([['package.json', '{\n  "version": "1.0.0"\n}']]), '0.8.0', '0.9.0')).toBe(false);
+    expect(onlyVersionMoves(one(pkg.patch!), new Map([['package.json', 'not json']]), '0.8.0', '0.9.0')).toBe(false);
+    // Other files are not read.
+    expect(onlyVersionMoves([changelog], new Map(), '0.8.0', '0.9.0')).toBe(true);
   });
 });

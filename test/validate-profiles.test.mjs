@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { parseProfile, validateProfileFile } from '../scripts/lib/profile.mjs';
+import { parseProfile, validateProfile, validateProfileFile } from '../scripts/lib/profile.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const examples = join(root, 'examples', 'profiles');
@@ -171,6 +171,32 @@ test('a required profile that is not valid fails the profile built on it, withou
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /FAIL .*final\.yaml[\s\S]*"first" is not a valid profile/);
   assert.doesNotMatch(r.stderr, /TypeError/);
+});
+
+// p0..p30 and q0..q30, each requiring the next p and the next q: the number
+// of paths doubles per layer, so a walk of every path does not finish.
+function ladder(layers, back = false) {
+  const set = new Map();
+  for (let i = 0; i <= layers; i += 1) {
+    for (const x of ['p', 'q']) {
+      const next = i < layers ? `requires:\n  - { name: p, profile: p${i + 1} }\n  - { name: q, profile: q${i + 1} }\n`
+        : back && x === 'q' ? 'requires:\n  - { name: p, profile: p0 }\n' : '';
+      const questions = next ? 'questions: []\n' : 'questions:\n  - { name: danger, type: noul, instructions: Danger? }\n';
+      set.set(`${x}${i}`, parseProfile(`${head(`${x}${i}`)}${next}${questions}policy:\n  default: review\n`, `${x}${i}.yaml`));
+    }
+  }
+  return set;
+}
+
+test('shared requires are checked for a circle in linear time', () => {
+  const set = ladder(30);
+  const started = Date.now();
+  for (const p of set.values()) assert.deepEqual(validateProfile(p, { profiles: set }), []);
+  assert.ok(Date.now() - started < 10_000, `took ${Date.now() - started} ms`);
+  const circle = ladder(30, true);
+  const errors = validateProfile(circle.get('p0'), { profiles: circle });
+  assert.equal(errors.length, 1, errors.join('\n'));
+  assert.match(errors[0], /require each other in a circle: p0 → .* → q30 → p0$/);
 });
 
 test('profiles that require each other in a circle fail', (t) => {

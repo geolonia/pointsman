@@ -539,6 +539,15 @@ describe('required checks (github_checks)', () => {
     expect(await values('ci', withRuns())).toMatchObject({ green: false, pending: true });
     // A workflow of the repository at the same path does not stand in for the required one.
     expect(await values('ci', withRuns(wfRun('completed', 'success', false)))).toMatchObject({ green: false, pending: true });
+    // Two required workflows with the same path from another repository or ref: one run cannot
+    // stand for both, so the fact fails. The same workflow required twice counts once.
+    const twice = (other: Record<string, unknown>) => routes({
+      [`${REPO}/rules/branches/main`]: () => [...wfRule, { type: 'workflows', parameters: { workflows: [{ path: '.github/workflows/security.yml', ...other }] } }],
+      [`${REPO}/actions/runs`]: () => ({ total_count: 1, workflow_runs: [wfRun('completed', 'success')] }),
+    });
+    expect(await reasonOf('ci', twice({ ref: 'refs/tags/v1', repository_id: 43 }))).toEqual({ missing: true, reason: 'error' });
+    expect(await reasonOf('ci', twice({ ref: 'refs/heads/main', repository_id: 42 }))).toEqual({ missing: true, reason: 'error' });
+    expect(await values('ci', twice({ ref: 'refs/tags/v1', repository_id: 42 }))).toEqual({ required: 2, green: true, pending: false, failed: false });
     // Without a workflows rule, workflow runs are not read.
     const { server } = await facts(routes(), spec('ci'));
     expect(server.count(`${REPO}/actions/runs`)).toBe(0);
