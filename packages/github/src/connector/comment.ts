@@ -15,6 +15,16 @@
 import { actionOf, type Decision } from './engine.ts';
 import type { SignalColour, SignalSpec } from './settings.ts';
 
+/**
+ * The comment command that answers the question `decisionId` about `head`:
+ * the first 12 characters of the commit and the first 8 of the decision id
+ * (webhook.ts COMMAND). Naming the question means a command never answers
+ * a question that replaced the one the person read.
+ */
+export function commandFor(answer: string, head: string, decisionId: string): string {
+  return `/pointsman ${answer} ${head.slice(0, 12)} ${decisionId.slice(0, 8)}`;
+}
+
 /** The first line of the decision comment: how the connector finds it again (with its own bot account). */
 export const COMMENT_MARKER = '<!-- pointsman decision-comment -->';
 
@@ -352,7 +362,7 @@ export function commentBody(decisions: Decision[], signals: Record<string, Recor
   const switches = decisions.map((d) => `<details><summary><code>${d.profile}</code>: why <code>${d.action}</code>${d.review?.status === 'resolved' ? `; ${answeredBy(d) ? `answered by ${answeredBy(d)}:` : 'a person answered'} <code>${actionOf(d)}</code>` : ''}</summary>\n\n${fence(switchArt(d, head))}\n\n</details>`);
   // An open question that the command may answer: its answers, as fixed text (action names, checked in the settings).
   const asks = decisions.filter((d) => d.review?.status === 'pending' && Object.hasOwn(commands, d.profile))
-    .map((d) => `<code>${d.profile}</code> waits for a person about commit ${head.slice(0, 12)}: answer with a comment of one line, ${commands[d.profile]!.map((a) => `\`/pointsman ${a} ${head.slice(0, 12)}\``).join(' or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`);
+    .map((d) => `<code>${d.profile}</code> waits for a person about commit ${head.slice(0, 12)}: answer with a comment of one line, ${commands[d.profile]!.map((a) => `\`${commandFor(a, head, d.decision_id)}\``).join(' or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`);
   return [
     COMMENT_MARKER,
     '### 🚦 Pointsman',

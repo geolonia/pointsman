@@ -271,8 +271,8 @@ export class AnswerDesk {
   /**
    * The open question an answer is about, from the connector's own records:
    * a button by its check run (its id, head and decision) and identifier; a
-   * command by the head it names and the one open question on that head that
-   * offers its answer. Nothing is written on GitHub here: an answer that is
+   * command by the head and the question (the start of its decision id) it
+   * names, which must be open and offer its answer. Nothing is written on GitHub here: an answer that is
    * not bound gives the notes to write, if any (once the caps allow them), or
    * undefined (ignored); the reason is logged.
    */
@@ -311,13 +311,22 @@ export class AnswerDesk {
       console.error(`github connector: ${where}: a command for commit ${event.head}, a prefix of more than one commit of this pull request; refused`);
       return open.length === 0 ? undefined : { notes: open.map(([profile]) => ({ profile, head: asked.head, text: 'the command names a commit prefix used by more than one commit of this pull request; answer with a button' })) };
     }
-    if (open.length !== 1) {
-      // None: not an answer to anything (a command for an answered or closed question too); quiet. Several: which one is not known.
-      console.error(`github connector: ${where}: a command that matches ${open.length === 0 ? 'no open question' : 'more than one open question'}; ignored`);
-      if (open.length === 0) return undefined;
-      return { notes: open.map(([profile]) => ({ profile, head: asked.head, text: 'the command matches more than one open question; answer with a button' })) };
+    // None: not an answer to anything (a command for an answered or closed question too); quiet.
+    if (open.length === 0) {
+      console.error(`github connector: ${where}: a command that matches no open question; ignored`);
+      return undefined;
     }
-    const [profile, kept] = open[0]!;
+    // The question it names: the one the person read. A question that replaced it (the
+    // same head, decided again) is not answered by it, whatever answers both offer.
+    const named = event.question === undefined ? [] : open.filter(([, k]) => k.decision.decision_id.startsWith(event.question!));
+    if (named.length !== 1) {
+      const text = event.question === undefined
+        ? 'the command names no question; copy the command from the open question'
+        : named.length === 0 ? 'the command names a question that is no longer open; copy the command from the open question' : 'the command matches more than one open question; answer with a button';
+      console.error(`github connector: ${where}: a command not taken: ${text}`);
+      return { notes: open.map(([profile]) => ({ profile, head: asked.head, text })) };
+    }
+    const [profile, kept] = named[0]!;
     return { bound: { profile, head: asked.head, decisionId: kept.decision.decision_id, answer: event.answer } };
   }
 
