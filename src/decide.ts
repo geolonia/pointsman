@@ -22,7 +22,8 @@ import type { Decision, Profile } from './types';
 import { ENGINE_VERSION } from './version';
 
 const MAX_REF_LENGTH = 200;
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+// Control characters, and the line separators and direction marks that can reorder or split a printed line.
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/;
 
 type Body = { state: unknown; ref?: string; callback_url?: string; decisions?: Record<string, string> };
 

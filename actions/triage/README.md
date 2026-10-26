@@ -68,7 +68,7 @@ jobs:
 | Output | Meaning |
 |---|---|
 | `decision-id` | The Pointsman decision id (for feedback: `POST /v1/decisions/{id}/feedback`) |
-| `action` | `auto`, `review`, another profile action, or `error` |
+| `action` | `auto`, `review`, another profile action, `test` (an answer for a test token, not acted on), or `error` |
 
 The job summary shows the answers, their probabilities and the labels added.
 GitHub creates labels that do not exist yet.

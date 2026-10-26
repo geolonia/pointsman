@@ -156,6 +156,8 @@ test('auto for a test token: only the review label', async (t) => {
   const r = await runAction(t, { url: s.url, event: issueEvent() });
   assert.equal(r.code, 0, r.stdout);
   assert.deepEqual(s.seen.labels.map((l) => l.body.labels), [['needs-triage']]);
+  // A later step keyed on the output does not see "auto".
+  assert.match(r.output, /^action=test$/m);
 });
 
 test('a custom action is treated like review', async (t) => {

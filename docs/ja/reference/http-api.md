@@ -262,7 +262,7 @@ the profile and every profile it requires. Not for test tokens.
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | `state` | string \| object \| array | はい | What the model decides about: free text, or any JSON object or array. When the profile has an `input` mapping, this is the raw client payload the mapping reads from. |
-| `ref` | string | いいえ | The client's reference for this decision, for example an issue id. No control characters. |
+| `ref` | string | いいえ | The client's reference for this decision, for example an issue id. No control characters, line separators or direction marks. |
 | `callback_url` | string | いいえ | Where to send the final answer after a human review (https only). |
 | `decisions` | object | いいえ | For a profile with `requires` (docs/decision-chains.md): the ids of the earlier decisions, by the names in `requires`. They are read from the decision log and must be of the named profile, in the token's scope, with this request's `ref` (then required) and from the same client; every other case gives the same 400. An optional one that was made for an older decision than one given here is left out (it is missing from `requires` in the answer). Not for test tokens. |
 

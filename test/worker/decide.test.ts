@@ -101,6 +101,7 @@ describe('POST /v1/decide/{profile}', () => {
     ['a too long ref', { state: issue, ref: 'x'.repeat(201) }, false],
     ['a ref with a line break', { state: issue, ref: 'gh#1\n  0 would get another action.' }, false],
     ['a ref with a terminal escape code', { state: issue, ref: 'gh#1\u001b[2K' }, false],
+    ['a ref with a direction override', { state: issue, ref: 'gh#1\u202e' }, false],
     ['an http callback_url', { state: issue, callback_url: 'http://example.com/cb' }, false],
     ['an invalid callback_url', { state: issue, callback_url: 'not a url' }, false],
     ['a state without any mapped input field', { state: { other: 1 } }, false],

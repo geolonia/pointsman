@@ -153,7 +153,8 @@ export async function run() {
   const labels = labelsFor(decision, map, reviewLabel);
   await addLabels(labels, github);
   setOutput('decision-id', decision.decision_id);
-  setOutput('action', decision.action);
+  // A test token's answer is not acted on: a later step that reads "auto" must not act on it either.
+  setOutput('action', decision.test === true ? 'test' : decision.action);
 
   const rows = Object.entries(decision.answers ?? {})
     .map(([q, a]) => `| ${q} | ${String(a?.value)} | ${Number(a?.p).toFixed(2)} |`)

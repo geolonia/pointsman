@@ -128,7 +128,7 @@ const ruleText = (rule) => (rule === null ? explained.default : explained.rules[
 const day = (iso) => iso?.slice(0, 16).replace('T', ' ');
 // Stored text (refs, answers, actions) is shown with control characters made
 // visible, so it cannot add lines to the report or drive the terminal.
-const shown = (text) => String(text).replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+const shown = (text) => String(text).replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 const ja = values.lang === 'ja';
 const out = [];
 out.push(ja
