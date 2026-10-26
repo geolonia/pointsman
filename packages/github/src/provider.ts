@@ -431,22 +431,37 @@ function treeFiles(v: unknown): Map<string, TreeFile> {
 
 /** A required check: its name, and the app that must report it (null: any). */
 type Required = { context: string; app: number | null };
-/** A workflow that a ruleset requires: its path, and the repository it comes from. */
-type RequiredWorkflow = { path: string };
+/** A workflow that a ruleset requires: its path, the repository it comes from, and the ref or commit it runs at. */
+type RequiredWorkflow = { path: string; repository: number | null; ref: string };
 
+/**
+ * The workflows the rulesets require, each once. A workflow run names its
+ * file by path only (workflowRuns), so two required workflows with the same
+ * path from another repository or ref could not be told apart: one run would
+ * count for both. That fails the fact instead.
+ */
 function requiredWorkflows(v: unknown): RequiredWorkflow[] {
   if (!Array.isArray(v)) throw new FactError('GitHub rules: unexpected answer');
-  const out: RequiredWorkflow[] = [];
+  const out = new Map<string, RequiredWorkflow>();
   for (const rule of v) {
     if (!isObject(rule) || rule.type !== 'workflows') continue;
     const workflows = isObject(rule.parameters) ? rule.parameters.workflows : undefined;
     if (!Array.isArray(workflows)) throw new FactError('GitHub rules: unexpected answer');
     for (const w of workflows) {
       if (!isObject(w) || typeof w.path !== 'string') throw new FactError('GitHub rules: unexpected answer');
-      out.push({ path: w.path });
+      const found: RequiredWorkflow = {
+        path: w.path,
+        repository: typeof w.repository_id === 'number' ? w.repository_id : null,
+        ref: typeof w.sha === 'string' ? w.sha : typeof w.ref === 'string' ? w.ref : '',
+      };
+      const same = out.get(found.path);
+      if (same && (same.repository !== found.repository || same.ref !== found.ref)) {
+        throw new FactError(`GitHub rules: two required workflows have the path ${found.path}`);
+      }
+      out.set(found.path, found);
     }
   }
-  return out;
+  return [...out.values()];
 }
 
 function requiredFromRules(v: unknown): Required[] {
