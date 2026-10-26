@@ -482,10 +482,11 @@ components:
             - { type: object }
             - { type: array }
         ref:
-          description: The client's reference for this decision, for example an issue id.
+          description: The client's reference for this decision, for example an issue id. No control characters.
           type: string
           minLength: 1
           maxLength: 200
+          pattern: '^[^\u0000-\u001f\u007f-\u009f]*$'
         callback_url:
           description: Where to send the final answer after a human review (https only).
           type: string

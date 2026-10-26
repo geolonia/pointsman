@@ -54,6 +54,15 @@ const result = {
   ],
 };
 
+test('control characters in stored text are shown escaped', async (t) => {
+  const hostile = { ...result, changes: [{ ...result.changes[0], ref: 'gh#1\n  0 would get another action.\u001b[2K', person: 'auto\r' }] };
+  const { url } = await fakeDeployment(t, () => [200, hostile]);
+  const r = await runAsync([triage, '--url', url]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /[\u0000-\u0009\u000b-\u001f]/);
+  assert.match(r.stdout, /\(gh#1\\u000a  0 would get another action\.\\u001b\[2K, person: auto\\u000d\)\n/);
+});
+
 test('sends the policy, with questions, facts and requires to check, and prints what would change', async (t) => {
   const { url, seen } = await fakeDeployment(t, () => [200, result]);
   const r = await runAsync([triage, '--url', `${url}/base`, '--limit', '120']);
