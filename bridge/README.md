@@ -516,7 +516,10 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   the route, the entity and the exact request. A retry of the same request
   after Pointsman has logged the decision gets that decision again instead
   of a new one; when the entity changed in the meantime, it is a new request
-  and a new decision. If Pointsman still answers `409 idempotency_conflict`
+  and a new decision. If a person answered the review before the retry, the
+  bridge writes it as resolved with their action (`finalAction` on the
+  result and the Decision entity, the Task completed); if a newer decision
+  replaced it, the retry writes nothing. If Pointsman still answers `409 idempotency_conflict`
   (the same key for another request, which no retry can fix), the message
   goes straight to the dead-letter queue when the bridge has it as a
   producer (`BRIDGE_DEAD_LETTER`), otherwise it is retried until it ends

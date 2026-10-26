@@ -131,8 +131,13 @@ export interface Decision {
   requires?: Record<string, import('./log').RequiredSnapshot>;
   /** The earlier decision of the same profile, ref and client that this one replaces. */
   replaces?: string;
-  /** A person checks it before it counts (the profile's people_check). */
-  review?: { status: 'pending' };
+  /**
+   * A person checks it before it counts (the profile's people_check). A new
+   * decision is pending; a repeated request (the same idempotency key) gets
+   * the review as it is now, so a retry never shows a resolved decision as
+   * unchecked.
+   */
+  review?: { status: 'pending' } | { status: 'resolved'; final_action?: string; resolved_at?: string } | { status: 'superseded' };
   /** The engine and the fact modules that answered its facts. Missing for decisions made before fact modules. */
   versions?: DecisionVersions;
 }
