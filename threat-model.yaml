@@ -1077,7 +1077,7 @@ outputs:
     taint_provenance: {kind: documented, source: "docs/github-connector.md \"The decision comment\", Rules: \"Nothing from the pull request\""}
     invariants:
       - id: comment-no-pull-request-text
-        statement: "one comment per pull request by the connector's bot; checked names, cleaned reasons, answers of known shapes, in code blocks; no pull-request text, reviewers or decision ids"
+        statement: "one comment per pull request by the connector's bot; checked names, cleaned reasons, answers of known shapes, in code blocks; no pull-request text, reviewers or decision ids, except that since v0.18.0 an open question's command holds the first 8 characters of its decision id"
         property_id: P-CONNECTOR-COMMENT-NO-PR-TEXT
         provenance: {kind: documented, source: "packages/github/src/connector/comment.ts header comment"}
     downstream_must_not_assume:
