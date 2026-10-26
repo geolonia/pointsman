@@ -7,7 +7,7 @@
 // whoever posts a command: a reply to a command counts only when the
 // author posted that command.
 
-import { isService, type Comment, type Review, type Status } from '@pointsman/github';
+import { isService, type Comment, type Edit, type Review, type Status } from '@pointsman/github';
 import type { LoggedDecision, Scalar } from '@pointsman/module-api';
 import { commentByCodeRabbit, commentHead, CODERABBIT, IN_PROGRESS, plain, REVIEWED, statusByCodeRabbit } from './coderabbit.ts';
 
@@ -249,26 +249,48 @@ function mayPay(c: Comment, author: string, apps: number[]): boolean {
 }
 
 /**
- * A paid review comment for the head that CodeRabbit acted on: written
- * after the head was pushed (`since`), by someone who may pay, and followed
- * within PAID_ACTED_WITHIN_MINUTES by CodeRabbit starting or finishing a
- * review of the head.
+ * When a paid review command was written as it reads now: its creation, or
+ * its last edit when it was edited (an edit that adds the command writes it
+ * then, not when the comment was created). Null when that is not known, or
+ * when someone other than its author edited it last (people with write access
+ * can edit another person's comment): then it is not that person's command.
  */
-export function paidForHead(list: Comment[], reviews: Review[], head: Status[], headSha: string, since: number | null, author: string, apps: number[]): boolean {
+function writtenAt(c: Comment, editors: Map<number, Edit>): number | null {
+  const edit = c.id === null ? undefined : editors.get(c.id);
+  // Not in the editors list, or another text there (edited between the two reads): not known.
+  if (edit === undefined || edit.body !== c.body) return null;
+  if (edit.by === null) return Date.parse(c.created);
+  if (edit.by.id !== c.by.id) return null;
+  return Math.max(Date.parse(c.created), Date.parse(c.updated));
+}
+
+/**
+ * A paid review comment for the head that CodeRabbit acted on: written, as
+ * it reads now (writtenAt), after the head was pushed (`since`), by someone
+ * who may pay, and followed within PAID_ACTED_WITHIN_MINUTES by CodeRabbit
+ * starting or finishing a review of the head.
+ */
+export function paidForHead(list: Comment[], reviews: Review[], head: Status[], headSha: string, since: number | null, author: string, apps: number[], editors: Map<number, Edit>): boolean {
   if (since === null) return false;
   const acted = [
     ...head.filter((s) => statusByCodeRabbit(s) && (s.description === IN_PROGRESS || REVIEWED.has(s.description))).map((s) => Date.parse(s.at)),
     ...reviews.filter((r) => r.commit === headSha && r.state !== 'PENDING' && isService(r.by, CODERABBIT)).map((r) => Date.parse(r.at)),
   ].filter(Number.isFinite);
   return list.some((c) => {
-    const at = Date.parse(c.created);
-    return at >= since && PAID.test(c.body) && mayPay(c, author, apps) && acted.some((t) => t >= at && t - at <= PAID_ACTED_WITHIN_MINUTES * MINUTE);
+    if (!PAID.test(c.body) || !mayPay(c, author, apps)) return false;
+    const at = writtenAt(c, editors);
+    return at !== null && Number.isFinite(at) && at >= since && acted.some((t) => t >= at && t - at <= PAID_ACTED_WITHIN_MINUTES * MINUTE);
   });
 }
 
-/** Paid review commands on this pull request that may count, with when they were written. */
+/**
+ * Paid review commands on this pull request that may count, with when they
+ * were last written (an edit counts at its time). They keep a reservation
+ * (spendAfter): one that would not count for paidForHead still does here,
+ * so the spend errs high.
+ */
 export function paidCommands(list: Comment[], author: string, apps: number[]): number[] {
-  return list.filter((c) => PAID.test(c.body) && mayPay(c, author, apps)).map((c) => Date.parse(c.created)).filter(Number.isFinite);
+  return list.filter((c) => PAID.test(c.body) && mayPay(c, author, apps)).map((c) => Math.max(Date.parse(c.created), Date.parse(c.updated) || 0)).filter(Number.isFinite);
 }
 
 /** CodeRabbit's newest stated price for the head (from its comments that name the head, as for billable files); null when none. */

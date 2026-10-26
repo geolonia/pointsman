@@ -873,7 +873,7 @@ the budget) are not free any more.
 | `price_usd` | This review's price: CodeRabbit's stated price for this head, else the billable files (as for `coderabbit`) times `usd_per_file`. |
 | `per_pr_usd_after` | Payments for this pull request in the last `pr_hours` (default 48, at most 168) plus this review. |
 | `per_window_usd_after` | Earlier payments of every pull request in the last `window_hours` (default 5, at most 24) plus this review. |
-| `paid_for_head` | A paid review command (`@coderabbitai review --use-credits`) for this head: written after the head was pushed, by the author, an organization owner or member, or an app in `payer_apps` (by id), and CodeRabbit started or finished a review of the head within 10 minutes after it. |
+| `paid_for_head` | A paid review command (`@coderabbitai review --use-credits`) for this head: written after the head was pushed, by the author, an organization owner or member, or an app in `payer_apps` (by id), and CodeRabbit started or finished a review of the head within 10 minutes after it. An edited comment counts from its last edit, and only when its author made that edit. |
 
 Payments come from this client's decisions of the profile with an action
 in `pay_actions`, at the `price_usd` their spend fact recorded, once per

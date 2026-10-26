@@ -60,11 +60,11 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     }
   }
 
-  /** Comments and reviews whose CodeRabbit text nobody else edited (else the fact is missing). */
+  /** Comments and reviews whose CodeRabbit text nobody else edited (else the fact is missing), and who last edited each. */
   private async text(s: Snapshot) {
     const [reviews, comments, editors] = await Promise.all([s.reviews(), s.comments(), s.editors()]);
     if (editedByOthers(comments, reviews, editors)) throw new FactError("someone other than CodeRabbit edited one of CodeRabbit's comments or reviews");
-    return { reviews, comments };
+    return { reviews, comments, editors };
   }
 
   private async state(s: Snapshot, query: CodeRabbitFactQuery) {
@@ -133,7 +133,7 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     const { pr } = await s.base;
     const head = query.pr.head;
     const prHours = query.pr_hours ?? 48;
-    const [{ reviews, comments }, statuses, pushedAt, rows] = await Promise.all([this.text(s), s.headStatuses(), s.headPushedAt(), readLog(ctx, scope, Math.max(prHours, query.window_hours ?? 5))]);
+    const [{ reviews, comments, editors }, statuses, pushedAt, rows] = await Promise.all([this.text(s), s.headStatuses(), s.headPushedAt(), readLog(ctx, scope, Math.max(prHours, query.window_hours ?? 5))]);
     const apps = query.payer_apps ?? [];
     const billable = statedBillable(comments, head, pushedAt) ?? ownBillable(await s.files(), query.not_reviewed ?? []);
     const price = Math.round((statedPriceForHead(comments, head, pushedAt) ?? billable * query.usd_per_file) * 100) / 100;
@@ -145,7 +145,7 @@ export class CodeRabbitFactProvider implements FactProvider<CodeRabbitFactQuery>
     return {
       price_usd: price,
       ...after,
-      paid_for_head: paidForHead(comments, reviews, statuses, head, headSince(pushedAt, statuses), pr.author, apps),
+      paid_for_head: paidForHead(comments, reviews, statuses, head, headSince(pushedAt, statuses), pr.author, apps, editors.comments),
       author: pr.author,
       pull_request: id,
       head,

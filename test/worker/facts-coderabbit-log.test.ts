@@ -60,7 +60,8 @@ function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
         repository: {
           pullRequest: {
             headRefOid: HEAD,
-            comments: { totalCount: (await list(COMMENTS)).length, nodes: (await list(COMMENTS)).map((c) => ({ databaseId: c.id, body: c.body ?? '', editor: null })) },
+            // A comment's last editor: `editor` on the test's comment (not a REST field), else nobody.
+            comments: { totalCount: (await list(COMMENTS)).length, nodes: (await list(COMMENTS)).map((c) => ({ databaseId: c.id, body: c.body ?? '', editor: (c as { editor?: unknown }).editor ?? null })) },
             reviews: { totalCount: (await list(`${PR}/reviews`)).length, nodes: (await list(`${PR}/reviews`)).map((r) => ({ databaseId: r.id, body: r.body ?? '', editor: null })) },
           },
         },
@@ -326,6 +327,21 @@ describe('the spend (coderabbit_spend)', () => {
     expect(await values(spend, routes({ [COMMENTS]: () => [comment('@coderabbitai review --use-credits', 10, alice)] }))).toMatchObject({ paid_for_head: false });
     expect(await values(spend, routes({ [STATUSES]: () => [status('Review in progress', 1)], [COMMENTS]: () => [comment('@coderabbitai review --use-credits', 30.5, alice)] })))
       .toMatchObject({ paid_for_head: false });
+  });
+
+  it('paid for the head: an edited command counts from its edit, and only when its author edited it', async () => {
+    const acted = { [STATUSES]: () => [status('Review in progress', 8)] };
+    const gqlUser = (u: { login: string; id: number }) => ({ __typename: 'User', login: u.login, databaseId: u.id });
+    const edited = (createdAgo: number, editedAgo: number, editor: unknown) => {
+      const c = comment('@coderabbitai review --use-credits', createdAgo, alice);
+      return routes({ ...acted, [COMMENTS]: () => [{ ...c, updated_at: at(editedAgo), editor }] });
+    };
+    // Written before the push, edited by its author after it, then CodeRabbit acted: the edit is when the command was written.
+    expect(await values(spend, edited(40, 10, gqlUser(alice)))).toMatchObject({ paid_for_head: true });
+    // Edited in after CodeRabbit acted: the old creation time does not make it count.
+    expect(await values(spend, edited(10, 2, gqlUser(alice)))).toMatchObject({ paid_for_head: false });
+    // Someone else (with write access) edited it last: not the payer's command.
+    expect(await values(spend, edited(10, 9, gqlUser({ login: 'mallory', id: 8 })))).toMatchObject({ paid_for_head: false });
   });
 
   it('missing without a log or its settings', async () => {
