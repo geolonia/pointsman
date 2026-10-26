@@ -776,7 +776,7 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
     model: P(d.model),
     inputHash: P(hash),
     // A person checks it first: work orders (#85) look for this. Resolved on a retry after they answered.
-    ...(checked && reviewFields(d)),
+    ...(checked && reviewFields(d, 'result')),
   };
   for (const [name, a] of Object.entries(d.answers)) {
     // One level of sub-properties: Orion-LD drops a third level (#14).
@@ -919,15 +919,20 @@ export function resolvedOf(d: Pick<Decision, 'review'>): { action: string; at?: 
   return { action: d.review.final_action, ...(typeof d.review.resolved_at === 'string' && { at: d.review.resolved_at }) };
 }
 
-/** The review fields for a checked decision: pending, or resolved with the person's action and when, as handleReview writes them. */
-function reviewFields(d: Pick<Decision, 'review'>): Record<string, unknown> {
+/**
+ * The review fields for a checked decision: pending, or resolved with the
+ * person's action and when, as a resolution writes them: on the result
+ * (handleReview) the time as text, on the Decision entity (handleWorkOrder)
+ * as a DateTime.
+ */
+function reviewFields(d: Pick<Decision, 'review'>, on: 'result' | 'decision'): Record<string, unknown> {
   const P = (value: unknown) => ({ type: 'Property', value });
   const done = resolvedOf(d);
   if (!done) return { reviewStatus: P('pending') };
   return {
     reviewStatus: P('resolved'),
     finalAction: P(done.action),
-    ...(done.at !== undefined && { reviewedAt: P({ '@type': 'DateTime', '@value': done.at }) }),
+    ...(done.at !== undefined && { reviewedAt: P(on === 'result' ? done.at : { '@type': 'DateTime', '@value': done.at }) }),
   };
 }
 
@@ -974,7 +979,7 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
       requiredDecisions: { type: 'JsonProperty', json: required },
     }),
     ...(d.replaces && { replaces: { type: 'Relationship', object: decisionEntityId(d.replaces) } }),
-    ...(checked && reviewFields(d)),
+    ...(checked && reviewFields(d, 'decision')),
   };
 }
 

@@ -716,7 +716,8 @@ describe('Task entities', () => {
     });
     expect(created.find((b) => b.type === 'Task')).toMatchObject({ progress: P('completed'), statusLabel: P('reject') });
     const result = calls.find((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/check'))!.body as Record<string, unknown>;
-    expect(result).toMatchObject({ value: 'urgent', reviewStatus: P('resolved'), finalAction: P('reject') });
+    // On the result the time is text, as handleReview writes it; on the Decision entity a DateTime.
+    expect(result).toMatchObject({ value: 'urgent', reviewStatus: P('resolved'), finalAction: P('reject'), reviewedAt: P('2026-10-26T06:00:00.000Z') });
   });
 
   it('a retry of a decision that a newer one replaced writes nothing', async () => {

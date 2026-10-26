@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { lookupFacts, resultError } from '../../src/facts';
 import { coderabbitModule, CodeRabbitFactProvider, ignoredBy, billableIn } from '@pointsman/coderabbit';
 import { ConfigError } from '@pointsman/module-api';
-import { GitHubFactProvider, TokenAuth } from '@pointsman/github';
+import { GitHubFactProvider, hunksBefore, occurrences, TokenAuth } from '@pointsman/github';
 import { ModuleRouter, type FactProvider } from '../../src/facts';
 import type { FactSpec } from '../../src/types';
 
@@ -206,6 +206,17 @@ describe('CodeRabbit (coderabbit)', () => {
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'new\nlines\nhelper()\ncheck()\nend\n'))).toMatchObject({ rebase_only: true });
     // The same lines twice at the base: the approved edit may have moved to the other block, so it cannot be told.
     expect(await values(rebased('@@ -9,2 +9,1 @@\n helper()\n-check()', ['docs/guide.md'], 'helper()\ncheck()\nmid\nhelper()\ncheck()\n'))).toMatchObject({ rebase_only: null });
+    // A file with CRLF line ends: the patch keeps the \r, and the place is still found.
+    expect(occurrences('a\r\nhelper()\r\ncheck()\r\n', hunksBefore('@@ -2,2 +2,1 @@\n helper()\r\n-check()\r')[0]!)).toBe(1);
+    // The file cannot be read at the base for another reason than 404: the fact fails, as for a comparison.
+    const failing = routes({
+      [`${PR}/reviews`]: () => [review('APPROVED', OLD)],
+      [`${REPO}/compare/${BASE}...${OLD}`]: () => files('@@ -1,2 +1,1 @@\n helper()\n-check()', MB1),
+      [`${REPO}/compare/${BASE}...${HEAD}`]: () => files('@@ -9,2 +9,1 @@\n helper()\n-check()', MB2),
+      [`${REPO}/compare/${MB1}...${MB2}`]: () => ({ status: 'ahead', files: [{ filename: 'docs/guide.md' }] }),
+      [`${REPO}/contents/docs/guide.md`]: () => new Response('{}', { status: 500 }),
+    });
+    expect(await reason(failing)).toBe('error');
     // More files the base moved than are read: cannot tell, and none is read.
     const many = Array.from({ length: 11 }, (_, i) => ({ filename: `docs/p${i}.md`, status: 'modified', patch: '@@ -1 +1 @@\n-a\n+b' }));
     const wide = routes({

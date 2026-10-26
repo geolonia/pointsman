@@ -642,7 +642,7 @@ export function hunksBefore(patch: string): string[] {
 /** How often `block` occurs in `text` as whole lines (overlaps count). */
 export function occurrences(text: string, block: string): number {
   const hay = `\n${text.replace(/\r\n/g, '\n')}\n`;
-  const needle = `\n${block}\n`;
+  const needle = `\n${block.replace(/\r$/gm, '')}\n`;
   let n = 0;
   for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + 1)) n++;
   return n;
@@ -1206,7 +1206,8 @@ export class Snapshot {
         try {
           text = await this.textAt(path, y.mergeBase);
         } catch (err) {
-          if (err instanceof FactError) return false;
+          // Not at the base (added there or here): the place cannot be checked. Any other failure fails the fact, as for the comparisons.
+          if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return false;
           throw err;
         }
         return text !== null && hunksBefore(f.patch as string).every((block) => occurrences(text!, block) === 1);

@@ -1077,12 +1077,13 @@ describe('actions (switched on per profile action)', () => {
       const sent: { url: string; method: string; body?: any }[] = [];
       let answer: Record<string, unknown> = {};
       let reviews: unknown[] = [];
+      let page11: unknown[] = [];
       const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
         const url = String(input);
         if (url.endsWith('/installation')) return Response.json({ id: 9, permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' } });
         if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
         sent.push({ url, method: init.method ?? 'GET', ...(init.body ? { body: JSON.parse(String(init.body)) } : {}) });
-        if (url.includes('/reviews')) return Response.json(reviews);
+        if (url.includes('/reviews')) return Response.json(url.includes('page=11') ? page11 : reviews);
         return Response.json(answer, { status: init.method === 'POST' ? 201 : 200 });
       }) as typeof fetch;
       const gh = new AppGitHub(APP_ID, KEY, fetchFn, true);
@@ -1107,6 +1108,10 @@ describe('actions (switched on per profile action)', () => {
       expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(true);
       // 1,000 reviews (the most #list reads) without one of the head: not known, an error.
       reviews = Array.from({ length: 100 }, () => ({ user: { login: 'someone', id: 9, type: 'User' }, commit_id: HEAD, state: 'COMMENTED' }));
+      // Exactly 1,000 (an empty 11th page): the whole list was read, so not asked.
+      expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(false);
+      // More than 1,000: not known.
+      page11 = [reviews[0]];
       await expect(gh.copilotAsked(REPO, 7, HEAD)).rejects.toMatchObject({ retry: false, name: 'GitHubHistoryLimit' });
     });
   });

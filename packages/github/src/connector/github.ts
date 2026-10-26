@@ -342,8 +342,11 @@ export class AppGitHub implements ConnectorGitHub {
     if (listsCopilot(await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request'))) return true;
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
     if (reviews.some((r) => isCopilot(r.user) && r.commit_id === head && r.state !== 'PENDING')) return true;
-    // #list stops at 1,000 (oldest first): the head's review may be after them, so not known.
-    if (reviews.length >= 1000) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known');
+    // #list stops at 1,000 (oldest first): with exactly 1,000 the list is whole; with more, the head's review may be after them, so not known.
+    if (reviews.length >= 1000) {
+      const more = await this.#call(repo, 'GET', `/pulls/${number}/reviews?per_page=100&page=11`, 'reviews');
+      if (Array.isArray(more) && more.length > 0) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known');
+    }
     return false;
   }
 
