@@ -50,6 +50,14 @@ export class GitHubError extends Error {
   }
 }
 
+/** More history than the connector reads (1,000 items): for this commit the answer will not change, so it is not read again. */
+export class GitHubHistoryLimit extends GitHubError {
+  override name = 'GitHubHistoryLimit';
+  constructor(message: string) {
+    super(message, false);
+  }
+}
+
 /**
  * Whether a failure to get a token may pass later: GitHub busy, rate limited
  * or not reached. Not installed, no permission, a broken key: a person fixes it.
@@ -335,7 +343,7 @@ export class AppGitHub implements ConnectorGitHub {
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
     if (reviews.some((r) => isCopilot(r.user) && r.commit_id === head && r.state !== 'PENDING')) return true;
     // #list stops at 1,000 (oldest first): the head's review may be after them, so not known.
-    if (reviews.length >= 1000) throw new GitHubError('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known', false);
+    if (reviews.length >= 1000) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known');
     return false;
   }
 

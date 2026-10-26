@@ -158,6 +158,13 @@ export class AnswerDesk {
       return 'dropped';
     }
     const { bound } = bind;
+    // Offered when the question was asked, but the settings may have changed since: only an
+    // answer the current settings still offer for the profile is taken.
+    if (!this.#settings.answers.profiles[bound.profile]?.includes(bound.answer)) {
+      console.error(`github connector: ${where}: an answer for ${bound.profile} that the settings no longer offer; not taken`);
+      await this.#note(target, bound.profile, bound.head, 'answers for this question are no longer offered');
+      return 'dropped';
+    }
     const refuse = async (text: string, err?: unknown): Promise<Outcome> => {
       console.error(`github connector: ${where}: an answer to decision ${bound.decisionId} was not taken: ${text}${err === undefined ? '' : ` (${why(err)})`}`);
       // GitHub or Pointsman failed, not the person: the answer does not count toward their answers of the hour.

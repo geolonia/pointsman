@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, actingScope, actionOf, botReviewOf, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, GitHubHistoryLimit, actingScope, actionOf, botReviewOf, checkDecision, engineSetting, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewSummary, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -1023,6 +1023,23 @@ describe('actions (switched on per profile action)', () => {
       expect((mem.data.get('acts') as any)?.done?.['pr-docs-check:copilot_review']).toBeUndefined();
     });
 
+    it('a review history too long to read: nothing asked, and not looked at again for this commit', async () => {
+      const { work, gh, mem, event } = await acting(COPILOT, light);
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      let reads = 0;
+      gh.github.copilotAsked = async () => { reads++; throw new GitHubHistoryLimit('GitHub reviews: more than 1,000'); };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect((mem.data.get('acts') as any).done['pr-docs-check:copilot_review'].state).toBe('failed');
+      expect(mem.data.get('recheckAt')).toBeUndefined();
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('whether Copilot was asked cannot be told; not tried again for this commit');
+      // The next run for the same commit does not read the reviews again.
+      await event();
+      await work.run();
+      expect(reads).toBe(1);
+      expect(asks(gh.calls)).toBe(0);
+    });
+
     it('asks nothing when the head moved after the decision', async () => {
       const { work, gh } = await acting(COPILOT, light);
       const copilotAsked = gh.github.copilotAsked;
@@ -1090,7 +1107,7 @@ describe('actions (switched on per profile action)', () => {
       expect(await gh.copilotAsked(REPO, 7, HEAD)).toBe(true);
       // 1,000 reviews (the most #list reads) without one of the head: not known, an error.
       reviews = Array.from({ length: 100 }, () => ({ user: { login: 'someone', id: 9, type: 'User' }, commit_id: HEAD, state: 'COMMENTED' }));
-      await expect(gh.copilotAsked(REPO, 7, HEAD)).rejects.toMatchObject({ retry: false });
+      await expect(gh.copilotAsked(REPO, 7, HEAD)).rejects.toMatchObject({ retry: false, name: 'GitHubHistoryLimit' });
     });
   });
 });

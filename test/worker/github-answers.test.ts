@@ -705,6 +705,17 @@ describe('the comment command (when switched on)', () => {
     expect(t.gh.calls.filter((c) => c.op === 'permission' || c.op === 'get').length).toBeLessThanOrEqual(2);
   });
 
+  it('an answer the settings no longer offer for the profile is not taken', async () => {
+    const t = await asking();
+    // The settings changed after the question was asked: approve is no longer offered.
+    const now = pullRequestWork(settings({ answers: { profiles: { [PROFILE]: ['reject'] }, command: false } }), t.mem.storage, t.pm.engine, t.gh.github);
+    await now.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID(), answer: { event: { kind: 'button', checkRun: t.checkRun, head: HEAD, externalId: t.id, identifier: `1-${t.id.slice(0, 8)}` }, by: MAINTAINER } }, Date.now());
+    const log = await logged(() => now.run());
+    expect(log).toContain('that the settings no longer offer; not taken');
+    expect(t.resolves()).toEqual([]);
+    expect(t.gh.calls.filter((c) => c.op === 'approve')).toEqual([]);
+  });
+
   it('with the command off, a queued command is not taken', async () => {
     const t = await asking();
     await t.answer({ kind: 'command', answer: 'approve', head: SHORT });
