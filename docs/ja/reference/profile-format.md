@@ -520,7 +520,7 @@ fine-grained トークンまたはアプリの権限(すべて読み取り)は�
 | 権限 | 用途 |
 |---|---|
 | Pull requests | `github_pr`、`github_paths`、`github_workflows`、`github_release`、`github_bump`、`github_copilot`(レビュー、レビューの依頼、レビューのスレッド、会話のコメント)、`github_app_approval`(レビュー) |
-| Contents | プルリクエストのコミット、そのブランチへのプッシュ、`CODEOWNERS`、`github_workflows` が読むファイル、`github_bump` と `github_release` が読む `package.json` のファイル |
+| Contents | プルリクエストのコミット、そのブランチへのプッシュ、`CODEOWNERS`、`github_workflows` が読むファイル、`github_bump` と `github_release` が読む `package.json` のファイル、リベースで行がずれたときに `rebase_only` がベースで読むファイル |
 | Metadata | 常に必要(どのアプリにもあります) |
 | Checks(アプリだけ)、Commit statuses | `github_checks`。コミットのステータスは、スナップショットを読むほかのモジュールのファクトにも使います |
 | Actions | `github_checks`。ルールセットがワークフローを必須にしているとき |
