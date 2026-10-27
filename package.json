@@ -32,12 +32,12 @@
     "docs:translations": "node docs-site/scripts/translation-status.mjs"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.4.2",
+    "@cloudflare/vitest-plugin": "^1.4.4",
     "ajv": "^8.20.0",
     "jsonc-parser": "^3.3.1",
     "typescript": "^7.0.2",
-    "vitest": "~4.1.11",
-    "wrangler": "^4.151.0"
+    "vitest": "~4.1.12",
+    "wrangler": "^4.151.1"
   },
   "packageManager": "pnpm@12.9.1",
   "dependencies": {
