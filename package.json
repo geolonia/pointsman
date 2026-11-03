@@ -32,24 +32,24 @@
     "docs:translations": "node docs-site/scripts/translation-status.mjs"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.4.2",
+    "@cloudflare/vitest-plugin": "^1.4.7",
     "ajv": "^8.20.0",
     "jsonc-parser": "^3.3.1",
     "typescript": "^7.0.2",
-    "vitest": "~4.1.11",
-    "wrangler": "^4.151.0"
+    "vitest": "~4.1.12",
+    "wrangler": "^4.152.0"
   },
   "packageManager": "pnpm@12.9.1",
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "^1.2.3",
-    "@modelcontextprotocol/server": "^2.3.1",
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@pointsman/github": "workspace:*",
     "@pointsman/coderabbit": "workspace:*",
     "@pointsman/facts-gsi": "workspace:*",
     "@pointsman/facts-valhalla": "workspace:*",
     "@pointsman/fiware": "workspace:*",
     "@pointsman/module-api": "workspace:*",
-    "hono": "^4.13.13",
+    "hono": "^4.13.14",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   }
