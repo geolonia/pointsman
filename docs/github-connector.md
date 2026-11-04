@@ -2,11 +2,11 @@
 
 The GitHub connector asks Pointsman about pull requests and shows each decision on the pull request as a check run. It is the connector role of the module `@pointsman/github` ([connectors.md](connectors.md)); the same module's fact role reads pull requests for the engine ([profile-format.md](profile-format.md#facts)).
 
-By default it runs in **shadow mode**: it only writes its check runs, with the conclusion `neutral`, so they never block a merge. A deployment can switch on [actions](#actions) for chosen decisions: a comment, labels, a review request or an approval; and [the decision comment](#the-decision-comment), one comment per pull request that shows the latest decisions. Where a decision waits for a person, it can let them [answer inside the pull request](#answering-in-the-pull-request). The check runs stay `neutral`.
+By default it runs in **shadow mode**: it only writes its check runs, with the conclusion `neutral`, so they never block a merge. A deployment can switch on [actions](#actions) for chosen decisions: a comment, labels, a review request, a Copilot review or an approval (and keeping that approval); and [the decision comment](#the-decision-comment), one comment per pull request that shows the latest decisions. Where a decision waits for a person, it can let them [answer inside the pull request](#answering-in-the-pull-request). The check runs stay `neutral`.
 
 ## How it works
 
-1. GitHub sends a webhook for an event of a pull request (opened, new commits, ready for review, edited, a review, a finished check suite). The connector's own check suites start no run, and neither do its own approvals and their dismissal: the run that made them reads the reviews again afterwards and draws the decision comment from them. A person's dismissal of its approval, and other apps' reviews, start a run.
+1. GitHub sends a webhook for an event of a pull request (opened, reopened, new commits, ready for review, converted to draft, edited, a review, a finished check suite; closed, when the decision comment or answers in the pull request are on). The connector's own check suites start no run, and neither do its own approvals and their dismissal: the run that made them reads the reviews again afterwards and draws the decision comment from them. A person's dismissal of its approval, and other apps' reviews, start a run.
 2. The connector checks the webhook's signature, then hands the event to the pull request's own object (a Durable Object), one per pull request.
 3. That object runs the work for its pull request, one run at a time, 20 seconds after the event: a burst of events (several check suites finishing) becomes one run.
 4. A run reads the pull request again from GitHub, asks Pointsman with each configured profile, and writes one check run per profile and head commit, `Pointsman: <profile>`. Its title is the decision's [signal](#signals) and action, for example `🟢 approve` or `🔴 review (shadow)` (`(shadow)`: no action is mapped for it); its details show the [line and the switch](#the-decision-comment).
@@ -92,7 +92,7 @@ The connector carries out an action only where the deployment maps a profile's d
   "actions": {
     "pr-docs-check": {
       "light": { "do": "label", "labels": ["docs-only"] },
-      "review": { "do": "request_reviewer", "reviewers": ["octocat"] }
+      "wait": { "do": "comment", "text": "Pointsman waits until this pull request is ready and its checks have finished." }
     }
   }
 }
@@ -196,7 +196,7 @@ When a decision needs a person (`review: pending`, the profile's `people_check`)
 - **When what it rests on changes** (an edit of the title or description, another base, the draft flag, a settings change, a required decision made anew with another action, or answered): the open question is closed in Pointsman and the profile is asked anew, so an action never rests on an older answer. An answer already given to the older question is not acted on.
 - **What is shown:** while the question is open, the check run's title ends in `: a person checks first`, and its details say it waits for a person. Once answered, the title is the answer with `: a person's answer`; the decision comment shows the answer in the column "Decision" with "a person" in the column "Set by", and its details show why the rules asked a person, with the answer below. Who answered is shown only for an answer given in the pull request: "answered by <login>", without `@`, so nobody is mentioned. An answer given in the queue names nobody.
 - **Not acted on:** an answer that is not an action name, or a decision read back that is not the one kept (`invalid answer: nothing done`); a read that Pointsman refuses, for example 403 (`answer could not be read: nothing done`). The question stays.
-- **A push, the pull request closed, or the profile taken out of the settings:** the connector closes the open questions concerned in Pointsman (`POST /v1/reviews/{id}/close`, or `close` as an internal call). A late answer to a closed question is refused (`409 not_pending`) and never acted on. A close that fails (Pointsman busy, down, or older than the connector) never holds up the run: it is logged and tried again on later runs, at most once every 5 minutes, for at most 10 tries or a day. A question that was closed in Pointsman some other way, or that is gone, is asked anew once.
+- **A push, the pull request closed (seen only when the decision comment or answers in the pull request are on; otherwise they are closed by the next run that reads the pull request, such as a scheduled recheck or a run already queued, or stay open if none comes), or the profile taken out of the settings:** the connector closes the open questions concerned in Pointsman (`POST /v1/reviews/{id}/close`, or `close` as an internal call). A late answer to a closed question is refused (`409 not_pending`) and never acted on. A close that fails (Pointsman busy, down, or older than the connector) never holds up the run: it is logged and tried again on later runs, at most once every 5 minutes, for at most 10 tries or a day. A question that was closed in Pointsman some other way, or that is gone, is asked anew once.
 - **Engine version:** the connector needs an engine with `GET /v1/decisions/{id}` and `POST /v1/reviews/{id}/close`, and for answers in the pull request the resolve route (for internal calls: `InternalEngine.get`, `close` and `resolve`). Deploy the engine first: with an older engine over the internal call, every answer is refused ("Pointsman could not be reached; answer again").
 - **A new profile version** is not noticed while a question is open: the connector does not know the profile's versions, so the question stays on the version it was asked with until it is answered or something above changes.
 
@@ -335,7 +335,7 @@ Rules:
 - **One comment, updated in place**, never a new one per decision. The connector finds it by its first line, the hidden marker `<!-- pointsman decision-comment -->`, and only among comments by its own bot account (`<app slug>[bot]`, as for [its approvals](#actions)). A person's or another app's comment with the same marker is never read or edited. If the comment was deleted, the next change writes a new one.
 - **Only when it changed**: the comment holds no decision ids or times, so a new decision with the same action, rule, facts and answers changes nothing and makes no comment write. At most one write per run (the update, or the first comment).
 - **Recorded before the write**, like the actions: a run that stops while writing leaves the record open, and the next run writes it again (it finds the comment by its marker first, so there is never a second one).
-- **Closed** (merged or not): with the comment on, the connector also takes the pull request's `closed` event. It does not ask Pointsman, writes no check run and reads no reviews: it updates the comment once, with the line at `merged` or `closed without merging` and the decisions it showed last (of the commit they were made on). Later events for the closed pull request change nothing, so they make no write. A write that fails because GitHub is busy is tried again by the run itself (no later event would come). Without a comment yet, none is written. Reopened, the pull request is run as usual again.
+- **Closed** (merged or not): with the comment or answers in the pull request on, the connector also takes the pull request's `closed` event. It does not ask Pointsman, writes no check run and reads no reviews. It closes the open questions; with the comment on, it updates the comment once, with the line at `merged` or `closed without merging` and the decisions it showed last (of the commit they were made on). Later events for the closed pull request change nothing, so they make no write. A write that fails because GitHub is busy is tried again by the run itself (no later event would come). Without a comment yet, none is written. Reopened, the pull request is run as usual again.
 - **A new head commit** starts with no decisions shown; profiles not asked on it (a draft with `skip_drafts`) are left out until they decide.
 - **Test decisions and invalid answers** ([Safety](#safety)) never put anything in the comment: it keeps the profile's last real decision on this commit. One exception: when such an answer made the connector withdraw the profile's approval of this commit ([When the approval stays](#when-the-approval-stays)), that profile's row is removed (its last decision no longer stands), and the reviews are read again: the train goes where GitHub's state puts it now (`reviewed`, or still `approved` when other approvals count). If that read fails, the train is not at `approved`.
 - **Nothing left to show** (every row removed, or no profile has decided on a new commit yet, for example a draft with `skip_drafts`): an existing comment is updated to a short neutral text, "No decision to show for commit `<commit>`", with the line; it is not deleted, so the pull request keeps one comment in one place. Without a comment yet, none is written.
@@ -396,7 +396,7 @@ Notes:
 
 - The facts' tokens are down-scoped too: the engine asks GitHub for a token with only the permissions the facts use (those above), and only as `read`. So even a facts app with more or write permissions gives the engine a token that only reads what it needs.
 - A GitHub App can read the checks of private repositories. A fine-grained personal access token cannot (it has no Checks permission), so with a token the fact `github_checks` is `unavailable` on private repositories.
-- Members (organization) is needed only to count teams in CODEOWNERS (`author_sole_code_owner`); Custom properties only for `github_property`; Actions only for `github_checks` (required workflows).
+- Members (organization) is needed only for `author_member` and to count teams in CODEOWNERS (`author_sole_code_owner`). Without it, `author_member` has no value, and a CODEOWNERS file that names a team makes the whole `github_pr` fact missing (owners that are users still work). Custom properties only for `github_property`; Actions only for `github_checks` (required workflows).
 - Install both apps only on the repositories the connector handles.
 
 ## Settings
@@ -409,7 +409,7 @@ The connector Worker ([connectors/github/wrangler.jsonc](../connectors/github/wr
 | `GITHUB_APP_PRIVATE_KEY` | Secret: the connector app's private key (PEM, as GitHub gives it) |
 | `GITHUB_WEBHOOK_SECRET` | Secret: the webhook secret set in the app (at least 20 characters) |
 | `GITHUB_CONNECTOR` | JSON: `{ "repos": ["owner/name", …], "profiles": ["pr-docs-check", …] }`, optionally `"actions"` ([Actions](#actions)), `"runs"` ([Chains](#chains)), `"comment"` ([The decision comment](#the-decision-comment)), `"signals"` ([Signals](#signals)) and `"answers"` ([Answering in the pull request](#answering-in-the-pull-request)) |
-| `POINTSMAN_URL` | Pointsman's base URL (https). Not with `POINTSMAN` |
+| `POINTSMAN_URL` | Pointsman's base URL (https; http only for `localhost`, `127.0.0.1` and `[::1]`). Not with `POINTSMAN` |
 | `POINTSMAN_TOKEN` | Secret: a Pointsman API token for the connector's client, limited to its profiles. Not needed with `POINTSMAN` |
 | `POINTSMAN` | Instead of the two above: a service binding to the engine Worker's entrypoint `InternalEngine` ([Internal call](#internal-call)) |
 | `PULL_REQUESTS` | The Durable Object binding (class `PullRequest`) |
@@ -422,7 +422,7 @@ The Pointsman Worker, for facts through the facts app: `FACTS_GITHUB: "app"`, `F
 2. Generate a private key for each app, and install each app on the repositories.
 3. Make a Pointsman token for the connector: `node scripts/tokens.mjs create --client github-connector --profiles pr-docs-check,workflow-check --remote`. Or, with the engine Worker in the same account, use an [internal call](#internal-call) instead: no token.
 4. Put the secrets in with `wrangler secret put <NAME>` (for the connector: `--config connectors/github/wrangler.jsonc`). Paste them only into wrangler, never into a file or a chat.
-5. Deploy the connector Worker with `wrangler deploy --config connectors/github/wrangler.jsonc`, then the Pointsman Worker with `FACTS_GITHUB: "app"`.
+5. Deploy the Pointsman Worker with `FACTS_GITHUB: "app"`, then the connector Worker with `wrangler deploy --config connectors/github/wrangler.jsonc` (the engine first; see "Engine version" under [Asking a person](#asking-a-person)).
 6. Open or update a pull request: the check runs `Pointsman: <profile>` appear with the conclusion `neutral`.
 
 ## Not yet

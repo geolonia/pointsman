@@ -15,13 +15,13 @@ editUrl: false
 
 ## 共通のファクト型
 
-共通のファクト型(ケイパビリティ)はエンジンが定義します。答えるのはモジュールで、自分のレイヤーにだけ答えるモジュールもあります。
+共通のファクト型(ケイパビリティ)はエンジンが定義し、値を調べるのはモジュールです。自分のレイヤーの分だけを調べるモジュールもあります。
 
 ### `inside`
 
 Inside an area of a layer.
 
-答えるモジュール: `@pointsman/facts-gsi`(レイヤー `gsi-flood-max`)
+提供するモジュール: `@pointsman/facts-gsi`(レイヤー `gsi-flood-max`)
 
 | フィールド | 種類 | 意味 |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ Inside an area of a layer.
 
 The nearest feature of a layer.
 
-答えるモジュール: `@pointsman/facts-gsi`(レイヤー `gsi-shelters-flood`)
+提供するモジュール: `@pointsman/facts-gsi`(レイヤー `gsi-shelters-flood`)
 
 | フィールド | 種類 | 意味 |
 | --- | --- | --- |
@@ -61,7 +61,7 @@ The nearest feature of a layer.
 
 Extra metres around a closed section (needs a LineString).
 
-答えるモジュール: `@pointsman/facts-valhalla`
+提供するモジュール: `@pointsman/facts-valhalla`
 
 | フィールド | 種類 | 意味 |
 | --- | --- | --- |

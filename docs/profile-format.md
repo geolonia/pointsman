@@ -56,7 +56,7 @@ policy:
 in English or Japanese (`--lang ja`); see [Explain](#explain). The rest of
 this page describes every field.
 
-Profiles are YAML (or JSON). The file name must be `<id>.yaml`.
+Profiles are YAML (or JSON). The file name is the id with `.yaml`, `.yml` or `.json`, for example `issue-triage.yaml`.
 
 To write a profile with an AI assistant, and check it, see
 [authoring.md](authoring.md).
@@ -65,7 +65,7 @@ To write a profile with an AI assistant, and check it, see
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | Used in the URL: `POST /v1/decide/{id}`. Lower case, digits, `-`. |
+| `id` | yes | Used in the URL: `POST /v1/decide/{id}`. Lower case letters, digits and `-`, at most 63 characters; the first is a letter or a digit. |
 | `version` | yes | Integer, starts at 1. Increase it on every change. Each decision records the version it used. |
 | `title`, `description` | yes | Text in English (`en`) and Japanese (`ja`), so that non-engineers can read the profile. |
 | `model` | yes | Model id, for example `clef-flash`. `none` for a profile with no questions (rules only, no model call). |
@@ -73,8 +73,8 @@ To write a profile with an AI assistant, and check it, see
 | `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
 | `questions` | yes | Up to 64 questions (see below). At least 1, unless the profile has `requires`. |
 | `requires` | no | Up to 8 earlier decisions the rules read, as `{ name, profile, optional }` (see [Decision chains](#decision-chains)). |
-| `facts` | no | Up to 16 spatial facts to look up for each decision, for rules (see [Facts](#facts)). |
-| `policy` | yes | `rules` (checked in order, first match wins) and a `default` action; optionally `people_check` and `people_answers` (see [People](#people-check-and-answers)). |
+| `facts` | no | Up to 16 facts to look up for each decision, for rules: places, pull requests, reviews (see [Facts](#facts)). |
+| `policy` | yes | A `default` action and, usually, `rules` (checked in order, first match wins); optionally `people_check` and `people_answers` (see [People](#people-check-and-answers)). |
 | `mcp` | no | `visible: true` lists the profile and allows calling it through MCP (default false, see [mcp.md](mcp.md)). |
 | `log` | no | `store_state: true` keeps the full state in the decision log (default: only a hash, see [decision-log.md](decision-log.md)). |
 
@@ -340,7 +340,7 @@ decision about the same thing replaced (they were made), so one ref can
 count more than once.
 
 - **A draft (a file):** `POINTSMAN_TOKEN=pm_… node scripts/replay-profile.mjs <file> --url <pointsman url>`
-  (`--limit N`, default 200, at most 500; `--version N`; `--lang ja`;
+  (`--limit N`, default 200, at most 500; `--version N`; `--with <file-or-directory>`, more than once, for the profiles it requires, which are also read from the draft's own directory; `--lang ja`;
   `--json`). The draft is validated first. Its questions, facts and requires
   are sent along and checked to be the same.
 - **API:** `POST /v1/profiles/{id}/replay` with `{ "policy": { … } }` (and
@@ -478,7 +478,7 @@ policy:
 | Field | Meaning |
 |---|---|
 | `name` | Used in rules as `facts.<name>.<field>`. Same characters as question names. No question may be named `facts` or start with `facts.`. |
-| `type` | `inside`, `nearest` or `detour` (below), or a [GitHub fact](#github-pull-requests). Fact types come from the [fact modules](modules.md) the deployment chooses: a profile can use only the types of those modules. |
+| `type` | `inside`, `nearest` or `detour` (below), or a [GitHub](#github-pull-requests) or [CodeRabbit](#coderabbit-reviews) fact. Fact types come from the [fact modules](modules.md) the deployment chooses: a profile can use only the types of those modules. |
 | `at` | JSONPath to a GeoJSON `Point` or `LineString` (WGS 84) in the request state, for example `$.location.value` for an NGSI-LD `GeoProperty`. Read from what the client sends, before the `input` mapping. Through MCP, clients send the input fields themselves, so there `at` reads those (for example `$.location`). |
 | `layer` | For `inside` and `nearest`: the layer to look in. Layers are set up per deployment (source, licence, attribution), not in the profile. |
 | `mode` | For `detour`: `drive` (default) or `walk`, the way around by car or on foot. |
@@ -496,7 +496,7 @@ missing; unknown when it is not missing).
 **A missing fact is never guessed.** A lookup can fail: no location in the
 state, or not of the kind the fact needs, for example a point for a
 `detour`, which needs a road section (`no_location`), no fact provider (`unavailable`), too slow
-(`timeout`, 3 s per fact, 8 s for `detour`, 5 s for GitHub facts) or an error (`error`).
+(`timeout`, 3 s per fact, 8 s for `detour`, 5 s for GitHub facts, 10 s for `github_bump`) or an error (`error`).
 GitHub facts have two more reasons, `no_pr` and `stale`
 ([below](#missing-github-facts)). A comparison with a missing
 fact, or with a field that has no value, is *unknown*, and a rule matches
@@ -536,7 +536,7 @@ own setting, [`FACTS_GITHUB`](#settings)):
 | `FACTS_MODE` | Facts |
 |---|---|
 | `off` (default) | none: every fact is missing (`unavailable`) |
-| `mock` | fixed answers for development and tests: inside (rank 1), nearest 250 m, no detour |
+| `mock` | fixed answers for development and tests: inside (rank 1), nearest 250 m, a detour with 0 extra metres |
 | `gsi` | public data of the Geospatial Information Authority of Japan (GSI), layers below; `detour` with a routing server (`FACTS_ROUTING_URL`, below), otherwise `unavailable` |
 
 Layers of `gsi`:
@@ -825,7 +825,8 @@ the review threads, the other pull requests or a comparison cannot be read.
 Three more types also read this client's earlier decisions of the same
 profile, from the last 24 hours (the spend: `pr_hours` or `window_hours`, whichever is longer) ([modules.md](modules.md#facts-from-the-decision-log)).
 They write the pull request (`pull_request`, as `owner/repo#n`) and its
-author (`author`) into their values, as text for people (rules cannot use
+author (`author`) into their values, and the spend also its head commit
+(`head`), as text for people (rules cannot use
 it), so later decisions can find them. More than 999 decisions in that time,
 a log that cannot be read, or a test token (`no_log`) make them missing.
 
