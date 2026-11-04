@@ -42,6 +42,8 @@ from `docs/` with Astro Starlight (`docs-site/`):
 - A page written for the site goes in `docs/<group>/` in English and in
   `docs/ja/<group>/` in Japanese, with the same headings and code blocks.
   Write each language natively; do not translate sentence by sentence.
+  The Japanese pages use the terms and spelling in
+  [docs-site/terms-ja.md](docs-site/terms-ja.md): one word for each idea.
 - Link to other files with relative paths, as on GitHub; the build turns
   them into site links. Which older files in `docs/` are site pages, and
   which stay in the repository only (notes, design notes, plans), is set in

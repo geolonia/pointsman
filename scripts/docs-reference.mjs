@@ -138,13 +138,13 @@ async function factTypes(lang) {
   sections.push(lang === 'en' ? '## Shared fact types' : '## 共通のファクト型', '');
   sections.push(lang === 'en'
     ? 'Shared fact types (capabilities) are defined by the engine. Modules answer them, some only for their own layers.'
-    : '共通のファクト型(ケイパビリティ)はエンジンが定義します。答えるのはモジュールで、自分のレイヤーにだけ答えるモジュールもあります。', '');
+    : '共通のファクト型(ケイパビリティ)はエンジンが定義し、値を調べるのはモジュールです。自分のレイヤーの分だけを調べるモジュールもあります。', '');
   for (const cap of Object.values(CAPABILITIES)) {
     const by = defs.flatMap((d) => (d.capabilities ?? []).filter((c) => c.type === cap.type).map((c) =>
       `${code(d.name)}${c.layers ? (lang === 'en' ? ` (layers ${list(c.layers)})` : `(レイヤー ${list(c.layers)})`) : ''}`));
     const answered = by.length
-      ? (lang === 'en' ? `Answered by ${by.join(', ')}.` : `答えるモジュール: ${by.join('、')}`)
-      : (lang === 'en' ? 'No module in this repository answers it.' : 'このリポジトリには答えるモジュールがありません。');
+      ? (lang === 'en' ? `Answered by ${by.join(', ')}.` : `提供するモジュール: ${by.join('、')}`)
+      : (lang === 'en' ? 'No module in this repository answers it.' : 'このリポジトリには、この型を提供するモジュールがありません。');
     sections.push(...factType(cap, lang, answered));
   }
 
@@ -244,7 +244,7 @@ async function mcpTools(lang) {
     if (PEOPLE_ONLY.has(name)) {
       sections.push(lang === 'en'
         ? 'Only for people logged in through OAuth, not for API tokens.'
-        : 'OAuth でログインした人だけが使えます。API トークンでは使えません。', '');
+        : 'OAuth でサインインした人だけが使えます。API トークンでは使えません。', '');
     }
     const schema = z.toJSONSchema(z.object(tool.inputSchema));
     const props = Object.entries(schema.properties ?? {});
@@ -258,7 +258,7 @@ async function mcpTools(lang) {
     ? { order: 85, title: 'MCP tools', description: 'The tools the Pointsman MCP server offers to AI agents, with their arguments.',
         intro: `Pointsman serves the Model Context Protocol (MCP) at \`/mcp\`, so AI agents can ask a decision profile instead of deciding on their own. [MCP server](${rel(lang, 'mcp.md')}) explains how to connect.` }
     : { order: 85, title: 'MCP ツール', description: 'Pointsman の MCP サーバーが AI エージェントに提供するツールと、その引数です。',
-        intro: `Pointsman は \`/mcp\` で Model Context Protocol(MCP)を提供します。AI エージェントは自分で判断する代わりに、Pointsman のプロファイルに判定を頼めます。接続方法は [MCP サーバー](${rel(lang, 'mcp.md')})で説明しています。` },
+        intro: `Pointsman は \`/mcp\` で Model Context Protocol(MCP)を提供します。AI エージェントは自分で判断する代わりに、Pointsman のプロファイルに判定を依頼できます。接続方法は [MCP サーバー](${rel(lang, 'mcp.md')})で説明しています。` },
     sections);
 }
 
