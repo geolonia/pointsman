@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:06a276878cea7cb2df1938f7ae98b97de16a5d1e23b8cfc0a24760feecd18a74"
+prose_version: "threat-model.md@sha256:21ad35bc1833ba7fedce0979809894b14628549ca5bf93312957465c3b0a0489"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 463, maintainer: 83, inferred: 0, assumption: 0}
+confidence: {documented: 464, maintainer: 83, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, the re-binding to v0.17.1 with pointsman#229 and R-PEOPLE-CHECK-PENDING (Q48), the re-binding to v0.17.2 with pointsman#232, and the re-binding to v0.18.0 with pointsman#235 and #236: Claude Opus 5.5 (claude-opus-5-5)"
@@ -810,7 +810,7 @@ contract_dimensions:
   - {component: engine-callbacks, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "one POST per attempt; redirects not followed", provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-callbacks, dimension: callback-execution, status: disclaimed, conditions: "the receiver is whoever the token holder named; the engine signs but does not authenticate the receiver", property_id: D-CALLBACK-ANY-PUBLIC-HOST, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-callbacks, dimension: serialization-reconstruction, status: not-applicable, conditions: "the receiver's body is ignored", provenance: {kind: maintainer, date: "2026-10"}}
-  - {component: engine-callbacks, dimension: reference-lifecycle, status: claimed, conditions: "a callback is claimed with a 60 s lease before an attempt", property_id: P-CALLBACK-SIGNED, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-callbacks, dimension: reference-lifecycle, status: claimed, conditions: "a callback is claimed with a 60 s lease before an attempt, counted from its own claim time (pointsman#243)", property_id: P-CALLBACK-SIGNED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-callbacks, dimension: concurrency-reentrancy, status: claimed, conditions: "first delivery and cron retry cannot send the same attempt twice", property_id: P-CALLBACK-SIGNED, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-callbacks, dimension: resource-complexity, status: claimed, conditions: "10 s per attempt; at most 50 due callbacks per cron run", property_id: P-CALLBACK-SIGNED, provenance: {kind: documented, source: "docs/reviews.md \"a timeout of 10 seconds\""}}
   - {component: engine-callbacks, dimension: x-prompt-injection, status: not-applicable, conditions: "no model involved", provenance: {kind: documented, source: "docs/reviews.md \"Callbacks\""}}
@@ -1019,6 +1019,10 @@ outputs:
         statement: "HMAC-SHA256 over timestamp.body with CALLBACK_SECRET; nothing sent without the secret"
         property_id: P-CALLBACK-SIGNED
         provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
+      - id: callback-names-client-and-url
+        statement: "since pointsman#271 the signed body names the client that made the decision and its callback_url"
+        property_id: P-CALLBACK-SIGNED
+        provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
     downstream_must_not_assume:
       - id: callback-exactly-once
         statement: "that it arrives exactly once"
@@ -1026,6 +1030,9 @@ outputs:
       - id: callback-authentic-unchecked
         statement: "that it is authentic without checking the signature and timestamp"
         provenance: {kind: documented, source: "docs/reviews.md \"Check the signature, and reject old timestamps\""}
+      - id: callback-for-receiver-unchecked
+        statement: "that it is meant for the receiver without checking client and callback_url"
+        provenance: {kind: documented, source: "docs/reviews.md \"So check all of these\""}
   - component: engine-mcp
     channel: mcp-tool-results-and-pages
     taint: constrained
@@ -1782,7 +1789,7 @@ properties_claimed:
     kind: integrity
     components: [engine-callbacks]
     tier: security-critical
-    conditions: "CALLBACK_SECRET set; every attempt signed and timestamped; claimed before sending; at most 6 attempts"
+    conditions: "CALLBACK_SECRET set; every attempt signed and timestamped right before its send; since pointsman#271 the signed body names client and callback_url; claimed before sending, each cron item at its own time (pointsman#243); at most 6 attempts"
     violation_symptoms: [integrity-bypass]
     provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
   - id: P-GITHUB-READ-ONLY
@@ -1985,6 +1992,12 @@ properties_disclaimed:
     tier: security-critical
     false_friend: true
     provenance: {kind: maintainer, date: "2026-10"}
+  - id: D-CALLBACK-SHARED-SECRET
+    components: [engine-callbacks]
+    conditions: "one CALLBACK_SECRET signs the callbacks of every client; whoever holds it (every receiver) can sign a callback that names another client; since pointsman#271 the engine itself signs only the client that made the decision"
+    tier: security-critical
+    false_friend: true
+    provenance: {kind: documented, source: "docs/reviews.md \"Every receiver of a deployment holds the same secret\""}
   - id: D-RATE-LIMIT
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge]
     conditions: "per-token or per-client rate limit, quota or budget; the AI Gateway's 600/min is per deployment; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound"
@@ -2247,9 +2260,9 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/profile-format.md \"People: check and answers\""}
   - id: R-VERIFY-CALLBACK
     component: engine-callbacks
-    statement: "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id"
-    enforces: [callback-authentic-unchecked, callback-exactly-once]
-    provenance: {kind: documented, source: "docs/reviews.md \"Check the signature, and reject old timestamps\""}
+    statement: "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, check that client and callback_url in the body are your own (since pointsman#271), make the handler idempotent on decision_id; give the secret only to receivers you trust"
+    enforces: [callback-authentic-unchecked, callback-for-receiver-unchecked, callback-exactly-once]
+    provenance: {kind: documented, source: "docs/reviews.md \"So check all of these\""}
   - id: R-STATE-IS-DATA
     component: engine-api
     statement: "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref"
@@ -2407,6 +2420,11 @@ known_misuses:
     pattern: "a callback receiver that acts without checking the signature and timestamp, or that is not idempotent"
     safer_alternative: "verify the HMAC and timestamp; dedupe on decision_id"
     provenance: {kind: documented, source: "docs/reviews.md \"Check the signature, and reject old timestamps\""}
+  - id: callback-for-another-client
+    components: [engine-callbacks]
+    pattern: "a callback receiver that checks the signature but not client and callback_url, so it acts on a callback another client asked for with its ref and URL"
+    safer_alternative: "check that client and callback_url are your own"
+    provenance: {kind: documented, source: "docs/reviews.md \"So check all of these\""}
   - id: subscription-without-result-attribute
     components: [bridge]
     pattern: "a subscription that limits notification.attributes to the inputs so the result attribute never arrives and every notification decides again"

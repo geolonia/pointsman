@@ -208,7 +208,8 @@ paths:
         Sets the final action and answers. Answers in `correct` replace the
         model's (source `human`); the others are kept (source `model`).
         `correct` is also stored as feedback. When the decision has a
-        `callback_url`, the final answer is sent there (see "Callbacks").
+        `callback_url`, the final answer is sent there, signed
+        (`CallbackPayload`; docs/reviews.md "Callbacks").
       parameters:
         - { $ref: '#/components/parameters/DecisionId' }
       requestBody:
@@ -488,7 +489,10 @@ components:
           maxLength: 200
           pattern: '^[^\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]*$'
         callback_url:
-          description: Where to send the final answer after a human review (https only).
+          description: |
+            Where to send the final answer after a human review (https only).
+            The signed callback names this URL and the client
+            (`CallbackPayload`).
           type: string
           format: uri
           pattern: '^https://'
@@ -835,6 +839,36 @@ components:
         attempts: { type: integer, minimum: 0 }
         last_error: { type: string }
         next_at: { type: string, format: date-time }
+    CallbackPayload:
+      description: |
+        The body Pointsman POSTs to the decision's `callback_url` when its
+        review is resolved. The request carries `x-pointsman-timestamp` (Unix
+        seconds) and `x-pointsman-signature: sha256=<hex>`, an HMAC-SHA256 with
+        `CALLBACK_SECRET` over `<timestamp>.<body>`. One secret signs the
+        callbacks of every client, so a receiver checks the signature, the
+        timestamp, and that `client` and `callback_url` are its own; since
+        v0.19.0 the body names both (docs/reviews.md "Callbacks").
+      type: object
+      additionalProperties: false
+      required: [decision_id, client, callback_url, profile, profile_version, action, answers, resolved_by, resolved_at]
+      properties:
+        decision_id: { type: string, format: uuid }
+        client:
+          description: |
+            The client that made the decision: the API token's client name, or
+            the INTERNAL_CLIENT name for an internal call (docs/adapters.md).
+          type: string
+        callback_url:
+          description: The URL the callback was sent to, as the client gave it in the decide request.
+          type: string
+          format: uri
+        ref: { type: string }
+        profile: { type: string }
+        profile_version: { type: integer, minimum: 1 }
+        action: { type: string }
+        answers: { $ref: '#/components/schemas/FinalAnswers' }
+        resolved_by: { type: string }
+        resolved_at: { type: string, format: date-time }
     ResolveRequest:
       type: object
       additionalProperties: false

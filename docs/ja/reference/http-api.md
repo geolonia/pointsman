@@ -121,7 +121,8 @@ Resolve a pending review.
 Sets the final action and answers. Answers in `correct` replace the
 model's (source `human`); the others are kept (source `model`).
 `correct` is also stored as feedback. When the decision has a
-`callback_url`, the final answer is sent there (see "Callbacks").
+`callback_url`, the final answer is sent there, signed
+(`CallbackPayload`; docs/reviews.md "Callbacks").
 
 | パラメーター | 場所 | 必須 | 説明 |
 | --- | --- | --- | --- |
@@ -263,7 +264,7 @@ the profile and every profile it requires. Not for test tokens.
 | --- | --- | --- | --- |
 | `state` | string \| object \| array | はい | What the model decides about: free text, or any JSON object or array. When the profile has an `input` mapping, this is the raw client payload the mapping reads from. |
 | `ref` | string | いいえ | The client's reference for this decision, for example an issue id. No control characters, line separators or direction marks. |
-| `callback_url` | string | いいえ | Where to send the final answer after a human review (https only). |
+| `callback_url` | string | いいえ | Where to send the final answer after a human review (https only). The signed callback names this URL and the client (`CallbackPayload`). |
 | `decisions` | object | いいえ | For a profile with `requires` (docs/decision-chains.md): the ids of the earlier decisions, by the names in `requires`. They are read from the decision log and must be of the named profile, in the token's scope, with this request's `ref` (then required) and from the same client; every other case gives the same 400. An optional one that was made for an older decision than one given here is left out (it is missing from `requires` in the answer). Not for test tokens. |
 
 ### ProfileExplanation
@@ -441,6 +442,29 @@ Delivery of the final answer to the decision's callback_url.
 | `attempts` | integer | はい |   |
 | `last_error` | string | いいえ |   |
 | `next_at` | string | いいえ |   |
+
+### CallbackPayload
+
+The body Pointsman POSTs to the decision's `callback_url` when its
+review is resolved. The request carries `x-pointsman-timestamp` (Unix
+seconds) and `x-pointsman-signature: sha256=<hex>`, an HMAC-SHA256 with
+`CALLBACK_SECRET` over `<timestamp>.<body>`. One secret signs the
+callbacks of every client, so a receiver checks the signature, the
+timestamp, and that `client` and `callback_url` are its own; since
+v0.19.0 the body names both (docs/reviews.md "Callbacks").
+
+| フィールド | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `decision_id` | string | はい |   |
+| `client` | string | はい | The client that made the decision: the API token's client name, or the INTERNAL_CLIENT name for an internal call (docs/adapters.md). |
+| `callback_url` | string | はい | The URL the callback was sent to, as the client gave it in the decide request. |
+| `ref` | string | いいえ |   |
+| `profile` | string | はい |   |
+| `profile_version` | integer | はい |   |
+| `action` | string | はい |   |
+| `answers` | `FinalAnswers` | はい |   |
+| `resolved_by` | string | はい |   |
+| `resolved_at` | string | はい |   |
 
 ### ResolveRequest
 

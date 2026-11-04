@@ -305,6 +305,17 @@
   `D-COMMAND-SHORT-COMMIT`; `D-REVIEWER-IDENTITY`;
   `R-IGNORE-TEST-DECISIONS`, `R-PEOPLE-CHECK-PENDING` and
   `R-RELEASE-PAIR`; one misuse pattern; §1.16. No new question.
+  Amended 2026-11-04, before the code is released, for pointsman#243 and
+  #271 (from the review of 2026-11): the signed callback body names the
+  client that made the decision (`client`) and the URL it is sent to
+  (`callback_url`), so a receiver can refuse a correctly signed callback
+  that another client asked for; the cron retry reads the time for each
+  item, so each claim, signing timestamp and next retry time is its own,
+  and an error in one item no longer stops the batch. Changed: the §1.8
+  row for the signed callback; the matrix row for the callbacks' reference
+  lifecycle; a wider `P-CALLBACK-SIGNED`; the new disclaimer
+  `D-CALLBACK-SHARED-SECRET`; a wider `R-VERIFY-CALLBACK`; one misuse
+  pattern; §1.16. No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -383,7 +394,12 @@
   into the changed files mapped from `v0.17.2` to the tag by the same
   script and the citations written in words checked by hand, the counts in
   §1.5 re-run; recon, interview and backtest were not run again; no
-  question was picked, because the code left none open.
+  question was picked, because the code left none open. The amendment of
+  2026-11-04 was done the same way (Claude Opus 5.5, the same plugin
+  version and commit): the prose by hand from the code and documents of
+  pointsman#243 and #271, every citation into the changed files
+  re-checked; recon, interview and backtest were not run again; no
+  question was picked, because the findings left none open.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -398,7 +414,8 @@
   pointsman#229, with two questions answered the same day; re-bound to
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
-  new question). The maintainer answered all 24 questions
+  new question; the amendment of 2026-11-04 for pointsman#243 and #271,
+  before its code is released, so it re-binds at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -411,7 +428,8 @@
   **inferred** or **assumption** tag remains. Closure constraint: an
   **inferred** claim may escalate a report but never close it, and an
   **assumption** closes only what the triage policy below permits. Nothing
-  shipped up to `v0.18.0` is listed as not covered (§1.16).
+  shipped up to `v0.18.0` is listed as not covered (§1.16); the callback
+  changes of pointsman#243 and #271 are covered before their release.
 - **Triage policy**: `strict` (kept by maintainer ruling, 2026-10). Should an
   **assumption** be added in a later revision, it escalates and never closes.
   See §1.17.
@@ -423,7 +441,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 463 documented / 83 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 464 documented / 83 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -944,7 +962,7 @@ modeled tree.
   `disaportaldata.gsi.go.jp` and `cyberjapandata.gsi.go.jp`
   (`packages/facts-gsi/src/provider.ts`, fixed URLs), the Valhalla server
   (`packages/facts-valhalla/src/router.ts`,
-  operator URL), the client-supplied `callback_url` (`src/callbacks.ts:69`),
+  operator URL), the client-supplied `callback_url` (`src/callbacks.ts:78`),
   `github.com` and `api.github.com` (`src/oauth.ts`), `api.github.com` for
   GitHub and CodeRabbit facts (`packages/github/src/provider.ts`, the fixed `API` constant; GET
   requests to the REST API, POST requests to `/graphql` with the two
@@ -986,7 +1004,7 @@ modeled tree.
   `redirect: 'manual'` and treat a 3xx as an error (`src/models/http.ts:76`,
   `packages/facts-valhalla/src/router.ts:181` with the check at
   `packages/facts-valhalla/src/router.ts:242`,
-  `src/callbacks.ts:78`, `packages/github/src/provider.ts:284` and the installation-token
+  `src/callbacks.ts:87`, `packages/github/src/provider.ts:284` and the installation-token
   request at `packages/github/src/provider.ts:238`, with the check at
   `packages/github/src/provider.ts:272`), the npm registry reads
   (`packages/github/src/npm.ts` `publishTimes`: an answer that is not 200 fails the
@@ -1151,7 +1169,7 @@ they are security-relevant.
 | `POST /v1/reviews/{id}/close` (since pointsman#221, `v0.16.0`) | `{id}` | yes (token holder) | resource-name | none — a UUID of a decision that the token's own client made, of a profile in its scope, else 404 as if it did not exist; a test token gets 403; only a pending review, else 409; it becomes `superseded`, sends no callback, and a later resolve gets 409 (`P-TOKEN-SCOPE`, `P-REVIEW-RESOLVED-ONCE`) | *(documented, docs/reviews.md "Closing a review")* |
 | cron `scheduled()` | the due callbacks read from D1 | no — the engine's own records | serialized-state | none | *(documented, docs/reviews.md "Retries are run by the Worker's cron trigger")* |
 | outbound callback | the receiver's HTTP status | yes (whoever is at `callback_url`) | data | none — any 2xx is delivered; else retried up to 6 attempts, then `failed` | *(documented, docs/reviews.md "Answer with any 2xx status")* |
-| outbound callback | the receiver's body and redirects | yes | data | none — the body is ignored, a 3xx is an error (`src/callbacks.ts:78`) | *(maintainer, 2026-10)* |
+| outbound callback | the receiver's body and redirects | yes | data | none — the body is ignored, a 3xx is an error (`src/callbacks.ts:87`) | *(maintainer, 2026-10)* |
 | `engine-facts` tile fetch | PNG and GeoJSON tile bytes from GSI | no — public data from a fixed host, decoded by the engine's own PNG and GeoJSON readers | data, serialized-state | none — an unknown legend colour or unreadable tile is `error`, never a guess | *(documented, docs/profile-format.md "A colour that is not in the legend fails the lookup")* |
 | `engine-facts` routing | the Valhalla response (`trip.summary.length`, `error_code`) | no — operator-chosen server over OpenStreetMap data | data | none — a 3xx is an error; a missing length is an error | *(documented, docs/profile-format.md "Detours")* |
 | `engine-facts` GitHub reads | the pull request, its commits and files, the base branch's rules and protection, check runs, commit statuses, workflow runs, membership and custom properties | partly — GitHub is a trusted collaborator, but titles, file names, commits and check-run names are written by the pull-request author | data, size | none — answers are shape-checked and counted (`P-FACT-LOOKUP-BOUNDED`); a wrong shape, a redirect, a rate limit or too many files or checks is `error`, never a guess (`P-FACTS-NEVER-GUESSED`); globs are matched without regular expressions | *(documented, docs/profile-format.md "One snapshot", "Missing GitHub facts")* |
@@ -1324,7 +1342,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-callbacks | recursive/cyclic topology | N/A — one POST per attempt; no redirects are followed | — | — | *(maintainer, 2026-10)* |
 | engine-callbacks | callback execution | disclaimed | the receiver at `callback_url` is whoever the token holder named; the engine does not authenticate the receiver; it signs the payload so the receiver can authenticate the engine | §1.12 `D-CALLBACK-ANY-PUBLIC-HOST` | *(maintainer, 2026-10)* |
 | engine-callbacks | serialization/reconstruction | N/A — the receiver's body is ignored | — | — | *(maintainer, 2026-10)* |
-| engine-callbacks | reference lifecycle | claimed | a callback is claimed with a 60 s lease before an attempt; only the claimant records the outcome | §1.11 `P-CALLBACK-SIGNED` | *(maintainer, 2026-10)* |
+| engine-callbacks | reference lifecycle | claimed | a callback is claimed with a 60 s lease before an attempt, counted from the time of that claim (since pointsman#243 each item of a cron batch reads the time itself); only the claimant records the outcome | §1.11 `P-CALLBACK-SIGNED` | *(maintainer, 2026-10)* |
 | engine-callbacks | concurrency/reentrancy | claimed | the first delivery and the cron retry cannot send the same attempt twice (the claim) | §1.11 `P-CALLBACK-SIGNED` | *(maintainer, 2026-10)* |
 | engine-callbacks | resource complexity | claimed | 10 s per attempt; the cron handles at most 50 due callbacks per run | §1.11 `P-CALLBACK-SIGNED` | *(documented, docs/reviews.md "a timeout of 10 seconds")* |
 | engine-callbacks | x-prompt-injection | N/A — no model involved | — | — | *(documented, docs/reviews.md "Callbacks")* |
@@ -1414,7 +1432,7 @@ docs/profile-format.md "A missing fact is never guessed")*.
 | reads from `https://registry.npmjs.org/<package>` | engine-facts | for `github_bump` only: the names of the packages a pull request bumps, without the GitHub token or any other credential | that the registry does not learn which packages the deployment's repositories bump | *(documented, docs/profile-format.md `github_bump` row: "read without the GitHub token")* |
 | GitHub and CodeRabbit fact values in the decision (`facts.<name>` of such a fact) | engine-facts | constrained: booleans and numbers, `pushed_by_author` (`yes`, `no` or `unavailable`), `github_bump.semver` and `github_release.level` (`major`, `minor`, `patch` or `none`), `github_release.from` and `to` (a version such as `1.2.3` or `1.2.3-rc.1`, or empty), and `github_property.value`, the text of a repository custom property (a list sorted and joined with commas); `source` names only the pull request (`GitHub owner/name#7 at 1a2b3c4`, for CodeRabbit facts with `(CodeRabbit)`); text for people that rules cannot read: `github_workflows.detail`, up to 20 findings joined by new lines, each a file path from the pull request with every character outside `A-Z a-z 0-9 . _ / @ + -` replaced by `?` and cut to 200, an optional line number, the field name and a fixed description that names a job, action, trigger or scope only when it is a plain name (`packages/github/src/workflows.ts:569`); and the CodeRabbit facts' `author` (the pull request author's login) and `pull_request` (`owner/repo#n`) | that a property value or a display text (`detail`, `author`) is safe for any grammar: `detail` can hold `@`, so rendered as Markdown a path can mention someone; that `author_member` or `all_commits_verified` makes the change trustworthy; that `github_release.version_only` or a `github_workflows` count of zero says who made the change or that it is safe (`D-RELEASE-NOT-WHO`, `D-WORKFLOWS-BEST-EFFORT`); that a CodeRabbit budget, price or spend is exact (`D-SERVICE-STATE-AS-STATED`, `D-LOG-FACTS-NOT-ATOMIC`); that `github_checks.green` means the intended jobs ran (`D-GITHUB-CHECK-NAMES`); that `pushed_by_author: yes` shows who wrote the commits, or that `author_sole_code_owner` means nobody else should look (it is only as good as the base branch's `CODEOWNERS`) | *(documented, docs/profile-format.md "GitHub pull requests" table; "Settings": "A fact's `source` names only the pull request"; "GitHub workflows", `detail`; "CodeRabbit reviews": "as text for people (rules cannot use it)")* |
 | the answer of an internal call (`InternalEngine.decide`; since pointsman#221 (`v0.16.0`) also `get`, `resolve` and `close`) | engine-api | the same status and JSON body as `POST /v1/decide` (and the other three routes); a configuration error is 500 `not_configured`, any other error 500 `internal_error`, with the reason only in the engine's log | that it came from another client than `INTERNAL_CLIENT`; that it passed edge rules | *(documented, docs/adapters.md "Internal calls"; `src/index.ts` `InternalEngine` comment)* |
-| the signed callback (`POST callback_url`) | engine-callbacks | constrained: the final action and answers, `resolved_by` as given by the resolving client, `ref` as given; signed with HMAC-SHA256 over `timestamp.body` | that it arrives exactly once (`D-EXACTLY-ONCE`); that it is authentic without checking the signature and timestamp (§1.13 `R-VERIFY-CALLBACK`) | *(documented, docs/reviews.md "Callbacks")* |
+| the signed callback (`POST callback_url`) | engine-callbacks | constrained: the final action and answers, `resolved_by` as given by the resolving client, `ref` as given; since pointsman#271 the client that made the decision (`client`) and the `callback_url` it gave; signed with HMAC-SHA256 over `timestamp.body`, the timestamp taken right before each send | that it arrives exactly once (`D-EXACTLY-ONCE`); that it is authentic without checking the signature and timestamp, or that it is meant for the receiver without checking `client` and `callback_url` (§1.13 `R-VERIFY-CALLBACK`, `D-CALLBACK-SHARED-SECRET`) | *(documented, docs/reviews.md "Callbacks")* |
 | MCP tool results | engine-mcp | the same decision and record as REST, as JSON text; `get_decision` strips `callback_url` and `state` | as for the REST outputs; also that the tool description text is an instruction to act on | *(documented, docs/mcp.md "Tools"; `src/mcp.ts` `get_decision`)* |
 | the consent and failure pages | engine-mcp | HTML assembled from the client's registered name, domain and redirect host, HTML-escaped | that a self-registered client name is verified (`D-OPEN-CLIENT-REGISTRATION`) | *(documented, `src/oauth.ts` `consentPage`: "This app registered itself; its name is not verified")* |
 | the answers of a connector inside the engine Worker (`/connectors/<id>/…`) | engine-api, bridge | the connector's own answers, as in its own Worker; a configuration error is 500 `not_configured`, an unknown or switched-off connector 404, with the setting's name only in the log | that a request to `/connectors/` passed edge rules on `/v1/` | *(documented, docs/connectors.md "Where it runs")* |
@@ -1812,14 +1830,20 @@ what voids it.
   `src/log-d1.ts:294`) *(documented, docs/reviews.md "Closing a review")*.
 - **`P-CALLBACK-SIGNED`** — every callback carries `x-pointsman-timestamp` and
   `x-pointsman-signature`, an HMAC-SHA256 over `<timestamp>.<body>` with
-  `CALLBACK_SECRET`; without the secret no callback is sent; attempts are
+  `CALLBACK_SECRET`; since pointsman#271 the signed body names the client
+  that made the decision (`client`) and the `callback_url` it gave, so a
+  receiver that checks them refuses a callback another client asked for;
+  since pointsman#243 the timestamp is taken right before each send and
+  each item of a cron batch is claimed at its own time; without the secret
+  no callback is sent; attempts are
   claimed before sending so one attempt is never sent twice by two runs;
   delivery stops after 6 attempts. Symptom: `integrity-bypass` (a forged
   callback accepted by a receiver that checks the signature). Tier:
   security-critical. *(documented, docs/reviews.md "Every callback is signed
   with the Worker secret `CALLBACK_SECRET`")*. Voided by: nothing in the
   engine. Search: `grep -n "sign(\|x-pointsman-signature" src/callbacks.ts` —
-  the one send site at `src/callbacks.ts:69` always signs. A receiver that
+  the one send site at `src/callbacks.ts:78` always signs, and `payloadFor`
+  at `src/callbacks.ts:39` puts `client` and `callback_url` in the body. A receiver that
   does not verify is a §1.14 misuse.
 - **`P-GITHUB-READ-ONLY`** — GitHub facts (all nine types) and CodeRabbit facts only read: the engine sends GET requests to the fixed host `api.github.com`, POST requests to its `/graphql` with only the two queries defined in `packages/github/src/reviews.ts` (review requests and threads; editors of comments and reviews), and, with a GitHub App, one POST that creates an installation token, which since `v0.6.0` asks only for the permissions the facts use, as read; a GraphQL text that does not start with `query` is refused before it is sent, so no mutation is sent; `github_bump` also sends GET requests to the fixed host `registry.npmjs.org`, without the GitHub token or any other credential; it never changes a repository, a pull request, a comment or a check; redirects are not followed, so the token never reaches another host; a fact's `source` names only the pull request (for `github_bump` followed by "npm registry", for CodeRabbit facts by "(CodeRabbit)"); facts from the decision log only read it. Symptom: `x-unauthorized-write`, `info-leak`. Tier: security-critical. *(documented, `packages/github/src/npm.ts` header comment; `packages/github/src/provider.ts` header comment; docs/profile-format.md "Settings": "Making the token is the only request that is not a read (GraphQL queries are sent as POST, but they only read)")*. Voided by: nothing in the engine; a credential with write permissions does not make the engine write, but widens what a leaked Worker secret can do (`R-GITHUB-CREDENTIAL`). Search: `grep -n "method:\|redirect:" packages/github/src/provider.ts` — the GET at `packages/github/src/provider.ts:284`, the token POST at `packages/github/src/provider.ts:238` and the GraphQL POST at `packages/github/src/provider.ts:299`, all with `redirect: 'manual'`, the `query` check before it at `packages/github/src/provider.ts:297`, and the 3xx check at `packages/github/src/provider.ts:272`; the registry GET in `publishTimes` (`packages/github/src/npm.ts:131`) with `redirect: 'manual'` and only the `accept` and `user-agent` headers.
 - **`P-GITHUB-FACTS-FOR-HEAD`** — the GitHub and CodeRabbit facts of a decision describe the head commit the request names, read as one snapshot shared by both modules: the pull request and its commits are checked against `head`, and when GitHub has another head commit, every GitHub and CodeRabbit fact of the decision is `stale` (missing); the pull request is read again after its file list, its reviews and its comments, and a push in between makes the facts that use them (`github_paths`, `github_bump`, `github_workflows`, `github_release`, `github_copilot`, `github_app_approval`, the CodeRabbit facts, and `github_pr` through `author_sole_code_owner`) `stale`; the GraphQL answers carry the head commit and are checked against it; `github_bump` reads every `package.json` and the tree at the head commit the request names, `github_workflows` the head tree and the base tip read with the pull request; `github_checks` and the head's statuses are read by the head commit id; CodeRabbit text counts for the head only when it names the head commit; a pull request the state does not name in the documented form is `no_pr`, and nothing is sent. Symptom: `x-toctou`, `wrong-output`. Tier: security-critical (an allowing rule must not match on files the client did not see). *(documented, docs/profile-format.md "GitHub pull requests": "If the pull request on GitHub has another head commit, every GitHub fact is missing"; "One snapshot")*. Voided by: nothing in the engine; what the client does after the decision is its own (`R-GITHUB-ACT-ON-HEAD`). Search: `grep -n "FactStaleError" packages/github/src/provider.ts` — the head checks at `packages/github/src/provider.ts:712`, `packages/github/src/provider.ts:721` and `packages/github/src/provider.ts:855`, after the reviews and comments at `packages/github/src/provider.ts:1074`, and for the GraphQL answers at `packages/github/src/provider.ts:1111` and `packages/github/src/provider.ts:1126`.
@@ -1974,6 +1998,7 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-STATE-CONTENT` | validation of the content of `state` beyond its JSON type and the profile's input mapping; no sanitisation, normalisation or schema check | `engine-api`, `engine-mcp`; the profile's `input` paths select fields, they do not validate them. Basis: stated | correctness-only | no | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
 | `D-STATE-SIZE` | a limit on the size or nesting depth of `state`, or a bound on the work a large state causes in the model call | `engine-api`, `engine-mcp`, `bridge` (the entity is the state); the platform's request limit and the model backend's own limits apply. Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, openapi.yaml `DecideRequest.state` has no size constraint; maintainer, 2026-10)* |
 | `D-CALLBACK-ANY-PUBLIC-HOST` | an allow-list of callback hosts or authentication of the receiver: a token holder can make the engine POST a signed decision payload to any public https URL | `engine-callbacks`; the payload is the final answer, never a token or secret; private addresses are refused (`P-OUTBOUND-PUBLIC-ONLY`); redirects are not followed. Basis: a maintainer ruling (2026-10) | security-critical | yes: https ≠ "the receiver is who the integrator meant" | *(maintainer, 2026-10)* |
+| `D-CALLBACK-SHARED-SECRET` | a key per client or per receiver for callbacks: one `CALLBACK_SECRET` signs the callbacks of every client of a deployment, so whoever holds it (every receiver) can sign a callback that names another client | `engine-callbacks`; since pointsman#271 the signed body names `client` and `callback_url`, so a token holder cannot make the engine sign a callback that names another client, but whoever runs a receiver can sign one with the secret. Basis: stated | security-critical | yes: "signed by Pointsman" ≠ "asked for by my client" | *(documented, docs/reviews.md "Every receiver of a deployment holds the same secret")* |
 | `D-RATE-LIMIT` | a per-token or per-client rate limit, quota or budget in the engine | every family; the AI Gateway's 600 calls/min is per deployment; edge rate limiting is the operator's (`R-RATE-LIMIT`). Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, docs/models.md "rate limit 600 calls per minute" is the only limit named; maintainer, 2026-10)* |
 | `D-TOKEN-EXPIRY` | a token without `--expires` lives until revoked; expiry is optional (`tokens.mjs --expires`, since #99) and rotation is `tokens.mjs rotate` | `engine-api`, `engine-mcp`. Basis: a maintainer ruling (2026-10) | correctness-only | no | *(documented, README "API tokens": optional expiry with `--expires`, rotation with `rotate`; maintainer, 2026-10)* |
 | `D-REVOCATION-IMMEDIATE` | immediate revocation: a revoked token can keep working for up to about 60 seconds in other locations | `engine-api`, `engine-mcp` API tokens. Basis: stated | correctness-only | no | *(documented, README "After a revoke, KV can take up to about 60 seconds to stop the token everywhere")* |
@@ -2145,9 +2170,12 @@ the receivers must do for §1.5–§1.11 to hold.
   `docs/profile-format.md:434`; bridge/README.md "Decision entities";
   docs/decision-log.md "Repeated requests"; maintainer, 2026-10)*.
 - **`R-VERIFY-CALLBACK`** — verify `x-pointsman-signature` with the shared
-  `CALLBACK_SECRET`, reject timestamps older than a few minutes, and make the
-  handler idempotent on `decision_id` *(documented, docs/reviews.md "Check the
-  signature, and reject old timestamps")*.
+  `CALLBACK_SECRET`, reject timestamps older than a few minutes, check that
+  the body's `client` is your own client name and its `callback_url` your
+  own URL (since pointsman#271), and make the handler idempotent on
+  `decision_id`; give the secret only to receivers you trust
+  (`D-CALLBACK-SHARED-SECRET`) *(documented, docs/reviews.md "So check all
+  of these")*.
 - **`R-STATE-IS-DATA`** — treat `state` as untrusted data in every client:
   never build a shell command, a query or a template from it; and treat the
   decision's `ref` as a logged, returned string that must not carry secrets
@@ -2245,6 +2273,10 @@ One line each in this draft; expand before publication.
   (`R-ACTION-INPUTS`).
 - A callback receiver that acts on the payload without checking the signature
   and timestamp, or that is not idempotent (`R-VERIFY-CALLBACK`).
+- A callback receiver that checks the signature but not `client` and
+  `callback_url`, so it acts on a callback that another client of the
+  deployment asked for with the receiver's `ref` and URL
+  (`R-VERIFY-CALLBACK`, `D-CALLBACK-SHARED-SECRET`).
 - A bridge subscription that limits `notification.attributes` to the inputs,
   so the result attribute never arrives and every notification decides again
   (`R-BRIDGE-SUBSCRIPTION`).
@@ -2388,7 +2420,9 @@ Revise the model when any of these happens:
 - A new fact type, layer or provider, a new fact module, a module from
   outside this repository (docs/modules.md "Trust"), or a fact that the
   model can see.
-- Not yet covered: nothing shipped up to `v0.18.0`. The re-binding to
+- Not yet covered: nothing shipped up to `v0.18.0`. The amendment of
+  2026-11-04 covers pointsman#243 and #271 (callbacks) before their
+  release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to
@@ -2556,8 +2590,8 @@ re-binding to `v0.18.0` it is the bound commit (`9dec36e`). The
 hand completion sets each boundary's text from fixed strings and asserts
 that each added phrase occurs once, so a repeated run cannot repeat it. The JSON's `confidence` has no maintainer or assumption
 count: the exporter folds maintainer claims into documented and
-assumption claims into inferred, so it reads 543 documented and 0
-inferred while §1.1 counts 460, 83, 0 and 0.
+assumption claims into inferred, so it reads 547 documented and 0
+inferred while §1.1 counts 464, 83, 0 and 0.
 
 ## Appendix: prior security-policy back-map
 
