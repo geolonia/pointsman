@@ -8,9 +8,12 @@
 //   x-pointsman-signature: sha256=<hex>
 //
 // The client checks the signature with the same secret and rejects old
-// timestamps (replay). Delivery is tried right after the resolve, then retried
-// by the scheduled handler with growing delays; every attempt is recorded, so
-// the status is visible in GET /v1/decisions/{id}.
+// timestamps (replay). The signed body names the client that made the
+// decision and the callback_url it gave, so a receiver can refuse a callback
+// that another client asked for (one secret signs for every client).
+// Delivery is tried right after the resolve, then retried by the scheduled
+// handler with growing delays; every attempt is recorded, so the status is
+// visible in GET /v1/decisions/{id}.
 
 import type { CallbackState, DecisionRecord } from './log';
 
@@ -21,6 +24,10 @@ const TIMEOUT_MS = 10_000;
 
 export interface CallbackPayload {
   decision_id: string;
+  /** The client that made the decision (the token's client name, or INTERNAL_CLIENT). */
+  client: string;
+  /** The URL this callback was sent to, as the client gave it. */
+  callback_url: string;
   ref?: string;
   profile: string;
   profile_version: number;
@@ -34,6 +41,8 @@ export function payloadFor(d: DecisionRecord): CallbackPayload {
   const review = d.review!;
   return {
     decision_id: d.decision_id,
+    client: d.client,
+    callback_url: d.callback_url!,
     ...(d.ref !== undefined && { ref: d.ref }),
     profile: d.profile,
     profile_version: d.profile_version,
@@ -55,16 +64,16 @@ export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 /** One delivery attempt; returns the new callback state to record. */
 export async function attempt(
   d: DecisionRecord,
-  { secret, fetch, now }: { secret: string | undefined; fetch: Fetch; now: Date },
+  { secret, fetch, clock }: { secret: string | undefined; fetch: Fetch; clock: () => Date },
 ): Promise<CallbackState> {
-  const attempts = (d.callback?.attempts ?? 0) + 1;
   let error: string;
   if (!secret) {
     // Never send unsigned callbacks; the state shows why nothing was sent.
     error = 'CALLBACK_SECRET is not set';
   } else {
     const body = JSON.stringify(payloadFor(d));
-    const timestamp = Math.floor(now.getTime() / 1000);
+    // Signed just before the send, so a slow batch never sends old signatures.
+    const timestamp = Math.floor(clock().getTime() / 1000);
     try {
       const res = await fetch(d.callback_url!, {
         method: 'POST',
@@ -78,13 +87,20 @@ export async function attempt(
         redirect: 'manual',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      if (res.status >= 200 && res.status < 300) return { status: 'delivered', attempts };
+      if (res.status >= 200 && res.status < 300) return { status: 'delivered', attempts: (d.callback?.attempts ?? 0) + 1 };
       error = `HTTP ${res.status}`;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   }
+  return failedAttempt(d, error, clock);
+}
+
+/** The state after an attempt that failed with `error`: retry later, or give up after the last. */
+export function failedAttempt(d: DecisionRecord, error: string, clock: () => Date): CallbackState {
+  const attempts = (d.callback?.attempts ?? 0) + 1;
   if (attempts >= MAX_ATTEMPTS) return { status: 'failed', attempts, last_error: error };
-  const next = new Date(now.getTime() + RETRY_DELAYS_S[attempts - 1]! * 1000).toISOString();
+  // Counted from the end of this attempt.
+  const next = new Date(clock().getTime() + RETRY_DELAYS_S[attempts - 1]! * 1000).toISOString();
   return { status: 'pending', attempts, last_error: error, next_at: next };
 }

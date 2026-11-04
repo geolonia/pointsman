@@ -66,6 +66,8 @@ When a review with a `callback_url` is resolved, Pointsman POSTs:
 ```json
 {
   "decision_id": "…",
+  "client": "issue-bot",
+  "callback_url": "https://issue-bot.example.org/pointsman",
   "ref": "github:example/repo#42",
   "profile": "issue-triage",
   "profile_version": 1,
@@ -76,22 +78,48 @@ When a review with a `callback_url` is resolved, Pointsman POSTs:
 }
 ```
 
+`client` is the client that made the decision (its API token's client name,
+or the `INTERNAL_CLIENT` name for an [internal call](adapters.md)), and
+`callback_url` is the URL it gave. Both are in the signed body.
+
 Every callback is signed with the Worker secret `CALLBACK_SECRET`
 (`wrangler secret put CALLBACK_SECRET`). Without that secret, nothing is sent
-(the callback status says why). Check the signature, and reject old
-timestamps:
+(the callback status says why). One secret signs the callbacks of every
+client of the deployment. Any client with a token can name your `ref` and your
+`callback_url` in its own decision, and its callback is signed too. So check
+all of these:
+
+- the signature;
+- the timestamp is recent;
+- `client` is your own client name;
+- `callback_url` is your own URL.
 
 ```js
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-function verify(secret, timestamp, signature, body, maxAgeSeconds = 300) {
-  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > maxAgeSeconds) return false;
-  const expected = 'sha256=' + createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
-  return signature.length === expected.length && timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+// rawBody: the request body as received, before JSON parsing.
+function verify({ secret, client, url }, headers, rawBody, maxAgeSeconds = 300) {
+  const timestamp = headers['x-pointsman-timestamp'];
+  const signature = headers['x-pointsman-signature'] ?? '';
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > maxAgeSeconds) return null;
+  const expected = 'sha256=' + createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  const payload = JSON.parse(rawBody);
+  // Signed, but for another client or another receiver: not yours.
+  if (payload.client !== client || payload.callback_url !== url) return null;
+  return payload;
 }
 
-// verify(secret, req.headers['x-pointsman-timestamp'], req.headers['x-pointsman-signature'], rawBody)
+// verify({ secret, client: 'issue-bot', url: 'https://issue-bot.example.org/pointsman' }, req.headers, rawBody)
 ```
+
+**Changed after v0.18.0.** Callbacks up to v0.18.0 had no `client` and no
+`callback_url`. The signature is made the same way, so a receiver that checks
+only the signature keeps working. To be safe against other clients, add the
+`client` and `callback_url` checks. A receiver that refuses unknown fields
+must accept the two new fields. Every receiver of a deployment holds the
+same secret, so whoever runs one receiver can also sign callbacks for the
+others; give the secret only to receivers you trust.
 
 Answer with any 2xx status. Otherwise (or on a network error or a timeout of
 10 seconds) Pointsman retries after 1 minute, 5 minutes, 30 minutes, 2 hours

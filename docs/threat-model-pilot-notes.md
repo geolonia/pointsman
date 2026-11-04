@@ -648,6 +648,27 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Questions**: none in the model.
 - **Validator**: passes (90 checks, one length warning).
 
+## Amendment for callbacks (pointsman#243, #271, 2026-11-04)
+
+- **Why**: the review of 2026-11 found that a signed callback did not name
+  the client, so one client could make the engine sign a callback that
+  looks like another client's (#271), and that a cron batch used one time
+  for every claim, signature and next retry (#243).
+- **Changed**: `P-CALLBACK-SIGNED`, `R-VERIFY-CALLBACK`, the §1.8 row and
+  the matrix row for the callbacks; the new disclaimer
+  `D-CALLBACK-SHARED-SECRET` (one secret for every client and receiver);
+  one misuse pattern; §1.1 and §1.16. The callback-execution row and
+  `D-CALLBACK-ANY-PUBLIC-HOST` stay as they were.
+- **How**: by hand, before the code is released, so it re-binds at the
+  next release. The YAML and JSON were edited by hand for the changed
+  entries, and the prose SHA-256 and the counts were updated by a short
+  script. The plugin's validator was not run in this session.
+- **Backtest**: not run; Q49 still waits.
+- **Questions**: none.
+- **Candidate issue kept out of the model**: a key per client (for example
+  `HMAC(CALLBACK_SECRET, client)`), so that one receiver cannot sign
+  callbacks for another.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 546,
+    "documented": 547,
     "inferred": 0
   },
   "components": [
@@ -1534,7 +1534,7 @@
       "property": "P-CALLBACK-SIGNED",
       "violation_symptom": "integrity-bypass",
       "severity_tier": "security",
-      "conditions": "CALLBACK_SECRET set; every attempt signed and timestamped; claimed before sending; at most 6 attempts",
+      "conditions": "CALLBACK_SECRET set; every attempt signed and timestamped right before its send; since pointsman#271 the signed body names client and callback_url; claimed before sending, each cron item at its own time (pointsman#243); at most 6 attempts",
       "provenance": "documented",
       "source": "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""
     },
@@ -1766,6 +1766,13 @@
       "false_friend": true,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
+    },
+    {
+      "property": "D-CALLBACK-SHARED-SECRET",
+      "reason": "one CALLBACK_SECRET signs the callbacks of every client; whoever holds it (every receiver) can sign a callback that names another client; since pointsman#271 the engine itself signs only the client that made the decision",
+      "false_friend": true,
+      "provenance": "documented",
+      "source": "docs/reviews.md \"Every receiver of a deployment holds the same secret\""
     },
     {
       "property": "D-RATE-LIMIT",
@@ -2076,7 +2083,7 @@
     "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default",
     "never act on a decision marked test: true; keep test tokens out of production clients; since pointsman#235 (v0.18.0) the triage and deploy-watch Actions never act on an answer for a test token",
     "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and since pointsman#232 (v0.17.2) by the FIWARE bridge on every route, whatever its reviewActions, which only add actions to check (up to v0.17.1 a route whose reviewActions left out a people_check action marked it as taken; a broker consumer must read reviewStatus too); since pointsman#236 (v0.18.0) a repeated request may get the review resolved, then act on final_action, or superseded, then act on nothing, and the bridge writes a resolved retry as resolved; added with the re-binding to v0.17.1 (Q48)",
-    "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
+    "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, check that client and callback_url in the body are your own (since pointsman#271), make the handler idempotent on decision_id; give the secret only to receivers you trust",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
     "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept",
     "set CALLBACK_SECRET before clients use callback_url; without it no callback is sent",
@@ -2133,6 +2140,11 @@
       "pattern": "a callback receiver that acts without checking the signature and timestamp, or that is not idempotent",
       "why_unsafe": "A callback receiver that acts on the payload without checking the signature and timestamp, or that is not idempotent (`R-VERIFY-CALLBACK`).",
       "instead": "verify the HMAC and timestamp; dedupe on decision_id"
+    },
+    {
+      "pattern": "a callback receiver that checks the signature but not client and callback_url, so it acts on a callback another client asked for with its ref and URL",
+      "why_unsafe": "A callback receiver that checks the signature but not `client` and `callback_url`, so it acts on a callback that another client of the deployment asked for with the receiver's `ref` and URL (`R-VERIFY-CALLBACK`, `D-CALLBACK-SHARED-SECRET`).",
+      "instead": "check that client and callback_url are your own"
     },
     {
       "pattern": "a subscription that limits notification.attributes to the inputs so the result attribute never arrives and every notification decides again",
