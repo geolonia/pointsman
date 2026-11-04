@@ -664,6 +664,31 @@ describe('actions (switched on per profile action)', () => {
     expect(t.mem.data.get('approvals')).toEqual([]);
   });
 
+  it('an open approval of another base past the first 1,000 reviews: not taken as absent, approvals blocked until it is found', async () => {
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    t.mem.data.set('approvals', []);
+    const acts = t.mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    t.mem.data.set('acts', acts);
+    t.gh.github.state.base = 'release';
+    const own = t.gh.github.ownApprovals;
+    // The list is cut at 1,000 reviews and the approval is after them.
+    t.gh.github.ownApprovals = async () => Object.assign([] as OwnApproval[], { cut: true });
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve']);
+    expect((t.mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('pending');
+    expect(t.gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('an older approval could not be dismissed');
+    // Once it can be found: dismissed, and the new base approved.
+    t.gh.github.ownApprovals = own;
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(t.gh.github.approvals).toHaveLength(1);
+  });
+
   it('an open approve record from before the base was kept: its traced approval gets no base either, so both stay as before', async () => {
     const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
     await work.run();

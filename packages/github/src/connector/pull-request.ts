@@ -1131,7 +1131,10 @@ export class PullRequestWork {
       }
       case 'approve': {
         const marker = markerOf(pr.head, profile, 'approve');
-        const found = (await this.#github.ownApprovals(repo, number)).find((a) => a.commit === pr.head && a.marker === marker);
+        const own = await this.#github.ownApprovals(repo, number);
+        const found = own.find((a) => a.commit === pr.head && a.marker === marker);
+        // Not among the reviews read, but there are more: whether it was given is not known (fail closed: the record stays open).
+        if (!found && own.cut) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether this commit was approved is not known');
         // The base it was given on: the one its record names (the run that approved), not this run's. A record from
         // before the base was kept names none: the approval stays without one too, so both are handled as before.
         const acts = await this.#storage.get<Acts>('acts');
