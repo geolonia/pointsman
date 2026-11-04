@@ -79,7 +79,7 @@ the signature of every webhook GitHub sends it.
 
 What the decision log keeps is described under
 [The decision log](decision-model.md#the-decision-log). The request's state
-(after the profile's input mapping) is kept as a plain SHA-256 hash, so
+(after the profile's input mapping, if it has one) is kept as a plain SHA-256 hash, so
 equal states give equal hashes. The log shows
 what the engine saw and did, not that the request was true. It is not
 signed or chained: whoever runs the deployment can change it. Who resolved a

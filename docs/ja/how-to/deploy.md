@@ -58,7 +58,9 @@ translatedFrom: 7d961e6
       npx wrangler secret put FACTS_GITHUB_TOKEN --config wrangler.jsonc
       ```
 
-   3. すぐにプルリクエストをマージします。デプロイが終わると(数分)、エンジンはまたリクエストを受け付けます。
+   3. すぐにプルリクエストをマージします。デプロイが終わると(数分)、エンジンはまたリクエストを受け付けます。デプロイが失敗したときは、もう一度実行します。直るまでの間は、シークレットを削除してもかまいません(`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`)。
+
+   `FACTS_GITHUB: "app"` と、そのシークレット `FACTS_GITHUB_APP_ID`、`FACTS_GITHUB_APP_PRIVATE_KEY` も同じです。
 
 8. クライアントのために **API トークンを作ります**。
 

@@ -78,7 +78,13 @@ profiles. `scripts/check-public.mjs` checks that in CI.
       ```
 
    3. Merge the pull request at once. The engine accepts requests again
-      when the deploy has finished (a few minutes).
+      when the deploy has finished (a few minutes). If the deploy fails,
+      run it again, or remove the secret
+      (`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`)
+      until it works.
+
+   The same holds for `FACTS_GITHUB: "app"` and its secrets
+   `FACTS_GITHUB_APP_ID` and `FACTS_GITHUB_APP_PRIVATE_KEY`.
 
 8. **Create API tokens** for your clients:
 
