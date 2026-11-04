@@ -59,7 +59,10 @@ profiles. `scripts/check-public.mjs` checks that in CI.
    openssl rand -hex 32 | npx wrangler secret put CALLBACK_SECRET --config wrangler.jsonc
    ```
 
-   Give the same value to the clients that receive callbacks.
+   Give the same value to the clients that receive callbacks. Each of them
+   can sign callbacks for the others with it, so each receiver checks that a
+   callback names its own `client` and `callback_url` (see
+   [reviews.md](reviews.md#callbacks)).
 
    Secrets for facts are set the same way, for example the token for
    [GitHub facts](profile-format.md#github-pull-requests). The secret and

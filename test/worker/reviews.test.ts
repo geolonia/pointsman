@@ -272,6 +272,10 @@ describe('closing a review (POST /v1/reviews/{id}/close)', () => {
   });
 });
 
+// The D1 log is shared by the tests in this file: retire callbacks that
+// earlier tests left pending, so a batch holds only this test's items.
+const retirePending = () => DB.prepare("UPDATE decisions SET callback_status = 'failed' WHERE callback_status = 'pending'").run();
+
 describe('callbacks', () => {
   it('sends the final answer, signed, and records the delivery', async () => {
     const s = setup();
@@ -288,6 +292,8 @@ describe('callbacks', () => {
     expect(headers['x-pointsman-signature']).toBe(`sha256=${await sign(SECRET, ts, body)}`);
     expect(JSON.parse(body)).toEqual({
       decision_id: id,
+      client: 'all',
+      callback_url: 'https://client.example/hook',
       ref: 'example:7',
       profile: 'issue-triage',
       profile_version: 1,
@@ -314,18 +320,18 @@ describe('callbacks', () => {
     expect(record.callback).toMatchObject({ status: 'pending', attempts: 1, last_error: 'HTTP 503' });
 
     // Not due yet: nothing happens.
-    expect(await retryDueCallbacks(s.deps, new Date())).toBe(0);
+    expect(await retryDueCallbacks(s.deps, () => new Date())).toBe(0);
 
     // Run the schedule far enough ahead each time until it gives up.
     let at = Date.now();
     for (let n = 2; n <= MAX_ATTEMPTS; n++) {
       at += 13 * 3600 * 1000;
-      expect(await retryDueCallbacks(s.deps, new Date(at))).toBe(1);
+      expect(await retryDueCallbacks(s.deps, () => new Date(at))).toBe(1);
     }
     record = (await s.call('GET', `/v1/decisions/${id}`)).data;
     expect(record.callback).toEqual({ status: 'failed', attempts: MAX_ATTEMPTS, last_error: 'HTTP 503' });
     expect(s.sent).toHaveLength(MAX_ATTEMPTS);
-    expect(await retryDueCallbacks(s.deps, new Date(at + 13 * 3600 * 1000))).toBe(0);
+    expect(await retryDueCallbacks(s.deps, () => new Date(at + 13 * 3600 * 1000))).toBe(0);
     quiet.mockRestore();
   });
 
@@ -338,7 +344,7 @@ describe('callbacks', () => {
     expect((await failing.call('GET', `/v1/decisions/${id}`)).data.callback.last_error).toBe('connection refused');
 
     const working = setup();
-    expect(await retryDueCallbacks(working.deps, new Date(Date.now() + 120_000))).toBe(1);
+    expect(await retryDueCallbacks(working.deps, () => new Date(Date.now() + 120_000))).toBe(1);
     expect(working.sent).toHaveLength(1);
     expect((await failing.call('GET', `/v1/decisions/${id}`)).data.callback).toEqual({ status: 'delivered', attempts: 2 });
     quiet.mockRestore();
@@ -367,7 +373,7 @@ describe('callbacks', () => {
     const stale = (await log.get(id))!;
     await deliver(stale, s.deps); // attempt 1 (fails, retry later)
     // Due again, but the snapshot still says 0 attempts: no second send.
-    await deliver(stale, s.deps, new Date(Date.now() + 3600_000));
+    await deliver(stale, s.deps, () => new Date(Date.now() + 3600_000));
     expect(s.sent).toHaveLength(1);
     expect((await log.get(id))?.callback?.attempts).toBe(1);
     quiet.mockRestore();
@@ -386,6 +392,102 @@ describe('callbacks', () => {
     expect(await log.recordCallback(id, { status: 'failed', attempts: 9 }, 'b')).toBe(false);
     expect(await log.recordCallback(id, { status: 'delivered', attempts: 1 }, 'a')).toBe(true);
     expect((await log.get(id))?.callback).toEqual({ status: 'delivered', attempts: 1 });
+  });
+
+  it('names the client that made the decision and the URL in the signed body', async () => {
+    const s = setup();
+    await addTokens(s.tokens);
+    const B = newToken();
+    s.tokens.records.set(await hashToken(B), { client: 'b', profiles: ['issue-triage'], created_at: '' });
+    // Client "b" asks with the same ref and callback_url as client "all".
+    const mine = await newReview(s.call, { callback_url: 'https://client.example/hook' });
+    const theirs = await newReview((m, p, b) => s.call(m, p, b, B), { callback_url: 'https://client.example/hook' });
+    await s.call('POST', `/v1/reviews/${mine}/resolve`, resolveBody);
+    await s.call('POST', `/v1/reviews/${theirs}/resolve`, resolveBody);
+
+    expect(s.sent).toHaveLength(2);
+    const bodies = s.sent.map((x) => JSON.parse(x.body));
+    for (const b of bodies) expect(contract.callbackPayload(b), JSON.stringify(contract.callbackPayload.errors)).toBe(true);
+    expect(bodies.map((b) => [b.decision_id, b.client, b.callback_url])).toEqual([
+      [mine, 'all', 'https://client.example/hook'],
+      [theirs, 'b', 'https://client.example/hook'],
+    ]);
+    // Both are signed: a receiver tells them apart only by the signed client.
+    for (const x of s.sent) {
+      const ts = Number(x.headers['x-pointsman-timestamp']);
+      expect(x.headers['x-pointsman-signature']).toBe(`sha256=${await sign(SECRET, ts, x.body)}`);
+    }
+  });
+
+  it('gives each retry in a batch its own lease, signing time and next retry', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await retirePending();
+    const s = setup({ status: 503 });
+    await addTokens(s.tokens);
+    const ids = [
+      await newReview(s.call, { callback_url: 'https://client.example/a' }),
+      await newReview(s.call, { callback_url: 'https://client.example/b' }),
+    ];
+    for (const id of ids) await s.call('POST', `/v1/reviews/${id}/resolve`, resolveBody);
+    expect(s.sent).toHaveLength(2);
+
+    // A slow receiver: each send takes 70 s, more than the 60 s lease.
+    let t = Math.floor(Date.now() / 1000) * 1000 + 600_000;
+    const sends: { url: string; ts: number; at: number }[] = [];
+    s.deps.callbacks = {
+      secret: SECRET,
+      fetch: async (url, init) => {
+        sends.push({ url, ts: Number((init.headers as Record<string, string>)['x-pointsman-timestamp']), at: t });
+        t += 70_000;
+        return new Response('', { status: 503 });
+      },
+    };
+    const claims = vi.spyOn(s.deps.log, 'claimCallback');
+    expect(await retryDueCallbacks(s.deps, () => new Date(t))).toBe(2);
+
+    expect(sends).toHaveLength(2);
+    for (const [i, c] of claims.mock.calls.entries()) {
+      const claim = c[1];
+      // Claimed when the item's turn came, with the lease ahead of that time.
+      expect(Date.parse(claim.now)).toBe(sends[i]!.at);
+      expect(Date.parse(claim.leaseUntil)).toBe(sends[i]!.at + 60_000);
+      // Signed at send time, not at the start of the batch.
+      expect(sends[i]!.ts).toBe(sends[i]!.at / 1000);
+    }
+    expect(sends[1]!.ts - sends[0]!.ts).toBe(70);
+    // The next retry counts from the end of the attempt (attempt 2: 300 s).
+    const log = new D1DecisionLog(DB);
+    for (const [i, id] of ids.entries()) {
+      const send = sends.find((x) => x.url.endsWith(i === 0 ? '/a' : '/b'))!;
+      expect((await log.get(id))?.callback).toEqual({
+        status: 'pending', attempts: 2, last_error: 'HTTP 503',
+        next_at: new Date(send.at + 70_000 + 300_000).toISOString(),
+      });
+    }
+    quiet.mockRestore();
+  });
+
+  it('goes on with the batch when one retry throws', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await retirePending();
+    const s = setup({ status: 503 });
+    await addTokens(s.tokens);
+    const ids = [
+      await newReview(s.call, { callback_url: 'https://client.example/a' }),
+      await newReview(s.call, { callback_url: 'https://client.example/b' }),
+    ];
+    for (const id of ids) await s.call('POST', `/v1/reviews/${id}/resolve`, resolveBody);
+    const ok = setup();
+    const real = ok.deps.log.claimCallback.bind(ok.deps.log);
+    let first = true;
+    vi.spyOn(ok.deps.log, 'claimCallback').mockImplementation(async (id, claim) => {
+      if (first) { first = false; throw new Error('D1 busy'); }
+      return real(id, claim);
+    });
+    expect(await retryDueCallbacks(ok.deps, () => new Date(Date.now() + 120_000))).toBe(2);
+    expect(ok.sent).toHaveLength(1);
+    expect(errors.mock.calls.some((c) => String(c.join(' ')).includes('D1 busy'))).toBe(true);
+    errors.mockRestore();
   });
 
   it('never sends unsigned callbacks', async () => {

@@ -73,7 +73,9 @@ depends on the repository's ruleset, which the repository's owners set: see
 [Review pull requests with Pointsman](../how-to/review-pull-requests.md#4-let-pointsman-approve).
 
 Callbacks with a review's outcome are signed, and the connector checks
-the signature of every webhook GitHub sends it.
+the signature of every webhook GitHub sends it. One secret signs the
+callbacks of every client, so a receiver also checks that the callback names
+its own client and its own URL ([callbacks](../reviews.md#callbacks)).
 
 ## What is recorded
 
