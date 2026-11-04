@@ -1796,7 +1796,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
+    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 another base makes them stale when the request names base; a push or a new base while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
     violation_symptoms: [x-toctou, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
   - id: P-GITHUB-REQUIRED-CHECKS
@@ -1831,7 +1831,7 @@ properties_claimed:
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "approve only on the decided head, read again right before and named as commit_id; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
+    conditions: "approve only on the decided head, read again right before and named as commit_id; since pointsman#270 also only on the decided base branch: base sent with the request, compared right before, and the pull request read again right after, the approval dismissed at once when head or base changed; an answer refused when the base changed since the question; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
     violation_symptoms: [x-toctou, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}
   - id: P-CONNECTOR-TOKEN-SCOPED

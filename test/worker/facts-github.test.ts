@@ -455,6 +455,12 @@ describe('changed paths (github_paths)', () => {
     expect(await reasonOf('docs', moved)).toEqual({ missing: true, reason: 'stale' });
   });
 
+  it('a new base while the files were read: stale', async () => {
+    let reads = 0;
+    const retargeted = routes({ [PR]: () => (++reads === 1 ? pullRequest() : pullRequest({ base: { ref: 'release', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } } })) });
+    expect(await reasonOf('docs', retargeted)).toEqual({ missing: true, reason: 'stale' });
+  });
+
   it('a file list that does not match the pull request is an error', async () => {
     expect(await reasonOf('docs', routes({ [PR]: () => pullRequest({ changed_files: 3 }) }))).toEqual({ missing: true, reason: 'error' });
   });
@@ -625,6 +631,13 @@ describe('missing facts', () => {
     expect(await all(routes({ [`${PR}/commits`]: () => [commit(OTHER)] }))).toEqual(specs.map(() => ({ missing: true, reason: 'stale' })));
   });
 
+  it('another base branch than the request names: every GitHub fact is stale; the same base or none named: read', async () => {
+    const at = (base: unknown) => ({ pull_request: { ...state.pull_request, base } });
+    expect(await all(routes(), at('release'))).toEqual(specs.map(() => ({ missing: true, reason: 'stale' })));
+    expect((await all(routes(), at('main'))).every((f) => !f.missing)).toBe(true);
+    expect((await all(routes())).every((f) => !f.missing)).toBe(true);
+  });
+
   it('no pull request in the request: no_pr, and no request to GitHub', async () => {
     for (const bad of [
       {}, { pull_request: 'octo-org/demo#7' },
@@ -634,6 +647,9 @@ describe('missing facts', () => {
       { pull_request: { repo: 'octo-org/demo', number: 0, head: HEAD } },
       { pull_request: { repo: 'octo-org/demo', number: 1.5, head: HEAD } },
       { pull_request: { repo: 'octo-org/demo', number: 7, head: 'abc123' } },
+      { pull_request: { repo: 'octo-org/demo', number: 7, head: HEAD, base: '' } },
+      { pull_request: { repo: 'octo-org/demo', number: 7, head: HEAD, base: 7 } },
+      { pull_request: { repo: 'octo-org/demo', number: 7, head: HEAD, base: 'a b' } },
     ]) {
       const { facts: f, server } = await facts(routes(), specs, bad);
       expect(Object.values(f), JSON.stringify(bad)).toEqual(specs.map(() => ({ missing: true, reason: 'no_pr' })));

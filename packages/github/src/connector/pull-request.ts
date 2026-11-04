@@ -95,6 +95,16 @@ interface Acts {
   done: Record<string, { decision: string; state: 'pending' | 'done' | 'failed'; at: number }>;
 }
 
+/**
+ * The same pull request as the one decided on: the same head commit and the
+ * same base branch. Its title, description and draft flag are checked where
+ * they matter. A new commit on the base branch does not count: the changes
+ * GitHub shows run from the merge base, which a push to the base branch only
+ * moves when it takes in commits of the head (docs/github-connector.md#safety).
+ */
+export const samePullRequest = (a: { head: string; base: string }, b: { head: string; base: string }): boolean =>
+  a.head === b.head && a.base === b.base;
+
 /** The approvals the connector gave and that may still stand: only these are ever dismissed. */
 interface Given extends OwnApproval {
   profile: string;
@@ -145,9 +155,10 @@ export interface Asked {
   head: string;
   /**
    * The decision, and the hash of what it rests on besides the head (#basisOf);
-   * `offered`: the answers offered in the pull request (answers.ts), when answers are on for the profile.
+   * `offered`: the answers offered in the pull request (answers.ts), when answers are on for the profile;
+   * `base`: the base branch it was asked on (answers.ts refuses an answer once it changed; none in older records).
    */
-  byProfile: Record<string, { decision: Decision; basis: string; offered?: string[] }>;
+  byProfile: Record<string, { decision: Decision; basis: string; offered?: string[]; base?: string }>;
   /** `since`: when it was listed; `tries`: closes that failed so far; `lastTry`: when the last one failed. */
   close: { id: string; since: number; tries: number; lastTry: number }[];
 }
@@ -309,7 +320,7 @@ export class PullRequestWork {
       await this.#clearButtons(target, '');
       return this.#settings.comment ? this.#closeComment(target, pr) : undefined;
     }
-    const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
+    const state = { repo: target.repo, number: target.number, head: pr.head, base: pr.base, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
     // A recheck deadline of an older head is void: a new head starts with none.
     const recheckHead = await this.#storage.get<string>('recheckHead');
     if (recheckHead !== undefined && recheckHead !== pr.head) {
@@ -360,12 +371,12 @@ export class PullRequestWork {
           decided[profile] = kept;
           continue;
         }
-        const { refused: diffRefused, ...diffState } = run.diff ? await this.#diffOf(target, pr.head, run.diff) : { refused: undefined };
+        const { refused: diffRefused, ...diffState } = run.diff ? await this.#diffOf(target, pr, run.diff) : { refused: undefined };
         refused = diffRefused;
         const asked = { ...state, ...diffState };
         answer = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
         // Kept at once, before anything is done: a retried run reads it back instead of asking a person again.
-        if (answer?.kind === 'decision' && answer.decision.review?.status === 'pending') await this.#ask(pr.head, profile, answer.decision, keyOf);
+        if (answer?.kind === 'decision' && answer.decision.review?.status === 'pending') await this.#ask(pr, profile, answer.decision, keyOf);
       }
       if (!answer) continue;
       if (answer.kind !== 'decision') {
@@ -582,8 +593,8 @@ export class PullRequestWork {
     return retrying(() => this.#github.createComment(repo, number, body));
   }
 
-  /** The diff of this head: read the head again after it, and try again later when a push came in between. */
-  async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean; refused?: true }> {
+  /** The diff of this head and base: read the pull request again after it, and try again later when a push or a new base came in between. */
+  async #diffOf(target: PullRequestTarget, pr: PullRequestInfo, max: number): Promise<{ diff: string; diff_truncated: boolean; refused?: true }> {
     let result: { diff: string; diff_truncated: boolean; refused?: true };
     try {
       const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
@@ -598,7 +609,7 @@ export class PullRequestWork {
     }
     // Also after a refusal: the decision must be about the head that was read.
     const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
-    if (now.head !== head) throw new RetryError(`${target.repo}#${target.number}: a push while the diff was read`);
+    if (!samePullRequest(now, pr)) throw new RetryError(`${target.repo}#${target.number}: a push or a new base while the diff was read`);
     return result;
   }
 
@@ -619,13 +630,14 @@ export class PullRequestWork {
     await this.#storage.put({ kept });
   }
 
-  /** Keeps a decision a person checks, for this head, with what it rests on. */
-  async #ask(head: string, profile: string, decision: Decision, basis: string): Promise<void> {
+  /** Keeps a decision a person checks, for this head and base, with what it rests on. */
+  async #ask(pr: PullRequestInfo, profile: string, decision: Decision, basis: string): Promise<void> {
+    const { head, base } = pr;
     const asked = (await this.#storage.get<Asked>('asked')) ?? { head, byProfile: {}, close: [] };
     // #closeAsked ran for this head at the start of the run, so the record is this head's.
     if (asked.head !== head) throw new Error('the questions of an older head were not closed');
     const offered = this.#offered(profile);
-    asked.byProfile[profile] = { decision: slim(decision), basis, ...(offered && { offered }) };
+    asked.byProfile[profile] = { decision: slim(decision), basis, base, ...(offered && { offered }) };
     await this.#storage.put({ asked });
   }
 
@@ -969,9 +981,9 @@ export class PullRequestWork {
       }
     }
     if (spec.do === 'approve' || spec.do === 'copilot_review') {
-      // Only the commit that was decided on: read the pull request again right before.
+      // Only the commit and base that were decided on: read the pull request again right before.
       const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
-      if (!now.open || (spec.do === 'approve' && now.draft) || now.head !== pr.head) return { kind: 'skipped', text: `${spec.do}: not done, the pull request changed` };
+      if (!now.open || (spec.do === 'approve' && now.draft) || !samePullRequest(now, pr)) return { kind: 'skipped', text: `${spec.do}: not done, the pull request changed` };
     }
     acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now() };
     await this.#storage.put({ acts });
@@ -987,7 +999,39 @@ export class PullRequestWork {
     }
     acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now() };
     await this.#storage.put({ acts });
+    if (spec.do === 'approve') {
+      const moved = await this.#movedWhileApproved(target, pr, profile, acts);
+      if (moved) return moved;
+    }
     return { kind: 'done', text: describe(spec) };
+  }
+
+  /**
+   * A push or a new base can land between the last read and the approval:
+   * the pull request is read once more right after it, and an approval that
+   * no longer fits is dismissed at once rather than on the next run. When
+   * that read or the dismissal fails, the approval stays recorded, so the
+   * next run (its event, or a retry) dismisses it.
+   */
+  async #movedWhileApproved(target: PullRequestTarget, pr: PullRequestInfo, profile: string, acts: Acts): Promise<ActOutcome | undefined> {
+    const where = `${target.repo}#${target.number}`;
+    let now: PullRequestInfo;
+    try {
+      now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
+    } catch (err) {
+      if (err instanceof RetryError) throw err;
+      console.error(`github connector: ${where} ${profile} reading the pull request after approve: ${err instanceof Error ? err.message : String(err)}`);
+      return undefined;
+    }
+    if (samePullRequest(now, pr)) return undefined;
+    const message = `Pointsman approved ${pr.head.slice(0, 7)}; the pull request changed while it was approved.`;
+    if (!(await this.#dismiss(target, (a) => a.commit === pr.head && a.profile === profile, () => message))) {
+      return { kind: 'skipped', text: 'approve: done, but the pull request changed while it was approved and the approval could not be withdrawn (logged; tried again on the next run)' };
+    }
+    // Forgotten, so a later decision on this head (on the new base) may approve again.
+    delete acts.done[`${profile}:approve`];
+    await this.#storage.put({ acts });
+    return { kind: 'skipped', text: 'approve: withdrawn, the pull request changed while it was approved' };
   }
 
   async #perform(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision, spec: ActionSpec): Promise<void> {

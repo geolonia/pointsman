@@ -265,7 +265,7 @@ describe('the work of one pull request', () => {
     await work.run();
     expect(pm.calls.map((c) => c.profile)).toEqual(['pr-docs-check', 'workflow-check']);
     expect(pm.calls[0]!.body).toEqual({
-      state: { pull_request: { repo: REPO, number: 7, head: HEAD, title: 'Docs', body: 'A body' } },
+      state: { pull_request: { repo: REPO, number: 7, head: HEAD, base: 'main', title: 'Docs', body: 'A body' } },
       ref: `github:${REPO}#7@${HEAD}`,
     });
     const creates = gh.calls.filter((c) => c.op === 'create');
@@ -555,6 +555,31 @@ describe('actions (switched on per profile action)', () => {
     await work.run();
     expect(ops(gh.calls)).toContain('dismiss');
     expect(await review({ id: own, login: BOT })).toBe('own');
+  });
+
+  it('does not approve when the base changed between the decision and the approval', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.state.base = 'release'; // the pull request was retargeted while Pointsman decided
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(gh.github.approvals).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('the pull request changed');
+  });
+
+  it('withdraws its approval at once when the head or base moved while it approved', async () => {
+    for (const move of [(s: PullRequestInfo) => { s.base = 'release'; }, (s: PullRequestInfo) => { s.head = HEAD2; }]) {
+      const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+      const approve = gh.github.approve;
+      // The change lands after the last read, while the approval is sent.
+      gh.github.approve = async (...a) => { const id = await approve(...a); move(gh.github.state); return id; };
+      await work.run();
+      expect(ops(gh.calls)).toEqual(['approve', 'dismiss']);
+      expect(gh.github.approvals).toEqual([]);
+      expect((mem.data.get('acts') as any).done['pr-docs-check:approve']).toBeUndefined();
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('approve: withdrawn, the pull request changed while it was approved');
+    }
   });
 
   it('does not approve when the head moved between the decision and the approval', async () => {
@@ -1426,6 +1451,14 @@ describe('chains: profiles that build on each other', () => {
     const { work, pm, gh } = await chained();
     const diff = gh.github.diff;
     gh.github.diff = async (...a) => { gh.github.state.head = HEAD2; return diff(...a); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(pm.calls).toHaveLength(0);
+  });
+
+  it('tries again later when the base changes while the diff is read', async () => {
+    const { work, pm, gh } = await chained();
+    const diff = gh.github.diff;
+    gh.github.diff = async (...a) => { gh.github.state.base = 'release'; return diff(...a); };
     await expect(work.run()).rejects.toBeInstanceOf(RetryError);
     expect(pm.calls).toHaveLength(0);
   });
