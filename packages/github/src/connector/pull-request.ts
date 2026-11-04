@@ -339,7 +339,11 @@ export class PullRequestWork {
     let approveBlocked = false;
     if (this.#approves()) {
       const settled = await this.#settleOtherBase(target, pr);
-      approveBlocked = !(await this.#dismissStale(target, pr)) || !settled;
+      const dismissed = await this.#dismissStale(target, pr);
+      // The records of another base go only once their approvals are dismissed: otherwise a later run
+      // (also one back on that base) still finds them to dismiss or withdraw.
+      if (dismissed) await this.#forgetOtherBase(pr);
+      approveBlocked = !dismissed || !settled;
     }
     // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
     const decided: Record<string, Decision> = {};
@@ -816,30 +820,45 @@ export class PullRequestWork {
       (a) => a.commit !== pr.head ? `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has newer commits.` : `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has another base branch.`);
   }
 
+  /** The approve records of this head made on another base branch. */
+  #otherBase(acts: Acts | undefined, pr: PullRequestInfo): [string, Acts['done'][string]][] {
+    if (!acts || acts.head !== pr.head) return [];
+    return Object.entries(acts.done).filter(([key, r]) => key.endsWith(':approve') && r.base !== undefined && r.base !== pr.base);
+  }
+
   /**
-   * The approve records of this head made on another base branch: a record
-   * left open (a run stopped after the approval) is settled by its trace
-   * first, so that approval is remembered with its base and dismissed by
-   * #dismissStale; then the record goes, so a decision on the new base may
-   * approve again. False when a trace cannot be read (logged; the record stays).
+   * An approve record of another base left open (a run stopped after the
+   * approval) is settled by its trace, so that approval is remembered with
+   * its base and dismissed by #dismissStale. False when a trace cannot be
+   * read (logged; the record stays open).
    */
   async #settleOtherBase(target: PullRequestTarget, pr: PullRequestInfo): Promise<boolean> {
     const acts = await this.#storage.get<Acts>('acts');
-    if (!acts || acts.head !== pr.head) return true;
     let ok = true;
-    let changed = false;
-    for (const [key, record] of Object.entries(acts.done)) {
-      if (!key.endsWith(':approve') || record.base === undefined || record.base === pr.base) continue;
-      const profile = key.slice(0, -':approve'.length);
-      if (record.state === 'pending' && (await this.#tracedOrUnknown(target, { ...pr, base: record.base }, profile, { do: 'approve' })) === 'unknown') {
+    for (const [key, record] of this.#otherBase(acts, pr)) {
+      if (record.state !== 'pending') continue;
+      const traced = await this.#tracedOrUnknown(target, pr, key.slice(0, -':approve'.length), { do: 'approve' });
+      if (traced === 'unknown') {
         ok = false;
         continue;
       }
-      delete acts.done[key];
-      changed = true;
+      acts!.done[key] = { ...record, state: traced ? 'done' : 'failed' };
+      await this.#storage.put({ acts });
     }
-    if (changed) await this.#storage.put({ acts });
     return ok;
+  }
+
+  /**
+   * After #dismissStale dismissed them: the settled approve records of
+   * another base go, so a decision on this base may approve again. One still
+   * open (its trace could not be read) stays.
+   */
+  async #forgetOtherBase(pr: PullRequestInfo): Promise<void> {
+    const acts = await this.#storage.get<Acts>('acts');
+    const gone = this.#otherBase(acts, pr).filter(([, r]) => r.state !== 'pending');
+    if (gone.length === 0) return;
+    for (const [key] of gone) delete acts!.done[key];
+    await this.#storage.put({ acts });
   }
 
   /** Dismisses the given approvals that `which` selects and that still stand; false when one could not be (logged). */
@@ -941,6 +960,8 @@ export class PullRequestWork {
     if (spec.do === 'keep_approval') {
       const approveKey = `${profile}:approve`;
       const approved = acts.done[approveKey];
+      // Given on another base (its dismissal failed, or its trace could not be read): never kept.
+      if (approved?.base !== undefined && approved.base !== pr.base) return { kind: 'skipped', text: 'keep_approval: the approval of this commit was given on another base branch' };
       // An approval whose run stopped before its record was closed: settled by its trace first.
       if (approved?.state === 'pending') {
         const traced = await this.#tracedOrUnknown(target, pr, profile, { do: 'approve' });
@@ -1111,8 +1132,10 @@ export class PullRequestWork {
       case 'approve': {
         const marker = markerOf(pr.head, profile, 'approve');
         const found = (await this.#github.ownApprovals(repo, number)).find((a) => a.commit === pr.head && a.marker === marker);
-        // The base it was given on: the pull request's as the run that approved read it.
-        if (found) await this.#remember({ id: found.id, commit: found.commit, profile, base: pr.base });
+        // The base it was given on: the one its record names (the run that approved), not this run's.
+        const acts = await this.#storage.get<Acts>('acts');
+        const record = acts?.head === pr.head ? acts.done[`${profile}:approve`] : undefined;
+        if (found) await this.#remember({ id: found.id, commit: found.commit, profile, base: record?.base ?? pr.base });
         return found !== undefined;
       }
       case 'keep_approval':

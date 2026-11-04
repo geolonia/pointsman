@@ -618,6 +618,52 @@ describe('actions (switched on per profile action)', () => {
     expect(gh.github.approvals).toHaveLength(1);
   });
 
+  it('a retarget whose dismissal fails, then back to the old base: the next decision that does not approve still withdraws it', async () => {
+    let action = 'light';
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    const dismiss = t.gh.github.dismissReview;
+    t.gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismiss: 422', false, 422); };
+    t.gh.github.state.base = 'release';
+    await t.event();
+    await t.work.run();
+    expect(t.gh.github.approvals).toHaveLength(1);
+    // Back on main, the dismissal works again, and the decision no longer approves.
+    t.gh.github.dismissReview = dismiss;
+    t.gh.github.state.base = 'main';
+    action = 'wait';
+    await t.event();
+    await t.work.run();
+    expect(t.gh.github.approvals).toEqual([]);
+  });
+
+  it('an open approval of another base whose trace fails is never kept by keep_approval, and is dismissed once it can be read', async () => {
+    let action = 'light';
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' }, keep: { do: 'keep_approval' } } }, (p) => Response.json(decision(p, { action })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    // As if the run stopped after the approval, before it was recorded as given.
+    t.mem.data.set('approvals', []);
+    const acts = t.mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    t.mem.data.set('acts', acts);
+    t.gh.github.state.base = 'release';
+    const own = t.gh.github.ownApprovals;
+    let reads = 0;
+    // The first read of the reviews (the settling trace) fails; later ones work.
+    t.gh.github.ownApprovals = async (...a) => { if (++reads === 1) throw new GitHubError('GitHub reviews: 404', false, 404); return own(...a); };
+    action = 'keep';
+    await t.event();
+    await t.work.run();
+    expect(t.gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('keep_approval: the approval of this commit was given on another base branch');
+    expect(t.gh.github.approvals).toHaveLength(1);
+    await t.event();
+    await t.work.run();
+    expect(t.gh.github.approvals).toEqual([]);
+    expect(t.mem.data.get('approvals')).toEqual([]);
+  });
+
   it('after the approval: a failed read leaves it done; a failed dismissal says so and keeps the records', async () => {
     const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
     vi.spyOn(console, 'error').mockImplementation(() => {});
