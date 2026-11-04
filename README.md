@@ -145,8 +145,9 @@ what the examples say.
 ## Clients
 
 - [MCP](docs/mcp.md): `/mcp` with `list_profiles`, `explain_profile`,
-  `replay_profile`, `decide` and `get_decision`, so agents can ask a profile
-  instead of deciding themselves.
+  `replay_profile`, `decide` and `get_decision` (and `submit_feedback` for
+  people signed in with GitHub), so agents can ask a profile instead of
+  deciding themselves. Only profiles with `mcp.visible: true` are shown.
 - [GitHub issue triage](actions/triage/): a GitHub Action that labels new
   issues from a Pointsman decision, or asks for a human review.
 - [Deploy watch](actions/deploy-watch/): a GitHub Action that stops a
@@ -197,8 +198,8 @@ A **test token** (`--test`) is for checking profiles and their examples
 against the real model, for example in a scheduled job. Its decisions are
 made like any other (answers, facts, rules) and marked `"test": true`, but
 they are not logged: they never reach the review queue or the accuracy
-numbers. A test token may only decide (and list its profiles) over the REST
-API, not over MCP, and gets no callbacks.
+numbers. A test token may only decide, list its profiles and explain them over the
+REST API, not over MCP, and gets no callbacks.
 
 After a revoke, KV can take up to about 60 seconds to stop the token
 everywhere.
@@ -213,7 +214,7 @@ pnpm install
 pnpm db:migrate:local     # create the local decision log (D1)
 pnpm dev                  # local Worker on :8787, example profiles, mock model
 pnpm test                 # script tests and Worker tests (in workerd)
-pnpm check                # typecheck, tests, profile validation, dry-run deploy
+pnpm check                # typecheck, tests, profiles and their cases, docs, dry-run deploy
 node scripts/validate-profiles.mjs path/to/profiles  # validate your own
 ```
 
