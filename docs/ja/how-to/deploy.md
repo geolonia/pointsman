@@ -47,7 +47,7 @@ translatedFrom: 7d961e6
    openssl rand -hex 32 | npx wrangler secret put CALLBACK_SECRET --config wrangler.jsonc
    ```
 
-   コールバックを受け取るクライアントにも、同じ値を渡します。この値があれば、ほかのクライアントへのコールバックにも署名できます。そのため、受け取る側は、コールバックのボディの `client` と `callback_url` が自分のものであることを確かめます([reviews.md](../../reviews.md#callbacks)(英語)を参照)。
+   コールバックを受け取るクライアントにも、同じ値を渡します。この値があれば、ほかのクライアントへのコールバックにも署名できます。そのため、受け取る側は、コールバックのリクエストボディの `client` と `callback_url` が自分のものであることを確かめます。詳しくは [reviews.md](../../reviews.md#callbacks)(英語)を参照してください。
 
    ファクトのためのシークレットも、同じ方法で設定します。たとえば [GitHub のファクト](../../profile-format.md#github-pull-requests)のためのトークンです。シークレットと設定は組み合わせが合っている必要があります。`FACTS_GITHUB: "token"` なのに `FACTS_GITHUB_TOKEN` がないときも、シークレットがあるのに `FACTS_GITHUB` が `"token"` でないときも、エンジンはすべてのリクエストを拒否します(設定のエラーとして扱います)。シークレットは設定したときにすぐ有効になるため、どちらを先にしても短い間はリクエストが拒否されます。利用の少ない時間に、次の手順で間をあけずに進めます。
 

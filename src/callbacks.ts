@@ -10,9 +10,10 @@
 // The client checks the signature with the same secret and rejects old
 // timestamps (replay). The signed body names the client that made the
 // decision and the callback_url it gave, so a receiver can refuse a callback
-// that another client asked for (one secret signs for every client). Delivery is tried right after the resolve, then retried
-// by the scheduled handler with growing delays; every attempt is recorded, so
-// the status is visible in GET /v1/decisions/{id}.
+// that another client asked for (one secret signs for every client).
+// Delivery is tried right after the resolve, then retried by the scheduled
+// handler with growing delays; every attempt is recorded, so the status is
+// visible in GET /v1/decisions/{id}.
 
 import type { CallbackState, DecisionRecord } from './log';
 
@@ -65,7 +66,6 @@ export async function attempt(
   d: DecisionRecord,
   { secret, fetch, clock }: { secret: string | undefined; fetch: Fetch; clock: () => Date },
 ): Promise<CallbackState> {
-  const attempts = (d.callback?.attempts ?? 0) + 1;
   let error: string;
   if (!secret) {
     // Never send unsigned callbacks; the state shows why nothing was sent.
@@ -87,12 +87,18 @@ export async function attempt(
         redirect: 'manual',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      if (res.status >= 200 && res.status < 300) return { status: 'delivered', attempts };
+      if (res.status >= 200 && res.status < 300) return { status: 'delivered', attempts: (d.callback?.attempts ?? 0) + 1 };
       error = `HTTP ${res.status}`;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   }
+  return failedAttempt(d, error, clock);
+}
+
+/** The state after an attempt that failed with `error`: retry later, or give up after the last. */
+export function failedAttempt(d: DecisionRecord, error: string, clock: () => Date): CallbackState {
+  const attempts = (d.callback?.attempts ?? 0) + 1;
   if (attempts >= MAX_ATTEMPTS) return { status: 'failed', attempts, last_error: error };
   // Counted from the end of this attempt.
   const next = new Date(clock().getTime() + RETRY_DELAYS_S[attempts - 1]! * 1000).toISOString();

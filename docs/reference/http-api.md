@@ -448,8 +448,8 @@ review is resolved. The request carries `x-pointsman-timestamp` (Unix
 seconds) and `x-pointsman-signature: sha256=<hex>`, an HMAC-SHA256 with
 `CALLBACK_SECRET` over `<timestamp>.<body>`. One secret signs the
 callbacks of every client, so a receiver checks the signature, the
-timestamp, and that `client` and `callback_url` are its own; since
-v0.19.0 the body names both (docs/reviews.md "Callbacks").
+timestamp, and that `client` and `callback_url` are its own. Older
+releases sent neither field (docs/reviews.md "Callbacks").
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
