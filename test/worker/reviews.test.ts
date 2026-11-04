@@ -277,6 +277,8 @@ describe('closing a review (POST /v1/reviews/{id}/close)', () => {
 const retirePending = () => DB.prepare("UPDATE decisions SET callback_status = 'failed' WHERE callback_status = 'pending'").run();
 
 describe('callbacks', () => {
+  beforeEach(retirePending);
+
   it('sends the final answer, signed, and records the delivery', async () => {
     const s = setup();
     await addTokens(s.tokens);
@@ -421,7 +423,6 @@ describe('callbacks', () => {
 
   it('gives each retry in a batch its own lease, signing time and next retry', async () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await retirePending();
     const s = setup({ status: 503 });
     await addTokens(s.tokens);
     const ids = [
@@ -469,7 +470,6 @@ describe('callbacks', () => {
 
   it('goes on with the batch when one retry throws', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await retirePending();
     const s = setup({ status: 503 });
     await addTokens(s.tokens);
     const ids = [
@@ -487,6 +487,27 @@ describe('callbacks', () => {
     expect(await retryDueCallbacks(ok.deps, () => new Date(Date.now() + 120_000))).toBe(2);
     expect(ok.sent).toHaveLength(1);
     expect(errors.mock.calls.some((c) => String(c.join(' ')).includes('D1 busy'))).toBe(true);
+    // The item that threw was not claimed: it is still due, at attempt 1.
+    const log = new D1DecisionLog(DB);
+    const states = await Promise.all(ids.map(async (id) => (await log.get(id))?.callback));
+    expect(states.filter((c) => c?.status === 'pending' && c.attempts === 1 && c.last_error === 'HTTP 503')).toHaveLength(1);
+    expect(states.filter((c) => c?.status === 'delivered')).toHaveLength(1);
+    errors.mockRestore();
+  });
+
+  it('counts an attempt that throws after the claim, so the item does not come back forever', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const s = setup();
+    await addTokens(s.tokens);
+    const id = await newReview(s.call, { callback_url: 'https://client.example/hook' });
+    const log = new D1DecisionLog(DB);
+    await log.resolve(id, { resolved_at: new Date().toISOString(), resolved_by: 'x', client: 'all', final_action: 'auto', final_answers: {}, correct: {} });
+    // A record the payload cannot be built from (no review): attempt() throws.
+    const { review: _, ...broken } = (await log.get(id))!;
+    await deliver(broken, s.deps);
+    expect(s.sent).toHaveLength(0);
+    expect((await log.get(id))?.callback).toMatchObject({ status: 'pending', attempts: 1 });
+    expect((await log.get(id))?.callback?.last_error).toBeTruthy();
     errors.mockRestore();
   });
 

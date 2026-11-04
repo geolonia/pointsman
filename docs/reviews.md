@@ -78,8 +78,9 @@ When a review with a `callback_url` is resolved, Pointsman POSTs:
 }
 ```
 
-`client` is the client that made the decision (the name of its API token),
-and `callback_url` is the URL it gave. Both are in the signed body.
+`client` is the client that made the decision (its API token's client name,
+or the `INTERNAL_CLIENT` name for an [internal call](adapters.md)), and
+`callback_url` is the URL it gave. Both are in the signed body.
 
 Every callback is signed with the Worker secret `CALLBACK_SECRET`
 (`wrangler secret put CALLBACK_SECRET`). Without that secret, nothing is sent
@@ -112,7 +113,7 @@ function verify({ secret, client, url }, headers, rawBody, maxAgeSeconds = 300) 
 // verify({ secret, client: 'issue-bot', url: 'https://issue-bot.example.org/pointsman' }, req.headers, rawBody)
 ```
 
-**Changed in v0.19.0.** Callbacks before v0.19.0 had no `client` and no
+**Changed after v0.18.0.** Callbacks up to v0.18.0 had no `client` and no
 `callback_url`. The signature is made the same way, so a receiver that checks
 only the signature keeps working. To be safe against other clients, add the
 `client` and `callback_url` checks. A receiver that refuses unknown fields
