@@ -638,6 +638,37 @@ describe('actions (switched on per profile action)', () => {
     expect(t.gh.github.approvals).toEqual([]);
   });
 
+  it('two approving profiles, a retarget where only one dismissal fails, then back: each record follows its own approval', async () => {
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    const actions: Record<string, string> = { 'pr-docs-check': 'light', 'workflow-check': 'light' };
+    const pm = fakeEngine((p) => Response.json(decision(p, { action: actions[p]! })));
+    const approve = { light: { do: 'approve' as const } };
+    const work = pullRequestWork(settings({ actions: { 'pr-docs-check': approve, 'workflow-check': approve } }), mem.storage, pm.engine, gh.github);
+    const event = () => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(2);
+    const idOf = (profile: string) => gh.github.approvals.find((a) => a.marker!.includes(profile))!.id;
+    const workflowId = idOf('workflow-check');
+    // Retargeted: the dismissal of workflow-check's approval fails, pr-docs-check's works.
+    const dismiss = gh.github.dismissReview;
+    gh.github.dismissReview = async (r, n, id, m) => { if (id === workflowId) throw new GitHubError('GitHub dismiss: 422', false, 422); return dismiss(r, n, id, m); };
+    gh.github.state.base = 'release';
+    await event();
+    await work.run();
+    const done = () => Object.keys((mem.data.get('acts') as any).done);
+    expect(done()).toEqual(['workflow-check:approve']);
+    // Back on main: pr-docs-check approves again (not "already done"); workflow-check no longer approves and is withdrawn.
+    gh.github.dismissReview = dismiss;
+    gh.github.state.base = 'main';
+    actions['workflow-check'] = 'wait';
+    await event();
+    await work.run();
+    expect(gh.github.approvals.map((a) => a.marker!.includes('pr-docs-check'))).toEqual([true]);
+  });
+
   it('an open approval of another base whose trace fails is never kept by keep_approval, and is dismissed once it can be read', async () => {
     let action = 'light';
     const t = await acting({ 'pr-docs-check': { light: { do: 'approve' }, keep: { do: 'keep_approval' } } }, (p) => Response.json(decision(p, { action })));

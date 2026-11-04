@@ -340,9 +340,9 @@ export class PullRequestWork {
     if (this.#approves()) {
       const settled = await this.#settleOtherBase(target, pr);
       const dismissed = await this.#dismissStale(target, pr);
-      // The records of another base go only once their approvals are dismissed: otherwise a later run
-      // (also one back on that base) still finds them to dismiss or withdraw.
-      if (dismissed) await this.#forgetOtherBase(pr);
+      // The records of another base go only once their own approvals are dismissed, profile by profile: otherwise
+      // a later run (also one back on that base) still finds them to dismiss or withdraw.
+      await this.#forgetOtherBase(pr);
       approveBlocked = !dismissed || !settled;
     }
     // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
@@ -849,13 +849,16 @@ export class PullRequestWork {
   }
 
   /**
-   * After #dismissStale dismissed them: the settled approve records of
-   * another base go, so a decision on this base may approve again. One still
-   * open (its trace could not be read) stays.
+   * After #dismissStale: the settled approve records of another base whose
+   * approval is no longer recorded as given (dismissed or gone) go, profile
+   * by profile, so a decision on this base may approve again. One still open
+   * (its trace could not be read), or whose dismissal failed, stays.
    */
   async #forgetOtherBase(pr: PullRequestInfo): Promise<void> {
     const acts = await this.#storage.get<Acts>('acts');
-    const gone = this.#otherBase(acts, pr).filter(([, r]) => r.state !== 'pending');
+    const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
+    const gone = this.#otherBase(acts, pr).filter(([key, r]) => r.state !== 'pending'
+      && !given.some((g) => g.commit === pr.head && `${g.profile}:approve` === key));
     if (gone.length === 0) return;
     for (const [key] of gone) delete acts!.done[key];
     await this.#storage.put({ acts });
