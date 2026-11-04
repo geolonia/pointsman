@@ -1132,10 +1132,12 @@ export class PullRequestWork {
       case 'approve': {
         const marker = markerOf(pr.head, profile, 'approve');
         const found = (await this.#github.ownApprovals(repo, number)).find((a) => a.commit === pr.head && a.marker === marker);
-        // The base it was given on: the one its record names (the run that approved), not this run's.
+        // The base it was given on: the one its record names (the run that approved), not this run's. A record from
+        // before the base was kept names none: the approval stays without one too, so both are handled as before.
         const acts = await this.#storage.get<Acts>('acts');
         const record = acts?.head === pr.head ? acts.done[`${profile}:approve`] : undefined;
-        if (found) await this.#remember({ id: found.id, commit: found.commit, profile, base: record?.base ?? pr.base });
+        const base = record ? record.base : pr.base;
+        if (found) await this.#remember({ id: found.id, commit: found.commit, profile, ...(base !== undefined && { base }) });
         return found !== undefined;
       }
       case 'keep_approval':

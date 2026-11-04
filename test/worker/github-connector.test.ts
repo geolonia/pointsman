@@ -664,6 +664,24 @@ describe('actions (switched on per profile action)', () => {
     expect(t.mem.data.get('approvals')).toEqual([]);
   });
 
+  it('an open approve record from before the base was kept: its traced approval gets no base either, so both stay as before', async () => {
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    mem.data.set('approvals', []);
+    const acts = mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'] = { ...acts.done['pr-docs-check:approve'], state: 'pending', base: undefined };
+    mem.data.set('acts', acts);
+    await event();
+    await work.run();
+    expect(mem.data.get('approvals')).toEqual([{ id: gh.github.approvals[0]!.id, commit: HEAD, profile: 'pr-docs-check' }]);
+    // A retarget then: the approval and its record agree (no base), so no dismissal and no "already done" for a dismissed one.
+    gh.github.state.base = 'release';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect(gh.github.approvals).toHaveLength(1);
+  });
+
   it('after the approval: a failed read leaves it done; a failed dismissal says so and keeps the records', async () => {
     const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
     vi.spyOn(console, 'error').mockImplementation(() => {});
