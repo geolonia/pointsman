@@ -92,12 +92,25 @@ export const UNCLEAR_MS = 10 * 60_000;
  */
 interface Acts {
   head: string;
-  done: Record<string, { decision: string; state: 'pending' | 'done' | 'failed'; at: number }>;
+  /** `base`: the base branch it was done on (none in older records): an approval on another base is settled and dismissed (#settleOtherBase). */
+  done: Record<string, { decision: string; state: 'pending' | 'done' | 'failed'; at: number; base?: string }>;
 }
+
+/**
+ * The same pull request as the one decided on: the same head commit and the
+ * same base branch. Its title, description and draft flag are checked where
+ * they matter. A new commit on the base branch does not count: the changes
+ * GitHub shows run from the merge base, which a push to the base branch only
+ * moves when it takes in commits of the head (docs/github-connector.md#safety).
+ */
+export const samePullRequest = (a: { head: string; base: string }, b: { head: string; base: string }): boolean =>
+  a.head === b.head && a.base === b.base;
 
 /** The approvals the connector gave and that may still stand: only these are ever dismissed. */
 interface Given extends OwnApproval {
   profile: string;
+  /** The base branch it was given on (none in older records): on another base it is dismissed, as after a push. */
+  base?: string;
 }
 
 /** What happened to a decision's action, for its check run. */
@@ -145,9 +158,10 @@ export interface Asked {
   head: string;
   /**
    * The decision, and the hash of what it rests on besides the head (#basisOf);
-   * `offered`: the answers offered in the pull request (answers.ts), when answers are on for the profile.
+   * `offered`: the answers offered in the pull request (answers.ts), when answers are on for the profile;
+   * `base`: the base branch it was asked on (answers.ts refuses an answer once it changed; none in older records).
    */
-  byProfile: Record<string, { decision: Decision; basis: string; offered?: string[] }>;
+  byProfile: Record<string, { decision: Decision; basis: string; offered?: string[]; base?: string }>;
   /** `since`: when it was listed; `tries`: closes that failed so far; `lastTry`: when the last one failed. */
   close: { id: string; since: number; tries: number; lastTry: number }[];
 }
@@ -309,7 +323,7 @@ export class PullRequestWork {
       await this.#clearButtons(target, '');
       return this.#settings.comment ? this.#closeComment(target, pr) : undefined;
     }
-    const state = { repo: target.repo, number: target.number, head: pr.head, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
+    const state = { repo: target.repo, number: target.number, head: pr.head, base: pr.base, title: pr.title.slice(0, MAX_TITLE), body: authorText(pr.body).slice(0, MAX_BODY) };
     // A recheck deadline of an older head is void: a new head starts with none.
     const recheckHead = await this.#storage.get<string>('recheckHead');
     if (recheckHead !== undefined && recheckHead !== pr.head) {
@@ -320,8 +334,17 @@ export class PullRequestWork {
     await this.#closeAsked(target, pr.head);
     await this.#clearButtons(target, pr.head);
     await this.#seeHead(pr.head);
-    // A stale approval that cannot be dismissed blocks new approvals in this run (fail closed).
-    const approveBlocked = this.#approves() ? !(await this.#dismissStale(target, pr.head)) : false;
+    // A stale approval (an older commit or another base) that cannot be dismissed blocks new approvals in this run (fail closed).
+    // Both always run: a trace that cannot be read must not keep the other stale approvals standing.
+    let approveBlocked = false;
+    if (this.#approves()) {
+      const settled = await this.#settleOtherBase(target, pr);
+      const dismissed = await this.#dismissStale(target, pr);
+      // The records of another base go only once their own approvals are dismissed, profile by profile: otherwise
+      // a later run (also one back on that base) still finds them to dismiss or withdraw.
+      await this.#forgetOtherBase(pr);
+      approveBlocked = !dismissed || !settled;
+    }
     // The decisions of this run (or kept for this head), for the profiles that require them and the comment.
     const decided: Record<string, Decision> = {};
     // The check runs written in this run, by profile (a failed comment is noted on them).
@@ -360,12 +383,12 @@ export class PullRequestWork {
           decided[profile] = kept;
           continue;
         }
-        const { refused: diffRefused, ...diffState } = run.diff ? await this.#diffOf(target, pr.head, run.diff) : { refused: undefined };
+        const { refused: diffRefused, ...diffState } = run.diff ? await this.#diffOf(target, pr, run.diff) : { refused: undefined };
         refused = diffRefused;
         const asked = { ...state, ...diffState };
         answer = await this.#decide(profile, asked, decisions, [pr.draft, pr.base, attempt]);
         // Kept at once, before anything is done: a retried run reads it back instead of asking a person again.
-        if (answer?.kind === 'decision' && answer.decision.review?.status === 'pending') await this.#ask(pr.head, profile, answer.decision, keyOf);
+        if (answer?.kind === 'decision' && answer.decision.review?.status === 'pending') await this.#ask(pr, profile, answer.decision, keyOf);
       }
       if (!answer) continue;
       if (answer.kind !== 'decision') {
@@ -582,8 +605,8 @@ export class PullRequestWork {
     return retrying(() => this.#github.createComment(repo, number, body));
   }
 
-  /** The diff of this head: read the head again after it, and try again later when a push came in between. */
-  async #diffOf(target: PullRequestTarget, head: string, max: number): Promise<{ diff: string; diff_truncated: boolean; refused?: true }> {
+  /** The diff of this head and base: read the pull request again after it, and try again later when a push or a new base came in between. */
+  async #diffOf(target: PullRequestTarget, pr: PullRequestInfo, max: number): Promise<{ diff: string; diff_truncated: boolean; refused?: true }> {
     let result: { diff: string; diff_truncated: boolean; refused?: true };
     try {
       const { diff, truncated } = await retrying(() => this.#github.diff(target.repo, target.number, max));
@@ -598,7 +621,7 @@ export class PullRequestWork {
     }
     // Also after a refusal: the decision must be about the head that was read.
     const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
-    if (now.head !== head) throw new RetryError(`${target.repo}#${target.number}: a push while the diff was read`);
+    if (!samePullRequest(now, pr)) throw new RetryError(`${target.repo}#${target.number}: a push or a new base while the diff was read`);
     return result;
   }
 
@@ -619,13 +642,14 @@ export class PullRequestWork {
     await this.#storage.put({ kept });
   }
 
-  /** Keeps a decision a person checks, for this head, with what it rests on. */
-  async #ask(head: string, profile: string, decision: Decision, basis: string): Promise<void> {
+  /** Keeps a decision a person checks, for this head and base, with what it rests on. */
+  async #ask(pr: PullRequestInfo, profile: string, decision: Decision, basis: string): Promise<void> {
+    const { head, base } = pr;
     const asked = (await this.#storage.get<Asked>('asked')) ?? { head, byProfile: {}, close: [] };
     // #closeAsked ran for this head at the start of the run, so the record is this head's.
     if (asked.head !== head) throw new Error('the questions of an older head were not closed');
     const offered = this.#offered(profile);
-    asked.byProfile[profile] = { decision: slim(decision), basis, ...(offered && { offered }) };
+    asked.byProfile[profile] = { decision: slim(decision), basis, base, ...(offered && { offered }) };
     await this.#storage.put({ asked });
   }
 
@@ -785,12 +809,59 @@ export class PullRequestWork {
   }
 
   /**
-   * Its own approvals stand only for the commit they were given on: after a
-   * push they are dismissed. Only approvals it recorded giving are touched.
+   * Its own approvals stand only for the commit and base branch they were
+   * given on: after a push or a new base they are dismissed, whatever the
+   * next decision says. Only approvals it recorded giving are touched (one
+   * recorded without its base, before the base was kept, only after a push).
    * Returns false when one could not be dismissed (logged).
    */
-  async #dismissStale(target: PullRequestTarget, head: string): Promise<boolean> {
-    return this.#dismiss(target, (a) => a.commit !== head, (a) => `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has newer commits.`);
+  async #dismissStale(target: PullRequestTarget, pr: PullRequestInfo): Promise<boolean> {
+    return this.#dismiss(target, (a) => a.commit !== pr.head || (a.base !== undefined && a.base !== pr.base),
+      (a) => a.commit !== pr.head ? `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has newer commits.` : `Pointsman approved ${a.commit.slice(0, 7)}; the pull request has another base branch.`);
+  }
+
+  /** The approve records of this head made on another base branch. */
+  #otherBase(acts: Acts | undefined, pr: PullRequestInfo): [string, Acts['done'][string]][] {
+    if (!acts || acts.head !== pr.head) return [];
+    return Object.entries(acts.done).filter(([key, r]) => key.endsWith(':approve') && r.base !== undefined && r.base !== pr.base);
+  }
+
+  /**
+   * An approve record of another base left open (a run stopped after the
+   * approval) is settled by its trace, so that approval is remembered with
+   * its base and dismissed by #dismissStale. False when a trace cannot be
+   * read (logged; the record stays open).
+   */
+  async #settleOtherBase(target: PullRequestTarget, pr: PullRequestInfo): Promise<boolean> {
+    const acts = await this.#storage.get<Acts>('acts');
+    let ok = true;
+    for (const [key, record] of this.#otherBase(acts, pr)) {
+      if (record.state !== 'pending') continue;
+      const traced = await this.#tracedOrUnknown(target, pr, key.slice(0, -':approve'.length), { do: 'approve' });
+      if (traced === 'unknown') {
+        ok = false;
+        continue;
+      }
+      acts!.done[key] = { ...record, state: traced ? 'done' : 'failed' };
+      await this.#storage.put({ acts });
+    }
+    return ok;
+  }
+
+  /**
+   * After #dismissStale: the settled approve records of another base whose
+   * approval is no longer recorded as given (dismissed or gone) go, profile
+   * by profile, so a decision on this base may approve again. One still open
+   * (its trace could not be read), or whose dismissal failed, stays.
+   */
+  async #forgetOtherBase(pr: PullRequestInfo): Promise<void> {
+    const acts = await this.#storage.get<Acts>('acts');
+    const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
+    const gone = this.#otherBase(acts, pr).filter(([key, r]) => r.state !== 'pending'
+      && !given.some((g) => g.commit === pr.head && `${g.profile}:approve` === key));
+    if (gone.length === 0) return;
+    for (const [key] of gone) delete acts!.done[key];
+    await this.#storage.put({ acts });
   }
 
   /** Dismisses the given approvals that `which` selects and that still stand; false when one could not be (logged). */
@@ -892,6 +963,8 @@ export class PullRequestWork {
     if (spec.do === 'keep_approval') {
       const approveKey = `${profile}:approve`;
       const approved = acts.done[approveKey];
+      // Given on another base (its dismissal failed, or its trace could not be read): never kept.
+      if (approved?.base !== undefined && approved.base !== pr.base) return { kind: 'skipped', text: 'keep_approval: the approval of this commit was given on another base branch' };
       // An approval whose run stopped before its record was closed: settled by its trace first.
       if (approved?.state === 'pending') {
         const traced = await this.#tracedOrUnknown(target, pr, profile, { do: 'approve' });
@@ -946,7 +1019,7 @@ export class PullRequestWork {
         // GitHub's answer will not change for this commit (more than 1,000 reviews): looking again
         // would decide and read the reviews without end. Not asked, and not tried again for this commit.
         if (err instanceof GitHubHistoryLimit) {
-          acts.done[key] = { decision: decision.decision_id, state: 'failed', at: this.now() };
+          acts.done[key] = { decision: decision.decision_id, state: 'failed', at: this.now(), base: pr.base };
           await this.#storage.put({ acts });
           return { kind: 'skipped', text: 'copilot_review: whether Copilot was asked cannot be told; not tried again for this commit' };
         }
@@ -963,31 +1036,63 @@ export class PullRequestWork {
         return { kind: 'skipped', text: 'copilot_review: whether Copilot was asked is unclear, checked again later' };
       }
       if (asked) {
-        acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now() };
+        acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now(), base: pr.base };
         await this.#storage.put({ acts });
         return { kind: 'done', text: 'Copilot already asked or reviewed this commit' };
       }
     }
     if (spec.do === 'approve' || spec.do === 'copilot_review') {
-      // Only the commit that was decided on: read the pull request again right before.
+      // Only the commit and base that were decided on: read the pull request again right before.
       const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
-      if (!now.open || (spec.do === 'approve' && now.draft) || now.head !== pr.head) return { kind: 'skipped', text: `${spec.do}: not done, the pull request changed` };
+      if (!now.open || (spec.do === 'approve' && now.draft) || !samePullRequest(now, pr)) return { kind: 'skipped', text: `${spec.do}: not done, the pull request changed` };
     }
-    acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now() };
+    acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now(), base: pr.base };
     await this.#storage.put({ acts });
     try {
       await retrying(() => this.#perform(target, pr, profile, decision, spec));
     } catch (err) {
       if (err instanceof RetryError) throw err;
       // Not better on a retry (a missing label, no permission): shown on the check run, not done again for this commit.
-      acts.done[key] = { decision: decision.decision_id, state: 'failed', at: this.now() };
+      acts.done[key] = { decision: decision.decision_id, state: 'failed', at: this.now(), base: pr.base };
       await this.#storage.put({ acts });
       console.error(`github connector: ${target.repo}#${target.number} ${profile} ${spec.do}: ${err instanceof Error ? err.message : String(err)}`);
       return { kind: 'skipped', text: `${spec.do}: failed (${err instanceof GitHubError && err.status ? err.status : 'error'}); not tried again for this commit` };
     }
-    acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now() };
+    acts.done[key] = { decision: decision.decision_id, state: 'done', at: this.now(), base: pr.base };
     await this.#storage.put({ acts });
+    if (spec.do === 'approve') {
+      const moved = await this.#movedWhileApproved(target, pr, profile, acts);
+      if (moved) return moved;
+    }
     return { kind: 'done', text: describe(spec) };
+  }
+
+  /**
+   * A push or a new base can land between the last read and the approval:
+   * the pull request is read once more right after it, and an approval that
+   * no longer fits is dismissed at once rather than on the next run. When
+   * that read or the dismissal fails, the approval stays recorded, so the
+   * next run (its event, or a retry) dismisses it.
+   */
+  async #movedWhileApproved(target: PullRequestTarget, pr: PullRequestInfo, profile: string, acts: Acts): Promise<ActOutcome | undefined> {
+    const where = `${target.repo}#${target.number}`;
+    let now: PullRequestInfo;
+    try {
+      now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
+    } catch (err) {
+      if (err instanceof RetryError) throw err;
+      console.error(`github connector: ${where} ${profile} reading the pull request after approve: ${err instanceof Error ? err.message : String(err)}`);
+      return undefined;
+    }
+    if (samePullRequest(now, pr)) return undefined;
+    const message = `Pointsman approved ${pr.head.slice(0, 7)}; the pull request changed while it was approved.`;
+    if (!(await this.#dismiss(target, (a) => a.commit === pr.head && a.profile === profile, () => message))) {
+      return { kind: 'skipped', text: 'approve: done, but the pull request changed while it was approved and the approval could not be withdrawn (logged; tried again on the next run)' };
+    }
+    // Forgotten, so a later decision on this head (on the new base) may approve again.
+    delete acts.done[`${profile}:approve`];
+    await this.#storage.put({ acts });
+    return { kind: 'skipped', text: 'approve: withdrawn, the pull request changed while it was approved' };
   }
 
   async #perform(target: PullRequestTarget, pr: PullRequestInfo, profile: string, decision: Decision, spec: ActionSpec): Promise<void> {
@@ -1003,7 +1108,7 @@ export class PullRequestWork {
       case 'approve': {
         const id = await this.#github.approve(repo, number, pr.head, `${markerOf(pr.head, profile, 'approve')}\nPointsman approved ${pr.head.slice(0, 7)} (decision \`${decision.decision_id}\`, profile \`${profile}\`).`);
         this.#reviews = undefined;
-        await this.#remember({ id, commit: pr.head, profile });
+        await this.#remember({ id, commit: pr.head, profile, base: pr.base });
         return;
       }
       case 'keep_approval':
@@ -1029,8 +1134,19 @@ export class PullRequestWork {
       }
       case 'approve': {
         const marker = markerOf(pr.head, profile, 'approve');
-        const found = (await this.#github.ownApprovals(repo, number)).find((a) => a.commit === pr.head && a.marker === marker);
-        if (found) await this.#remember({ id: found.id, commit: found.commit, profile });
+        // Its id was recorded before the run stopped: given, whatever the review list shows (it may be cut at 1,000).
+        const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
+        if (given.some((g) => g.commit === pr.head && g.profile === profile)) return true;
+        const own = await this.#github.ownApprovals(repo, number);
+        const found = own.find((a) => a.commit === pr.head && a.marker === marker);
+        // Not among the reviews read, but there are more: whether it was given is not known (fail closed: the record stays open).
+        if (!found && own.cut) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether this commit was approved is not known');
+        // The base it was given on: the one its record names (the run that approved), not this run's. A record from
+        // before the base was kept names none: the approval stays without one too, so both are handled as before.
+        const acts = await this.#storage.get<Acts>('acts');
+        const record = acts?.head === pr.head ? acts.done[`${profile}:approve`] : undefined;
+        const base = record ? record.base : pr.base;
+        if (found) await this.#remember({ id: found.id, commit: found.commit, profile, ...(base !== undefined && { base }) });
         return found !== undefined;
       }
       case 'keep_approval':
@@ -1053,7 +1169,7 @@ export class PullRequestWork {
 
   async #remember(a: Given): Promise<void> {
     const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
-    if (!given.some((g) => g.id === a.id)) await this.#storage.put({ approvals: [...given, { id: a.id, commit: a.commit, profile: a.profile }] });
+    if (!given.some((g) => g.id === a.id)) await this.#storage.put({ approvals: [...given, { id: a.id, commit: a.commit, profile: a.profile, ...(a.base !== undefined && { base: a.base }) }] });
     // Kept after a dismissal too, so that the event about the dismissal is known as its own (accept); the newest OWN_REVIEWS_MAX.
     const own = (await this.#storage.get<number[]>('ownReviews')) ?? [];
     if (!own.includes(a.id)) await this.#storage.put({ ownReviews: [...own, a.id].slice(-OWN_REVIEWS_MAX) });

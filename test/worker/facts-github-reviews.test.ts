@@ -131,6 +131,10 @@ describe('Copilot (github_copilot)', () => {
     let reads = 0;
     const moving = () => (++reads === 1 ? pullRequest() : { ...pullRequest(), head: { sha: OLD, ref: 'docs', repo: { id: 1, full_name: 'octo-org/demo' } } });
     expect(await reason(routes({ [PR]: moving }))).toBe('stale');
+    // A new base while the reviews were read: stale too.
+    reads = 0;
+    const retargeted = () => (++reads === 1 ? pullRequest() : { ...pullRequest(), base: { ...pullRequest().base, ref: 'release' } });
+    expect(await reason(routes({ [PR]: retargeted }))).toBe('stale');
     expect(await reason(routes({ '/graphql': () => new Response('{}', { status: 403 }) }))).toBe('unavailable');
     expect(await reason(routes({ '/graphql': () => graph({ head: OLD }) }))).toBe('stale');
     expect(await reason(routes({ '/graphql': () => graph({ requested: [copilotRequest], total: 101 }) }))).toBe('error');

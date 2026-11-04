@@ -710,6 +710,8 @@ export class Snapshot {
     ]);
     const pr = pullRequest(prJson);
     if (pr.head !== this.ref.head) throw new FactStaleError('the pull request has another head commit');
+    // The base the caller decided on, when it names one (the GitHub connector does): another base is another change.
+    if (this.ref.base !== undefined && pr.base !== this.ref.base) throw new FactStaleError('the pull request has another base branch');
     let list = commits(first);
     if (pr.commits > MAX_COMMITS) return { pr, commits: null };
     if (pr.commits > PER_PAGE) {
@@ -850,9 +852,8 @@ export class Snapshot {
         changedFiles(await this.json(`${this.repoPath}/pulls/${this.ref.number}/files?per_page=${PER_PAGE}&page=${p}`, 'files'))))).flat();
       if (all.length !== pr.files) throw new FactError('GitHub files: the list does not match the pull request');
       // The file list is the pull request's current one, not the one at a commit:
-      // read the head once more, so a push in between makes the facts stale.
-      const again = pullRequest(await this.json(`${this.repoPath}/pulls/${this.ref.number}`, 'pull request'));
-      if (again.head !== this.ref.head) throw new FactStaleError('the pull request changed while its files were read');
+      // read it once more, so a push or a new base in between makes the facts stale.
+      await this.stillAtHead('files');
       return all;
     });
   }
@@ -1065,13 +1066,15 @@ export class Snapshot {
   }
 
   /**
-   * Reads the pull request once more after a list: a push while the list
-   * was read makes the facts that use it stale, so nothing written about a
-   * newer head is taken for this one.
+   * Reads the pull request once more after a list: a push or a new base
+   * while the list was read makes the facts that use it stale, so nothing
+   * written about a newer head, or read against another base, is taken for
+   * this one. The base is compared with the one the snapshot read first.
    */
   private async stillAtHead(what: string): Promise<void> {
+    const { pr } = await this.base;
     const again = pullRequest(await this.json(`${this.repoPath}/pulls/${this.ref.number}`, 'pull request'));
-    if (again.head !== this.ref.head) throw new FactStaleError(`the pull request changed while its ${what} were read`);
+    if (again.head !== this.ref.head || again.base !== pr.base) throw new FactStaleError(`the pull request changed while its ${what} were read`);
   }
 
   /** The pull request's reviews, oldest first. */
@@ -1102,7 +1105,7 @@ export class Snapshot {
     });
   }
 
-  /** Review requests and review threads (GraphQL), checked against the head. */
+  /** Review requests and review threads (GraphQL), checked against the head. They do not depend on the base, so it is not compared here. */
   reviewState(): Promise<ReviewState> {
     return this.part('reviewState', async () => {
       await this.base;
@@ -1306,7 +1309,8 @@ export class Snapshot {
  * githubAuthFrom), so it reads with the same token.
  */
 export function snapshotOf(pr: PullRequestRef, scope: FactScope | undefined, fetchFn: typeof fetch, auth: GitHubAuth): Snapshot {
-  const key = `github:${pr.owner}/${pr.repo}#${pr.number}@${pr.head}`.toLowerCase();
+  // The base is part of the key: facts asked for another base never share a snapshot (a branch name is case-sensitive).
+  const key = `${`github:${pr.owner}/${pr.repo}#${pr.number}@${pr.head}`.toLowerCase()}${pr.base === undefined ? '' : ` base:${pr.base}`}`;
   let s = scope?.get(key) as Snapshot | undefined;
   if (!(s instanceof Snapshot)) {
     s = new Snapshot(pr, fetchFn, auth);

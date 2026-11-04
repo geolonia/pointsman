@@ -12,6 +12,8 @@ export interface PullRequestRef {
   number: number;
   /** The head commit the caller saw (40 hex characters, lower case). */
   head: string;
+  /** The base branch the caller saw; when given, a pull request with another base makes the facts stale. */
+  base?: string;
 }
 
 /** A GitHub fact in a profile, with the settings of its type. */
@@ -65,17 +67,20 @@ export interface GitHubFactQuery {
 
 const REPO = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
 const SHA = /^[0-9a-fA-F]{40}$/;
+const BRANCH = /^[^\s\x00-\x1f\x7f~^:?*[\\]{1,255}$/;
 
 /** A pull request as { repo: "owner/name", number, head }, or null. */
 export function toPullRequest(value: unknown): PullRequestRef | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-  const { repo, number, head } = value as { repo?: unknown; number?: unknown; head?: unknown };
+  const { repo, number, head, base } = value as { repo?: unknown; number?: unknown; head?: unknown; base?: unknown };
   const m = typeof repo === 'string' ? REPO.exec(repo) : null;
   // "." and ".." are not repository names (they would change the API path).
   if (!m || m[2] === '.' || m[2] === '..') return null;
   if (typeof number !== 'number' || !Number.isSafeInteger(number) || number < 1) return null;
   if (typeof head !== 'string' || !SHA.test(head)) return null;
-  return { owner: m[1]!, repo: m[2]!, number, head: head.toLowerCase() };
+  // Optional: a branch name as git allows it (no spaces, control characters or ~^:?*[\).
+  if (base !== undefined && (typeof base !== 'string' || !BRANCH.test(base))) return null;
+  return { owner: m[1]!, repo: m[2]!, number, head: head.toLowerCase(), ...(base !== undefined && { base }) };
 }
 
 const pullRequest: FactInput = {

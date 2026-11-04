@@ -93,6 +93,9 @@ export interface PullRequestInfo {
 }
 
 /** One of the app's approvals on a pull request. */
+/** The app's own approvals as listed; `cut`: the review list may go on past what was read. */
+export type OwnApprovals = OwnApproval[] & { cut?: boolean };
+
 export interface OwnApproval {
   id: number;
   commit: string;
@@ -153,8 +156,8 @@ export interface ConnectorGitHub {
   copilotAsked(repo: string, number: number, head: string): Promise<boolean>;
   /** The app's bot login, "<app slug>[bot]", lower case. */
   botLogin(repo: string): Promise<string>;
-  /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. At most 1,000 reviews are read. */
-  ownApprovals(repo: string, number: number): Promise<OwnApproval[]>;
+  /** The app's own approvals still standing (not dismissed) that carry the marker: only reviews by the app's bot account; the caller matches them with the ids it recorded. At most 1,000 reviews are read; `cut` when there may be more. */
+  ownApprovals(repo: string, number: number): Promise<OwnApprovals>;
   /** One review by its id, as `ownApprovals` would list it; null when it is not a standing approval of the app's own or is gone (404). */
   ownApproval(repo: string, number: number, id: number): Promise<OwnApproval | null>;
   /** GitHub's review decision and the newest 100 reviews, without their text (one GraphQL query): where the train stands (comment.ts). */
@@ -266,7 +269,9 @@ export class AppGitHub implements ConnectorGitHub {
 
   async pullRequest(repo: string, number: number): Promise<PullRequestInfo> {
     const pr = await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request');
-    if (!isObject(pr) || !isObject(pr.head) || typeof pr.head.sha !== 'string' || !SHA.test(pr.head.sha) || !isObject(pr.base)) {
+    if (!isObject(pr) || !isObject(pr.head) || typeof pr.head.sha !== 'string' || !SHA.test(pr.head.sha) || !isObject(pr.base)
+    // The base branch is part of what a decision is about: never taken as ''.
+    || typeof pr.base.ref !== 'string' || pr.base.ref === '') {
       throw new GitHubError('GitHub pull request: unexpected answer', false);
     }
     return {
@@ -277,7 +282,7 @@ export class AppGitHub implements ConnectorGitHub {
       head: pr.head.sha,
       headRef: typeof pr.head.ref === 'string' ? pr.head.ref : '',
       draft: pr.draft === true,
-      base: typeof pr.base.ref === 'string' ? pr.base.ref : '',
+      base: pr.base.ref,
       title: typeof pr.title === 'string' ? pr.title : '',
       body: typeof pr.body === 'string' ? pr.body : '',
       fork: !isObject(pr.head.repo) || !isObject(pr.base.repo) || pr.head.repo.full_name !== pr.base.repo.full_name,
@@ -387,10 +392,13 @@ export class AppGitHub implements ConnectorGitHub {
     return { head: pr.headRefOid, decision, reviews };
   }
 
-  async ownApprovals(repo: string, number: number): Promise<OwnApproval[]> {
+  async ownApprovals(repo: string, number: number): Promise<OwnApprovals> {
     const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
     const bot = await this.#botLogin(repo);
-    return reviews.map((r) => ownApprovalOf(r, bot)).filter((a): a is OwnApproval => a !== null);
+    const own: OwnApprovals = reviews.map((r) => ownApprovalOf(r, bot)).filter((a): a is OwnApproval => a !== null);
+    // #list stops at 1,000 (oldest first): an approval after them is not in the list.
+    if (reviews.length >= 1000) own.cut = true;
+    return own;
   }
 
   async ownApproval(repo: string, number: number, id: number): Promise<OwnApproval | null> {

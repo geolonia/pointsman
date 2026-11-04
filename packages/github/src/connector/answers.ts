@@ -88,6 +88,8 @@ type Outcome = 'taken' | 'read' | 'dropped';
 interface Bound {
   profile: string;
   head: string;
+  /** The base branch the question was asked on; undefined for a question kept before it was recorded. */
+  base?: string | undefined;
   decisionId: string;
   answer: string;
 }
@@ -181,6 +183,9 @@ export class AnswerDesk {
     }
     if (!pr.open) return refuse('the pull request is closed');
     if (pr.head !== bound.head) return refuse('the pull request has newer commits; this question is closed');
+    // Asked on another base: the question rests on another change. A question kept before the base was recorded is let
+    // through here: the run that acts on the answer compares the base too (its basis) and asks anew.
+    if (bound.base !== undefined && pr.base !== bound.base) return refuse('the base branch changed; this question is closed');
     // The connector's token reads only this repository: who pushed to a fork's branch is not known.
     if (pr.fork) return refuse('who pushed this commit cannot be read for a pull request from a fork');
     if (!pr.authorId) return refuse('the author of the pull request could not be read');
@@ -304,7 +309,7 @@ export class AnswerDesk {
         // Answered: the check run shows the answer already; nothing more is written.
         return kept?.decision.review?.status === 'resolved' ? undefined : { notes: [{ profile, head: event.head, text }] };
       }
-      return { bound: { profile, head: event.head, decisionId: id, answer } };
+      return { bound: { profile, head: event.head, base: kept.base, decisionId: id, answer } };
     }
     // Written for another commit (an older head, or one pushed since): not about this question, whatever it answers.
     if (!asked || !asked.head.startsWith(event.head)) {
@@ -334,7 +339,7 @@ export class AnswerDesk {
       return { notes: open.map(([profile]) => ({ profile, head: asked.head, text })) };
     }
     const [profile, kept] = named[0]!;
-    return { bound: { profile, head: asked.head, decisionId: kept.decision.decision_id, answer: event.answer } };
+    return { bound: { profile, head: asked.head, base: kept.base, decisionId: kept.decision.decision_id, answer: event.answer } };
   }
 
   /** Notes on the profile's check run why an answer was not taken; only a hint, so a failure is logged. */

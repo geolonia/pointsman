@@ -265,7 +265,7 @@ describe('the work of one pull request', () => {
     await work.run();
     expect(pm.calls.map((c) => c.profile)).toEqual(['pr-docs-check', 'workflow-check']);
     expect(pm.calls[0]!.body).toEqual({
-      state: { pull_request: { repo: REPO, number: 7, head: HEAD, title: 'Docs', body: 'A body' } },
+      state: { pull_request: { repo: REPO, number: 7, head: HEAD, base: 'main', title: 'Docs', body: 'A body' } },
       ref: `github:${REPO}#7@${HEAD}`,
     });
     const creates = gh.calls.filter((c) => c.op === 'create');
@@ -557,6 +557,227 @@ describe('actions (switched on per profile action)', () => {
     expect(await review({ id: own, login: BOT })).toBe('own');
   });
 
+  it('does not approve when the base changed between the decision and the approval', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.state.base = 'release'; // the pull request was retargeted while Pointsman decided
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(ops(gh.calls)).toEqual([]);
+    expect(gh.github.approvals).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('the pull request changed');
+  });
+
+  it('withdraws its approval at once when the head or base moved while it approved', async () => {
+    for (const move of [(s: PullRequestInfo) => { s.base = 'release'; }, (s: PullRequestInfo) => { s.head = HEAD2; }]) {
+      const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+      const approve = gh.github.approve;
+      // The change lands after the last read, while the approval is sent.
+      gh.github.approve = async (...a) => { const id = await approve(...a); move(gh.github.state); return id; };
+      await work.run();
+      expect(ops(gh.calls)).toEqual(['approve', 'dismiss']);
+      expect(gh.github.approvals).toEqual([]);
+      expect((mem.data.get('acts') as any).done['pr-docs-check:approve']).toBeUndefined();
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('approve: withdrawn, the pull request changed while it was approved');
+    }
+  });
+
+  it('dismisses its approval after a retarget whatever the next decision, and may approve again on the new base', async () => {
+    // Pointsman refuses the next decision (4xx): no decision, the approval of the old base still goes.
+    let refuse = false;
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => (refuse ? Response.json({ error: { code: 'x', message: 'x' } }, { status: 403 }) : Response.json(decision(p, { action: 'light' }))));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    expect(t.gh.github.approvals.map((a) => a.commit)).toEqual([HEAD]);
+    refuse = true;
+    t.gh.github.state.base = 'release';
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss']);
+    expect(t.gh.github.approvals).toEqual([]);
+    // A decision on the new base that approves: approved again on the same commit, not "already done".
+    refuse = false;
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(t.gh.github.approvals.map((a) => a.commit)).toEqual([HEAD]);
+  });
+
+  it('an approval left open by a stopped run is traced and dismissed after a retarget', async () => {
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    // As if the run stopped after the approval, before it was recorded as given.
+    mem.data.set('approvals', []);
+    const acts = mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    mem.data.set('acts', acts);
+    gh.github.state.base = 'release';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(gh.github.approvals).toHaveLength(1);
+  });
+
+  it('a retarget whose dismissal fails, then back to the old base: the next decision that does not approve still withdraws it', async () => {
+    let action = 'light';
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    const dismiss = t.gh.github.dismissReview;
+    t.gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismiss: 422', false, 422); };
+    t.gh.github.state.base = 'release';
+    await t.event();
+    await t.work.run();
+    expect(t.gh.github.approvals).toHaveLength(1);
+    // Back on main, the dismissal works again, and the decision no longer approves.
+    t.gh.github.dismissReview = dismiss;
+    t.gh.github.state.base = 'main';
+    action = 'wait';
+    await t.event();
+    await t.work.run();
+    expect(t.gh.github.approvals).toEqual([]);
+  });
+
+  it('two approving profiles, a retarget where only one dismissal fails, then back: each record follows its own approval', async () => {
+    const mem = memoryStorage();
+    const gh = fakeGitHub();
+    const actions: Record<string, string> = { 'pr-docs-check': 'light', 'workflow-check': 'light' };
+    const pm = fakeEngine((p) => Response.json(decision(p, { action: actions[p]! })));
+    const approve = { light: { do: 'approve' as const } };
+    const work = pullRequestWork(settings({ actions: { 'pr-docs-check': approve, 'workflow-check': approve } }), mem.storage, pm.engine, gh.github);
+    const event = () => work.accept({ target: { repo: REPO, number: 7 }, delivery: crypto.randomUUID(), digest: crypto.randomUUID() }, Date.now());
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await event();
+    await work.run();
+    expect(gh.github.approvals).toHaveLength(2);
+    const idOf = (profile: string) => gh.github.approvals.find((a) => a.marker!.includes(profile))!.id;
+    const workflowId = idOf('workflow-check');
+    // Retargeted: the dismissal of workflow-check's approval fails, pr-docs-check's works.
+    const dismiss = gh.github.dismissReview;
+    gh.github.dismissReview = async (r, n, id, m) => { if (id === workflowId) throw new GitHubError('GitHub dismiss: 422', false, 422); return dismiss(r, n, id, m); };
+    gh.github.state.base = 'release';
+    await event();
+    await work.run();
+    const done = () => Object.keys((mem.data.get('acts') as any).done);
+    expect(done()).toEqual(['workflow-check:approve']);
+    // Back on main: pr-docs-check approves again (not "already done"); workflow-check no longer approves and is withdrawn.
+    gh.github.dismissReview = dismiss;
+    gh.github.state.base = 'main';
+    actions['workflow-check'] = 'wait';
+    await event();
+    await work.run();
+    expect(gh.github.approvals.map((a) => a.marker!.includes('pr-docs-check'))).toEqual([true]);
+  });
+
+  it('an open approval of another base whose trace fails is never kept by keep_approval, and is dismissed once it can be read', async () => {
+    let action = 'light';
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' }, keep: { do: 'keep_approval' } } }, (p) => Response.json(decision(p, { action })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    // As if the run stopped after the approval, before it was recorded as given.
+    t.mem.data.set('approvals', []);
+    const acts = t.mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    t.mem.data.set('acts', acts);
+    t.gh.github.state.base = 'release';
+    const own = t.gh.github.ownApprovals;
+    let reads = 0;
+    // The first read of the reviews (the settling trace) fails; later ones work.
+    t.gh.github.ownApprovals = async (...a) => { if (++reads === 1) throw new GitHubError('GitHub reviews: 404', false, 404); return own(...a); };
+    action = 'keep';
+    await t.event();
+    await t.work.run();
+    expect(t.gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('keep_approval: the approval of this commit was given on another base branch');
+    expect(t.gh.github.approvals).toHaveLength(1);
+    await t.event();
+    await t.work.run();
+    expect(t.gh.github.approvals).toEqual([]);
+    expect(t.mem.data.get('approvals')).toEqual([]);
+  });
+
+  it('an open approval of another base past the first 1,000 reviews: not taken as absent, approvals blocked until it is found', async () => {
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    t.mem.data.set('approvals', []);
+    const acts = t.mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    t.mem.data.set('acts', acts);
+    t.gh.github.state.base = 'release';
+    const own = t.gh.github.ownApprovals;
+    // The list is cut at 1,000 reviews and the approval is after them.
+    t.gh.github.ownApprovals = async () => Object.assign([] as OwnApproval[], { cut: true });
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve']);
+    expect((t.mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('pending');
+    expect(t.gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('an older approval could not be dismissed');
+    // Once it can be found: dismissed, and the new base approved.
+    t.gh.github.ownApprovals = own;
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(t.gh.github.approvals).toHaveLength(1);
+  });
+
+  it('an open approve record whose approval id was recorded is settled from that record, also past 1,000 reviews', async () => {
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await t.work.run();
+    // The run stopped after recording the approval's id, before closing its action record.
+    const acts = t.mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    t.mem.data.set('acts', acts);
+    t.gh.github.state.base = 'release';
+    const own = t.gh.github.ownApprovals;
+    // The list is cut and does not show the approval; the dismissal reads it by id.
+    t.gh.github.ownApprovals = async () => Object.assign([] as OwnApproval[], { cut: true });
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(t.gh.github.approvals).toHaveLength(1);
+    expect((t.mem.data.get('acts') as any).done['pr-docs-check:approve']).toMatchObject({ state: 'done', base: 'release' });
+    t.gh.github.ownApprovals = own;
+  });
+
+  it('an open approve record from before the base was kept: its traced approval gets no base either, so both stay as before', async () => {
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    mem.data.set('approvals', []);
+    const acts = mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'] = { ...acts.done['pr-docs-check:approve'], state: 'pending', base: undefined };
+    mem.data.set('acts', acts);
+    await event();
+    await work.run();
+    expect(mem.data.get('approvals')).toEqual([{ id: gh.github.approvals[0]!.id, commit: HEAD, profile: 'pr-docs-check' }]);
+    // A retarget then: the approval and its record agree (no base), so no dismissal and no "already done" for a dismissed one.
+    gh.github.state.base = 'release';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect(gh.github.approvals).toHaveLength(1);
+  });
+
+  it('after the approval: a failed read leaves it done; a failed dismissal says so and keeps the records', async () => {
+    const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const read = gh.github.pullRequest;
+    let reads = 0;
+    // The run reads the pull request, then again right before approve; the third read is after it.
+    gh.github.pullRequest = async (...a) => { if (++reads === 3) throw new GitHubError('GitHub pull request: 404', false, 404); return read(...a); };
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    const approve = t.gh.github.approve;
+    t.gh.github.approve = async (...a) => { const id = await approve(...a); t.gh.github.state.base = 'release'; return id; };
+    t.gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismiss: 422', false, 422); };
+    await t.work.run();
+    expect(t.gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('the approval could not be withdrawn');
+    expect((t.mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    expect(t.mem.data.get('approvals')).toMatchObject([{ commit: HEAD, base: 'main' }]);
+  });
+
   it('does not approve when the head moved between the decision and the approval', async () => {
     const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
       gh.github.state.head = HEAD2; // a push while Pointsman decided
@@ -798,7 +1019,9 @@ describe('actions (switched on per profile action)', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     gh.github.ownApprovals = async () => { throw new GitHubError('GitHub app token: GitHub installation: no app slug', false); };
     for (const [next, text] of [['done', 'unclear, the record stays open'], ['light', 'result unclear, the record stays open'], ['review', 'could not be withdrawn']] as const) {
+      // Its id not recorded either (the run stopped before): only the trace can tell.
       open();
+      mem.data.set('approvals', []);
       action = next;
       await event();
       await work.run();
@@ -1038,6 +1261,15 @@ describe('actions (switched on per profile action)', () => {
       await work.run();
       expect(reads).toBe(1);
       expect(asks(gh.calls)).toBe(0);
+    });
+
+    it('asks nothing when the base changed after the decision', async () => {
+      const { work, gh } = await acting(COPILOT, light);
+      const copilotAsked = gh.github.copilotAsked;
+      gh.github.copilotAsked = async (r, n, h) => { const asked = await copilotAsked(r, n, h); gh.github.state.base = 'release'; return asked; };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('copilot_review: not done, the pull request changed');
     });
 
     it('asks nothing when the head moved after the decision', async () => {
@@ -1426,6 +1658,14 @@ describe('chains: profiles that build on each other', () => {
     const { work, pm, gh } = await chained();
     const diff = gh.github.diff;
     gh.github.diff = async (...a) => { gh.github.state.head = HEAD2; return diff(...a); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(pm.calls).toHaveLength(0);
+  });
+
+  it('tries again later when the base changes while the diff is read', async () => {
+    const { work, pm, gh } = await chained();
+    const diff = gh.github.diff;
+    gh.github.diff = async (...a) => { gh.github.state.base = 'release'; return diff(...a); };
     await expect(work.run()).rejects.toBeInstanceOf(RetryError);
     expect(pm.calls).toHaveLength(0);
   });

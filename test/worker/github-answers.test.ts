@@ -436,6 +436,7 @@ describe('an answer: checked with GitHub at answer time, then resolved and acted
     ['an author GitHub gives no id for', (t) => { t.gh.github.state.authorId = 0; }, MAINTAINER, 'the author of the pull request could not be read'],
     ['a pull request from a fork', (t) => { t.gh.github.state.fork = true; }, MAINTAINER, 'who pushed this commit cannot be read for a pull request from a fork'],
     ['a head that moved since the question', (t) => { t.gh.github.state.head = HEAD2; }, MAINTAINER, 'the pull request has newer commits'],
+    ['a base that changed since the question', (t) => { t.gh.github.state.base = 'release'; }, MAINTAINER, 'the base branch changed; this question is closed'],
     ['a closed pull request', (t) => { t.gh.github.state.open = false; }, MAINTAINER, 'the pull request is closed'],
     ['a question closed in Pointsman', (t) => { t.pm.logged.get(t.id).review = { status: 'superseded' }; }, MAINTAINER, 'this question is no longer open'],
     ['an answer Pointsman does not take (not in people_answers)', (t) => { t.pm.peopleAnswers.splice(0); }, MAINTAINER, 'Pointsman did not accept this answer for the profile'],

@@ -629,7 +629,12 @@ facts:
 
 `head` is the commit the client saw. If the pull request on GitHub has
 another head commit, every GitHub fact is missing (`stale`), so rules never
-decide on a state the client did not see.
+decide on a state the client did not see. `base` is optional: the base
+branch the client saw, for example `"base": "main"`. When it is given and
+the pull request on GitHub has another base branch, every GitHub fact is
+missing (`stale`) too. Send it when you act on the decision: the same
+commit against another base is another change. The GitHub connector
+sends it.
 
 | Type | Fields | Notes |
 |---|---|---|
@@ -709,13 +714,15 @@ without regular expressions, so a long pattern cannot slow a decision down.
   started for the ruleset, not through a workflow at the same path in the
   repository (a pull request can change that one).
 - The file list is the pull request's current one, so the pull request is
-  read once more after it: a push in between makes the facts `stale`.
+  read once more after it: a push or a new base branch in between makes
+  the facts `stale`.
 - A check run and a commit status with the same name that disagree: the
   stricter result counts.
 - Reviews and conversation comments: 100 per page, page by page, fewer
   than 500 each; 500 or more make the facts that need them missing
   (`error`). After them the pull request is read once more, as after the
-  file list: a push in between makes those facts `stale`. Review requests
+  file list: a push or a new base branch in between makes those facts
+  `stale`. Review requests
   and review threads come from GitHub's GraphQL API, in one query (checked
   against `head`): at most 100 requests (more: `error`) and 100 threads
   (more: the thread count has no value).
@@ -732,8 +739,8 @@ without regular expressions, so a long pattern cannot slow a decision down.
 
 | Reason | When |
 |---|---|
-| `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id. Nothing is sent to GitHub. |
-| `stale` | GitHub's head commit is not `head`: every GitHub fact of the decision is `stale`. A push that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); so does a push while the reviews or review threads are read (`github_copilot`, `github_app_approval`); `github_checks` is read by the commit id, so a later push does not change it. |
+| `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id, and `base`, when given, a branch name (1 to 255 characters, no spaces, control characters or `~^:?*[\`). Nothing is sent to GitHub. |
+| `stale` | GitHub's head commit is not `head`, or its base branch is not `base` (when given): every GitHub fact of the decision is `stale`. A push or a new base branch that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); so does one while the reviews are read, and a push while the review threads are read (`github_copilot`, `github_app_approval`); `github_checks` is read by the commit id, so a later push does not change it. |
 | `unavailable` | No GitHub provider (`FACTS_GITHUB` is off), or the token cannot see the repository (GitHub answers 404 or 403, or the app is not installed there). |
 | `timeout` | GitHub took longer than 5 seconds. |
 | `error` | Anything else: a GitHub error (5xx), a rate limit, a redirect (not followed: it would carry the token elsewhere), an answer of the wrong shape, too many files or checks. |
