@@ -1131,6 +1131,9 @@ export class PullRequestWork {
       }
       case 'approve': {
         const marker = markerOf(pr.head, profile, 'approve');
+        // Its id was recorded before the run stopped: given, whatever the review list shows (it may be cut at 1,000).
+        const given = (await this.#storage.get<Given[]>('approvals')) ?? [];
+        if (given.some((g) => g.commit === pr.head && g.profile === profile)) return true;
         const own = await this.#github.ownApprovals(repo, number);
         const found = own.find((a) => a.commit === pr.head && a.marker === marker);
         // Not among the reviews read, but there are more: whether it was given is not known (fail closed: the record stays open).

@@ -689,6 +689,25 @@ describe('actions (switched on per profile action)', () => {
     expect(t.gh.github.approvals).toHaveLength(1);
   });
 
+  it('an open approve record whose approval id was recorded is settled from that record, also past 1,000 reviews', async () => {
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await t.work.run();
+    // The run stopped after recording the approval's id, before closing its action record.
+    const acts = t.mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    t.mem.data.set('acts', acts);
+    t.gh.github.state.base = 'release';
+    const own = t.gh.github.ownApprovals;
+    // The list is cut and does not show the approval; the dismissal reads it by id.
+    t.gh.github.ownApprovals = async () => Object.assign([] as OwnApproval[], { cut: true });
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(t.gh.github.approvals).toHaveLength(1);
+    expect((t.mem.data.get('acts') as any).done['pr-docs-check:approve']).toMatchObject({ state: 'done', base: 'release' });
+    t.gh.github.ownApprovals = own;
+  });
+
   it('an open approve record from before the base was kept: its traced approval gets no base either, so both stay as before', async () => {
     const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
     await work.run();
@@ -969,7 +988,9 @@ describe('actions (switched on per profile action)', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     gh.github.ownApprovals = async () => { throw new GitHubError('GitHub app token: GitHub installation: no app slug', false); };
     for (const [next, text] of [['done', 'unclear, the record stays open'], ['light', 'result unclear, the record stays open'], ['review', 'could not be withdrawn']] as const) {
+      // Its id not recorded either (the run stopped before): only the trace can tell.
       open();
+      mem.data.set('approvals', []);
       action = next;
       await event();
       await work.run();
