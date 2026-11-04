@@ -62,18 +62,32 @@ profiles. `scripts/check-public.mjs` checks that in CI.
    Give the same value to the clients that receive callbacks.
 
    Secrets for facts are set the same way, for example the token for
-   [GitHub facts](profile-format.md#github-pull-requests). Set the secret
-   first, then turn the facts on: with `FACTS_GITHUB: "token"` and no
-   `FACTS_GITHUB_TOKEN`, the engine refuses every request (a config error).
+   [GitHub facts](profile-format.md#github-pull-requests). The secret and
+   the setting must fit: with `FACTS_GITHUB: "token"` and no
+   `FACTS_GITHUB_TOKEN`, or with the secret and `FACTS_GITHUB` not
+   `"token"`, the engine refuses every request (a config error). A secret
+   takes effect as soon as you set it, so there is a short gap whichever
+   comes first. Keep it short, at a quiet time:
 
-   1. Deploy once with `FACTS_GITHUB` unset or `"off"`.
+   1. Prepare a pull request that sets `FACTS_GITHUB: "token"` in
+      `wrangler.jsonc`, and let its checks pass.
    2. Set the secret:
 
       ```sh
       npx wrangler secret put FACTS_GITHUB_TOKEN --config wrangler.jsonc
       ```
 
-   3. Set `FACTS_GITHUB: "token"` in `wrangler.jsonc` and push to `main`.
+   3. Merge the pull request at once. The engine accepts requests again
+      when the deploy has finished (a few minutes). If the deploy fails,
+      run it again. Only when it failed before the step "Deploy the engine"
+      (the running engine still has no `FACTS_GITHUB: "token"`) may you
+      remove the secret until it works
+      (`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`);
+      set it again before you retry. Once the engine is deployed with
+      `"token"`, keep the secret: without it every request fails.
+
+   The same holds for `FACTS_GITHUB: "app"` and its secrets
+   `FACTS_GITHUB_APP_ID` and `FACTS_GITHUB_APP_PRIVATE_KEY`.
 
 8. **Create API tokens** for your clients:
 
@@ -87,8 +101,11 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 
 - **Validate** (pull requests and `main`; no secrets): checks the config,
   validates the profiles with the pinned engine (so the schema version is
-  pinned too), and dry-runs the deploy.
-- **Deploy** (`main`): the same checks, a build and dry run, and only then
+  pinned too), runs the test cases when there is a `cases/` folder, checks on
+  pull requests that every changed profile has a new version, and dry-runs
+  the deploy.
+- **Deploy** (`main`): checks the config and validates the profiles again,
+  builds and dry-runs the deploy, and only then
   `wrangler d1 migrations apply`, `wrangler deploy`, `publish-profiles.mjs`.
   The Cloudflare secrets are given only to these three steps. The engine is
   deployed before the profiles are published: a new engine reads older

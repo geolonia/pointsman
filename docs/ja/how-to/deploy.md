@@ -1,19 +1,19 @@
 ---
 title: Pointsman をデプロイする
-description: 非公開の設定用リポジトリから Pointsman を Cloudflare にデプロイし、API トークンを入れ替える方法を説明します。
+description: 非公開の設定リポジトリから Pointsman を Cloudflare にデプロイし、API トークンを入れ替える方法を説明します。
 sidebar: { order: 20 }
-translatedFrom: f97b3b6
+translatedFrom: 7d961e6
 ---
 
-エンジンはオープンソースです。1 つの組織に固有のものは、すべて非公開にしておきます。デプロイの中心は、[`template/config-repo`](../../../template/config-repo/)(英語)から作る**非公開の設定用リポジトリ**です。設定用リポジトリは、エンジンのコミットを 1 つに固定し、プロファイルとデプロイの設定を持ちます。
+エンジンはオープンソースです。1 つの組織に固有のものは、すべて非公開にしておきます。デプロイの中心は、[`template/config-repo`](../../../template/config-repo/)(英語)から作る**非公開の設定リポジトリ**です。設定リポジトリは、エンジンのコミットを 1 つに固定し、プロファイルとデプロイの設定を持ちます。
 
 | 何を | どこに | 公開範囲 |
 |---|---|---|
 | エンジン(Worker、アダプター、ポリシー)、プロファイルのスキーマ、検証ツール、スクリプト、ドキュメント、例のプロファイル | エンジンのリポジトリ | 公開 |
-| 実際のプロファイル、wrangler の設定(リソースの ID、Worker の名前、ルート)、AI Gateway の設定 | 自分の設定用リポジトリ | 非公開 |
+| 実際のプロファイル、wrangler の設定(リソースの ID、Worker の名前、ルート)、AI Gateway の設定 | 自分の設定リポジトリ | 非公開 |
 | デプロイされたプロファイル、API トークン(ハッシュ) | KV の名前空間 `PROFILES`、`TOKENS` | 自分の Cloudflare アカウント |
 | 判定ログとフィードバック | D1 データベース | 自分の Cloudflare アカウント。Git には決して入れない |
-| Cloudflare の API トークンとアカウント ID | 設定用リポジトリの GitHub Actions のシークレット | 非公開 |
+| Cloudflare の API トークンとアカウント ID | 設定リポジトリの GitHub Actions のシークレット | 非公開 |
 
 公開しているエンジンのリポジトリには、アカウント ID、リソースの ID、実際のプロファイルを入れてはいけません。CI で `scripts/check-public.mjs` がそれを確かめます。
 
@@ -49,16 +49,18 @@ translatedFrom: f97b3b6
 
    コールバックを受け取るクライアントにも、同じ値を渡します。
 
-   ファクトのためのシークレットも、同じ方法で設定します。たとえば [GitHub のファクト](../../profile-format.md#github-pull-requests)のためのトークンです。先にシークレットを設定し、そのあとでファクトを有効にします。`FACTS_GITHUB: "token"` を設定したのに `FACTS_GITHUB_TOKEN` がないと、エンジンはすべてのリクエストを拒否します(設定のエラーとして扱います)。
+   ファクトのためのシークレットも、同じ方法で設定します。たとえば [GitHub のファクト](../../profile-format.md#github-pull-requests)のためのトークンです。シークレットと設定は組み合わせが合っている必要があります。`FACTS_GITHUB: "token"` なのに `FACTS_GITHUB_TOKEN` がないときも、シークレットがあるのに `FACTS_GITHUB` が `"token"` でないときも、エンジンはすべてのリクエストを拒否します(設定のエラーとして扱います)。シークレットは設定したときにすぐ有効になるため、どちらを先にしても短い間はリクエストが拒否されます。利用の少ない時間に、次の手順で間をあけずに進めます。
 
-   1. `FACTS_GITHUB` を設定しないか `"off"` にして、1 回デプロイします。
+   1. `wrangler.jsonc` で `FACTS_GITHUB: "token"` を設定するプルリクエストを用意し、チェックを通しておきます。
    2. シークレットを設定します。
 
       ```sh
       npx wrangler secret put FACTS_GITHUB_TOKEN --config wrangler.jsonc
       ```
 
-   3. `wrangler.jsonc` で `FACTS_GITHUB: "token"` を設定し、`main` に push します。
+   3. すぐにプルリクエストをマージします。デプロイが終わると(数分)、エンジンはまたリクエストを受け付けます。デプロイが失敗したときは、もう一度実行します。シークレットを削除してよいのは、「Deploy the engine」のステップより前で失敗し、動いているエンジンがまだ `FACTS_GITHUB: "token"` でないときだけです(`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`)。その場合は、再実行の前にシークレットを設定し直します。エンジンを `"token"` でデプロイしたあとは、シークレットを残してください。なければすべてのリクエストが失敗します。
+
+   `FACTS_GITHUB: "app"` と、そのシークレット `FACTS_GITHUB_APP_ID`、`FACTS_GITHUB_APP_PRIVATE_KEY` も同じです。
 
 8. クライアントのために **API トークンを作ります**。
 
@@ -70,8 +72,8 @@ translatedFrom: f97b3b6
 
 ## ワークフローがすること {#what-the-workflows-do}
 
-- **Validate**(プルリクエストと `main`。シークレットは使いません): 設定を確かめ、固定したエンジンでプロファイルを検証し(そのため、スキーマのバージョンも固定されます)、デプロイを試しに実行します(dry run)。
-- **Deploy**(`main`): 同じ確認とビルドをして試しに実行し、そのあとで初めて `wrangler d1 migrations apply`、`wrangler deploy`、`publish-profiles.mjs` を実行します。Cloudflare のシークレットを渡すのは、この 3 つのステップだけです。エンジンは、プロファイルを公開する前にデプロイします。新しいエンジンは古いプロファイルを読めますが、動いている古いエンジンは新しいプロファイル(たとえばファクトを使うもの)を理解できないことがあり、その間の判定が失敗するためです。
+- **Validate**(プルリクエストと `main`。シークレットは使いません): 設定を確かめ、固定したエンジンでプロファイルを検証し(そのため、スキーマのバージョンも固定されます)、`cases/` フォルダーがあればテストケースを実行し、プルリクエストでは変更したプロファイルのバージョンが上がっているかを確かめ、デプロイを試しに実行します(dry run)。
+- **Deploy**(`main`): 設定の確認とプロファイルの検証をもう一度行い、ビルドしてデプロイを試しに実行し、そのあとで初めて `wrangler d1 migrations apply`、`wrangler deploy`、`publish-profiles.mjs` を実行します。Cloudflare のシークレットを渡すのは、この 3 つのステップだけです。エンジンは、プロファイルを公開する前にデプロイします。新しいエンジンは古いプロファイルを読めますが、動いている古いエンジンは新しいプロファイル(たとえばファクトを使うもの)を理解できないことがあり、その間の判定が失敗するためです。
 
 ## プロファイルのバージョン {#profile-versions}
 
@@ -83,7 +85,7 @@ translatedFrom: f97b3b6
 
 エンジンのリポジトリそのものは、`engine.json` から読むのではなく、ワークフローの中で固定しています(`ENGINE_REPOSITORY`)。ワークフローはエンジンのコードを実行し、デプロイのワークフローは Cloudflare の認証情報も使います。そのため、`engine.json` だけを変えるプルリクエストで、ワークフローに別のコードを実行させることはできません。
 
-新しいエンジンは、データベースのマイグレーションを追加することがあります(エンジンのリポジトリの `migrations/`。チェックアウトでは `engine/migrations/` です。たとえば 0.8.0 では、判定ログからのファクトのために `0008_log_facts.sql` が加わりました)。デプロイのワークフローは、エンジンをデプロイする前にマイグレーションを適用します。そのため、更新のための手順は要りません。ワークフローを使わずにデプロイするときは、マイグレーションを先に適用します。設定用リポジトリで、エンジンをチェックアウトしてインストールし(手順 8 と同じ)、Cloudflare のアカウントに接続できる状態で、次のコマンドを実行します。
+新しいエンジンは、データベースのマイグレーションを追加することがあります(エンジンのリポジトリの `migrations/`。チェックアウトでは `engine/migrations/` です。たとえば 0.8.0 では、判定ログからのファクトのために `0008_log_facts.sql` が加わりました)。デプロイのワークフローは、エンジンをデプロイする前にマイグレーションを適用します。そのため、更新のための手順は要りません。ワークフローを使わずにデプロイするときは、マイグレーションを先に適用します。設定リポジトリで、エンジンをチェックアウトしてインストールし(手順 8 と同じ)、Cloudflare のアカウントに接続できる状態で、次のコマンドを実行します。
 
 ```sh
 engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrangler.jsonc
@@ -97,7 +99,7 @@ engine/node_modules/.bin/wrangler d1 migrations apply DB --remote --config wrang
 
 API で Pointsman を呼び出すクライアントは、それぞれ自分の API トークンを持っています(GitHub のコネクターの内部呼び出しはトークンを使わないため、入れ替えるものはありません)。トークンの期限が近いとき、トークンを知っていた人が抜けたとき、漏れたおそれがあるときは、トークンを入れ替えます。ここで説明する手順なら、サービスを止めることなく入れ替えられます。古いトークンは、先に期限が切れない限り、手順 3 で取り消すまで使えます。`--keep-old` は期限を延ばしません。始める前に `list` で古いトークンの期限を確かめ、その時刻より前に終えてください。
 
-コマンドは Pointsman のエンジンのチェックアウトで実行します。デプロイ先の Cloudflare アカウントへのアクセスも必要です。テンプレートから作った設定用リポジトリではエンジンが `engine/` にあるため、代わりに `node engine/scripts/tokens.mjs` を実行します。例では `--local`(手元のコンピューターで動かす開発用の Worker)を使います。デプロイ済みの Worker では `--remote --config <your wrangler config>` を使います(`<your wrangler config>` は wrangler の設定ファイル)。
+コマンドは Pointsman のエンジンのチェックアウトで実行します。デプロイ先の Cloudflare アカウントへのアクセスも必要です。テンプレートから作った設定リポジトリではエンジンが `engine/` にあるため、代わりに `node engine/scripts/tokens.mjs` を実行します。例では `--local`(手元のコンピューターで動かす開発用の Worker)を使います。デプロイ済みの Worker では `--remote --config <your wrangler config>` を使います(`<your wrangler config>` は wrangler の設定ファイル)。
 
 ### 1. 新しいトークンを作る {#1-make-the-new-token}
 

@@ -186,7 +186,7 @@ Before you publish such a profile, read its rules as sentences
 A profile lists the actions a person checks before they count (by default
 `review`). Such a decision waits in the review queue; a person gives the
 final action and can correct the AI's answers. The client can pass a
-`callback_url` to receive the final answer, signed, when the person is done.
+`callback_url` to receive the outcome, signed, when the person is done.
 Corrections are kept as feedback, so you can measure how often a profile was
 right. Details: [reviews and callbacks](../reviews.md).
 
@@ -250,7 +250,7 @@ checks run the same engine with different modules.
 - **AI models** answer the questions. A profile names a model and fallbacks;
   they can be swapped without changing the rules
   ([models](../models.md)).
-- **Fact modules** look up facts: flood zones and shelters
+- **Fact modules** look up facts: flood zones and evacuation sites
   (`@pointsman/facts-gsi`), the way around a closed road
   (`@pointsman/facts-valhalla`), the state of a pull request
   (`@pointsman/github`) or its AI reviews (`@pointsman/coderabbit`). They are
@@ -258,8 +258,10 @@ checks run the same engine with different modules.
   ones it uses ([fact modules](../modules.md)).
 - **Connectors** connect another system: they bring its cases in and carry
   the results back, for example to a FIWARE platform (`@pointsman/fiware`)
-  or to a pull request (`@pointsman/github`). They use the same public API
-  as any other client ([connectors](../connectors.md)). The FIWARE connector,
+  or to a pull request (`@pointsman/github`). They use the same API
+  as any other client; the GitHub connector can also use the
+  [internal call](security.md#internal-calls), without a token, inside the
+  same Cloudflare account ([connectors](../connectors.md)). The FIWARE connector,
   its actions and settings are described in the
   [FIWARE bridge](../../bridge/README.md), and the demo it runs in the
   [FIWARE demo storyboard](../fiware-demo.md).
