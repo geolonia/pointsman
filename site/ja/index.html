@@ -84,7 +84,7 @@
 } } <span class="k">}</span></pre>
       </div>
       <div class="card-code">
-        <div class="bar"><span>200 OK</span><span>判定（一部）</span></div>
+        <div class="bar"><span>200 OK</span><span>判定(一部)</span></div>
 <pre>{
   <span class="k">"decision_id"</span>: <span class="s">"8c0f…"</span>,
   <span class="k">"profile"</span>: <span class="s">"issue-triage"</span>, <span class="k">"profile_version"</span>: <span class="n">1</span>,
@@ -110,15 +110,15 @@
     <ol class="flow flow-wrap flow-3">
       <li>
         <h3>決まった質問をする</h3>
-        <p>例として、住民が「倒木で道路がふさがっている」と通報したとします。どんな種類の通行止めか。誰かに危険はあるか。AI が質問ごとに答え、どのくらい確かかも示します。たとえば「危険: あり、85 %」です。</p>
+        <p>例として、住民が「倒木で道路がふさがっている」と通報したとします。どんな種類の通行止めか。誰かに危険はあるか。AI が質問ごとに答え、どのくらい確かか(確率)も示します。たとえば「危険: あり、85 %」です。</p>
       </li>
       <li>
         <h3>人が書いたルールで決める</h3>
-        <p>ルールは人が書きます。たとえば「危険が 70 % 以上なら urgent（緊急）」です。AI だけで決めることはありません。ルールでは、公開データから得た情報も使えます。たとえば、その場所が浸水想定区域にあるかどうかです。</p>
+        <p>ルールは人が書きます。たとえば「危険が 70% 以上なら urgent(緊急)」です。AI だけで決めることはありません。ルールでは、Pointsman が公開データから調べた値(ファクト)も使えます。たとえば、その場所が浸水想定区域にあるかどうかです。</p>
       </li>
       <li>
-        <h3>答えを返し、記録を残す</h3>
-        <p>答えはアクションです。この例では urgent です。Pointsman は、質問、答え、使ったルールを保存します。あとで人が答えを直すこともできます。そのため、AI がどのくらい正しかったかが分かります。</p>
+        <h3>アクションを返し、記録を残す</h3>
+        <p>返すのはアクションです。この例では urgent です。Pointsman は、質問、AI の回答、使ったルールを保存します。あとで人が回答を訂正することもできます。そのため、AI がどのくらい正しかったかが分かります。</p>
         <div class="outcomes"><code>publish</code><code class="auto">urgent</code><code>review</code></div>
       </li>
     </ol>
@@ -135,15 +135,15 @@
     <div class="grid3">
       <div class="card">
         <h3>形式の決まった質問</h3>
-        <p>はい／いいえ、選択、スコアの質問です。どの答えにも確率が付くので、モデルがどれだけ確信しているかが分かります。</p>
+        <p>はい・いいえ、選択肢、点数の質問です。どの回答にも確率が付くので、モデルがどれだけ確信しているかが分かります。</p>
       </div>
       <div class="card">
         <h3><span class="phrase">プロンプトではなく</span><span class="phrase">ポリシー</span></h3>
-        <p><code>team.p &gt;= 0.85</code> のようなルールで、答えをアクションに変えます。ポリシーは設定ファイルに書くだけで、読み込むときに検査され、コードとして実行されることはありません。</p>
+        <p><code>team.p &gt;= 0.85</code> のようなルールで、回答をアクションに変えます。ポリシーは設定ファイルに書くだけで、読み込むときに検査され、コードとして実行されることはありません。</p>
       </div>
       <div class="card">
         <h3>迷ったら人へ</h3>
-        <p>しきい値に届かなければ、アクションは <code>review</code> です。判定はレビュー待ちの一覧に入ります。リクエストに <code>callback_url</code> があれば、最終的な答えが署名付きでそこに送られます。</p>
+        <p>確率がしきい値(ルールに書いた基準の値)に届かなければ、アクションは <code>review</code> です。判定はレビュー待ちの一覧に入ります。リクエストに <code>callback_url</code> があれば、最終結果が署名付きでそこに送られます。</p>
       </div>
       <div class="card">
         <h3><span class="phrase">バージョン付きの</span><span class="phrase">プロファイル</span></h3>
@@ -151,19 +151,19 @@
       </div>
       <div class="card">
         <h3><span class="phrase">フィードバックと</span><span class="phrase">正解率</span></h3>
-        <p>人が判定を訂正すると、その訂正が答えの横に記録されます。しきい値を上げる前に、プロファイルのバージョンごとの正解率を測れます。</p>
+        <p>人が判定を訂正すると、その訂正が AI の回答の横に記録されます。しきい値を上げる前に、プロファイルのバージョンごとの正解率を測れます。</p>
       </div>
       <div class="card">
         <h3>モデルを差し替えられる</h3>
-        <p>モデルはアダプターでつなぎます。いまは Cloudflare Workers AI（<code>clef-flash</code>、<code>clef</code>、AI Gateway 経由も可）、自分たちのモデルサーバー（たとえば手元の Strands Decider）、開発とテスト用のモックモデルが使えます。</p>
+        <p>モデルはアダプターでつなぎます。いまは Cloudflare Workers AI(<code>clef-flash</code>、<code>clef</code>、AI Gateway 経由も可)、自分たちのモデルサーバー(たとえば手元の Strands Decider)、開発とテスト用のモックモデルが使えます。</p>
       </div>
       <div class="card">
-        <h3><span class="phrase">公開データから</span><span class="phrase">得た情報</span></h3>
-        <p>指定した場所について、浸水想定区域と最寄りの避難場所（国土地理院のデータ）、通れない道路を車や徒歩で迂回する道のり（OpenStreetMap と Valhalla）を調べられます。AI はこれらの情報を見ません。ルールが使い、判定には出典が残ります。</p>
+        <h3><span class="phrase">公開データから</span><span class="phrase">調べたファクト</span></h3>
+        <p>指定した場所について、浸水想定区域と最寄りの避難場所(国土地理院のデータ)、通れない道路を車や徒歩で迂回する道のり(OpenStreetMap と Valhalla)を調べられます。AI はこれらの情報を見ません。ルールが使い、判定には出典が残ります。</p>
       </div>
       <div class="card">
         <h3><span class="phrase">前の判定を</span><span class="phrase">もとにする判定</span></h3>
-        <p>プロファイルは、同じ対象についての前の判定を <code>requires</code> で指定できます。前の判定は ID でログから読みます。最終判定は AI を使わず、ルールだけで決めることもできます。前の段階に人が答えていれば、その答えが使われます。</p>
+        <p>プロファイルは、同じ対象についての前の判定を <code>requires</code> で指定できます。前の判定は ID でログから読みます。最後の判定は AI を使わず、ルールだけで決めることもできます。前の段階に人が答えていれば、その回答が使われます。</p>
       </div>
       <div class="card">
         <h3><span class="phrase">判定の流れを</span><span class="phrase">図にする</span></h3>
@@ -182,7 +182,7 @@
     <ol class="flow flow-wrap">
       <li>
         <h3>状態を送る</h3>
-        <p>システムが持っている情報（Issue、デプロイのイベント、フォームなど）を、JSON かテキストでプロファイルに送ります。</p>
+        <p>システムが持っている情報(Issue、デプロイのイベント、フォームなど)を、JSON かテキストでプロファイルに送ります。</p>
       </li>
       <li>
         <h3>質問に答える</h3>
@@ -190,7 +190,7 @@
       </li>
       <li>
         <h3>ポリシーを適用する</h3>
-        <p>ルールが答えと確率を比べます。最初に当てはまったルールがアクションを決めます。</p>
+        <p>ルールが回答と確率を比べます。最初に当てはまったルールがアクションを決めます。</p>
       </li>
       <li>
         <h3>実行する</h3>
@@ -205,26 +205,26 @@
   <div class="wrap">
     <div class="section-head">
       <h2><span class="phrase">Pointsman の</span><span class="phrase">使いみち</span></h2>
-      <p>エンジンは 1 つで、いろいろな仕事に使えます。使いみちごとに、今動くプロファイルの例、事実、クライアントをまとめました。そのまま使うことも、自分たちのプロファイルの出発点にすることもできます。</p>
+      <p>エンジンは 1 つで、いろいろな仕事に使えます。使いみちごとに、今動くプロファイルの例、ファクト、クライアントをまとめました。そのまま使うことも、自分たちのプロファイルの出発点にすることもできます。</p>
     </div>
     <div class="grid3">
       <div class="card">
         <h3>防災・災害対応</h3>
-        <p>報告された通行止めを、公開の地図に載せる前に確認します。浸水想定区域と近くの避難場所は日本の公開データから、迂回路はルート検索サーバーから調べます。急ぎの報告とはっきりしない報告は人に回します。歩く人が避難場所へ行けなくなるときは、避難の確認が <code>alert</code> を返し、最終判断でその報告は急ぎ（<code>urgent</code>）になります。ブリッジを通して FIWARE と連携できます。</p>
+        <p>報告された通行止めを、公開の地図に載せる前に確認します。浸水想定区域と近くの避難場所は日本の公開データから、迂回路はルート検索サーバーから調べます。緊急の報告とはっきりしない報告は人に回します。歩く人が避難場所へ行けなくなるときは、避難の確認が <code>alert</code> を返し、最後の判定でその報告は緊急(<code>urgent</code>)になります。ブリッジを通して FIWARE と連携できます。</p>
         <div class="outcomes"><code>road-restriction-check</code><code>evacuation-access-check</code><code>road-closure-final</code></div>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/disaster-response">examples/disaster-response（英語）→</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/disaster-response">examples/disaster-response(英語)→</a>
       </div>
       <div class="card">
         <h3>DevOps</h3>
-        <p>AWS CloudFormation のデプロイが静かになったとき、止まっているのか、遅いだけなのか。GitHub Action は、スタックがしばらく静かになってから Pointsman に聞き、<code>cancel</code> の答えが 2 回続いたときだけデプロイを止めます。Pointsman につながらないときは何も止めません。</p>
+        <p>AWS CloudFormation のデプロイが静かになったとき、止まっているのか、遅いだけなのか。GitHub Action は、スタックがしばらく静かになってから Pointsman に聞き、<code>cancel</code> の判定が 2 回続いたときだけデプロイを止めます。Pointsman につながらないときは何も止めません。</p>
         <div class="outcomes"><code>deploy-progress</code></div>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/devops">examples/devops（英語）→</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/devops">examples/devops(英語)→</a>
       </div>
       <div class="card">
         <h3>開発の流れ</h3>
         <p>新しい Issue はどのチームが担当するか、今日の作業を止めているか、どのくらいの作業か。GitHub Action は、Pointsman が確かなときはラベルを付け、確かでないときは人に任せます。エージェントも MCP で同じプロファイルに聞けます。</p>
         <div class="outcomes"><code>issue-triage</code></div>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/developer-workflow">examples/developer-workflow（英語）→</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/examples/developer-workflow">examples/developer-workflow(英語)→</a>
       </div>
     </div>
   </div>
@@ -235,7 +235,7 @@
     <div>
       <div class="section-head" style="margin-bottom:0">
         <h2><span class="phrase">プロファイルは</span><span class="phrase">設定です</span></h2>
-        <p>プロファイルには、何を聞き、答えをどう使うかを書きます。しきい値はプロンプトではなく、プルリクエストで変えます。</p>
+        <p>プロファイルには、何を聞き、回答をどう使うかを書きます。しきい値はプロンプトではなく、プルリクエストで変えます。</p>
       </div>
       <ul class="points">
         <li><strong>コードと同じようにレビュー。</strong>プロファイルは自分たちの非公開の設定リポジトリに置き、デプロイ時に公開されます。同じバージョンは一度しか書き込めません。</li>
@@ -288,27 +288,27 @@
       <div class="card">
         <h3>REST API</h3>
         <p>判定、判定の取得、フィードバック、レビュー待ちの処理、プロファイルの判定グラフの取得ができます。OpenAPI で記述されています。クライアントごとに API トークンがあり、必要なプロファイルだけに限れます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml（英語）→</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/blob/main/openapi.yaml">openapi.yaml(英語)→</a>
       </div>
       <div class="card">
         <h3>エージェント向けの MCP</h3>
-        <p>Model Context Protocol（MCP）で Pointsman をコネクターとして追加すると、エージェントは推測する代わりに <code>decide</code> を呼びます。機械は API トークンを、人は GitHub でログインして使い、判定を訂正することもできます。</p>
+        <p>Model Context Protocol(MCP)で Pointsman をコネクターとして追加すると、エージェントは推測する代わりに <code>decide</code> を呼びます。機械は API トークンを、人は GitHub でサインインして使い、判定を訂正することもできます。</p>
         <a class="more" href="../docs/ja/about/ai/">AI とエージェント →</a>
       </div>
       <div class="card">
         <h3><span class="phrase">GitHub の</span> <span class="phrase">Issue 振り分け</span></h3>
-        <p>GitHub Action が、判定に基づいて新しい Issue にラベルを付けます。使うのは指定したラベルだけです。確信がないときや Pointsman につながらないときは、代わりに <code>needs-triage</code> ラベル（変更できます）を付けます。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage（英語）→</a>
+        <p>GitHub Action が、判定に基づいて新しい Issue にラベルを付けます。使うのは指定したラベルだけです。確信がないときや Pointsman につながらないときは、代わりに <code>needs-triage</code> ラベル(変更できます)を付けます。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/triage">actions/triage(英語)→</a>
       </div>
       <div class="card">
         <h3>デプロイの監視</h3>
         <p>CloudFormation のデプロイを監視する GitHub Action です。タイムアウトを待たずに、Pointsman が進んでいないと判定した時点で中止します。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch（英語）→</a>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/actions/deploy-watch">actions/deploy-watch(英語)→</a>
       </div>
       <div class="card">
         <h3>FIWARE ブリッジ</h3>
-        <p>FIWARE は、スマートシティのデータ基盤のためのオープンソースのソフトウェア群です。データには NGSI-LD というオープンな標準を使います。ブリッジは、こうしたデータ基盤と Pointsman をつなぎます。データが変わるとブリッジが Pointsman に聞き、その判定をデータ基盤に書き戻します。ほかのアプリもその判定を使えます。<code>Decision</code> や <code>Task</code> のエンティティ（datamodels.jp のモデル）も作れます。データ基盤で人が答えると、レビューが完了します。</p>
-        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/bridge">bridge（英語）→</a>
+        <p>FIWARE は、スマートシティのデータ基盤のためのオープンソースのソフトウェア群です。データには NGSI-LD というオープンな標準を使います。ブリッジは、こうしたデータ基盤と Pointsman をつなぎます。データが変わるとブリッジが Pointsman に聞き、その判定をデータ基盤に書き戻します。ほかのアプリもその判定を使えます。<code>Decision</code> や <code>Task</code> のエンティティ(datamodels.jp のモデル)も作れます。データ基盤で人が答えると、レビューが完了します。</p>
+        <a class="more" href="https://github.com/geolonia/pointsman/tree/main/bridge">bridge(英語)→</a>
       </div>
     </div>
   </div>
@@ -319,7 +319,7 @@
     <div>
       <div class="section-head" style="margin-bottom:28px">
         <h2>はじめる</h2>
-        <p>サンプルのプロファイルとモックモデルを使えば、数分で手元で動かせます。Cloudflare のアカウントは要りません。モックモデルは決まった答えを返します。手元で実際のモデルの答えを得る方法は <a href="https://github.com/geolonia/pointsman/blob/main/docs/models.md">docs/models.md（英語）</a>にあります。</p>
+        <p>サンプルのプロファイルとモックモデルを使えば、数分で手元で動かせます。Cloudflare のアカウントは要りません。モックモデルは決まった回答を返します。手元で実際のモデルの回答を得る方法は <a href="https://github.com/geolonia/pointsman/blob/main/docs/models.md">docs/models.md(英語)</a>にあります。</p>
       </div>
       <ol class="steps">
         <li>
@@ -336,7 +336,7 @@
         </li>
         <li>
           <div>
-            <h3>判定を頼む</h3>
+            <h3>判定を依頼する</h3>
             <p>手元用の API トークンを作り、プロファイルに状態を送ります。</p>
           </div>
         </li>
@@ -361,7 +361,7 @@ pnpm install
 pnpm db:migrate:local
 pnpm dev
 
-<span class="c"># 3. 判定を頼む（別のターミナルで）</span>
+<span class="c"># 3. 判定を依頼する(別のターミナルで)</span>
 node scripts/tokens.mjs create \
   --client demo --profiles issue-triage --local
 export POINTSMAN_TOKEN=<span class="s">pm_…</span>
@@ -370,7 +370,7 @@ curl -s localhost:8787/v1/decide/issue-triage \
   -H 'content-type: application/json' \
   -d '{"state": {"issue": {"title": "ログイン画面が真っ白"}}}'</pre>
       </div>
-      <p class="status">Pointsman はまだ 1.0 ではないため、API やプロファイルの形式は 0.x の間に変わることがあります。<a href="https://github.com/geolonia/pointsman/releases">リリースノート（英語）</a>をご覧ください。試したら、ぜひ Issue で教えてください。ドキュメントは英語です。</p>
+      <p class="status">Pointsman はまだ 1.0 ではないため、API やプロファイルの形式は 0.x の間に変わることがあります。<a href="https://github.com/geolonia/pointsman/releases">リリースノート(英語)</a>をご覧ください。試したら、ぜひ Issue で教えてください。</p>
     </div>
   </div>
 </section>
@@ -384,30 +384,30 @@ curl -s localhost:8787/v1/decide/issue-triage \
     <div class="faq">
       <details>
         <summary>大きな AI モデルが必要ですか？</summary>
-        <p>いいえ。Pointsman が AI に聞くのは、答えの形が決まったいくつかの質問だけです。答えは「はい／いいえ」、選択肢、点数のどれかです。そのため、小さく安価なモデルで十分です。標準では Cloudflare Workers AI の <code>clef</code> モデルを使います。自分のサーバーで動かすモデルにつなぐこともできます。</p>
+        <p>いいえ。Pointsman が AI に聞くのは、回答の形が決まったいくつかの質問だけです。回答は、はい・いいえ、選択肢、点数のどれかです。そのため、小さく安価なモデルで十分です。例のプロファイルとデプロイのテンプレートは、Cloudflare Workers AI の <code>clef</code> モデルを使います。自分のサーバーで動かすモデルにつなぐこともできます。</p>
       </details>
       <details>
         <summary>先にモデルを学習させる必要がありますか？</summary>
-        <p>いいえ。書くのは質問とルールだけで、モデルはその質問にそのまま答えます。Pointsman にモデルを学習させる機能はありません。自分のデータで学習させたモデルがすでにあれば、モデルサーバー経由でつなげます。ただし、同じ形で答えられるモデルに限ります（はい／いいえ、選択肢、点数と、それぞれの確率）。判定ごとに AI の答えと人による訂正が並べて記録されるので、モデルにどこまで任せられるかを確かめてから広げられます。</p>
+        <p>いいえ。書くのは質問とルールだけで、モデルはその質問にそのまま答えます。Pointsman にモデルを学習させる機能はありません。自分のデータで学習させたモデルがすでにあれば、モデルサーバー経由でつなげます。ただし、同じ形で答えられるモデルに限ります(はい・いいえ、選択肢、点数と、それぞれの確率)。判定ごとに AI の回答と人による訂正が並べて記録されるので、モデルにどこまで任せられるかを確かめてから広げられます。</p>
       </details>
       <details>
-        <summary>モデルの確信度を見て動くスクリプトと同じではありませんか？</summary>
+        <summary>モデルの確率を見て動くスクリプトと同じではありませんか？</summary>
         <p>考え方は同じです。Pointsman は、そのスクリプトの部分を、人が読んで確かめられる形にしたものです。</p>
         <ul>
           <li>ルールはコードではなく、市やチームが書く設定です。</li>
-          <li>プロファイルで指定すれば、ルールを使う前に、公開データから得た場所の情報を加えます。</li>
+          <li>プロファイルで指定すれば、ルールを使う前に、公開データから調べた場所のファクトを加えます。</li>
           <li>どのルールにも当てはまらなければ、プロファイルの既定のアクションになります。多くの場合は人の確認です。</li>
-          <li>判定ごとに、答え、事実、使ったルール、プロファイルのバージョンを記録します。</li>
+          <li>判定ごとに、AI の回答、ファクト、使ったルール、プロファイルのバージョンを記録します。</li>
           <li>前の判定を受けて、次の判定をすることもできます。</li>
         </ul>
       </details>
       <details>
         <summary>空間データでモデルを学習させる GIS ツールとは何が違いますか？</summary>
-        <p>そうしたツールは、モデルを作るためのものです。たとえば、航空写真から建物を見つけるモデルを作れます。Pointsman はモデルを作りません。モデルの答えに公開データから得た場所の情報を加え、何をするかは、人が書いたルールで決めます。両方を組み合わせることもできます。ほかの環境で学習させたモデルでも、同じ形で答えられるもの（はい／いいえ、選択肢、点数と、それぞれの確率）なら、モデルサーバー経由で Pointsman の質問に答えられます。</p>
+        <p>そうしたツールは、モデルを作るためのものです。たとえば、航空写真から建物を見つけるモデルを作れます。Pointsman はモデルを作りません。モデルの回答に公開データから調べた場所の情報を加え、何をするかは、人が書いたルールで決めます。両方を組み合わせることもできます。ほかの環境で学習させたモデルでも、同じ形で答えられるもの(はい・いいえ、選択肢、点数と、それぞれの確率)なら、モデルサーバー経由で Pointsman の質問に答えられます。</p>
       </details>
       <details>
         <summary>AI に確信がないときはどうなりますか？</summary>
-        <p>答えにはそれぞれ確率が付き、ルールはそれを、設定したしきい値と比べます。どのルールにも当てはまらなければ、プロファイルの既定のアクションになります。ふつうは <code>review</code> で、判定は人の確認を待ちます。人の答えは記録され、後の判定でも使われます。</p>
+        <p>回答にはそれぞれ確率が付き、ルールはそれを、設定したしきい値と比べます。どのルールにも当てはまらなければ、プロファイルの既定のアクションになります。ふつうは <code>review</code> で、判定は人の確認を待ちます。人の回答は記録され、後の判定でも使われます。</p>
       </details>
     </div>
   </div>
