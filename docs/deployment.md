@@ -79,9 +79,12 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 
    3. Merge the pull request at once. The engine accepts requests again
       when the deploy has finished (a few minutes). If the deploy fails,
-      run it again, or remove the secret
-      (`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`)
-      until it works.
+      run it again. Only when it failed before the step "Deploy the engine"
+      (the running engine still has no `FACTS_GITHUB: "token"`) may you
+      remove the secret until it works
+      (`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`);
+      set it again before you retry. Once the engine is deployed with
+      `"token"`, keep the secret: without it every request fails.
 
    The same holds for `FACTS_GITHUB: "app"` and its secrets
    `FACTS_GITHUB_APP_ID` and `FACTS_GITHUB_APP_PRIVATE_KEY`.

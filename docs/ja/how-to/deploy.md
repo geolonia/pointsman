@@ -58,7 +58,7 @@ translatedFrom: 7d961e6
       npx wrangler secret put FACTS_GITHUB_TOKEN --config wrangler.jsonc
       ```
 
-   3. すぐにプルリクエストをマージします。デプロイが終わると(数分)、エンジンはまたリクエストを受け付けます。デプロイが失敗したときは、もう一度実行します。直るまでの間は、シークレットを削除してもかまいません(`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`)。
+   3. すぐにプルリクエストをマージします。デプロイが終わると(数分)、エンジンはまたリクエストを受け付けます。デプロイが失敗したときは、もう一度実行します。シークレットを削除してよいのは、「Deploy the engine」のステップより前で失敗し、動いているエンジンがまだ `FACTS_GITHUB: "token"` でないときだけです(`npx wrangler secret delete FACTS_GITHUB_TOKEN --config wrangler.jsonc`)。その場合は、再実行の前にシークレットを設定し直します。エンジンを `"token"` でデプロイしたあとは、シークレットを残してください。なければすべてのリクエストが失敗します。
 
    `FACTS_GITHUB: "app"` と、そのシークレット `FACTS_GITHUB_APP_ID`、`FACTS_GITHUB_APP_PRIVATE_KEY` も同じです。
 
