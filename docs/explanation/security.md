@@ -22,8 +22,8 @@ what it does not. The full analysis is the
   it is made.
 - A token can expire; one without `--expires` works until it is revoked. A
   revoke can take up to about 60 seconds to reach every location.
-- A *test token* only decides and lists its profiles; its decisions are not
-  logged and never reach the review queue. How to replace a token: [Deploy
+- A *test token* can only decide, list its profiles and explain them; its
+  decisions are not logged and never reach the review queue. How to replace a token: [Deploy
   Pointsman](../deployment.md#rotate-an-api-token).
 
 ## People over MCP
@@ -72,24 +72,28 @@ request in a live repository. Whether that approval is enough to merge
 depends on the repository's ruleset, which the repository's owners set: see
 [Review pull requests with Pointsman](../how-to/review-pull-requests.md#4-let-pointsman-approve).
 
-Callbacks with a review's final answer are signed, and the connector checks
+Callbacks with a review's outcome are signed, and the connector checks
 the signature of every webhook GitHub sends it.
 
 ## What is recorded
 
 What the decision log keeps is described under
-[The decision log](decision-model.md#the-decision-log). The request is kept
-as a plain SHA-256 hash, so equal requests give equal hashes. The log shows
+[The decision log](decision-model.md#the-decision-log). The request's state
+(after the profile's input mapping) is kept as a plain SHA-256 hash, so
+equal states give equal hashes. The log shows
 what the engine saw and did, not that the request was true. It is not
 signed or chained: whoever runs the deployment can change it. Who resolved a
 review (`by`) is a name the client sends, not checked.
 
 ## Not promised
 
-Pointsman does not promise that an AI answer is right, rate limits per
-client, an allow-list of callback hosts (private addresses are refused), or
-exactly-once delivery of callbacks. The threat model lists each of these with
-its reason.
+Pointsman does not promise these things. The threat model gives the reason
+for each.
+
+- That an AI answer is right.
+- A limit on the number of requests per client.
+- An allow-list of callback hosts. Private addresses are refused, though.
+- That a callback arrives exactly once.
 
 ## Reporting a problem
 

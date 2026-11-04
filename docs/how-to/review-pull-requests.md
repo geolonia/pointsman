@@ -51,8 +51,8 @@ Here the action `light` adds a label:
 }
 ```
 
-The connector can comment, add labels, request reviewers, approve, and keep
-an approval. It does each at most once per commit, and nothing while a
+The connector can comment, add labels, request reviewers, ask Copilot for a
+review, approve, and keep an approval. It does each at most once per commit, and nothing while a
 person still checks the decision ([Actions](../github-connector.md#actions)).
 So do not map an action that a person checks first (by default `review`):
 nothing would happen until the person is done.
@@ -64,7 +64,8 @@ Map an action to `approve` only when the profile's rules can carry it:
 - **Permissions.** An app's approval counts toward the required approvals
   only when the connector app has Contents and Pull requests with read and
   write ([the two apps](../github-connector.md#the-two-github-apps)).
-  Without them the approval is shown but does not count. The connector's
+  Without Pull requests: write the approval fails, and the check run says
+  so; without Contents: write it is shown but does not count. The connector's
   check run is always `neutral`, so it cannot replace an approval as a
   required check.
 - **Dismiss stale approvals.** Turn on "Dismiss stale pull request approvals
@@ -90,7 +91,8 @@ Some pull requests need no AI answer at all:
   changelog (`github_release`);
 - a Dependabot pull request that only bumps npm development dependencies by
   a patch step (`github_bump`; a step counts as `patch` only from version
-  1.0.0 on, a 0.x patch step counts as `minor`).
+  1.0.0 on: from 0.y.z a patch step counts as `minor`, and from 0.0.z any
+  step counts as `major`).
 
 Pair either fact with `github_pr` (author, signatures, who pushed), because
 neither says who made the change. To make the dependency case common, group

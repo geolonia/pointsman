@@ -80,7 +80,7 @@ title:
   ja: 報告の確認
 description:
   en: Send a report about danger to the urgent queue, and every other report to a person.
-  ja: 危険についての報告を至急の対応に回し、それ以外の報告は人が確認する。
+  ja: 危険についての報告を緊急の対応に回し、それ以外の報告は人が確認する。
 model: clef-flash
 input:
   - { name: text, path: $.report.text }

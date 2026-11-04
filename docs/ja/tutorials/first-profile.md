@@ -33,7 +33,7 @@ pnpm dev
 [wrangler:info] Ready on http://localhost:8787
 ```
 
-起動したままにして、以降の手順は別のターミナルで、同じ `pointsman` フォルダーの中で進めます。手元の Pointsman は `examples/profiles/` にある例のプロファイルを使い、モックのモデルは「はい・いいえ」の質問すべてに「いいえ」と 80% の確かさで答えます。
+起動したままにして、以降の手順は別のターミナルで、同じ `pointsman` フォルダーの中で進めます。手元の Pointsman は `examples/profiles/` にある例のプロファイルを使い、モックのモデルは、はい・いいえの質問すべてに「いいえ」と答え、その確率を 80% とします。
 
 ## 2. トークンを作る
 
@@ -48,7 +48,7 @@ export POINTSMAN_TOKEN=pm_...
 
 ## 3. プロファイルを書く
 
-次の内容を `examples/profiles/report-check.yaml` として保存します。報告について 1 つ質問し、ルールは 1 つです。誰かが危険な状態にあると AI が 70% 以上確信したとき、アクションは `urgent`(至急)になります。それ以外は、人が報告を確認します(`review`)。
+次の内容を `examples/profiles/report-check.yaml` として保存します。報告について 1 つ質問し、ルールは 1 つです。誰かが危険な状態にあると AI が 70% 以上確信したとき、アクションは `urgent`(緊急)になります。それ以外は、人が報告を確認します(`review`)。
 
 - `input` は、リクエストのどの部分を AI に見せるかを選びます。`$.report.text` は、リクエストの中の位置を指すパス(JSONPath)です。
 - `noul` は「はい・いいえ」で答える質問で、`criteria` に「はい」と「いいえ」の意味を書きます。
@@ -65,7 +65,7 @@ title:
   ja: 報告の確認
 description:
   en: Send a report about danger to the urgent queue, and every other report to a person.
-  ja: 危険についての報告を至急の対応に回し、それ以外の報告は人が確認する。
+  ja: 危険についての報告を緊急の対応に回し、それ以外の報告は人が確認する。
 model: clef-flash
 input:
   - { name: text, path: $.report.text }
@@ -144,7 +144,7 @@ curl -s localhost:8787/v1/decide/report-check \
   -d '{"state": {"report": {"text": "A tree fell on the road near the school."}}}'
 ```
 
-答えは次のとおりです(一部を省略しています)。
+レスポンスは次のとおりです(一部を省略しています)。
 
 ```json
 {
@@ -161,11 +161,11 @@ curl -s localhost:8787/v1/decide/report-check \
 }
 ```
 
-モックのモデルは「危険はない」(`yes: 0.2`)と答えたため、どのルールにも当てはまらず、既定のアクション `review` になりました。判定は人の確認を待っています。
+モックのモデルは「危険はない」(`yes: 0.2`)と答えたため、どのルールにも当てはまらず、既定のアクション `review` になりました。判定はレビュー待ちになり、人の確認を待っています。
 
 ## 7. 人として確認する
 
-確認待ちの判定を一覧し、この判定を決めます。ここでは、確認した人が「やはり至急」と判断し、AI の回答を訂正します。2 つ目のコマンドには、手順 6 の `decision_id` を入れます。
+レビュー待ちの判定を一覧し、この判定のレビューに回答します。ここでは、確認した人が「やはり緊急」と判断し、AI の回答を訂正します。2 つ目のコマンドには、手順 6 の `decision_id` を入れます。
 
 ```sh
 curl -s 'localhost:8787/v1/reviews?profile=report-check' \
@@ -176,7 +176,7 @@ curl -s -X POST localhost:8787/v1/reviews/<decision_id>/resolve \
   -d '{"action": "urgent", "correct": {"danger": true}, "by": "you@example.com"}'
 ```
 
-2 つ目のコマンドの答えは次のとおりです(一部を省略しています)。
+2 つ目のコマンドのレスポンスは次のとおりです(一部を省略しています)。
 
 ```json
 {
