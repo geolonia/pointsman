@@ -266,7 +266,9 @@ export class AppGitHub implements ConnectorGitHub {
 
   async pullRequest(repo: string, number: number): Promise<PullRequestInfo> {
     const pr = await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request');
-    if (!isObject(pr) || !isObject(pr.head) || typeof pr.head.sha !== 'string' || !SHA.test(pr.head.sha) || !isObject(pr.base)) {
+    if (!isObject(pr) || !isObject(pr.head) || typeof pr.head.sha !== 'string' || !SHA.test(pr.head.sha) || !isObject(pr.base)
+    // The base branch is part of what a decision is about: never taken as ''.
+    || typeof pr.base.ref !== 'string' || pr.base.ref === '') {
       throw new GitHubError('GitHub pull request: unexpected answer', false);
     }
     return {
@@ -277,7 +279,7 @@ export class AppGitHub implements ConnectorGitHub {
       head: pr.head.sha,
       headRef: typeof pr.head.ref === 'string' ? pr.head.ref : '',
       draft: pr.draft === true,
-      base: typeof pr.base.ref === 'string' ? pr.base.ref : '',
+      base: pr.base.ref,
       title: typeof pr.title === 'string' ? pr.title : '',
       body: typeof pr.body === 'string' ? pr.body : '',
       fork: !isObject(pr.head.repo) || !isObject(pr.base.repo) || pr.head.repo.full_name !== pr.base.repo.full_name,

@@ -119,9 +119,9 @@ Rules for every action:
 
 For `approve` also:
 
-- Only on the commit and base branch that were decided on: the pull request is read again right before, and nothing is done if its head or base changed, it is a draft or it was closed. The approval names that commit (`commit_id`). GitHub's approval names no base, so the pull request is read once more right after it: if the head or base changed in between, the approval is dismissed at once. If that read or the dismissal fails, the next run dismisses it (a push: always; a new base: unless its new decision approves again).
+- Only on the commit and base branch that were decided on: the pull request is read again right before, and nothing is done if its head or base changed, it is a draft or it was closed. The approval names that commit (`commit_id`). GitHub's approval names no base, so the pull request is read once more right after it: if the head or base changed in between, the approval is dismissed at once. If that read or the dismissal fails, the next run dismisses it.
 - Never for a pull request from a fork.
-- After a push, the connector dismisses its own approvals of older commits, on every run. It dismisses only approvals it recorded giving, never someone else's review.
+- After a push or a new base branch, the connector dismisses its own approvals of the older commit or base, on every run, whatever the decision. It dismisses only approvals it recorded giving, never someone else's review.
 - When a later decision on the same commit no longer approves (CI failed, a fact changed, a person must check it), its approval of that commit is withdrawn; a later approving decision may approve again. See [When the approval stays](#when-the-approval-stays).
 - If an old approval cannot be dismissed, it approves nothing in that run.
 - The reviews are read up to 1,000. A recorded approval that is not among them is read by its id before the connector takes it as gone; if that read fails, the record stays and the next run tries again.
@@ -155,7 +155,7 @@ The connector approves at most once per head commit. Each later decision on that
 | A person's answer to that decision ([Asking a person](#asking-a-person)) | as for the action they answered |
 | A test decision (`test: true`), or an answer that is not a valid decision ([Safety](#safety)) | withdrawn |
 | A new head commit (a push) | the approval of the older commit is dismissed, whatever the decision |
-| Another base branch (the pull request was retargeted) | a new decision on the same commit, against the new base: the approval stays only as in the rows above |
+| Another base branch (the pull request was retargeted) | the approval given on the older base is dismissed, whatever the decision; a decision on the new base may approve the same commit again |
 
 When unsure, the approval goes: only the two kinds above keep it. An edit of the title or description gives a new decision on the same commit; if the risk class changes, that decision is no longer `approve` or `keep_approval`, so the approval is withdrawn.
 

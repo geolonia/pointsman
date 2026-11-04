@@ -582,6 +582,63 @@ describe('actions (switched on per profile action)', () => {
     }
   });
 
+  it('dismisses its approval after a retarget whatever the next decision, and may approve again on the new base', async () => {
+    // Pointsman refuses the next decision (4xx): no decision, the approval of the old base still goes.
+    let refuse = false;
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => (refuse ? Response.json({ error: { code: 'x', message: 'x' } }, { status: 403 }) : Response.json(decision(p, { action: 'light' }))));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await t.work.run();
+    expect(t.gh.github.approvals.map((a) => a.commit)).toEqual([HEAD]);
+    refuse = true;
+    t.gh.github.state.base = 'release';
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss']);
+    expect(t.gh.github.approvals).toEqual([]);
+    // A decision on the new base that approves: approved again on the same commit, not "already done".
+    refuse = false;
+    await t.event();
+    await t.work.run();
+    expect(ops(t.gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(t.gh.github.approvals.map((a) => a.commit)).toEqual([HEAD]);
+  });
+
+  it('an approval left open by a stopped run is traced and dismissed after a retarget', async () => {
+    const { work, gh, mem, event } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    await work.run();
+    // As if the run stopped after the approval, before it was recorded as given.
+    mem.data.set('approvals', []);
+    const acts = mem.data.get('acts') as any;
+    acts.done['pr-docs-check:approve'].state = 'pending';
+    mem.data.set('acts', acts);
+    gh.github.state.base = 'release';
+    await event();
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve', 'dismiss', 'approve']);
+    expect(gh.github.approvals).toHaveLength(1);
+  });
+
+  it('after the approval: a failed read leaves it done; a failed dismissal says so and keeps the records', async () => {
+    const { work, gh, mem } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const read = gh.github.pullRequest;
+    let reads = 0;
+    // The run reads the pull request, then again right before approve; the third read is after it.
+    gh.github.pullRequest = async (...a) => { if (++reads === 3) throw new GitHubError('GitHub pull request: 404', false, 404); return read(...a); };
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+    expect((mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+
+    const t = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    const approve = t.gh.github.approve;
+    t.gh.github.approve = async (...a) => { const id = await approve(...a); t.gh.github.state.base = 'release'; return id; };
+    t.gh.github.dismissReview = async () => { throw new GitHubError('GitHub dismiss: 422', false, 422); };
+    await t.work.run();
+    expect(t.gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('the approval could not be withdrawn');
+    expect((t.mem.data.get('acts') as any).done['pr-docs-check:approve'].state).toBe('done');
+    expect(t.mem.data.get('approvals')).toMatchObject([{ commit: HEAD, base: 'main' }]);
+  });
+
   it('does not approve when the head moved between the decision and the approval', async () => {
     const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
       gh.github.state.head = HEAD2; // a push while Pointsman decided
@@ -1063,6 +1120,15 @@ describe('actions (switched on per profile action)', () => {
       await work.run();
       expect(reads).toBe(1);
       expect(asks(gh.calls)).toBe(0);
+    });
+
+    it('asks nothing when the base changed after the decision', async () => {
+      const { work, gh } = await acting(COPILOT, light);
+      const copilotAsked = gh.github.copilotAsked;
+      gh.github.copilotAsked = async (r, n, h) => { const asked = await copilotAsked(r, n, h); gh.github.state.base = 'release'; return asked; };
+      await work.run();
+      expect(asks(gh.calls)).toBe(0);
+      expect(gh.calls.filter((c) => c.output).at(-1)!.output!.summary).toContain('copilot_review: not done, the pull request changed');
     });
 
     it('asks nothing when the head moved after the decision', async () => {
