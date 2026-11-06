@@ -17,6 +17,7 @@ Connectors are described in [connectors.md](connectors.md). A module can have bo
 | Module | Answers | Settings |
 | --- | --- | --- |
 | `@pointsman/facts-gsi` | `inside` and `nearest` for the layers `gsi-flood-max` and `gsi-shelters-flood` (Japan) | `FACTS_MODE` |
+| `@pointsman/facts-jshis` | `inside` for the layers `jshis-shaking-6lower-30y`, `jshis-shaking-6upper-30y`, `jshis-ground-amplification` and `jshis-landform` (earthquake hazard and ground, Japan, from J-SHIS) | `FACTS_MODE` |
 | `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
 | `@pointsman/coderabbit` | `coderabbit`, read through the GitHub module's snapshot | `FACTS_CODERABBIT`, and the GitHub module's `FACTS_GITHUB` settings |
 | `@pointsman/github` | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release`, `github_bump`; also a connector ([github-connector.md](github-connector.md)) | `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK` |

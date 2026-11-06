@@ -529,15 +529,16 @@ raised `danger` even where they were reassuring.
 ### Fact providers
 
 Spatial facts come from the [fact modules](modules.md) `@pointsman/facts-gsi`
-(`inside`, `nearest`) and `@pointsman/facts-valhalla` (`detour`).
-`FACTS_MODE` in the wrangler config switches both (GitHub facts have their
-own setting, [`FACTS_GITHUB`](#settings)):
+(`inside`, `nearest`), `@pointsman/facts-jshis` (`inside`, earthquake
+hazard) and `@pointsman/facts-valhalla` (`detour`). `FACTS_MODE` in the
+wrangler config switches all three (GitHub facts have their own setting,
+[`FACTS_GITHUB`](#settings)):
 
 | `FACTS_MODE` | Facts |
 |---|---|
 | `off` (default) | none: every fact is missing (`unavailable`) |
 | `mock` | fixed answers for development and tests: inside (rank 1), nearest 250 m, a detour with 0 extra metres |
-| `gsi` | public data of the Geospatial Information Authority of Japan (GSI), layers below; `detour` with a routing server (`FACTS_ROUTING_URL`, below), otherwise `unavailable` |
+| `gsi` | public data of the Geospatial Information Authority of Japan (GSI) and J-SHIS (NIED), layers below; `detour` with a routing server (`FACTS_ROUTING_URL`, below), otherwise `unavailable` |
 
 Layers of `gsi`:
 
@@ -558,6 +559,26 @@ Layers of `gsi`:
   "日付不明" when one of them has no date.
 - A colour that is not in the legend fails the lookup (`error`) instead of
   guessing, so a change of the tiles shows up at once.
+
+Layers of `@pointsman/facts-jshis` (J-SHIS, the earthquake hazard station
+of NIED, per 250 m mesh; a place is `inside` where J-SHIS has its mesh, so
+not on the sea or outside Japan):
+
+| Layer | Type | Data |
+|---|---|---|
+| `jshis-shaking-6lower-30y` | `inside` | Chance of shaking of intensity 6-lower or more within 30 years (hazard model Y2024, average case, all earthquakes). `rank` 1 to 5 and `class` are the classes of the national seismic hazard map: below 0.1%, 0.1% to 3%, 3% to 6%, 6% to 26%, 26% or more (roughly once in more than 30,000, 1,000, 500 and 100 years). |
+| `jshis-shaking-6upper-30y` | `inside` | The same for intensity 6-upper or more. |
+| `jshis-ground-amplification` | `inside` | Surface ground amplification (ARV, ground model V3): how much the ground near the surface strengthens shaking. `rank` 1 to 5, `class` below 1.0, 1.0 to 1.4, 1.4 to 1.6, 1.6 to 2.0, 2.0 or more. These bands are Pointsman's, for rules; J-SHIS publishes the number only. |
+| `jshis-landform` | `inside` | Landform class (微地形区分, for example 埋立地 or 旧河道, where liquefaction is more likely): `class` is J-SHIS's name, `rank` its landform code (a code, not an order). A Point only. |
+
+- J-SHIS data may be used and edited with credit
+  ([terms](https://www.j-shis.bosai.go.jp/agreement)). Each fact's `source`
+  is the credit with the mesh code and the exact value, for example
+  防災科研 J-SHIS 確率論的地震動予測地図（Y2024、平均ケース・全地震、30年震度6弱以上の確率）を加工して作成（メッシュ 6441336534：3.23%）.
+- A line gets the highest class along it (sampled every 100 m, at most 16
+  meshes). Answers are cached per mesh for a day, in memory and in the
+  Workers cache. J-SHIS publishes no request limit; it answers 403 when one
+  is exceeded, and the fact is then missing (`error`).
 
 ### Detours
 

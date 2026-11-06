@@ -21,7 +21,7 @@ editUrl: false
 
 Inside an area of a layer.
 
-提供するモジュール: `@pointsman/facts-gsi`(レイヤー `gsi-flood-max`)
+提供するモジュール: `@pointsman/facts-gsi`(レイヤー `gsi-flood-max`)、`@pointsman/facts-jshis`(レイヤー `jshis-shaking-6lower-30y`, `jshis-shaking-6upper-30y`, `jshis-ground-amplification`, `jshis-landform`)
 
 | フィールド | 種類 | 意味 |
 | --- | --- | --- |

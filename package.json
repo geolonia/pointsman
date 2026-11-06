@@ -46,6 +46,7 @@
     "@pointsman/github": "workspace:*",
     "@pointsman/coderabbit": "workspace:*",
     "@pointsman/facts-gsi": "workspace:*",
+    "@pointsman/facts-jshis": "workspace:*",
     "@pointsman/facts-valhalla": "workspace:*",
     "@pointsman/fiware": "workspace:*",
     "@pointsman/module-api": "workspace:*",
