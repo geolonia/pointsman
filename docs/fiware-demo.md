@@ -135,7 +135,7 @@ and the decisions waiting for a person, with the NGSI-LD query that finds
 them. Team members also resolve reviews in the GitHub review queue
 (`/publish`, `/reject`, corrections such as `/category laneRestriction`).
 The page in detail: the demo's
-[README](https://github.com/geolonia/pointsman-demo#the-page).
+[README](https://github.com/geolonia/pointsman-demo-roads#the-page).
 
 ### What the viewer should take away
 
@@ -182,7 +182,7 @@ Decisions follow the Decision model on datamodels.jp
 
 ## How it runs
 
-The same diagram is in the demo's [README](https://github.com/geolonia/pointsman-demo#how-it-works),
+The same diagram is in the demo's [README](https://github.com/geolonia/pointsman-demo-roads#how-it-works),
 with each step of a report in order. Pointsman makes up to three decisions
 per report: the **first check** (`road-restriction-check`), the **additional
 check** (`evacuation-access-check`) and the **final result**
@@ -197,13 +197,13 @@ flowchart LR
   P -->|"fixed questions"| AI["AI model<br/>(Workers AI)"]
   P -->|"flood zone, evacuation site,<br/>way around on foot"| Geo["Public map data<br/>(GSI, Valhalla on OpenStreetMap)"]
   W -->|"write check, evacuation, final,<br/>Decision, Task, Alert"| B
-  W -->|"urgent / review<br/>(prepared reports only)"| G["GitHub issues<br/>(geolonia/pointsman-demo)"]
+  W -->|"urgent / review<br/>(prepared reports only)"| G["GitHub issues<br/>(geolonia/pointsman-demo-roads)"]
   G -->|"/publish, /reject<br/>(webhook)"| W
 ```
 
 - **Demo page:** static files served by the demo Worker
   (https://roads.demo.pointsman.net, repository
-  geolonia/pointsman-demo). It only talks to the demo Worker, never to the
+  geolonia/pointsman-demo-roads). It only talks to the demo Worker, never to the
   broker directly.
 - **Demo Worker:** creates entities from the page (checked and limited, see
   below), returns the entities for the maps, and runs the bridge (#47) on
