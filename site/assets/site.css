@@ -168,6 +168,20 @@ section.band.alt { background: var(--bg-alt); }
 .card .more { display: inline-block; margin-top: 14px; font: 14px var(--mono); color: var(--muted); text-decoration: none; }
 .card .more:hover { color: var(--fg); }
 
+/* Demos page (demos/): one tile per demo, a screenshot on top. */
+.section-head h1 { font-size: clamp(32px, 4vw, 44px); }
+.demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 18px; }
+.demo-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.demo-card:hover { border-color: var(--line-strong); }
+.demo-card .shot { display: block; border-bottom: 1px solid var(--line); }
+.demo-card .shot img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; }
+.demo-card .body { padding: 22px 24px 24px; display: flex; flex-direction: column; flex: 1; }
+.demo-card h2 { font-size: 19px; margin-bottom: 10px; }
+.demo-card h2 a { color: inherit; text-decoration: none; }
+.demo-card h2 a:hover { text-decoration: underline; }
+.demo-card .chips { margin-top: 16px; }
+.demo-card .links { display: flex; flex-wrap: wrap; gap: 0 22px; margin-top: auto; padding-top: 4px; }
+
 /* Flow */
 .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; counter-reset: step; }
 .flow li { list-style: none; position: relative; padding: 0 22px 0 0; }
@@ -239,7 +253,7 @@ footer a:hover { color: var(--fg); }
 }
 .phrase { display: inline-block; }
 
-/* The header needs about 880px on one line (English is the widest). */
+/* The header needs about 940px on one line (English is the widest). */
 header.nav nav a, .lang { white-space: nowrap; }
 @media (max-width: 960px) {
   header.nav nav { display: none; }

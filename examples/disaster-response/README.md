@@ -6,7 +6,7 @@ wait in the queue. Pointsman does the first check on every report, adds
 facts from public map data, and sends the unclear and urgent ones to a
 person.
 
-Try it: the [FIWARE demo](https://pointsman-demo.geolonia.workers.dev/?lang=en)
+Try it: the [FIWARE demo](https://roads.demo.pointsman.net/?lang=en)
 runs this chain on prepared reports.
 
 ## Profiles

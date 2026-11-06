@@ -202,7 +202,7 @@ flowchart LR
 ```
 
 - **Demo page:** static files served by the demo Worker
-  (https://pointsman-demo.geolonia.workers.dev, repository
+  (https://roads.demo.pointsman.net, repository
   geolonia/pointsman-demo). It only talks to the demo Worker, never to the
   broker directly.
 - **Demo Worker:** creates entities from the page (checked and limited, see
