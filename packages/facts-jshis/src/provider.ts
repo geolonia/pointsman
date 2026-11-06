@@ -17,7 +17,7 @@
 // answers are kept per mesh for a day: in memory and in the Workers cache.
 
 import {
-  along, FactError, FactUnavailableError,
+  along, distanceTo, FactError, FactUnavailableError,
   type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery,
 } from '@pointsman/module-api';
 import { JSHIS_LAYERS } from './definition';
@@ -34,6 +34,9 @@ const LOAD_TIMEOUT_MS = 10_000;
  * connections at once, so more would not fit in the 3 s of `inside`.
  */
 const MAX_MESHES = 8;
+/** Sample spacing along a line, and the most samples; a longer line is refused, so spacing never grows. */
+const STEP_M = 100;
+const MAX_SAMPLES = 200;
 /** After a 403 (J-SHIS's request limit), no requests for this long. */
 const BLOCKED_MS = 120_000;
 
@@ -112,7 +115,7 @@ export class JshisFactProvider implements FactProvider<SpatialFactQuery> {
     const now = this.now();
     const hit = this.memory.get(url);
     if (hit && hit.until > now) return hit.mesh;
-    const entry = { mesh: this.load(url, code), until: now + TTL_S * 1000 };
+    const entry = { mesh: this.load(url, code, layer), until: now + TTL_S * 1000 };
     // A failed load is not kept: the next decision tries again.
     entry.mesh.catch(() => {
       if (this.memory.get(url) === entry) this.memory.delete(url);
@@ -123,12 +126,12 @@ export class JshisFactProvider implements FactProvider<SpatialFactQuery> {
     return entry.mesh;
   }
 
-  private async load(url: string, code: string): Promise<Mesh> {
+  private async load(url: string, code: string, layer: Layer): Promise<Mesh> {
     // A cache that fails is a miss, never an error.
     const cached = this.cache ? await this.cache.match(url).catch(() => undefined) : undefined;
     if (cached) {
       try {
-        return parseMesh(code, await cached.text());
+        return parseMesh(code, await cached.text(), layer);
       } catch {
         await this.cache!.delete(url).catch(() => {}); // unreadable: fetch it again
       }
@@ -146,7 +149,7 @@ export class JshisFactProvider implements FactProvider<SpatialFactQuery> {
     // Parsed first: only an answer that can be read goes into the shared cache.
     let mesh: Mesh;
     try {
-      mesh = parseMesh(code, text);
+      mesh = parseMesh(code, text, layer);
     } catch (e) {
       throw res.status === 404 ? new FactError('J-SHIS 404') : e;
     }
@@ -167,8 +170,13 @@ function urlFor(layer: Layer, code: string): string {
   return `${BASE}/sstrct/${GROUND_MODEL}/meshinfo.geojson?${position}`;
 }
 
-/** J-SHIS's answer for one mesh. Throws on anything but data or "no data here". */
-export function parseMesh(code: string, text: string): Mesh {
+/**
+ * J-SHIS's answer for one mesh, with the values the layer needs checked, so
+ * a broken answer is never cached. Throws on anything but data or "no data
+ * here". Error messages carry no mesh code: a mesh code is a location, and
+ * errors are logged.
+ */
+export function parseMesh(code: string, text: string, layer: Layer): Mesh {
   let json: { status?: unknown; error?: { code?: unknown }; features?: { properties?: Record<string, unknown> }[] };
   try {
     json = JSON.parse(text) as typeof json;
@@ -179,8 +187,16 @@ export function parseMesh(code: string, text: string): Mesh {
   const props = json.status === 'Success' ? json.features?.[0]?.properties : undefined;
   if (!props) throw new FactError(`J-SHIS answer without data (${String(json.error?.code ?? json.status)})`);
   // The mesh J-SHIS used must be the one asked for: a different one means the mesh grid changed.
-  if (props.meshcode !== code) throw new FactError(`J-SHIS answered mesh ${String(props.meshcode)}, not ${code}`);
-  return { code, props: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, String(v)])) };
+  if (props.meshcode !== code) throw new FactError('J-SHIS answered for another mesh');
+  const out = Object.fromEntries(Object.entries(props).map(([k, v]) => [k, String(v)]));
+  // Amplification and landform share one answer, so it must have both.
+  const numbers = SHAKING[layer] ? [SHAKING[layer].attr] : ['ARV', 'JCODE'];
+  for (const key of numbers) {
+    const value = out[key] === undefined || out[key] === '' ? NaN : Number(out[key]);
+    if (!Number.isFinite(value) || value < 0) throw new FactError(`J-SHIS ${key} is not a number`);
+  }
+  if (!SHAKING[layer] && !out.JNAME) throw new FactError('J-SHIS landform without a name');
+  return { code, props: out };
 }
 
 function answer(layer: Layer, meshes: Mesh[]): FactResult {
@@ -192,16 +208,15 @@ function answer(layer: Layer, meshes: Mesh[]): FactResult {
   }
   if (layer === 'jshis-landform') {
     const { code, props } = found[0]!;
+    // Both checked in parseMesh.
     const rank = Number(props.JCODE);
-    if (!Number.isInteger(rank) || !props.JNAME) throw new FactError('J-SHIS landform without code or name');
-    return { values: { inside: true, rank, class: props.JNAME }, source: groundSource(`メッシュ ${code}：${props.JNAME}`) };
+    const name = props.JNAME ?? '';
+    return { values: { inside: true, rank, class: name }, source: groundSource(`メッシュ ${code}：${name}`) };
   }
   // The highest band along the geometry; its mesh and value go into the source.
   let worst: { band: Band; value: number; mesh: Mesh & { props: Record<string, string> } } | undefined;
   for (const mesh of found) {
-    const raw = shaking ? mesh.props[shaking.attr] : mesh.props.ARV;
-    const value = raw === undefined || raw === '' ? NaN : Number(raw);
-    if (!Number.isFinite(value) || value < 0) throw new FactError(`J-SHIS value "${raw}" is not a number`);
+    const value = Number(shaking ? mesh.props[shaking.attr] : mesh.props.ARV); // checked in parseMesh
     const band = bandOf(shaking ? PROBABILITY : AMPLIFICATION, value);
     if (!worst || band.rank > worst.band.rank || (band.rank === worst.band.rank && value > worst.value)) worst = { band, value, mesh };
   }
@@ -230,7 +245,12 @@ const groundSource = (detail: string) => `防災科研 J-SHIS 表層地盤（${G
  * miss that mesh.
  */
 export function meshesAlong(g: Geometry): string[] {
-  const places: Position[] = g.type === 'Point' ? [g.coordinates] : along(g, 100, 200);
+  if (g.type === 'LineString') {
+    const ps = g.coordinates;
+    const length = ps.slice(1).reduce((sum, p, i) => sum + distanceTo(p, { type: 'Point', coordinates: ps[i]! }), 0);
+    if (length > STEP_M * (MAX_SAMPLES - 1)) throw new FactError('line too long');
+  }
+  const places: Position[] = g.type === 'Point' ? [g.coordinates] : along(g, STEP_M, MAX_SAMPLES);
   return [...new Set(places.map(meshCode))];
 }
 
@@ -240,32 +260,27 @@ export function meshesAlong(g: Geometry): string[] {
 const LAT = [40, 5, 0.5, 0.25, 0.125];
 const LON = [60, 7.5, 0.75, 0.375, 0.1875];
 
+/**
+ * Whole 250 m cells from the grid's origin. A value a hair below a grid line
+ * (35.7 × 480 is 17135.999…) counts as on it, so a point on a line always
+ * falls into the mesh north or east of it, as in the standard.
+ */
+function cells(value: number): number {
+  const near = Math.round(value);
+  return Math.abs(value - near) < 1e-6 ? near : Math.floor(value);
+}
+
 /** The 10-digit 250 m mesh code of a position (WGS 84; JGD2011 differs by far less than a mesh). */
 export function meshCode([lon, lat]: Position): string {
   if (lat < 20 || lat >= 46 || lon < 122 || lon >= 154) throw new FactUnavailableError('J-SHIS covers Japan only');
-  let y = lat * 60;
-  let x = (lon - 100) * 60;
-  const p = Math.floor(y / LAT[0]!);
-  const u = Math.floor(x / LON[0]!);
-  y -= p * LAT[0]!;
-  x -= u * LON[0]!;
-  const q = Math.floor(y / LAT[1]!);
-  const v = Math.floor(x / LON[1]!);
-  y -= q * LAT[1]!;
-  x -= v * LON[1]!;
-  const r = Math.floor(y / LAT[2]!);
-  const w = Math.floor(x / LON[2]!);
-  y -= r * LAT[2]!;
-  x -= w * LON[2]!;
-  let code = `${p}${u}${q}${v}${r}${w}`;
-  for (const i of [3, 4]) {
-    const north = y >= LAT[i]! ? 1 : 0;
-    const east = x >= LON[i]! ? 1 : 0;
-    code += String(1 + east + 2 * north);
-    y -= north * LAT[i]!;
-    x -= east * LON[i]!;
-  }
-  return code;
+  // In 250 m cells, both axes divide the same way: 320 per 1st mesh, 40 per
+  // 2nd, 4 per 3rd, then 2 per 500 m half.
+  const y = cells((lat * 60) / LAT[4]!);
+  const x = cells(((lon - 100) * 60) / LON[4]!);
+  const digits = (n: number) => [Math.floor(n / 320), Math.floor((n % 320) / 40), Math.floor((n % 40) / 4), Math.floor((n % 4) / 2), n % 2];
+  const [p, q, r, ny, qy] = digits(y);
+  const [u, v, w, nx, qx] = digits(x);
+  return `${p}${u}${q}${v}${r}${w}${1 + nx! + 2 * ny!}${1 + qx! + 2 * qy!}`;
 }
 
 /** The centre of a 10-digit mesh, [lon, lat]. */

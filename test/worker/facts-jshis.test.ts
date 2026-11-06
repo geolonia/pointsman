@@ -42,6 +42,14 @@ describe('mesh codes', () => {
     for (const code of [SATOZUKA_MESH, '6441427814', '5339452211', '3036000044']) expect(meshCode(meshCentre(code))).toBe(code);
   });
 
+  it('put a point on a grid line into the mesh north or east of it', () => {
+    expect(meshCode([139.7, 35.7])).toBe('5339454611');
+    expect(meshCode([139.75, 35.675])).toBe('5339461011');
+    // Just south or west of the line stays in the other mesh.
+    expect(meshCode([139.7, 35.7 - 1e-5])).not.toBe('5339454611');
+    expect(meshCode([139.7 - 1e-5, 35.7])).not.toBe('5339454611');
+  });
+
   it('refuse places outside Japan', () => {
     expect(() => meshCode([2.35, 48.85])).toThrow(FactUnavailableError);
   });
@@ -57,11 +65,15 @@ describe('mesh codes', () => {
 
 describe('answers', () => {
   it('are read, also "no data here"; anything else fails', () => {
-    expect(parseMesh(SATOZUKA_MESH, ground(SATOZUKA_MESH)).props?.ARV).toBe('1.30');
-    expect(parseMesh(SATOZUKA_MESH, NOT_FOUND)).toEqual({ code: SATOZUKA_MESH, props: null });
-    expect(() => parseMesh(SATOZUKA_MESH, '<html>')).toThrow(/not JSON/);
-    expect(() => parseMesh(SATOZUKA_MESH, JSON.stringify({ status: 'Error', error: { code: 'BAD_REQUEST' } }))).toThrow(/BAD_REQUEST/);
-    expect(() => parseMesh(SATOZUKA_MESH, ground('6441336533'))).toThrow(/not 6441336534/);
+    const G = 'jshis-ground-amplification';
+    expect(parseMesh(SATOZUKA_MESH, ground(SATOZUKA_MESH), G).props?.ARV).toBe('1.30');
+    expect(parseMesh(SATOZUKA_MESH, NOT_FOUND, G)).toEqual({ code: SATOZUKA_MESH, props: null });
+    expect(() => parseMesh(SATOZUKA_MESH, '<html>', G)).toThrow(/not JSON/);
+    expect(() => parseMesh(SATOZUKA_MESH, JSON.stringify({ status: 'Error', error: { code: 'BAD_REQUEST' } }), G)).toThrow(/BAD_REQUEST/);
+    // Another mesh: the error names no mesh code (a location; errors are logged).
+    expect(() => parseMesh(SATOZUKA_MESH, ground('6441336533'), G)).toThrow(/^J-SHIS answered for another mesh$/);
+    expect(() => parseMesh(SATOZUKA_MESH, hazard(SATOZUKA_MESH, 'T30_I55_PS', 'x'), 'jshis-shaking-6lower-30y')).toThrow(/not a number/);
+    expect(() => parseMesh(SATOZUKA_MESH, ground(SATOZUKA_MESH, ''), 'jshis-landform')).toThrow(/ARV is not a number/);
   });
 });
 
@@ -183,6 +195,26 @@ describe('the provider', () => {
     expect(calls).toHaveLength(1);
     now += 61_000;
     expect((await p.lookup(q, signal)).values).toMatchObject({ inside: true });
+    expect(calls).toHaveLength(2);
+  });
+
+  it('refuses a long line, so samples stay 100 m apart', async () => {
+    // 200 positions going back and forth over 3 km: short in extent, long in length.
+    const zigzag: Position[] = Array.from({ length: 200 }, (_, i) => (i % 2 ? [SATOZUKA[0] + 0.036, SATOZUKA[1]] : SATOZUKA));
+    expect(() => meshesAlong({ type: 'LineString', coordinates: zigzag })).toThrow(/line too long/);
+  });
+
+  it('does not cache an answer with a broken value, and recovers', async () => {
+    let broken = true;
+    const cache = await caches.open('facts-jshis-broken');
+    const { calls, fetchFn } = fakeServer((_, code) => hazard(code, 'T30_I55_PS', broken ? '' : '0.05'));
+    const q = { type: 'inside' as const, layer: 'jshis-shaking-6lower-30y', geometry: point };
+    const p = new JshisFactProvider({ fetch: fetchFn, cache });
+    await expect(p.lookup(q, signal)).rejects.toThrow(/not a number/);
+    broken = false;
+    expect((await new JshisFactProvider({ fetch: fetchFn, cache }).lookup(q, signal)).values).toMatchObject({ rank: 3 });
+    // The first provider dropped its failed load and now finds the good answer in the cache.
+    expect((await p.lookup(q, signal)).values).toMatchObject({ rank: 3 });
     expect(calls).toHaveLength(2);
   });
 
