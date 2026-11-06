@@ -18,6 +18,7 @@ import { MemoryProfileStore } from '../../src/profiles/store';
 import { ENGINE_VERSION } from '../../src/version';
 import { definition as githubDef } from '@pointsman/github/definition';
 import { definition as gsiDef } from '@pointsman/facts-gsi/definition';
+import { definition as jshisDef } from '@pointsman/facts-jshis/definition';
 import type { FactSpec, Profile } from '../../src/types';
 import modules from '../../generated/modules';
 import * as contract from '../../generated/openapi-validators.mjs';
@@ -75,16 +76,37 @@ describe('ModuleRouter', () => {
 
   it('a layer no module names goes to the only module of its type, which answers or refuses it', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // GSI as the only module for `inside` (J-SHIS answers it too).
+    const all = [...modules];
+    modules.splice(0, modules.length, ...all.filter((m) => m.name !== '@pointsman/facts-jshis'));
+    useFactModules(modules);
+    try {
+      const deps = depsFor({ ...base, FACTS_MODE: 'mock' });
+      const mock = await lookupFacts([{ name: 'f', type: 'inside', layer: 'flood', at: '$.location' }], state, deps.facts);
+      expect(mock.f).toMatchObject({ missing: false, source: 'mock' });
+      const gsi = depsFor({ ...base, FACTS_MODE: 'gsi' });
+      const facts = await lookupFacts([
+        { name: 'unknown', type: 'inside', layer: 'flood', at: '$.location' },
+        { name: 'mismatch', type: 'nearest', layer: 'gsi-flood-max', at: '$.location' },
+      ], state, gsi.facts);
+      expect(facts.unknown).toEqual({ missing: true, reason: 'unavailable' });
+      expect(facts.mismatch).toEqual({ missing: true, reason: 'error' });
+    } finally {
+      modules.splice(0, modules.length, ...all);
+    }
+  });
+
+  it('a layer no module names is unavailable when several modules answer its type', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const deps = depsFor({ ...base, FACTS_MODE: 'mock' });
-    const mock = await lookupFacts([{ name: 'f', type: 'inside', layer: 'flood', at: '$.location' }], state, deps.facts);
-    expect(mock.f).toMatchObject({ missing: false, source: 'mock' });
-    const gsi = depsFor({ ...base, FACTS_MODE: 'gsi' });
     const facts = await lookupFacts([
-      { name: 'unknown', type: 'inside', layer: 'flood', at: '$.location' },
-      { name: 'mismatch', type: 'nearest', layer: 'gsi-flood-max', at: '$.location' },
-    ], state, gsi.facts);
-    expect(facts.unknown).toEqual({ missing: true, reason: 'unavailable' });
-    expect(facts.mismatch).toEqual({ missing: true, reason: 'error' });
+      { name: 'nobody', type: 'inside', layer: 'flood', at: '$.location' },
+      { name: 'gsi', type: 'inside', layer: 'gsi-flood-max', at: '$.location' },
+      { name: 'jshis', type: 'inside', layer: 'jshis-shaking-6lower-30y', at: '$.location' },
+    ], state, deps.facts);
+    expect(facts.nobody).toEqual({ missing: true, reason: 'unavailable' });
+    expect(facts.gsi).toMatchObject({ missing: false, source: 'mock' });
+    expect(facts.jshis).toMatchObject({ missing: false, source: 'mock' });
   });
 
   it('a module that is off makes its facts unavailable', async () => {
@@ -177,7 +199,9 @@ describe('versions', () => {
 
   it('lists the modules that answer a profile\'s facts', () => {
     expect(factModules(profile.facts!)).toEqual({ '@pointsman/facts-gsi': gsiDef.version, '@pointsman/github': githubDef.version });
+    expect(factModules([{ name: 'q', type: 'inside', layer: 'jshis-landform', at: '$.x' }])).toEqual({ '@pointsman/facts-jshis': jshisDef.version });
     // A layer no module names goes to the type's only module.
+    useFactModules(modules.filter((m) => m.name !== '@pointsman/facts-jshis'));
     expect(factModules([{ name: 'x', type: 'inside', layer: 'unknown', at: '$.x' }])).toEqual({ '@pointsman/facts-gsi': gsiDef.version });
     useFactModules(modules.filter((m) => m.name !== '@pointsman/github'));
     expect(factModules([{ name: 'pr', type: 'github_pr', at: '$.pr' }])).toEqual({});

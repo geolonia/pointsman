@@ -19,7 +19,7 @@ Shared fact types (capabilities) are defined by the engine. Modules answer them,
 
 Inside an area of a layer.
 
-Answered by `@pointsman/facts-gsi` (layers `gsi-flood-max`).
+Answered by `@pointsman/facts-gsi` (layers `gsi-flood-max`), `@pointsman/facts-jshis` (layers `jshis-shaking-6lower-30y`, `jshis-shaking-6upper-30y`, `jshis-ground-amplification`, `jshis-landform`).
 
 | Field | Kind | Meaning |
 | --- | --- | --- |

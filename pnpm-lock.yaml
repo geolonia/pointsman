@@ -203,6 +203,9 @@ importers:
       '@pointsman/facts-gsi':
         specifier: workspace:*
         version: link:packages/facts-gsi
+      '@pointsman/facts-jshis':
+        specifier: workspace:*
+        version: link:packages/facts-jshis
       '@pointsman/facts-valhalla':
         specifier: workspace:*
         version: link:packages/facts-valhalla
@@ -272,6 +275,12 @@ importers:
         version: link:../module-api
 
   packages/facts-gsi:
+    dependencies:
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+
+  packages/facts-jshis:
     dependencies:
       '@pointsman/module-api':
         specifier: workspace:*

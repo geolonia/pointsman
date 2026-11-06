@@ -25,6 +25,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** The modules in this repository (packages/*): definition (Node-safe), entry (the Worker's) and roles. */
 export const CATALOG = {
   '@pointsman/facts-gsi': { definition: '@pointsman/facts-gsi/definition', entry: '@pointsman/facts-gsi', roles: ['facts'] },
+  '@pointsman/facts-jshis': { definition: '@pointsman/facts-jshis/definition', entry: '@pointsman/facts-jshis', roles: ['facts'] },
   '@pointsman/facts-valhalla': { definition: '@pointsman/facts-valhalla/definition', entry: '@pointsman/facts-valhalla', roles: ['facts'] },
   '@pointsman/github': { definition: '@pointsman/github/definition', entry: '@pointsman/github', roles: ['facts', 'connector'] },
   '@pointsman/coderabbit': { definition: '@pointsman/coderabbit/definition', entry: '@pointsman/coderabbit', roles: ['facts'] },
