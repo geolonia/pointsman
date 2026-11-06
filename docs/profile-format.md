@@ -562,7 +562,8 @@ Layers of `gsi`:
 
 Layers of `@pointsman/facts-jshis` (J-SHIS, the earthquake hazard station
 of NIED, per 250 m mesh; a place is `inside` where J-SHIS has its mesh, so
-not on the sea or outside Japan):
+not on the sea; a place far outside Japan, beyond 20–46° N and 122–154° E,
+is missing as `unavailable`):
 
 | Layer | Type | Data |
 |---|---|---|
@@ -575,10 +576,12 @@ not on the sea or outside Japan):
   ([terms](https://www.j-shis.bosai.go.jp/agreement)). Each fact's `source`
   is the credit with the mesh code and the exact value, for example
   防災科研 J-SHIS 確率論的地震動予測地図（Y2024、平均ケース・全地震、30年震度6弱以上の確率）を加工して作成（メッシュ 6441336534：3.23%）.
-- A line gets the highest class along it (sampled every 100 m, at most 16
-  meshes). Answers are cached per mesh for a day, in memory and in the
-  Workers cache. J-SHIS publishes no request limit; it answers 403 when one
-  is exceeded, and the fact is then missing (`error`).
+- A line gets the highest class along it, sampled every 100 m. A line over
+  more than 8 meshes (about 2 km or more) is missing as `error`. Answers are
+  cached per mesh for a day, in memory and in the Workers cache.
+- J-SHIS publishes no request limit; it answers 403 when one is exceeded.
+  The fact is then missing (`error`), and J-SHIS is not asked again for two
+  minutes.
 
 ### Detours
 

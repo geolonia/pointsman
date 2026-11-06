@@ -147,7 +147,9 @@ describe('the provider', () => {
   });
 
   it('refuses a line over too many meshes', async () => {
-    const long: Geometry = { type: 'LineString', coordinates: [SATOZUKA, [SATOZUKA[0] + 0.1, SATOZUKA[1]]] };
+    // About 3 km: more than 8 meshes.
+    const long: Geometry = { type: 'LineString', coordinates: [SATOZUKA, [SATOZUKA[0] + 0.036, SATOZUKA[1]]] };
+    expect(meshesAlong(long).length).toBeGreaterThan(8);
     const p = new JshisFactProvider({ fetch: fakeServer((_, code) => ground(code)).fetchFn });
     await expect(p.lookup({ type: 'inside', layer: 'jshis-ground-amplification', geometry: long }, signal)).rejects.toThrow(FactError);
   });
@@ -166,6 +168,22 @@ describe('the provider', () => {
     now += 25 * 3600_000;
     await new JshisFactProvider({ fetch: server.fetchFn, now: () => now }).lookup(q, signal);
     expect(server.calls).toHaveLength(2);
+  });
+
+  it('waits two minutes after a 403 before asking J-SHIS again', async () => {
+    let now = Date.parse('2026-11-06T00:00:00Z');
+    let status = 403;
+    const { calls, fetchFn } = fakeServer((_, code) => (status === 403 ? new Response('', { status }) : ground(code)));
+    const p = new JshisFactProvider({ fetch: fetchFn, now: () => now });
+    const q = { type: 'inside' as const, layer: 'jshis-ground-amplification', geometry: point };
+    await expect(p.lookup(q, signal)).rejects.toThrow('J-SHIS 403');
+    status = 200;
+    now += 60_000;
+    await expect(p.lookup(q, signal)).rejects.toThrow(/waiting/);
+    expect(calls).toHaveLength(1);
+    now += 61_000;
+    expect((await p.lookup(q, signal)).values).toMatchObject({ inside: true });
+    expect(calls).toHaveLength(2);
   });
 
   it('does not keep a failed load', async () => {

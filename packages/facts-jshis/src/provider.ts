@@ -28,8 +28,14 @@ const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 const TTL_S = 86_400;
 const MEMORY_ENTRIES = 256;
 const LOAD_TIMEOUT_MS = 10_000;
-/** A line is sampled every 100 m; at most this many meshes per lookup. */
-const MAX_MESHES = 16;
+/**
+ * A line is sampled every 100 m; at most this many meshes per lookup (about
+ * 2 km). Each mesh is one request with cold caches, and Workers open few
+ * connections at once, so more would not fit in the 3 s of `inside`.
+ */
+const MAX_MESHES = 8;
+/** After a 403 (J-SHIS's request limit), no requests for this long. */
+const BLOCKED_MS = 120_000;
 
 const BASE = 'https://www.j-shis.bosai.go.jp/map/api';
 /** The newest hazard model (average case, all earthquakes) and ground model. */
@@ -78,6 +84,8 @@ export class JshisFactProvider implements FactProvider<SpatialFactQuery> {
   private readonly cache: Cache | undefined;
   private readonly memory = new Map<string, { mesh: Promise<Mesh>; until: number }>();
   private readonly now: () => number;
+  /** Until when J-SHIS is not asked, after a 403. */
+  private blockedUntil = 0;
 
   constructor({ fetch: fetchFn, cache, now }: JshisOptions = {}) {
     // A wrapper, not fetch itself: Workers refuse an unbound global fetch.
@@ -125,10 +133,15 @@ export class JshisFactProvider implements FactProvider<SpatialFactQuery> {
         await this.cache!.delete(url).catch(() => {}); // unreadable: fetch it again
       }
     }
+    if (this.now() < this.blockedUntil) throw new FactError('J-SHIS 403 (waiting before asking again)');
     const res = await this.fetchFn(url, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(LOAD_TIMEOUT_MS) });
     // 404 with a NOT_FOUND body: no data here (the sea, outside Japan).
     // 403: J-SHIS's answer when its request limit is exceeded.
-    if (!res.ok && res.status !== 404) throw new FactError(`J-SHIS ${res.status}`);
+    if (!res.ok && res.status !== 404) {
+      if (res.status === 403) this.blockedUntil = this.now() + BLOCKED_MS;
+      await res.body?.cancel().catch(() => {}); // free the connection
+      throw new FactError(`J-SHIS ${res.status}`);
+    }
     const text = await res.text();
     // Parsed first: only an answer that can be read goes into the shared cache.
     let mesh: Mesh;
@@ -211,7 +224,11 @@ const hazardSource = (label: string, detail: string) =>
   `防災科研 J-SHIS 確率論的地震動予測地図（${HAZARD_MODEL}、平均ケース・全地震、30年${label}の確率）を加工して作成（${detail}）`;
 const groundSource = (detail: string) => `防災科研 J-SHIS 表層地盤（${GROUND_MODEL}）を加工して作成（${detail}）`;
 
-/** The 250 m meshes along the geometry (sampled every 100 m), in order, each once. */
+/**
+ * The 250 m meshes along the geometry (sampled every 100 m), in order, each
+ * once. A line that only cuts a corner of a mesh (less than 100 m in it) may
+ * miss that mesh.
+ */
 export function meshesAlong(g: Geometry): string[] {
   const places: Position[] = g.type === 'Point' ? [g.coordinates] : along(g, 100, 200);
   return [...new Set(places.map(meshCode))];
