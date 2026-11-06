@@ -1,6 +1,7 @@
-// Checks every internal link of the built site (dist/): the page exists and,
-// for a link with #anchor, the page has an element with that id. Links to
-// the landing page (outside /docs/) are checked against site/.
+// Checks every internal link of the built docs (dist/) and of the pages in
+// site/ (landing page, demos): the page exists and, for a link with #anchor,
+// the page has an element with that id. Paths outside /docs/ are checked
+// against site/.
 // External links are not fetched.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -34,9 +35,13 @@ function fileFor(path) {
 
 const errors = [];
 let checked = 0;
-for (const page of html(dist)) {
+// The built docs, and the pages written by hand in site/ (landing, demos).
+const pages = [
+  ...html(dist).map((page) => [page, BASE + page.slice(dist.length + 1).split('\\').join('/')]),
+  ...html(landing).map((page) => [page, '/' + page.slice(landing.length + 1).split('\\').join('/')]),
+];
+for (const [page, here] of pages) {
   const text = readFileSync(page, 'utf8');
-  const here = BASE + page.slice(dist.length + 1).split('\\').join('/');
   for (const [, , url] of text.matchAll(/\s(?:href|src)=(["'])(.+?)\1/g)) {
     if (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) continue;
     const resolved = new URL(url.replaceAll('&amp;', '&'), `https://x${here}`);
@@ -47,7 +52,7 @@ for (const page of html(dist)) {
       continue;
     }
     const anchor = decodeURIComponent(resolved.hash.slice(1));
-    if (anchor && file.startsWith(dist) && file.endsWith('.html') && !idsOf(file).has(anchor)) {
+    if (anchor && file.endsWith('.html') && !idsOf(file).has(anchor)) {
       errors.push(`${here}: ${url} has no #${anchor}`);
     }
   }
@@ -75,4 +80,4 @@ if (errors.length) {
   console.error(`\n${errors.length} broken link(s)`);
   process.exit(1);
 }
-console.log(`links: ${checked} internal links on ${html(dist).length} pages and ${redirects} redirects, none broken`);
+console.log(`links: ${checked} internal links on ${pages.length} pages and ${redirects} redirects, none broken`);
