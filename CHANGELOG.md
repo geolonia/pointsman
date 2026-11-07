@@ -12,6 +12,27 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.20.0 (2026-11-07)
+
+Rules can read values from the request: a new fact module for numbers, texts and yes-or-no values (#287).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.20.0`, and change modules pinned with a version in `modules` to `@0.20.0` (for example `@pointsman/github@0.19.0` → `@pointsman/github@0.20.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
+- New module `@pointsman/facts-field`: add it to `modules.facts` to use it (a deployment without `modules` has it already). It reads no settings and calls no service, so it works with every `FACTS_MODE`.
+- A value fact keeps the value it read with the decision, also without `log.store_state`: use it only for values that may be kept (docs/decision-log.md "What is stored").
+
+What changed:
+
+- **`@pointsman/facts-field`** (new): the fact types `field_number`, `field_text` and `field_flag` give a rule one value from the request, at the fact's `at` path, exactly as sent: a finite number, a text of at most 64 characters (for codes, not free text), or true or false. A value is never converted (`"1981"` is not a number); a missing value is `no_value`, another kind or a longer text `wrong_kind`.
+- **Profiles**: a profile with facts may have no questions (`questions: []`; set `model: none`): a rules-only profile, as a profile with `requires` already could be.
+- **Module API**: a fact field may declare `maxLength`; the engine's result check and the test-case runner enforce it.
+- **Test cases**: a fact value that is a number must be finite.
+- **FIWARE bridge docs**: the Decision entity gets the facts of every profile with facts, not only spatial ones (this was already so in the code).
+- **Threat model**: amended for value facts (#287), with one question answered on 2026-11-07. It is still bound to `v0.18.0`; it is not yet bound to 0.19.0 or 0.20.0 and does not cover `@pointsman/facts-jshis`.
+
+Correction to 0.19.0: the change for `inside` happens wherever both `@pointsman/facts-gsi` and `@pointsman/facts-jshis` are chosen, not only in deployments without `modules`. A layer that no chosen module names is then `unavailable`. The 0.19.0 entry below says "In a deployment without `modules`"; the release text on GitHub was corrected on 2026-11-07.
+
 ## 0.19.0 (2026-11-07)
 
 A new fact module for earthquake hazard in Japan (#284), the GitHub connector bound to the base branch (#280), a demos page on the site (#282), and docs and site in the Japanese terms (#269, #278, #279, #283).
