@@ -343,4 +343,6 @@ test('a field_text value longer than the module takes cannot be a case fact: it 
   assert.doesNotThrow(() => caseInputs(c({ value: 'x'.repeat(64) }), p));
   assert.throws(() => caseInputs(c({ value: 'x'.repeat(65) }), p), /at most 64 characters/);
   assert.doesNotThrow(() => caseInputs(c({ missing: 'wrong_kind' }), p));
+  const year = { ...p, facts: [{ name: 'code', type: 'field_number', at: '$.code' }], policy: { rules: [{ when: 'facts.code.value <= 1981', action: 'high' }], default: 'low' } };
+  for (const v of [Infinity, -Infinity, NaN]) assert.throws(() => caseInputs(c({ value: v }), year), /finite number/);
 });

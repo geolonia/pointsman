@@ -2,12 +2,19 @@
 // exact values, missing reasons, and a rules-only decision without a model.
 
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { noCallbacks } from './helpers';
+import { createApp, type Deps } from '../../src/app';
+import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
+import { D1DecisionLog } from '../../src/log-d1';
+import { MockAdapter } from '../../src/models/mock';
+import { MemoryProfileStore } from '../../src/profiles/store';
+import * as contract from '../../generated/openapi-validators.mjs';
 import { FieldFactProvider } from '@pointsman/facts-field';
 import { FactMissingError, MAX_FIELD_TEXT } from '@pointsman/module-api';
 import { lookupFacts, resultError } from '../../src/facts';
 import { depsFor } from '../../src/index';
-import type { FactSpec } from '../../src/types';
+import type { FactSpec, Profile } from '../../src/types';
 
 const provider = new FieldFactProvider();
 const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
@@ -68,5 +75,54 @@ describe('field facts in a decision', () => {
       structure: { missing: true, reason: 'no_value' },
       checked: { missing: true, reason: 'no_value' },
     });
+  });
+});
+
+describe('a rules-only profile with field facts, end to end', () => {
+  const profile: Profile = {
+    id: 'building-check', version: 1, title: { en: 'B', ja: 'B' }, description: { en: 'B', ja: 'B' }, model: 'none', questions: [],
+    facts: [
+      { name: 'year', type: 'field_number', at: '$.yearOfConstruction.value' },
+      { name: 'structure', type: 'field_text', at: '$.buildingStructureType.value' },
+    ],
+    policy: {
+      rules: [
+        { when: 'facts.year.missing == true or facts.structure.missing == true', action: 'more-evidence' },
+        { when: "facts.year.value <= 1981 and facts.structure.value == '601'", action: 'high' },
+      ],
+      default: 'low',
+    },
+  };
+  const TOKEN = newToken();
+  const tokens = new MemoryTokenStore();
+  const headers = { authorization: `Bearer ${TOKEN}` };
+
+  async function decide(state: unknown) {
+    tokens.records.set(await hashToken(TOKEN), { client: 'test', profiles: ['*'], created_at: '' });
+    const model = new MockAdapter();
+    const asked = vi.spyOn(model, 'decide');
+    // FACTS_MODE off: only the field module is on, as a deployment without spatial data.
+    const deps: Deps = { callbacks: noCallbacks, store: new MemoryProfileStore([profile]), tokens, log: new D1DecisionLog(env.DB), adapterFor: () => model, facts: depsFor({ ...base, FACTS_MODE: 'off' } as never).facts };
+    const app = createApp(() => deps);
+    const res = await app.request('/v1/decide/building-check', { method: 'POST', headers, body: JSON.stringify({ state }) }, env);
+    expect(res.status).toBe(200);
+    const d = await res.json<any>();
+    expect(contract.decision(d), JSON.stringify(contract.decision.errors)).toBe(true);
+    const logged = await (await app.request(`/v1/decisions/${d.decision_id}`, { headers }, env)).json<any>();
+    expect(logged.facts).toEqual(d.facts);
+    expect(asked).not.toHaveBeenCalled();
+    return d;
+  }
+
+  it('decides by rules on the values, without a model, and records the facts', async () => {
+    const d = await decide({ yearOfConstruction: { value: 1975 }, buildingStructureType: { value: '601' } });
+    expect(d).toMatchObject({ action: 'high', rule: 1, model: 'none' });
+    expect(d.facts).toEqual({ year: { missing: false, values: { value: 1975 }, source: 'request' }, structure: { missing: false, values: { value: '601' }, source: 'request' } });
+  });
+
+  it('asks for evidence when a value is missing or of another kind, and gives the default otherwise', async () => {
+    expect(await decide({ buildingStructureType: { value: '601' } })).toMatchObject({ action: 'more-evidence', rule: 0, facts: { year: { missing: true, reason: 'no_value' } } });
+    expect(await decide({ yearOfConstruction: { value: '1975' }, buildingStructureType: { value: '601' } })).toMatchObject({ action: 'more-evidence', facts: { year: { missing: true, reason: 'wrong_kind' } } });
+    expect(await decide({ yearOfConstruction: { value: 2005 }, buildingStructureType: { value: '601' } })).toMatchObject({ action: 'low', rule: null });
   });
 });
