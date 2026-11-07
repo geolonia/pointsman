@@ -12,6 +12,25 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.19.0 (2026-11-07)
+
+A new fact module for earthquake hazard in Japan (#284), the GitHub connector bound to the base branch (#280), a demos page on the site (#282), and docs and site in the Japanese terms (#269, #278, #279, #283).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.19.0`, and change modules pinned with a version in `modules` to `@0.19.0` (for example `@pointsman/github@0.18.0` → `@pointsman/github@0.19.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
+- New module `@pointsman/facts-jshis`: add it to `modules.facts` to use it (a deployment without `modules` has it already). It answers `inside` for four J-SHIS layers and reads `FACTS_MODE` like `@pointsman/facts-gsi` (`gsi` for real data).
+- `inside` can now be answered by two modules. In a deployment without `modules` in `engine.json` (every module chosen), a layer that no module names is no longer sent to `@pointsman/facts-gsi`: it is `unavailable`, also with `FACTS_MODE: mock`. Named layers are not affected.
+- GitHub connector: deploy it together with the engine, as before. Approvals and open answers given before this release carry no base branch and keep today's behaviour.
+
+What changed:
+
+- **`@pointsman/facts-jshis`** (new): earthquake facts from the J-SHIS Web API of NIED, per 250 m mesh, as `inside` layers: `jshis-shaking-6lower-30y` and `jshis-shaking-6upper-30y` (chance of strong shaking within 30 years, in the classes of the national seismic hazard map), `jshis-ground-amplification` (surface amplification, in bands for rules) and `jshis-landform` (landform name, Point only). The exact value, the mesh code and the credit J-SHIS asks for are in `source`. Answers are cached per mesh for a day; after a 403 (J-SHIS's request limit) the module waits two minutes; a line may span at most 8 meshes.
+- **GitHub connector**: "the same pull request" now means the same head commit and the same base branch. A base change makes the connector decide anew, like a push. GitHub facts are `stale` when the base changed; an answer to a question asked on another base is refused; an approval given on another base is dismissed, and one given while the head or base moved is dismissed at once.
+- **Site**: a demos page at `pointsman.net/demos/` (EN, JA), linked from the landing page; the link check also covers the site pages.
+- **Docs**: guides and reference pages use the Japanese term list and match the code; the roads demo's links point to `geolonia/pointsman-demo-roads` and `roads.demo.pointsman.net`.
+- **Threat model**: bound to `v0.18.0` (#238) and amended for the connector's base binding (#280). It is not yet bound to 0.19.0 and does not cover `@pointsman/facts-jshis`.
+
 ## 0.18.0 (2026-10-26)
 
 Hardening of the Actions, the decide request, profile validation, MCP logins, the GitHub connector, the FIWARE bridge, and the GitHub and CodeRabbit facts (#235, #236).
