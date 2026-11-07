@@ -84,7 +84,7 @@ Answered by `@pointsman/facts-field`.
 
 | Field | Kind | Meaning |
 | --- | --- | --- |
-| `value` | number | *name* |
+| `value` | number | the value of *name* |
 
 Missing as `no_value` when the request has no value at `at` (no value in the request). A lookup gives up after 1 s.
 
@@ -96,7 +96,7 @@ Answered by `@pointsman/facts-field`.
 
 | Field | Kind | Meaning |
 | --- | --- | --- |
-| `value` | text | *name* |
+| `value` | text | the value of *name* |
 
 Missing as `no_value` when the request has no value at `at` (no value in the request). A lookup gives up after 1 s.
 

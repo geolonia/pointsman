@@ -34,7 +34,7 @@ A deployment lists its modules in `engine.json`, next to the engine version:
   "repository": "geolonia/pointsman",
   "ref": "<engine commit>",
   "modules": {
-    "facts": ["@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/github@0.19.0"]
+    "facts": ["@pointsman/facts-field", "@pointsman/facts-gsi", "@pointsman/facts-valhalla", "@pointsman/github@0.19.0"]
   }
 }
 ```

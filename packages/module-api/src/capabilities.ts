@@ -184,8 +184,12 @@ export interface FieldFactQuery {
   value: unknown;
 }
 
-/** The longest text a field_text fact takes. */
-export const MAX_FIELD_TEXT = 200;
+/**
+ * The longest text a field_text fact takes (UTF-16 code units). Short on
+ * purpose: field values are stored with the decision, so field_text is for
+ * codes ("601"), not free text.
+ */
+export const MAX_FIELD_TEXT = 64;
 
 const NO_VALUE = { en: 'no value in the request', ja: 'リクエストに値がない' };
 
@@ -211,11 +215,11 @@ function fieldType(type: FieldFactQuery['type'], kind: 'number' | 'string' | 'bo
     words: {
       en: {
         describe: (f, s) => `${f}: the ${what.en} in the request (${s.at}).`,
-        fields: { value: kind === 'boolean' ? ['% is yes', '% is no'] : '%' },
+        fields: { value: kind === 'boolean' ? ['% is yes', '% is no'] : 'the value of %' },
       },
       ja: {
         describe: (f, s) => `${f}：リクエストの${what.ja}（${s.at}）。`,
-        fields: { value: kind === 'boolean' ? ['%がはい', '%がいいえ'] : '%' },
+        fields: { value: kind === 'boolean' ? ['%がはい', '%がいいえ'] : '%の値' },
       },
     },
     cases: { nullable: [], defaults: {} },
@@ -224,7 +228,7 @@ function fieldType(type: FieldFactQuery['type'], kind: 'number' | 'string' | 'bo
 
 /** A number from the request. */
 export const field_number = fieldType('field_number', 'number', { en: 'number', ja: '数値' }, 0);
-/** A short text from the request (at most MAX_FIELD_TEXT characters). */
+/** A short text (a code) from the request, at most MAX_FIELD_TEXT characters. */
 export const field_text = fieldType('field_text', 'string', { en: 'text', ja: 'テキスト' }, 'mock');
 /** A yes-or-no value from the request. */
 export const field_flag = fieldType('field_flag', 'boolean', { en: 'yes-or-no value', ja: 'はい・いいえの値' }, true);

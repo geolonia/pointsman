@@ -49,7 +49,9 @@ derived values (a flood class, the nearest site and its distance, extra
 metres); the nearest site and its distance already tell roughly where the
 place is. A `detour` fact with `route: true` goes further: it keeps the way
 around, which starts and ends at the place in the state. Set it only where
-that place may be kept.
+that place may be kept. A value fact (`field_number`, `field_text`,
+`field_flag`) keeps the request value it read, as sent: use it only for data
+that may be kept (docs/profile-format.md, "Values from the request").
 
 The `requires` snapshot shows what a decision was based on, even when a
 required decision gets a review answer later. `GET /v1/decisions/{id}` shows a

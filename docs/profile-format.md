@@ -647,8 +647,9 @@ policy:
       action: more-evidence
 ```
 
-- `value` is a number, a text (at most 200 characters) or `true`/`false`,
-  by type, so the validator checks every comparison.
+- `value` is a number, a short text (a code, at most 64 characters; `""`
+  is a text too) or `true`/`false`, by type, so the validator checks every
+  comparison.
 - Nothing is converted: `"1981"` (a string) is not a number. A value of
   another kind is missing as `wrong_kind`; no value at `at` (absent or
   `null`) is missing as `no_value`. A rule on a missing fact does not match;
@@ -657,6 +658,11 @@ policy:
   `FACTS_MODE`, also `off`. `source` is `request`.
 - A profile with facts may have no questions (`questions: []` with
   `model: none`): rules only, no model call.
+- **The value is stored with the decision**, like every fact, also without
+  `log.store_state`, and returned with it. Point a field fact only at data
+  that may be kept: a year, a code, a count, a yes-or-no. Not at personal
+  data or free text; `field_text` takes at most 64 characters for this
+  reason.
 
 ### GitHub pull requests
 

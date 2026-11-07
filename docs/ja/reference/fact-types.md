@@ -86,7 +86,7 @@ Number from the request, as sent.
 
 | フィールド | 種類 | 意味 |
 | --- | --- | --- |
-| `value` | 数値 | *name* |
+| `value` | 数値 | *name*の値 |
 
 `at` の位置に値がないときは `no_value`(リクエストに値がない)として欠けます。1 秒で調べるのをやめます。
 
@@ -98,7 +98,7 @@ Text from the request, as sent.
 
 | フィールド | 種類 | 意味 |
 | --- | --- | --- |
-| `value` | 文字列 | *name* |
+| `value` | 文字列 | *name*の値 |
 
 `at` の位置に値がないときは `no_value`(リクエストに値がない)として欠けます。1 秒で調べるのをやめます。
 
