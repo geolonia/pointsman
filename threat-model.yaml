@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:c8bbc759651a0eba4eb32d223b96fb4e39e2631b29f21d5de0a024917020dd91"
+prose_version: "threat-model.md@sha256:0573313bb1b654672c1b8499fdf3c9cb509ed2d4916afc73bf6f0f23aac91d87"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 463, maintainer: 83, inferred: 0, assumption: 0}
@@ -2069,7 +2069,7 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-STATE-TO-BACKEND
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 images go to the backend as sent too, never into the gateway's log (open question Q51); basis: stated"
+    conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 images go to the backend as sent too, never into the gateway's log (maintainer 2026-11, Q51); basis: stated"
     tier: security-critical
     false_friend: false
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""}
@@ -2279,7 +2279,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "actions/triage/README.md; openapi.yaml ref"}
   - id: R-DATA-MINIMISATION
     component: engine-api
-    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (not yet released) a value fact only for a request value that may be kept, because it is stored with the decision (Q50)"
+    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (not yet released) a value fact only for a request value that may be kept, because it is stored with the decision (Q50); since pointsman#289 (not yet released) images only when the decision needs photos, and the client tells the people who send them (Q51)"
     enforces: [backend-keeps-nothing, P-STATE-NOT-STORED]
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state\""}
   - id: R-CALLBACK-SECRET
