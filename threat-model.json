@@ -404,6 +404,15 @@
     },
     {
       "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "model-images",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-STATE-NOT-STORED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Images\""
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
       "parameter": "github-pull-request",
       "attacker_controllable": "yes",
       "component": "engine-api",
@@ -1293,6 +1302,14 @@
       "source": "docs/decision-log.md \"What is stored\""
     },
     {
+      "name": "profile-images",
+      "default": "none",
+      "effect": "preserves P-STATE-NOT-STORED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Images\""
+    },
+    {
       "name": "profile-fact-field-value",
       "default": "none",
       "effect": "narrows P-STATE-NOT-STORED",
@@ -1527,7 +1544,7 @@
       "property": "P-STATE-NOT-STORED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50)",
+      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50); since pointsman#289 (not yet released) images sent to the model are never stored and not logged by the AI Gateway",
       "provenance": "documented",
       "source": "docs/decision-log.md \"By default only the hash of the state is kept\""
     },
@@ -1751,7 +1768,7 @@
   "properties_not_provided": [
     {
       "property": "D-PROMPT-INJECTION",
-      "reason": "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)",
+      "reason": "the answers only (since pointsman#289 also text in images sent to the model); the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
@@ -1856,7 +1873,7 @@
     },
     {
       "property": "D-STATE-TO-BACKEND",
-      "reason": "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; basis: stated",
+      "reason": "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 images go to the backend as sent too, never into the gateway's log (open question Q51); basis: stated",
       "false_friend": false,
       "provenance": "documented",
       "source": "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""
@@ -2389,5 +2406,11 @@
     "known_non_finding",
     "model_gap"
   ],
-  "open_questions": []
+  "open_questions": [
+    {
+      "id": "Q51",
+      "question": "Images of homes go to the model backend as sent (Workers AI Clef, zero data retention; or a model server). Never stored by the engine, never in the AI Gateway log. Is that the intended boundary, with the profile author and the client responsible for asking for photos only when needed?",
+      "proposed_answer": "yes, as documented in docs/profile-format.md Images; a profile-author obligation like R-DATA-MINIMISATION"
+    }
+  ]
 }

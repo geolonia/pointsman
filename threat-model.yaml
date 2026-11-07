@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:9a5d0b2c571de37c2f4e2c0701a8a58f987f73a6666553e575fdfc2c7db2cc92"
+prose_version: "threat-model.md@sha256:af2565282e1a708401bcfb8c679f2dcbe741ac084c3357e7ad0201fab101cdd3"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 463, maintainer: 83, inferred: 0, assumption: 0}
@@ -249,6 +249,11 @@ entry_points:
         control_kinds: [data, size]
         caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
         provenance: {kind: documented, source: "docs/profile-format.md \"Values from the request\""}
+      - name: model-images
+        attacker_controllable: true
+        control_kinds: [data, size, x-prompt-text]
+        caller_must_enforce: "none — P-STATE-NOT-STORED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Images\""}
       - name: github-pull-request
         attacker_controllable: true
         control_kinds: [resource-name, data]
@@ -1604,6 +1609,12 @@ build_flags:
     maintainer_stance: supported
     affects_properties: [{property_id: P-STATE-NOT-STORED, effect: narrows}]
     provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\""}
+  - name: profile-images
+    default: "none"
+    security_relevant: true
+    maintainer_stance: supported
+    affects_properties: [{property_id: P-STATE-NOT-STORED, effect: preserves}]
+    provenance: {kind: documented, source: "docs/profile-format.md \"Images\""}
   - name: profile-fact-field-value
     default: "none"
     security_relevant: true
@@ -1772,7 +1783,7 @@ properties_claimed:
     kind: confidentiality
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50)"
+    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50); since pointsman#289 (not yet released) images sent to the model are never stored and not logged by the AI Gateway"
     violation_symptoms: [info-leak]
     provenance: {kind: documented, source: "docs/decision-log.md \"By default only the hash of the state is kept\""}
   - id: P-SECRETS-NOT-LOGGED
@@ -1968,7 +1979,7 @@ properties_claimed:
 properties_disclaimed:
   - id: D-PROMPT-INJECTION
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "the answers only; the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)"
+    conditions: "the answers only (since pointsman#289 also text in images sent to the model); the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)"
     tier: security-critical
     false_friend: false
     provenance: {kind: maintainer, date: "2026-10"}
@@ -2058,7 +2069,7 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-STATE-TO-BACKEND
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; basis: stated"
+    conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 images go to the backend as sent too, never into the gateway's log (open question Q51); basis: stated"
     tier: security-critical
     false_friend: false
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""}
