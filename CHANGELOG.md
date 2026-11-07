@@ -19,7 +19,7 @@ A new fact module for earthquake hazard in Japan (#284), the GitHub connector bo
 For deployments:
 
 - Move `ref` in `engine.json` to the commit of `v0.19.0`. No migration, no new secrets, no new GitHub App permission or event.
-- New module `@pointsman/facts-jshis`: add it to `modules.facts` to use it. It answers `inside` for four J-SHIS layers and reads `FACTS_MODE` like `@pointsman/facts-gsi` (`gsi` for real data).
+- New module `@pointsman/facts-jshis`: add it to `modules.facts` to use it (a deployment without `modules` has it already). It answers `inside` for four J-SHIS layers and reads `FACTS_MODE` like `@pointsman/facts-gsi` (`gsi` for real data).
 - `inside` can now be answered by two modules. In a deployment without `modules` in `engine.json` (every module chosen), a layer that no module names is no longer sent to `@pointsman/facts-gsi`: it is `unavailable`, also with `FACTS_MODE: mock`. Named layers are not affected.
 - GitHub connector: deploy it together with the engine, as before. Approvals and open answers given before this release carry no base branch and keep today's behaviour.
 
@@ -29,7 +29,7 @@ What changed:
 - **GitHub connector**: "the same pull request" now means the same head commit and the same base branch. A base change makes the connector decide anew, like a push. GitHub facts are `stale` when the base changed; an answer to a question asked on another base is refused; an approval given on another base is dismissed, and one given while the head or base moved is dismissed at once.
 - **Site**: a demos page at `pointsman.net/demos/` (EN, JA), linked from the landing page; the link check also covers the site pages.
 - **Docs**: guides and reference pages use the Japanese term list and match the code; the roads demo's links point to `geolonia/pointsman-demo-roads` and `roads.demo.pointsman.net`.
-- **Threat model**: bound to `v0.18.0` (#238).
+- **Threat model**: bound to `v0.18.0` (#238) and amended for the connector's base binding (#280). It is not yet bound to 0.19.0 and does not cover `@pointsman/facts-jshis`.
 
 ## 0.18.0 (2026-10-26)
 
