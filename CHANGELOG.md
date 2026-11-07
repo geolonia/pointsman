@@ -24,9 +24,10 @@ For deployments:
 
 What changed:
 
-- **`@pointsman/facts-field`** (new): the fact types `field_number`, `field_text` and `field_flag` give a rule one value from the request, at the fact's `at` path, exactly as sent: a finite number, a text of at most 64 characters (for codes, not free text), or true or false. A value is never converted (`"1981"` is not a number); a missing value is `no_value`, another kind `wrong_kind`.
-- **Profiles**: a profile with facts may have no questions (`questions: []` with `model: none`): a rules-only profile, as a profile with `requires` already could be.
-- **Module API**: a fact field may declare `maxLength`; the engine's result check and the test-case runner enforce it, and test cases refuse numbers that are not finite.
+- **`@pointsman/facts-field`** (new): the fact types `field_number`, `field_text` and `field_flag` give a rule one value from the request, at the fact's `at` path, exactly as sent: a finite number, a text of at most 64 characters (for codes, not free text), or true or false. A value is never converted (`"1981"` is not a number); a missing value is `no_value`, another kind or a longer text `wrong_kind`.
+- **Profiles**: a profile with facts may have no questions (`questions: []`; set `model: none`): a rules-only profile, as a profile with `requires` already could be.
+- **Module API**: a fact field may declare `maxLength`; the engine's result check and the test-case runner enforce it.
+- **Test cases**: a fact value that is a number must be finite.
 - **FIWARE bridge docs**: the Decision entity gets the facts of every profile with facts, not only spatial ones (this was already so in the code).
 - **Threat model**: amended for value facts (#287), with one question answered on 2026-11-07. It is still bound to `v0.18.0`; it is not yet bound to 0.19.0 or 0.20.0 and does not cover `@pointsman/facts-jshis`.
 
