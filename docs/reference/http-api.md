@@ -29,6 +29,7 @@ Request body: `DecideRequest` (JSON).
 | 403 | The token may not use this profile. | `Error` (application/json) |
 | 404 | Error | `Error` (application/json) |
 | 409 | `resolved_by_person`: the decision this one would replace was resolved by a person, and a person's answer stays (docs/decision-chains.md). `idempotency_conflict`: the Idempotency-Key was used for a different request. | `Error` (application/json) |
+| 413 | The request body is larger than 14 MiB (room for Clef's 13 MiB model request with images). | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 | 502 | Error | `Error` (application/json) |
 

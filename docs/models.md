@@ -106,7 +106,10 @@ not be kept, and set a log limit in the gateway if needed.
 **Images are never logged by the gateway.** A call with images (a profile
 with `images`, see [profile-format.md](profile-format.md#images)) goes
 through the gateway with its log off for that call (`collectLog: false`),
-so photos are not kept there, whatever `collect_logs` says.
+so photos are not kept there, whatever `collect_logs` says. A model
+server gets the images in the same `images` field: it must support them
+(otherwise it answers without seeing them), and what it logs or keeps is
+its own.
 
 ## Trying a real call
 

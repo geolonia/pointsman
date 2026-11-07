@@ -123,9 +123,17 @@ images: { path: $.photos.value, max: 3 }
   refused with `400 invalid_request`, naming the image by its place. A
   missing path or an empty list means no images.
 - The images go to the model as images (Clef's `images`), not in the
-  state: a profile with images needs `input`, and no `input` path may read
-  the images. A profile without questions makes no model call and cannot
-  have images.
+  state: a profile with images needs `input`, no `input` path may read the
+  images, and no `input` name may be the first key of the images path
+  (over MCP the state comes mapped by name, and the images are read from it
+  at the same path). A profile without questions makes no model call and
+  cannot have images.
+- The whole model request (state, questions and images) may be at most 13
+  MiB, and each image at most 16 megapixels (Clef's limits): a larger one
+  is refused with `400`, a request body over 14 MiB with `413`.
+- A model server (`MODEL_SERVER_URL`) gets the images in the same `images`
+  field: it must support them, and what it keeps is its own
+  ([models.md](models.md)).
 - The model sees at most about 1 megapixel of each image (Clef scales a
   larger one down, at most 1,024 tokens each): send photos of that size, a
   larger file only costs time.

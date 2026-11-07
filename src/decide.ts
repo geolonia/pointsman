@@ -7,7 +7,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord, type TokenStore } from './auth';
 import { attempt, type Fetch } from './callbacks';
 import { factModules, lookupFacts, type FactProvider } from './facts';
-import { readImages } from './images';
+import { MAX_MODEL_REQUEST_BYTES, readImages } from './images';
 import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
@@ -219,6 +219,10 @@ export async function makeDecision(
   const imagesRead = readImages(profile, body.state);
   if (!imagesRead.ok) return fail(400, 'invalid_request', imagesRead.message);
   const images = imagesRead.images;
+  // With images, the model request can pass Clef's limit: refused here, not as a model error.
+  if (images.length > 0 && JSON.stringify(toModelRequest(profile, state, profile.model, images)).length > MAX_MODEL_REQUEST_BYTES) {
+    return fail(400, 'invalid_request', 'the images and the state together are larger than the model takes (13 MiB)');
+  }
 
   // Before the model call, so a broken profile costs no model call.
   // Profiles are validated before they reach a store, so an error here means

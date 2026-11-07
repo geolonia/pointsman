@@ -47,7 +47,8 @@ export class WorkersAiAdapter implements ModelAdapter {
       );
     } catch (err) {
       // Errors from the binding can include the request; keep only the message.
-      throw new ModelError(`${name}: ${err instanceof Error ? err.message : String(err)}`);
+      // Cut short: a message that repeats the request could hold images.
+      throw new ModelError(`${name}: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`);
     }
 
     // Answers are checked in detail by normalizeAnswers(); here only the shape.

@@ -267,6 +267,8 @@ test('images: valid with an input mapping; refused without one, when input reads
     assert.ok(errors.some((e) => e.includes('would put the images')), path);
   }
   assert.deepEqual(validateProfile({ ...base, input: [...base.input, { name: 'p', path: '$.photosTaken' }] }), []);
+  // Over MCP the state is mapped by name: an input named like the images path's first key is refused.
+  assert.ok(validateProfile({ ...base, input: [...base.input, { name: 'photos', path: '$.note' }] }).some((e) => e.includes('first key of the images path')));
   assert.ok(validateProfile({ ...base, images: { path: '$.photos.value', max: 5 } }).length > 0, 'max is at most 4');
   assert.ok(validateProfile({ ...base, questions: [], facts: [{ name: 'y', type: 'field_number', at: '$.y' }] }).some((e) => e.includes('cannot use images')));
 });

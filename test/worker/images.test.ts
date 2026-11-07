@@ -11,6 +11,8 @@ import { D1DecisionLog } from '../../src/log-d1';
 import { toModelRequest } from '../../src/models/adapter';
 import { MockAdapter } from '../../src/models/mock';
 import { WorkersAiAdapter, type AiRunner } from '../../src/models/workers-ai';
+import { ModelServerAdapter } from '../../src/models/http';
+import { explainProfile, explanationText } from '../../src/explain';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { Profile } from '../../src/types';
 
@@ -112,5 +114,53 @@ describe('a decision with images, end to end', () => {
     expect(r.status).toBe(400);
     expect(r.body).toMatchObject({ error: { code: 'invalid_request', message: 'image 1: must be a base64 data URL of a PNG, JPEG or WebP image' } });
     expect(r.asked).not.toHaveBeenCalled();
+  });
+});
+
+describe('more about images', () => {
+  it('a model server gets the images in the same field', async () => {
+    const bodies: unknown[] = [];
+    const adapter = new ModelServerAdapter({ url: 'http://127.0.0.1:8794', models: { local: 'local' }, timeoutMs: 10_000,
+      fetch: async (_u, init) => { bodies.push(JSON.parse(String(init.body))); return Response.json({ model: 'local', answers: {} }); } });
+    await adapter.decide(toModelRequest(profile, { description: 'x' }, 'local', [PNG]));
+    expect(bodies[0]).toMatchObject({ images: [PNG] });
+  });
+
+  it('a Workers AI error is cut short in the log, so it cannot carry images', async () => {
+    const ai: AiRunner = { run: async () => { throw new Error(`invalid input: ${'A'.repeat(5000)}`); } };
+    const err = await new WorkersAiAdapter(ai).decide(toModelRequest(profile, {}, 'clef-flash', [PNG])).catch((e: Error) => e);
+    expect((err as Error).message.length).toBeLessThan(260);
+  });
+
+  it('explain names the images, in English and Japanese', () => {
+    expect(explanationText(explainProfile(profile, 'en'))).toContain('The AI also sees up to 3 images from the request ($.photos.value); images are never stored.');
+    expect(explanationText(explainProfile(profile, 'ja'))).toContain('AI はリクエストの画像（$.photos.value）も最大 3 枚見ます。画像は保存しません。');
+  });
+});
+
+describe('limits of the whole request', () => {
+  const TOKEN = newToken();
+  const tokens = new MemoryTokenStore();
+  const headers = { authorization: `Bearer ${TOKEN}` };
+  async function post(body: string, extra: Record<string, string> = {}) {
+    tokens.records.set(await hashToken(TOKEN), { client: 'test', profiles: ['*'], created_at: '' });
+    const model = new MockAdapter();
+    const asked = vi.spyOn(model, 'decide');
+    const deps: Deps = { callbacks: noCallbacks, store: new MemoryProfileStore([profile]), tokens, log: new D1DecisionLog(env.DB), adapterFor: () => model };
+    const res = await createApp(() => deps).request('/v1/decide/concern', { method: 'POST', headers: { ...headers, ...extra }, body }, env);
+    return { status: res.status, body: await res.json<any>(), asked };
+  }
+
+  it('refuses images and state that together pass the model\'s 13 MiB, before the model call', async () => {
+    const three = dataUrl('image/jpeg', bytes(0xff, 0xd8, 0xff) + 'x'.repeat(2_600_000));
+    const r = await post(JSON.stringify({ state: { description: { value: 'y'.repeat(3_600_000) }, photos: { value: [three, three, three] } } }));
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toMatch(/13 MiB/);
+    expect(r.asked).not.toHaveBeenCalled();
+  });
+
+  it('refuses a body over 14 MiB by its length, before reading it', async () => {
+    const r = await post('{}', { 'content-length': String(15 * 1024 * 1024) });
+    expect(r.status).toBe(413);
   });
 });

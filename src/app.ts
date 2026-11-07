@@ -13,6 +13,9 @@ import { explainProfile, explanationText } from './explain';
 import type { Profile } from './types';
 
 // The engine core, re-exported for the Worker entry and the tests.
+/** The largest decide request read: Clef's 13 MiB model request, plus room for the rest. */
+const MAX_DECIDE_BODY = 14 * 1024 * 1024;
+
 export { ConfigError, deliver, makeDecision, makeReplay, NO_MODEL, retryDueCallbacks, type DecisionResult, type Deps } from './decide';
 
 function error(status: ContentfulStatusCode, code: string, message: string) {
@@ -133,8 +136,13 @@ export function createApp(deps: (env: Env) => Deps) {
   // shared with internal calls (src/internal.ts).
   const json = (answer: ApiAnswer) => Response.json(answer.body, { status: answer.status });
 
-  app.post('/v1/decide/:profile', async (c) => json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => c.req.json(),
-    c.req.query('version'), c.req.header('Idempotency-Key'))));
+  app.post('/v1/decide/:profile', async (c) => {
+    // Images make large bodies normal (up to Clef's 13 MiB request); larger
+    // ones are refused before they are read.
+    if (Number(c.req.header('content-length') ?? 0) > MAX_DECIDE_BODY) return error(413, 'invalid_request', 'the request is larger than 14 MiB');
+    return json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => c.req.json(),
+    c.req.query('version'), c.req.header('Idempotency-Key')));
+  });
 
   // A decision is visible only to tokens that may use its profile; for others
   // it does not exist (404), as for unknown ids.

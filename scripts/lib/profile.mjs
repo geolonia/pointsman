@@ -110,6 +110,13 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
         errors.push(`/input/${i}/path: "${m.path}" would put the images (${img}) into the state; images go to the model only as images`);
       }
     });
+    // Over MCP the state is sent already mapped (fields by input name), and the
+    // images are read from it at the same path: an input named like the
+    // path's first key would carry the images into the state.
+    const first = /^\$\.([A-Za-z0-9_-]+)/.exec(img)?.[1];
+    (profile.input ?? []).forEach((m, i) => {
+      if (first !== undefined && m.name === first) errors.push(`/input/${i}/name: "${m.name}" is the first key of the images path (${img}); over MCP it would carry the images into the state`);
+    });
     if (profile.questions.length === 0) errors.push('/images: a profile without questions makes no model call, so it cannot use images');
   }
   // Rules refer to facts as facts.<name>.<field>, so no question may use that prefix.

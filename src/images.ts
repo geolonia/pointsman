@@ -14,6 +14,8 @@ import type { Profile } from './types';
 export const MAX_IMAGES = 4;
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 export const MAX_IMAGES_BYTES = 8 * 1024 * 1024;
+/** Clef's limit for the whole model request (state, questions and images). */
+export const MAX_MODEL_REQUEST_BYTES = 13 * 1024 * 1024;
 
 const DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]*={0,2})$/;
 
