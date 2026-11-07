@@ -5,7 +5,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { FieldFactProvider } from '@pointsman/facts-field';
 import { FactMissingError, MAX_FIELD_TEXT } from '@pointsman/module-api';
-import { lookupFacts } from '../../src/facts';
+import { lookupFacts, resultError } from '../../src/facts';
 import { depsFor } from '../../src/index';
 import type { FactSpec } from '../../src/types';
 
@@ -31,6 +31,13 @@ describe('the field provider', () => {
       // A fixed text that names the expected kind only: never the value (it may be logged).
       expect((err as Error).message).toMatch(/^expected (a number|a text of at most \d+ characters|true or false)$/);
     }
+  });
+});
+
+describe('the engine', () => {
+  it('refuses a field_text result longer than the type allows, also from another module', () => {
+    expect(resultError('field_text', { values: { value: 'x'.repeat(MAX_FIELD_TEXT) }, source: 'request' })).toBeNull();
+    expect(resultError('field_text', { values: { value: 'x'.repeat(MAX_FIELD_TEXT + 1) }, source: 'request' })).toMatch(/at most 64 characters/);
   });
 });
 

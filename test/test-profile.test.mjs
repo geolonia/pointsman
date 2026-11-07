@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
-import { answerOf, caseFileErrors, runCases } from '../src/cases.ts';
+import { answerOf, caseFileErrors, caseInputs, runCases } from '../src/cases.ts';
 import { useChosenModules } from '../scripts/lib/modules.mjs';
 
 // Every module in this repository, as for the examples.
@@ -331,4 +331,16 @@ test('with --url, answers that do not fit the questions, or an error, cannot be 
   const down = await fakeDeployment(t, () => [403, { error: { code: 'forbidden', message: 'this token may not use this profile' } }]);
   const b = await runAsync([join(examples, 'cases', 'issue-triage.yaml'), '--profiles', join(examples, 'profiles'), '--url', down.url], { POINTSMAN_TOKEN: 'pm_test' });
   assert.match(b.stdout, /ERROR a real issue about the login page: the deployment answered 403: this token may not use this profile/);
+});
+
+test('a field_text value longer than the module takes cannot be a case fact: it would be missing as wrong_kind', () => {
+  const p = {
+    id: 'codes', version: 1, title: { en: 'T', ja: 'T' }, description: { en: 'T', ja: 'T' }, model: 'none', questions: [],
+    facts: [{ name: 'code', type: 'field_text', at: '$.code' }],
+    policy: { rules: [{ when: "facts.code.value == '601'", action: 'high' }], default: 'low' },
+  };
+  const c = (code) => ({ name: 'c', expect: 'low', answers: {}, facts: { code } });
+  assert.doesNotThrow(() => caseInputs(c({ value: 'x'.repeat(64) }), p));
+  assert.throws(() => caseInputs(c({ value: 'x'.repeat(65) }), p), /at most 64 characters/);
+  assert.doesNotThrow(() => caseInputs(c({ missing: 'wrong_kind' }), p));
 });

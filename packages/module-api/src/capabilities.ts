@@ -207,7 +207,8 @@ function fieldType(type: FieldFactQuery['type'], kind: 'number' | 'string' | 'bo
   return {
     type,
     description: `${type}: ${what.en} from the request, as sent.`,
-    fields: { value: { kind } },
+    // The engine and test cases check the length too, so a case cannot pass on a value the module refuses.
+    fields: { value: kind === 'string' ? { kind, maxLength: MAX_FIELD_TEXT } : { kind } },
     input: anyValue,
     query: (_spec, value): FieldFactQuery => ({ type, value }),
     timeoutMs: 1000,
