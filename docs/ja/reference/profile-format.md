@@ -66,7 +66,7 @@ AI アシスタントと一緒にプロファイルを書き、確かめる方�
 | `model` | はい | モデルの ID で、たとえば `clef-flash` です。質問のないプロファイル(ルールだけで、モデルを呼ばない)では `none` にします。 |
 | `fallback_models` | いいえ | 主のモデルが失敗したときに、順に試すモデルです。 |
 | `input` | いいえ | `{ name, path }` のリストです。クライアントが送った生のペイロードから、簡単な JSONPath(`$.issue.title`)で状態を組み立てます。指定しなければ、リクエストの状態をそのまま送ります。 |
-| `questions` | はい | 最大 64 個の質問です(下記を参照)。`requires` のないプロファイルでは 1 個以上必要です。 |
+| `questions` | はい | 最大 64 個の質問です(下記を参照)。`requires` もファクトもないプロファイルでは 1 個以上必要です。 |
 | `requires` | いいえ | ルールが読む以前の判定で、最大 8 個です。`{ name, profile, optional }` の形で書きます([判定のチェーン](#decision-chains)を参照)。 |
 | `facts` | いいえ | 判定ごとに調べるファクト(場所、プルリクエスト、レビュー)で、最大 16 個です。ルールで使います([ファクト](#facts)を参照)。 |
 | `policy` | はい | `default` のアクションと、ふつうは `rules`(上から順に調べ、最初に当てはまったものを使う)です。必要なら `people_check` と `people_answers` も書きます([人による確認と回答](#people-check-and-answers)を参照)。 |
@@ -420,6 +420,29 @@ policy:
 - ファクトはモデルが答えている間に調べます。そのため、遅いルーティングサーバーが待ち時間を増やすのは、それが最も遅い部分のときだけです。1 回の decide で最大 8 秒です。
 
 ジオコーディングは、まだ決まっていません(issue #65)。
+
+### リクエストの値 {#values-from-the-request}
+
+建物の建築年や、住民がチェックした項目のように、クライアントがすでに持っているデータがあります。ルールはリクエストそのものを読めず、数値をモデルに読ませるべきでもありません。ファクトの型 `field_number`、`field_text`、`field_flag`(モジュール `@pointsman/facts-field`)は、そうした値を送られたとおりにルールへ渡します。
+
+```yaml
+facts:
+  - { name: year, type: field_number, at: $.yearOfConstruction.value }
+  - { name: structure, type: field_text, at: $.buildingStructureType.value }
+  - { name: checked, type: field_flag, at: $.selfCheck.done }
+policy:
+  rules:
+    - when: "facts.year.value <= 1981 and facts.structure.value == '601'"
+      action: high
+    - when: "facts.year.missing == true"
+      action: more-evidence
+```
+
+- `value` は型に応じて、数値、短いテキスト(コード。最大 64 文字。`""` もテキストです)、`true`/`false` のいずれかです。そのため、検証ですべての比較の型を確かめられます。
+- 変換はしません。`"1981"`(文字列)は数値ではありません。種類の違う値は `wrong_kind`、`at` に値がない(ない、または `null`)ときは `no_value` で欠けます。欠けたファクトのルールは当てはまりません。`facts.<name>.missing == true` で確かめられます。
+- このモジュールは設定を読まず、外部のサービスも呼びません。そのため、`FACTS_MODE` がどの値でも(`off` でも)使えます。`source` は `request` です。
+- ファクトのあるプロファイルは、質問なし(`questions: []` と `model: none`)にできます。ルールだけで、モデルを呼びません。
+- **値は判断とともに保存されます。** ほかのファクトと同じく、`log.store_state` がなくても保存され、判断とともに返されます。保存してよいデータ(年、コード、件数、はい・いいえ)にだけ使ってください。個人情報や自由記述には使いません。そのため `field_text` は最大 64 文字です。
 
 ### GitHub のプルリクエスト {#github-pull-requests}
 

@@ -45,6 +45,7 @@
     "@modelcontextprotocol/server": "^2.3.1",
     "@pointsman/github": "workspace:*",
     "@pointsman/coderabbit": "workspace:*",
+    "@pointsman/facts-field": "workspace:*",
     "@pointsman/facts-gsi": "workspace:*",
     "@pointsman/facts-jshis": "workspace:*",
     "@pointsman/facts-valhalla": "workspace:*",

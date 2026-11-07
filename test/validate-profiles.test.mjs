@@ -206,3 +206,47 @@ test('profiles that require each other in a circle fail', (t) => {
   assert.equal(r.status, 1);
   assert.match(r.stdout, /require each other in a circle: a → b → a/);
 });
+
+// Values from the request (field_number, field_text, field_flag): a profile
+// with facts may have no questions; comparisons are type-checked.
+const fieldProfile = (rules, extra = '') => `id: building-check
+version: 1
+title: { en: Test, ja: テスト }
+description: { en: Test profile, ja: テスト用 }
+model: none
+questions: []
+facts:
+  - { name: year, type: field_number, at: $.yearOfConstruction.value }
+  - { name: structure, type: field_text, at: $.buildingStructureType.value }
+  - { name: checked, type: field_flag, at: $.selfCheck }
+${extra}policy:
+  rules:
+${rules}
+  default: low
+`;
+
+test('field facts: a rules-only profile with facts is valid, and comparisons are type-checked', (t) => {
+  // Each profile in a folder of its own, named after its id.
+  const write = (_label, text) => {
+    const dir = mkdtempSync(join(tmpdir(), 'pointsman-field-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const path = join(dir, `${/^id: (\S+)/m.exec(text)[1]}.yaml`);
+    writeFileSync(path, text);
+    return validateProfileFile(path);
+  };
+  const refused = (errors, pattern) => assert.ok(errors.some((e) => pattern.test(e)), errors.join('\n'));
+  assert.deepEqual(write('ok.yaml', fieldProfile(`    - when: "facts.year.value <= 1981 and facts.structure.value == '601'"
+      action: high
+    - when: "facts.checked.value == true or facts.year.missing == true"
+      action: check`)), []);
+  // A number compared with a text, and a flag ordered: refused.
+  refused(write('text.yaml', fieldProfile(`    - when: "facts.year.value == '1981'"
+      action: high`)), /cannot compare number with string/);
+  refused(write('flag.yaml', fieldProfile(`    - when: "facts.checked.value >= 1"
+      action: high`)), /cannot compare boolean with number/);
+  // Without facts or requires, a profile still needs a question.
+  const noFacts = `id: nothing\nversion: 1\ntitle: { en: Test, ja: テスト }\ndescription: { en: Test profile, ja: テスト用 }\nmodel: none\nquestions: []\npolicy:\n  default: review\n`;
+  refused(write('none.yaml', noFacts), /questions/);
+  // An empty facts list does not count.
+  refused(write('empty.yaml', noFacts.replace('policy:', 'facts: []\npolicy:')), /questions/);
+});

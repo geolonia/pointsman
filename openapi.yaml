@@ -927,7 +927,8 @@ components:
                 unavailable (no fact provider configured, or no access), timeout, or error;
                 or a reason of the fact's module: no_location (no Point or LineString at the
                 fact's path), no_pr (no pull request at the fact's path), stale (the pull
-                request has another head commit than the request names).
+                request has another head commit than the request names), no_value (no value at
+                the fact's path), wrong_kind (a value of another kind than the fact type takes).
               type: string
               pattern: '^[a-z][a-z0-9_]{0,62}$'
     Answer:

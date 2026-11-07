@@ -50,6 +50,8 @@ export interface FieldDef {
   display?: true;
   /** A number from 0 to 1 (a probability or a confidence), never outside. */
   probability?: true;
+  /** For a string: the most characters (UTF-16 code units) a value may have. */
+  maxLength?: number;
 }
 
 /** A sentence part for a field in an explanation. `%` is the fact's name. */

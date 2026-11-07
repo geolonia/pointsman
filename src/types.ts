@@ -69,7 +69,7 @@ export interface Profile {
   model: string;
   fallback_models?: string[];
   input?: { name: string; path: string }[];
-  /** Empty only for a profile with `requires`: then rules only, no model call. */
+  /** Empty only for a profile with `requires` or facts: then rules only, no model call. */
   questions: Question[];
   facts?: FactSpec[];
   /** The decisions this one builds on (docs/decision-chains.md). */

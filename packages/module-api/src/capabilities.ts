@@ -178,8 +178,64 @@ export const detour: FactTypeDef = {
   cases: { key: 'possible', absent: { extra_m: null, route: null }, optional: ['route'] },
 };
 
+/** The query of a field fact: the value as the request has it (checked by the module). */
+export interface FieldFactQuery {
+  type: 'field_number' | 'field_text' | 'field_flag';
+  value: unknown;
+}
+
+/**
+ * The longest text a field_text fact takes (UTF-16 code units). Short on
+ * purpose: field values are stored with the decision, so field_text is for
+ * codes ("601"), not free text.
+ */
+export const MAX_FIELD_TEXT = 64;
+
+const NO_VALUE = { en: 'no value in the request', ja: 'リクエストに値がない' };
+
+/** Any value at `at`; null or absent is "no value". The module checks its type. */
+const anyValue: FactInput = { read: (value) => (value === undefined || value === null ? null : value), missing: 'no_value', gloss: NO_VALUE };
+
+/**
+ * A value from the request itself, for rules (decided 2026-11-07): a number,
+ * a short text or a yes-or-no, exactly as sent, never converted or guessed.
+ * A value of another type is missing ("wrong_kind"), like an absent one
+ * ("no_value"). For data the client already has, for example the year a
+ * building was built.
+ */
+function fieldType(type: FieldFactQuery['type'], kind: 'number' | 'string' | 'boolean', what: { en: string; ja: string }, mock: number | string | boolean): FactTypeDef {
+  return {
+    type,
+    description: `${type}: ${what.en} from the request, as sent.`,
+    // The engine and test cases check the length too, so a case cannot pass on a value the module refuses.
+    fields: { value: kind === 'string' ? { kind, maxLength: MAX_FIELD_TEXT } : { kind } },
+    input: anyValue,
+    query: (_spec, value): FieldFactQuery => ({ type, value }),
+    timeoutMs: 1000,
+    mock: { value: mock },
+    words: {
+      en: {
+        describe: (f, s) => `${f}: the ${what.en} in the request (${s.at}).`,
+        fields: { value: kind === 'boolean' ? ['% is yes', '% is no'] : 'the value of %' },
+      },
+      ja: {
+        describe: (f, s) => `${f}：リクエストの${what.ja}（${s.at}）。`,
+        fields: { value: kind === 'boolean' ? ['%がはい', '%がいいえ'] : '%の値' },
+      },
+    },
+    cases: { nullable: [], defaults: {} },
+  };
+}
+
+/** A number from the request. */
+export const field_number = fieldType('field_number', 'number', { en: 'number', ja: '数値' }, 0);
+/** A short text (a code) from the request, at most MAX_FIELD_TEXT characters. */
+export const field_text = fieldType('field_text', 'string', { en: 'text', ja: 'テキスト' }, 'mock');
+/** A yes-or-no value from the request. */
+export const field_flag = fieldType('field_flag', 'boolean', { en: 'yes-or-no value', ja: 'はい・いいえの値' }, true);
+
 /** Every capability, by type. */
-export const CAPABILITIES: Record<string, FactTypeDef> = { inside, nearest, detour };
+export const CAPABILITIES: Record<string, FactTypeDef> = { inside, nearest, detour, field_number, field_text, field_flag };
 
 /** Capabilities whose facts name a layer: a module may serve some layers only. */
 export const LAYER_CAPABILITIES = ['inside', 'nearest'];

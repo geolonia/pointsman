@@ -144,7 +144,12 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "requires": true }, "required": ["requires"] },
+      "if": {
+        "anyOf": [
+          { "properties": { "requires": true }, "required": ["requires"] },
+          { "required": ["facts"], "properties": { "facts": { "type": "array", "minItems": 1 } } }
+        ]
+      },
       "else": { "properties": { "questions": { "type": "array", "minItems": 1 } } }
     }
   ],
@@ -182,8 +187,8 @@
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "type": {
-          "description": "inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes. github_copilot: Copilot code review on the pull request. github_app_approval: whether a GitHub App approved the pull request. github_release: whether the pull request only changes a version (and the changelog). github_bump: whether the pull request only bumps npm dependency versions. coderabbit: CodeRabbit reviews of the pull request. coderabbit_budget: the pull request author's CodeRabbit review budget. coderabbit_queue: the author's pull requests waiting for a CodeRabbit review ahead of this one. coderabbit_spend: the spend on paid CodeRabbit reviews.",
-          "enum": ["inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows", "github_copilot", "github_app_approval", "github_release", "github_bump", "coderabbit", "coderabbit_budget", "coderabbit_queue", "coderabbit_spend"]
+          "description": "field_number: number from the request, as sent. field_text: text from the request, as sent. field_flag: yes-or-no value from the request, as sent. inside: inside an area of a layer. nearest: the nearest feature of a layer. detour: extra metres around a closed section (needs a LineString). github_pr: a pull request. github_paths: changed files that match paths. github_checks: required checks on the head commit. github_property: a repository custom property. github_workflows: the GitHub Actions files it changes. github_copilot: Copilot code review on the pull request. github_app_approval: whether a GitHub App approved the pull request. github_release: whether the pull request only changes a version (and the changelog). github_bump: whether the pull request only bumps npm dependency versions. coderabbit: CodeRabbit reviews of the pull request. coderabbit_budget: the pull request author's CodeRabbit review budget. coderabbit_queue: the author's pull requests waiting for a CodeRabbit review ahead of this one. coderabbit_spend: the spend on paid CodeRabbit reviews.",
+          "enum": ["field_number", "field_text", "field_flag", "inside", "nearest", "detour", "github_pr", "github_paths", "github_checks", "github_property", "github_workflows", "github_copilot", "github_app_approval", "github_release", "github_bump", "coderabbit", "coderabbit_budget", "coderabbit_queue", "coderabbit_spend"]
         },
         "at": {
           "description": "JSONPath into the request state: a GeoJSON Point or LineString (WGS 84) for spatial facts, for example $.location.value; a pull request { repo, number, head } for GitHub facts.",
@@ -404,6 +409,18 @@
         }
       },
       "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "field_number" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "field_text" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "field_flag" } }, "required": ["type"] },
+          "then": { "propertyNames": { "enum": ["name", "type", "at"] } }
+        },
         {
           "if": { "properties": { "type": { "const": "inside" } }, "required": ["type"] },
           "then": {

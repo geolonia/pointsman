@@ -71,7 +71,7 @@ To write a profile with an AI assistant, and check it, see
 | `model` | yes | Model id, for example `clef-flash`. `none` for a profile with no questions (rules only, no model call). |
 | `fallback_models` | no | Models to try, in order, when the primary model fails. |
 | `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
-| `questions` | yes | Up to 64 questions (see below). At least 1, unless the profile has `requires`. |
+| `questions` | yes | Up to 64 questions (see below). At least 1, unless the profile has `requires` or facts. |
 | `requires` | no | Up to 8 earlier decisions the rules read, as `{ name, profile, optional }` (see [Decision chains](#decision-chains)). |
 | `facts` | no | Up to 16 facts to look up for each decision, for rules: places, pull requests, reviews (see [Facts](#facts)). |
 | `policy` | yes | A `default` action and, usually, `rules` (checked in order, first match wins); optionally `people_check` and `people_answers` (see [People](#people-check-and-answers)). |
@@ -625,6 +625,44 @@ followed (they would carry the key to another host): a 3xx answer is an
   adds waiting only when it is the slowest part: at most 8 s for a decide.
 
 Geocoding is still open (issue #65).
+
+### Values from the request {#values-from-the-request}
+
+Some data the client already has, for example the year a building was built,
+or a box a resident ticked. A rule cannot read the request itself, and a
+model should not read numbers off it. The fact types `field_number`,
+`field_text` and `field_flag` (module `@pointsman/facts-field`) give such a
+value to the rules exactly as sent:
+
+```yaml
+facts:
+  - { name: year, type: field_number, at: $.yearOfConstruction.value }
+  - { name: structure, type: field_text, at: $.buildingStructureType.value }
+  - { name: checked, type: field_flag, at: $.selfCheck.done }
+policy:
+  rules:
+    - when: "facts.year.value <= 1981 and facts.structure.value == '601'"
+      action: high
+    - when: "facts.year.missing == true"
+      action: more-evidence
+```
+
+- `value` is a number, a short text (a code, at most 64 characters; `""`
+  is a text too) or `true`/`false`, by type, so the validator checks every
+  comparison.
+- Nothing is converted: `"1981"` (a string) is not a number. A value of
+  another kind is missing as `wrong_kind`; no value at `at` (absent or
+  `null`) is missing as `no_value`. A rule on a missing fact does not match;
+  `facts.<name>.missing == true` asks for it.
+- The module reads no settings and calls no service, so it works with every
+  `FACTS_MODE`, also `off`. `source` is `request`.
+- A profile with facts may have no questions (`questions: []` with
+  `model: none`): rules only, no model call.
+- **The value is stored with the decision**, like every fact, also without
+  `log.store_state`, and returned with it. Point a field fact only at data
+  that may be kept: a year, a code, a count, a yes-or-no. Not at personal
+  data or free text; `field_text` takes at most 64 characters for this
+  reason.
 
 ### GitHub pull requests
 

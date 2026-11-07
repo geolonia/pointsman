@@ -76,6 +76,42 @@ Settings in a profile, besides `name`, `type` and `at`:
 
 Missing as `no_location` when the request has no value at `at` (no location in the request). A lookup gives up after 8 s.
 
+### `field_number`
+
+Number from the request, as sent.
+
+Answered by `@pointsman/facts-field`.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `value` | number | the value of *name* |
+
+Missing as `no_value` when the request has no value at `at` (no value in the request). A lookup gives up after 1 s.
+
+### `field_text`
+
+Text from the request, as sent.
+
+Answered by `@pointsman/facts-field`.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `value` | text | the value of *name* |
+
+Missing as `no_value` when the request has no value at `at` (no value in the request). A lookup gives up after 1 s.
+
+### `field_flag`
+
+Yes-or-no value from the request, as sent.
+
+Answered by `@pointsman/facts-field`.
+
+| Field | Kind | Meaning |
+| --- | --- | --- |
+| `value` | yes or no | true: *name* is yes |
+
+Missing as `no_value` when the request has no value at `at` (no value in the request). A lookup gives up after 1 s.
+
 ## `@pointsman/github`
 
 Fact types of the module `@pointsman/github`. Deployment settings it reads: `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK`.
@@ -374,6 +410,8 @@ A fact that has no value is *missing*: its field `missing` is true and `reason` 
 | `timeout` | the lookup took too long | any fact |
 | `error` | an error | any fact |
 | `no_location` | no location in the request | `inside`, `nearest`, `detour` |
+| `no_value` | no value in the request | `field_number`, `field_text`, `field_flag` |
 | `no_pr` | no pull request in the request | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release`, `github_bump`, `coderabbit`, `coderabbit_budget`, `coderabbit_queue`, `coderabbit_spend` |
+| `wrong_kind` | the value in the request is not of the expected kind | `@pointsman/facts-field` |
 | `stale` | the pull request has a newer commit | `@pointsman/coderabbit` |
 | `no_log` | no decision log to read (a test token, or a lookup outside a decision) | `@pointsman/coderabbit` |

@@ -221,8 +221,14 @@ describe('FACTS_MODE', () => {
   const base = { PROFILE_SOURCE: 'bundled', MODEL_MODE: 'mock', TOKENS: env.TOKENS, DB: env.DB };
 
   it('is off unless set, and refuses unknown modes', async () => {
-    expect(depsFor(base).facts).toBeUndefined();
-    expect(depsFor({ ...base, FACTS_MODE: 'off' }).facts).toBeUndefined();
+    // Off: no spatial provider. Only @pointsman/facts-field, which reads the
+    // request and has no setting, is always on.
+    for (const off of [depsFor(base), depsFor({ ...base, FACTS_MODE: 'off' })]) {
+      for (const m of ['@pointsman/facts-gsi', '@pointsman/facts-jshis', '@pointsman/facts-valhalla']) expect(providerOf(off, m), m).toBeUndefined();
+      expect(providerOf(off, '@pointsman/facts-field')).toBeDefined();
+      expect((await lookupFacts([{ name: 'flood', type: 'inside', layer: 'gsi-flood-max', at: '$.location' }], { location: { type: 'Point', coordinates: [139, 35] } }, off.facts)).flood)
+        .toEqual({ missing: true, reason: 'unavailable' });
+    }
     const deps = depsFor({ ...base, FACTS_MODE: 'mock' });
     expect(await answersMock(providerOf(deps, '@pointsman/facts-gsi'), { type: 'inside', layer: 'x', geometry: { type: 'Point', coordinates: [139, 35] } })).toBe(true);
     expect(await answersMock(providerOf(deps, '@pointsman/facts-valhalla'), { type: 'detour', geometry: { type: 'Point', coordinates: [139, 35] } })).toBe(true);

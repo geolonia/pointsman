@@ -200,6 +200,9 @@ importers:
       '@pointsman/coderabbit':
         specifier: workspace:*
         version: link:packages/coderabbit
+      '@pointsman/facts-field':
+        specifier: workspace:*
+        version: link:packages/facts-field
       '@pointsman/facts-gsi':
         specifier: workspace:*
         version: link:packages/facts-gsi
@@ -270,6 +273,12 @@ importers:
       '@pointsman/github':
         specifier: workspace:*
         version: link:../github
+      '@pointsman/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+
+  packages/facts-field:
+    dependencies:
       '@pointsman/module-api':
         specifier: workspace:*
         version: link:../module-api

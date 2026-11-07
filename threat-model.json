@@ -184,9 +184,9 @@
     },
     {
       "component": "engine-facts",
-      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including the workflow files, patches, comments, reviews and statuses those responses carry, the head statuses of other pull requests, and the asking client's own earlier decisions.",
+      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including the workflow files, patches, comments, reviews and statuses those responses carry, the head statuses of other pull requests, and the asking client's own earlier decisions.",
       "provenance": "documented",
-      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
       "source": "threat-model.md §1.4; docs/profile-format.md \"Facts\", \"GitHub pull requests\", \"CodeRabbit reviews\"; docs/modules.md \"Facts from the decision log\""
     },
     {
@@ -392,6 +392,15 @@
       "caller_must_enforce": "none — P-FACT-LOOKUP-BOUNDED",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Facts\" table, at"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "fact-field-value",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Values from the request\""
     },
     {
       "entry_point": "POST /v1/decide/{profile}",
@@ -1284,6 +1293,14 @@
       "source": "docs/decision-log.md \"What is stored\""
     },
     {
+      "name": "profile-fact-field-value",
+      "default": "none",
+      "effect": "narrows P-STATE-NOT-STORED",
+      "discouraged": false,
+      "provenance": "documented",
+      "source": "docs/decision-log.md \"What is stored\"; docs/profile-format.md \"Values from the request\"; maintainer answer 2026-11-07, Q50"
+    },
+    {
       "name": "profile-mcp.visible",
       "default": "false",
       "effect": "narrows P-MCP-VISIBILITY",
@@ -1478,7 +1495,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere; since pointsman#287 (not yet released) a value fact is missing as no_value without a value at its path and as wrong_kind for another kind or a text over 64 characters, never converted",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
@@ -1510,7 +1527,7 @@
       "property": "P-STATE-NOT-STORED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept)",
+      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50)",
       "provenance": "documented",
       "source": "docs/decision-log.md \"By default only the hash of the state is kept\""
     },
@@ -2078,7 +2095,7 @@
     "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and since pointsman#232 (v0.17.2) by the FIWARE bridge on every route, whatever its reviewActions, which only add actions to check (up to v0.17.1 a route whose reviewActions left out a people_check action marked it as taken; a broker consumer must read reviewStatus too); since pointsman#236 (v0.18.0) a repeated request may get the review resolved, then act on final_action, or superseded, then act on nothing, and the bridge writes a resolved retry as resolved; added with the re-binding to v0.17.1 (Q48)",
     "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, make the handler idempotent on decision_id",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
-    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept",
+    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (not yet released) a value fact only for a request value that may be kept, because it is stored with the decision (Q50)",
     "set CALLBACK_SECRET before clients use callback_url; without it no callback is sent",
     "a GitHub App with only Organization → Members: Read-only installed on every allowed organization; all five settings or none; accept the 7-day lag or clear OAUTH_KV",
     "set mcp.visible: true only on profiles every member of the allowed organizations may use",
