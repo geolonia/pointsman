@@ -69,6 +69,12 @@ export interface Profile {
   model: string;
   fallback_models?: string[];
   input?: { name: string; path: string }[];
+  /**
+   * Images for the model, read at `path` in the request (a data URL or a list
+   * of them), at most `max` (1 to 4, default 4). Needs `input`, so that the
+   * images reach the model only as images (docs/profile-format.md "Images").
+   */
+  images?: { path: string; max?: number };
   /** Empty only for a profile with `requires` or facts: then rules only, no model call. */
   questions: Question[];
   facts?: FactSpec[];

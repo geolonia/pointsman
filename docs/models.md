@@ -103,6 +103,11 @@ stores only a hash of the state by default (see
 inputs can be seen for debugging. Set `collect_logs: false` when inputs must
 not be kept, and set a log limit in the gateway if needed.
 
+**Images are never logged by the gateway.** A call with images (a profile
+with `images`, see [profile-format.md](profile-format.md#images)) goes
+through the gateway with its log off for that call (`collectLog: false`),
+so photos are not kept there, whatever `collect_logs` says.
+
 ## Trying a real call
 
 ```sh

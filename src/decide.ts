@@ -7,6 +7,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord, type TokenStore } from './auth';
 import { attempt, type Fetch } from './callbacks';
 import { factModules, lookupFacts, type FactProvider } from './facts';
+import { readImages } from './images';
 import { buildState, pickInputFields } from './input';
 import { hashState, type DecisionLog, type DecisionRecord } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
@@ -214,6 +215,10 @@ export async function makeDecision(
       ? `"state" must be an object with at least one of: ${profile.input.map((i) => i.name).join(', ')}`
       : 'no field of the profile input mapping was found in "state"');
   }
+  // Images are read from the client's data (like facts), before any model call.
+  const imagesRead = readImages(profile, body.state);
+  if (!imagesRead.ok) return fail(400, 'invalid_request', imagesRead.message);
+  const images = imagesRead.images;
 
   // Before the model call, so a broken profile costs no model call.
   // Profiles are validated before they reach a store, so an error here means
@@ -245,7 +250,7 @@ export async function makeDecision(
     if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
     for (const m of served) {
       try {
-        const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m));
+        const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m, images));
         answers = normalizeAnswers(profile, response);
         model = response.model;
         break;
@@ -286,7 +291,8 @@ export async function makeDecision(
     await log.insert({
       ...decision,
       client: client.client,
-      state_hash: await hashState(state),
+      // With images: the hash covers them too (a hash each), never the images themselves.
+      state_hash: await hashState(images.length > 0 ? { state, image_hashes: await Promise.all(images.map((i) => hashState(i))) } : state),
       ...(profile.log?.store_state && { state }),
       ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
       ...(idempotencyKey !== undefined && digest !== undefined && { idempotency_key: idempotencyKey, request_digest: digest }),

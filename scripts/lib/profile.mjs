@@ -101,6 +101,17 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
   for (const d of duplicates((profile.facts ?? []).map(name))) {
     errors.push(`/facts: duplicate fact name "${d}"`);
   }
+  // Images reach the model only as images: no input path may read them (or a
+  // part of them, or everything that holds them) into the text state.
+  if (profile.images) {
+    const img = profile.images.path;
+    (profile.input ?? []).forEach((m, i) => {
+      if (m.path === img || m.path.startsWith(`${img}.`) || m.path.startsWith(`${img}[`) || img.startsWith(`${m.path}.`) || img.startsWith(`${m.path}[`) || m.path === '$') {
+        errors.push(`/input/${i}/path: "${m.path}" would put the images (${img}) into the state; images go to the model only as images`);
+      }
+    });
+    if (profile.questions.length === 0) errors.push('/images: a profile without questions makes no model call, so it cannot use images');
+  }
   // Rules refer to facts as facts.<name>.<field>, so no question may use that prefix.
   profile.questions.forEach((q, i) => {
     if (q.name === 'facts' || q.name.startsWith(FACTS_PREFIX)) {

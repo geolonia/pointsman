@@ -250,3 +250,23 @@ test('field facts: a rules-only profile with facts is valid, and comparisons are
   // An empty facts list does not count.
   refused(write('empty.yaml', noFacts.replace('policy:', 'facts: []\npolicy:')), /questions/);
 });
+
+test('images: valid with an input mapping; refused without one, when input reads them, or with no questions', () => {
+  const base = {
+    id: 'concern', version: 1, title: { en: 'C', ja: 'C' }, description: { en: 'C', ja: 'C' }, model: 'clef-flash',
+    input: [{ name: 'description', path: '$.description.value' }],
+    images: { path: '$.photos.value', max: 3 },
+    questions: [{ name: 'danger_now', type: 'noul', instructions: 'Could people be hurt now?' }],
+    policy: { default: 'low' },
+  };
+  assert.deepEqual(validateProfile(base), []);
+  const { input: _, ...noInput } = base;
+  assert.ok(validateProfile(noInput).some((e) => /input/.test(e)), 'images need input');
+  for (const path of ['$.photos.value', '$.photos.value[0]', '$.photos', '$']) {
+    const errors = validateProfile({ ...base, input: [...base.input, { name: 'p', path }] });
+    assert.ok(errors.some((e) => e.includes('would put the images')), path);
+  }
+  assert.deepEqual(validateProfile({ ...base, input: [...base.input, { name: 'p', path: '$.photosTaken' }] }), []);
+  assert.ok(validateProfile({ ...base, images: { path: '$.photos.value', max: 5 } }).length > 0, 'max is at most 4');
+  assert.ok(validateProfile({ ...base, questions: [], facts: [{ name: 'y', type: 'field_number', at: '$.y' }] }).some((e) => e.includes('cannot use images')));
+});

@@ -52,6 +52,10 @@ around, which starts and ends at the place in the state. Set it only where
 that place may be kept. A value fact (`field_number`, `field_text`,
 `field_flag`) keeps the request value it read, as sent: use it only for data
 that may be kept (docs/profile-format.md, "Values from the request").
+Images (a profile with `images`) are never stored, also not with
+`log.store_state`: they go to the model beside the state, and the state's
+hash then covers a SHA-256 of each image, so a decision still shows when
+two requests had the same photos (docs/profile-format.md, "Images").
 
 The `requires` snapshot shows what a decision was based on, even when a
 required decision gets a review answer later. `GET /v1/decisions/{id}` shows a
