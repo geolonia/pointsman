@@ -1,6 +1,6 @@
 {
   "name": "@pointsman/facts-jshis",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "private": true,
   "description": "Pointsman fact module: earthquake hazard and ground from J-SHIS (NIED) for Japan, per 250 m mesh.",
   "license": "MIT",
