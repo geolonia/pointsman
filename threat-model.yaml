@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:06a276878cea7cb2df1938f7ae98b97de16a5d1e23b8cfc0a24760feecd18a74"
+prose_version: "threat-model.md@sha256:9a5d0b2c571de37c2f4e2c0701a8a58f987f73a6666553e575fdfc2c7db2cc92"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 463, maintainer: 83, inferred: 0, assumption: 0}
@@ -28,7 +28,7 @@ components:
   # since the amendment of 2026-10-24 (prose §1.2, §1.16).
   - name: engine-facts
     scope: in
-    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions"
+    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions"
     provenance: {kind: documented, source: "docs/profile-format.md \"Facts\", \"GitHub pull requests\""}
   - name: engine-callbacks
     scope: in
@@ -244,6 +244,11 @@ entry_points:
         control_kinds: [data, size]
         caller_must_enforce: "none — P-FACT-LOOKUP-BOUNDED"
         provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}
+      - name: fact-field-value
+        attacker_controllable: true
+        control_kinds: [data, size]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Values from the request\""}
       - name: github-pull-request
         attacker_controllable: true
         control_kinds: [resource-name, data]
@@ -1599,6 +1604,12 @@ build_flags:
     maintainer_stance: supported
     affects_properties: [{property_id: P-STATE-NOT-STORED, effect: narrows}]
     provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\""}
+  - name: profile-fact-field-value
+    default: "none"
+    security_relevant: true
+    maintainer_stance: supported
+    affects_properties: [{property_id: P-STATE-NOT-STORED, effect: narrows}]
+    provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\"; docs/profile-format.md \"Values from the request\"; maintainer answer 2026-11-07, Q50"}
   - name: profile-mcp.visible
     default: "false"
     security_relevant: true
@@ -1733,7 +1744,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read make the whole github_pr fact missing; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error, and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere; since pointsman#287 (not yet released) a value fact is missing as no_value without a value at its path and as wrong_kind for another kind or a text over 64 characters, never converted"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
@@ -1761,7 +1772,7 @@ properties_claimed:
     kind: confidentiality
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept)"
+    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50)"
     violation_symptoms: [info-leak]
     provenance: {kind: documented, source: "docs/decision-log.md \"By default only the hash of the state is kept\""}
   - id: P-SECRETS-NOT-LOGGED
@@ -2257,7 +2268,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "actions/triage/README.md; openapi.yaml ref"}
   - id: R-DATA-MINIMISATION
     component: engine-api
-    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept"
+    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (not yet released) a value fact only for a request value that may be kept, because it is stored with the decision (Q50)"
     enforces: [backend-keeps-nothing, P-STATE-NOT-STORED]
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state\""}
   - id: R-CALLBACK-SECRET

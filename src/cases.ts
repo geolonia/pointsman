@@ -156,6 +156,10 @@ function factsOf(profile: Pick<Profile, 'facts'>, given: unknown, where: string)
       const kind = Object.hasOwn(def.fields, field) ? def.fields[field]!.kind : undefined;
       if (!kind) throw new CaseError(`${at}: ${spec.type} facts have ${Object.keys(def.fields).join(', ')}`);
       if (v !== null && typeof v !== kind) throw new CaseError(`${at}.${field}: must be a ${kind} (or null for no value)`);
+      // YAML can write .inf and .nan; the engine never gives them (resultError).
+      if (typeof v === 'number' && !Number.isFinite(v)) throw new CaseError(`${at}.${field}: must be a finite number`);
+      const max = def.fields[field]!.maxLength;
+      if (typeof v === 'string' && max !== undefined && v.length > max) throw new CaseError(`${at}.${field}: at most ${max} characters (a longer value is missing as wrong_kind)`);
       values[field] = v as string | number | boolean | null;
     }
     out[name] = { missing: false, values: shaped(def, values, at), source: 'test case' };

@@ -78,6 +78,42 @@ Extra metres around a closed section (needs a LineString).
 
 `at` の位置に値がないときは `no_location`(リクエストに位置がない)として欠けます。8 秒で調べるのをやめます。
 
+### `field_number`
+
+Number from the request, as sent.
+
+提供するモジュール: `@pointsman/facts-field`
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `value` | 数値 | *name*の値 |
+
+`at` の位置に値がないときは `no_value`(リクエストに値がない)として欠けます。1 秒で調べるのをやめます。
+
+### `field_text`
+
+Text from the request, as sent.
+
+提供するモジュール: `@pointsman/facts-field`
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `value` | 文字列 | *name*の値 |
+
+`at` の位置に値がないときは `no_value`(リクエストに値がない)として欠けます。1 秒で調べるのをやめます。
+
+### `field_flag`
+
+Yes-or-no value from the request, as sent.
+
+提供するモジュール: `@pointsman/facts-field`
+
+| フィールド | 種類 | 意味 |
+| --- | --- | --- |
+| `value` | はい・いいえ | true のとき: *name*がはい |
+
+`at` の位置に値がないときは `no_value`(リクエストに値がない)として欠けます。1 秒で調べるのをやめます。
+
 ## `@pointsman/github`
 
 モジュール `@pointsman/github` のファクト型です。このモジュールが読むデプロイの設定: `FACTS_GITHUB`, `FACTS_GITHUB_TOKEN`, `FACTS_GITHUB_APP_ID`, `FACTS_GITHUB_APP_PRIVATE_KEY`, `FACTS_GITHUB_IGNORE_CHECK`
@@ -376,6 +412,8 @@ The spend on paid CodeRabbit reviews.
 | `timeout` | 調べるのに時間がかかりすぎた | すべてのファクト |
 | `error` | エラー | すべてのファクト |
 | `no_location` | リクエストに位置がない | `inside`, `nearest`, `detour` |
+| `no_value` | リクエストに値がない | `field_number`, `field_text`, `field_flag` |
 | `no_pr` | リクエストにプルリクエストがない | `github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release`, `github_bump`, `coderabbit`, `coderabbit_budget`, `coderabbit_queue`, `coderabbit_spend` |
+| `wrong_kind` | リクエストの値の種類が違う | `@pointsman/facts-field` |
 | `stale` | プルリクエストに新しいコミットがある | `@pointsman/coderabbit` |
 | `no_log` | 読める判定ログがない（テストトークン、または判定の外での参照） | `@pointsman/coderabbit` |

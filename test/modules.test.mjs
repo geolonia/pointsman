@@ -14,6 +14,7 @@ import { parse as parseYaml } from 'yaml';
 import { FactRegistry, ModuleError } from '../src/modules/registry.ts';
 import { inside } from '@pointsman/module-api';
 import { definition as github } from '@pointsman/github/definition';
+import { definition as field } from '@pointsman/facts-field/definition';
 import { definition as gsi } from '@pointsman/facts-gsi/definition';
 import { definition as jshis } from '@pointsman/facts-jshis/definition';
 import { definition as valhalla } from '@pointsman/facts-valhalla/definition';
@@ -89,14 +90,14 @@ test('the engine version agrees in package.json, openapi.yaml and src/version.ts
 });
 
 test('each module has the version of its package', () => {
-  for (const [definition, dir] of [[gsi, 'facts-gsi'], [jshis, 'facts-jshis'], [valhalla, 'facts-valhalla'], [github, 'github'], [fiware, 'fiware']]) {
+  for (const [definition, dir] of [[field, 'facts-field'], [gsi, 'facts-gsi'], [jshis, 'facts-jshis'], [valhalla, 'facts-valhalla'], [github, 'github'], [fiware, 'fiware']]) {
     const pkg = JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8'));
     assert.equal(definition.name, pkg.name);
     assert.equal(definition.version, pkg.version);
   }
   // Released together with the engine for now (docs/modules.md).
   const engine = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-  for (const dir of ['module-api', 'facts-gsi', 'facts-jshis', 'facts-valhalla', 'github', 'fiware']) {
+  for (const dir of ['module-api', 'facts-field', 'facts-gsi', 'facts-jshis', 'facts-valhalla', 'github', 'fiware']) {
     assert.equal(JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8')).version, engine, dir);
   }
 });

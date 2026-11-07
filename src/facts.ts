@@ -91,6 +91,8 @@ export function resultError(type: string, result: unknown): string | null {
     if (v === null && !mayBeNull(def, field, values as Record<string, unknown>)) return `"${field}" must have a value`;
     if (v !== null && typeof v !== kind) return `"${field}" must be a ${kind} or null`;
     if (typeof v === 'number' && !Number.isFinite(v)) return `"${field}" must be a finite number`;
+    const max = def.fields[field]!.maxLength;
+    if (typeof v === 'string' && max !== undefined && v.length > max) return `"${field}" must be at most ${max} characters`;
     if (probability && typeof v === 'number' && (v < 0 || v > 1)) return `"${field}" must be from 0 to 1`;
   }
   return null;

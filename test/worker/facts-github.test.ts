@@ -816,7 +816,7 @@ describe('FACTS_GITHUB', () => {
   const githubOf = (deps: Deps) => providerOf(deps, '@pointsman/github');
 
   it('is off unless set: GitHub facts are unavailable, also with FACTS_MODE mock', async () => {
-    expect(depsFor(base).facts).toBeUndefined();
+    expect(githubOf(depsFor(base))).toBeUndefined();
     const deps = depsFor({ ...base, FACTS_MODE: 'mock' });
     expect(githubOf(deps)).toBeUndefined();
     expect((await lookupFacts(spec('pr'), state, deps.facts)).pr).toEqual({ missing: true, reason: 'unavailable' });
