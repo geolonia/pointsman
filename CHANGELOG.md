@@ -18,7 +18,7 @@ A new fact module for earthquake hazard in Japan (#284), the GitHub connector bo
 
 For deployments:
 
-- Move `ref` in `engine.json` to the commit of `v0.19.0`. No migration, no new secrets, no new GitHub App permission or event.
+- Move `ref` in `engine.json` to the commit of `v0.19.0`, and change modules pinned with a version in `modules` to `@0.19.0` (for example `@pointsman/github@0.18.0` → `@pointsman/github@0.19.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
 - New module `@pointsman/facts-jshis`: add it to `modules.facts` to use it (a deployment without `modules` has it already). It answers `inside` for four J-SHIS layers and reads `FACTS_MODE` like `@pointsman/facts-gsi` (`gsi` for real data).
 - `inside` can now be answered by two modules. In a deployment without `modules` in `engine.json` (every module chosen), a layer that no module names is no longer sent to `@pointsman/facts-gsi`: it is `unavailable`, also with `FACTS_MODE: mock`. Named layers are not affected.
 - GitHub connector: deploy it together with the engine, as before. Approvals and open answers given before this release carry no base branch and keep today's behaviour.
