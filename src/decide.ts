@@ -233,7 +233,7 @@ export async function makeDecision(
   let answers: Decision['answers'] | undefined;
   let model: string | undefined;
   if (profile.questions.length === 0) {
-    // Rules only (a profile with requires): no model call, no adapter needed.
+    // Rules only (a profile with requires or facts): no model call, no adapter needed.
     answers = {};
     model = NO_MODEL;
   } else {

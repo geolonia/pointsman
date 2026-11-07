@@ -16,6 +16,7 @@ Connectors are described in [connectors.md](connectors.md). A module can have bo
 
 | Module | Answers | Settings |
 | --- | --- | --- |
+| `@pointsman/facts-field` | `field_number`, `field_text` and `field_flag`: a value from the request itself, as sent | none |
 | `@pointsman/facts-gsi` | `inside` and `nearest` for the layers `gsi-flood-max` and `gsi-shelters-flood` (Japan) | `FACTS_MODE` |
 | `@pointsman/facts-jshis` | `inside` for the layers `jshis-shaking-6lower-30y`, `jshis-shaking-6upper-30y`, `jshis-ground-amplification` and `jshis-landform` (earthquake hazard and ground, Japan, from J-SHIS) | `FACTS_MODE` |
 | `@pointsman/facts-valhalla` | `detour`, from a Valhalla routing server | `FACTS_MODE`, `FACTS_ROUTING_URL`, `FACTS_ROUTING_API_KEY` |
@@ -51,7 +52,7 @@ The scripts read `engine.json` from the current directory, else from where pnpm 
 
 Fact types come in two kinds.
 
-**Capabilities** are a small set of shared types with fixed fields, defined by the engine in `packages/module-api/src/capabilities.ts`: `inside`, `nearest` and `detour`. A profile asks for `detour` and gets `extra_m`, whatever module answers. The deployment chooses the module, as it chooses layers. A new capability is a pull request to this repository, reviewed like code (decided 2026-10-22, #145).
+**Capabilities** are a small set of shared types with fixed fields, defined by the engine in `packages/module-api/src/capabilities.ts`: `inside`, `nearest`, `detour`, and `field_number`, `field_text` and `field_flag` (values from the request, since 2026-11-07). A profile asks for `detour` and gets `extra_m`, whatever module answers. The deployment chooses the module, as it chooses layers. A new capability is a pull request to this repository, reviewed like code (decided 2026-10-22, #145).
 
 - Each capability is answered by one chosen module. `inside` and `nearest` can be shared by layers: each module names its layers, and each layer is answered by one module. A layer that no module names goes to the type's only module, if there is just one (its mock answers any layer; its real provider refuses an unknown one as `unavailable`).
 - A module that implements a capability is named after its service, for example `facts-valhalla`; another routing service would be another module.
