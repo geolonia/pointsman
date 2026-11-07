@@ -28,7 +28,7 @@ components:
   # since the amendment of 2026-10-24 (prose §1.2, §1.16).
   - name: engine-facts
     scope: in
-    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions"
+    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions"
     provenance: {kind: documented, source: "docs/profile-format.md \"Facts\", \"GitHub pull requests\""}
   - name: engine-callbacks
     scope: in
@@ -244,6 +244,11 @@ entry_points:
         control_kinds: [data, size]
         caller_must_enforce: "none — P-FACT-LOOKUP-BOUNDED"
         provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}
+      - name: fact-field-value
+        attacker_controllable: true
+        control_kinds: [data, size]
+        caller_must_enforce: "none — P-FACTS-NEVER-GUESSED"
+        provenance: {kind: documented, source: "docs/profile-format.md \"Values from the request\""}
       - name: github-pull-request
         attacker_controllable: true
         control_kinds: [resource-name, data]
@@ -1604,7 +1609,7 @@ build_flags:
     security_relevant: true
     maintainer_stance: supported
     affects_properties: [{property_id: P-STATE-NOT-STORED, effect: narrows}]
-    provenance: {kind: maintainer, date: "2026-11"}
+    provenance: {kind: documented, source: "docs/decision-log.md \"What is stored\"; docs/profile-format.md \"Values from the request\"; maintainer answer 2026-11-07, Q50"}
   - name: profile-mcp.visible
     default: "false"
     security_relevant: true

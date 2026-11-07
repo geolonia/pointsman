@@ -324,9 +324,11 @@
   converted (a finite number, a text of at most 64 characters, true or
   false; anything else is missing as `wrong_kind`). Facts are stored with
   the decision, so such a value is kept without `log.store_state`.
-  Changed: a §1.6 row for value facts; the §1.8 decision row; a narrower
-  `P-STATE-NOT-STORED`; a wider `P-FACTS-NEVER-GUESSED`;
-  `R-DATA-MINIMISATION`. One question (Q50), answered 2026-11-07
+  Changed: the `engine-facts` component family and its §1.4
+  reachability; a §1.6 row for value facts; a §1.7 input row; the §1.8
+  decision row; a narrower `P-STATE-NOT-STORED`; a wider
+  `P-FACTS-NEVER-GUESSED`; `R-DATA-MINIMISATION`; one misuse pattern; the
+  glossary's "Fact". One question (Q50), answered 2026-11-07
   (§1.18). The validator was not run for this amendment; the next
   re-binding checks it.
   Each re-binding also updated the code citations that had moved; the rest
@@ -642,7 +644,7 @@ Roles, as this model uses them *(maintainer, 2026-10)*:
 | Family | Representative entry point | Touches outside the process? | In model? | Provenance |
 | --- | --- | --- | --- | --- |
 | `engine-api` — REST API, auth, input mapping, model adapters, policy, decision log (`src/app.ts`, `decide.ts`, `auth.ts`, `auth-kv.ts`, `input.ts`, `policy.ts`, `feedback.ts`, `log.ts`, `log-d1.ts`, `log-facts.ts`, `models/*`, `profiles/store.ts`, `profiles/store-kv.ts`, `index.ts`, and `internal.ts` with the `InternalEngine` entrypoint in `index.ts`); in `index.ts` also the host for connectors inside the engine Worker (`connectorsFor`, the `/connectors/<id>/…` dispatch, the in-process engine and the queue consumer) | `POST /v1/decide/{profile}`; `InternalEngine.decide` (internal call, no token; since pointsman#221 (`v0.16.0`) also `get`, `resolve` and `close`); `POST /v1/reviews/{id}/close` (since pointsman#221, `v0.16.0`); `/connectors/<id>/…` | network (model backend), D1, KV read | in | *(documented, README "API"; docs/adapters.md "Internal calls"; docs/connectors.md "Where it runs")* |
-| `engine-facts` — spatial facts, GitHub pull-request facts (`github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release` and `github_bump`) and the CodeRabbit facts (`coderabbit`, `coderabbit_budget`, `coderabbit_queue`, `coderabbit_spend`), answered by the fact modules a deployment chooses (`src/facts.ts`, `src/modules/registry.ts`; the packages `packages/module-api`, `packages/facts-gsi`, `packages/facts-valhalla`, the facts role of `packages/github`, which was `packages/facts-github` before `v0.6.0`, and `packages/coderabbit`); a lookup may read the asking client's own decision log (`src/log-facts.ts`) | `lookupFacts` for a profile with `facts` | network (GSI tile hosts, Valhalla, `api.github.com` with REST and GraphQL reads, `registry.npmjs.org` for `github_bump`), Workers cache, D1 read | in | *(documented, docs/profile-format.md "Facts", "GitHub pull requests", "CodeRabbit reviews", "GitHub workflows"; docs/modules.md "Facts from the decision log")* |
+| `engine-facts` — spatial facts, value facts (`field_number`, `field_text`, `field_flag`, `packages/facts-field`, since pointsman#287, not yet released), GitHub pull-request facts (`github_pr`, `github_paths`, `github_checks`, `github_property`, `github_workflows`, `github_copilot`, `github_app_approval`, `github_release` and `github_bump`) and the CodeRabbit facts (`coderabbit`, `coderabbit_budget`, `coderabbit_queue`, `coderabbit_spend`), answered by the fact modules a deployment chooses (`src/facts.ts`, `src/modules/registry.ts`; the packages `packages/module-api`, `packages/facts-gsi`, `packages/facts-valhalla`, the facts role of `packages/github`, which was `packages/facts-github` before `v0.6.0`, and `packages/coderabbit`); a lookup may read the asking client's own decision log (`src/log-facts.ts`) | `lookupFacts` for a profile with `facts` | network (GSI tile hosts, Valhalla, `api.github.com` with REST and GraphQL reads, `registry.npmjs.org` for `github_bump`), Workers cache, D1 read | in | *(documented, docs/profile-format.md "Facts", "GitHub pull requests", "CodeRabbit reviews", "GitHub workflows"; docs/modules.md "Facts from the decision log")* |
 | `engine-callbacks` — review callbacks and the cron retry (`src/callbacks.ts`, `deliver`/`retryDueCallbacks` in `decide.ts`) | `POST /v1/reviews/{id}/resolve`, cron `*/5 * * * *` | network (client-supplied `callback_url`), D1 | in | *(documented, docs/reviews.md "Callbacks")* |
 | `engine-mcp` — MCP endpoint and GitHub OAuth (`src/mcp.ts` and `src/oauth.ts`) | `/mcp`, `/authorize`, `/callback`, `/oauth/*` | network (github.com, api.github.com, client metadata URLs), KV `OAUTH_KV` | in | *(documented, docs/mcp.md)* |
 | `bridge` — FIWARE bridge, the module `@pointsman/fiware` (`packages/fiware/src/*`), in its own Worker (`bridge/src/index.ts`) or inside the engine Worker (placement `engine`, served at `/connectors/fiware/…`, with the engine's queue consumer) | `POST /notify`, `POST /reviews` (or `/connectors/fiware/notify` and `/connectors/fiware/reviews`), queue consumer | network (broker, Pointsman, or the engine in process), Cloudflare Queue | in | *(documented, bridge/README.md "Why a bridge"; docs/connectors.md "Where it runs")* |
@@ -836,14 +838,16 @@ Reachability preconditions per family:
   finding that needs an invalid or missing token to succeed is a finding
   against `P-AUTH-REQUIRED` (§1.11).
 - `engine-facts`: reachable from the geometry at a profile's `at` path in the
-  client's state, from the pull request (`repo`, `number`, `head`) at a
+  client's state, since pointsman#287 (not yet released) from the value at a
+  value fact's `at` path, from the pull request (`repo`, `number`, `head`) at a
   GitHub fact's `at` path, or from a tile, routing, GitHub API or npm
   registry response; for the GitHub and CodeRabbit facts that includes the
   workflow files, patches, comments, reviews and statuses those responses
   carry, the head statuses of the repository's newest other pull requests,
   and the asking client's own earlier decisions *(documented,
-  docs/profile-format.md "Facts" table, `at`; "GitHub pull requests";
-  "CodeRabbit reviews"; docs/modules.md "Facts from the decision log")*.
+  docs/profile-format.md "Facts" table, `at`; "Values from the request";
+  "GitHub pull requests"; "CodeRabbit reviews"; docs/modules.md "Facts from
+  the decision log")*.
 - `engine-callbacks`: reachable from `callback_url` and from the receiver's
   response *(documented, docs/reviews.md "Callbacks")*.
 - `engine-mcp`: reachable from an MCP tool call with a valid API token or
@@ -1109,7 +1113,7 @@ configuration is in-model even when the configuration is not the default.
 | `global_fetch_strictly_public` | `compatibility_flags` | present in the engine, template, bridge and connector wrangler configs | outbound fetches reach only public addresses | required; a deployment without it is unsupported and voids `P-OUTBOUND-PUBLIC-ONLY` | *(maintainer, 2026-10)* |
 | `log.store_state: true` | per profile | `false` | stores the full state in D1 instead of only its hash | supported; voids `P-STATE-NOT-STORED` for that profile | *(documented, docs/decision-log.md "What is stored")* |
 | `route: true` on a `detour` fact | per profile | `false` | the fact keeps the way around, whose ends are the section's place in the state; stored with the decision, returned by the API and MCP, and written by the bridge into the Decision entity | supported; narrows `P-STATE-NOT-STORED` for that profile (the place, not the rest of the state) | *(documented, docs/decision-log.md "What is stored")* |
-| A value fact (`field_number`, `field_text`, `field_flag`), since pointsman#287 (not yet released) | per profile | none | the fact keeps the request value at its path, as sent (a finite number, a text of at most 64 characters, or true or false); stored with the decision, returned by the API and MCP, and written by the bridge into the Decision entity | supported; narrows `P-STATE-NOT-STORED` for that profile (that value, not the rest of the state) | *(documented, docs/decision-log.md "What is stored"; docs/profile-format.md "Values from the request"; maintainer, 2026-11, Q50)* |
+| A value fact (`field_number`, `field_text`, `field_flag`), since pointsman#287 (not yet released) | per profile | none | the fact keeps the request value at its path, as sent (a finite number, a text of at most 64 characters (UTF-16 code units), or true or false); stored with the decision, returned by the API and MCP, and written by the bridge into the Decision entity | supported; narrows `P-STATE-NOT-STORED` for that profile (that value, not the rest of the state) | *(documented, docs/decision-log.md "What is stored"; docs/profile-format.md "Values from the request"; maintainer, 2026-11, Q50)* |
 | `mcp.visible: true` | per profile | `false` | the profile is listed and callable through MCP, by every logged-in person and by tokens in scope | supported | *(documented, docs/mcp.md "Only profiles that set `mcp.visible: true`")* |
 | Test tokens (`tokens.mjs create --test`) | token record `test: true` | not set | decisions are made but not logged, marked `test: true`; the token may only decide and list profiles over REST | supported | *(documented, README "API tokens")* |
 | Bridge `BRIDGE_QUEUE` | bridge binding | unset | with a queue, notifications are answered 202 and handled later with retries; without it, in the broker's request | both supported | *(documented, bridge/README.md "Reliable delivery (queue)")* |
@@ -1164,6 +1168,7 @@ they are security-relevant.
 | `POST /v1/decide/{profile}` | the server-reported `model` name (HTTP model server) | no — the configured name is stored, not the server's field | data | none | *(maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | the `model` name reported by Workers AI | no — trusted collaborator | data | none | *(maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | geometry at each fact's `at` path | yes (state author, within the client's payload) | data, size | none — `P-FACT-LOOKUP-BOUNDED`; a bad geometry is `no_location` | *(documented, docs/profile-format.md "Facts" table, `at`)* |
+| `POST /v1/decide/{profile}` | the value at a value fact's `at` path (`field_number`, `field_text`, `field_flag`), since pointsman#287 (not yet released) | yes (state author, within the client's payload) | data, size | none — the kind is checked and the value never converted; a text has at most 64 characters (UTF-16 code units), else `wrong_kind`, and no value is `no_value` (`P-FACTS-NEVER-GUESSED`); the value is kept with the decision (`P-STATE-NOT-STORED` narrowed, `R-DATA-MINIMISATION`) | *(documented, docs/profile-format.md "Values from the request")* |
 | `POST /v1/decide/{profile}` | the pull request at a GitHub fact's `at` path (`repo`, `number`, `head`) | yes (token holder, and the state author when the client copies it from an event) | resource-name, data | none — `repo` must be `owner/name` with a name other than `.` or `..`, `number` a whole number from 1 and `head` a full 40-character commit id, else `no_pr` and nothing is sent to GitHub; the facts are for that head only (`P-GITHUB-FACTS-FOR-HEAD`); which repositories can be named is `D-GITHUB-CREDENTIAL-REACH` | *(documented, docs/profile-format.md "Missing GitHub facts", `no_pr`)* |
 | `POST /v1/decide/{profile}` | a GitHub fact's settings in the profile (`paths`, `except`, `property`) | no — authored by the integrator, validated before publication | x-policy-rules, size | 1 to 100 globs in `paths`, at most 100 in `except`; a glob that misses files is the profile author's error (§1.14) | *(documented, docs/profile-format.md "GitHub pull requests", fact settings table)* |
 | `GET /v1/decisions/{id}` | `{id}` | yes (token holder) | resource-name | none — must be a UUID and in scope, else 404 | *(documented, docs/decision-log.md "Other decisions answer 404, as if they did not exist")* |
@@ -1425,7 +1430,7 @@ docs/profile-format.md "A missing fact is never guessed")*.
 
 | Output channel | Component | Taint | Downstream must not assume | Provenance |
 | --- | --- | --- | --- | --- |
-| the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`, `requires`, `replaces`, `review`, `versions`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider; since pointsman#287 (not yet released) a value fact's `value` is the request value as sent: a finite number, a string of at most 64 characters, or a boolean; `versions` is the engine version and the chosen modules that answer the profile's fact types, with their versions (recorded also when a fact is missing or its module is switched off); `review` is `{status: pending}` on a new decision, and since pointsman#236 (`v0.18.0`) a repeated request with the same `Idempotency-Key` gets it as it is now (`resolved` with `final_action` and `resolved_at`, or `superseded`) | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue, that a decision whose `review` is not `resolved` may be acted on (`R-PEOPLE-CHECK-PENDING`) | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens; docs/decision-log.md "Repeated requests"; docs/decision-log.md "What is stored", `versions`; docs/modules.md "Versions in the decision log")* |
+| the decision (`answers`, `action`, `profile`, `profile_version`, `model`, `rule`, `facts`, `decision_id`, `ref`, `created_at`, `test`, `requires`, `replaces`, `review`, `versions`) | engine-api | constrained: `answers[*].value` is a boolean, a listed option or a level index; `action` is one of the profile's rule actions or its default; `ref` is the client's string unchanged; `facts[*].source` is a ≤ 200-character string from the provider; since pointsman#287 (not yet released) a value fact's `value` is the request value as sent: a finite number, a string of at most 64 characters, or a boolean, written by the state author and not checked beyond its kind and length (not safe to show unescaped, not checked against anything); `versions` is the engine version and the chosen modules that answer the profile's fact types, with their versions (recorded also when a fact is missing or its module is switched off); `review` is `{status: pending}` on a new decision, and since pointsman#236 (`v0.18.0`) a repeated request with the same `Idempotency-Key` gets it as it is now (`resolved` with `final_action` and `resolved_at`, or `superseded`) | that the action is right (`D-MODEL-ACCURACY`), that `p` is a calibrated accuracy, that a `test: true` decision was logged or will reach the review queue, that a decision whose `review` is not `resolved` may be acted on (`R-PEOPLE-CHECK-PENDING`) | *(documented, docs/profile-format.md "Engine answer format"; README "API tokens" on test tokens; docs/decision-log.md "Repeated requests"; docs/decision-log.md "What is stored", `versions`; docs/modules.md "Versions in the decision log")* |
 | the decision record (`GET /v1/decisions/{id}`): the decision plus `client`, `state_hash`, optional `state`, `review`, `callback`, `feedback[]`, `requires`, `idempotency_key`, `versions` (absent for decisions made before modules) | engine-api | constrained as above; `callback_url` and `request_digest` are never returned; a required decision of a profile outside the reader's scope is shown as `{decision: null}`; `state` only with `log.store_state`; `feedback[*].by` and `review.resolved_by` are client-asserted strings; since pointsman#222 (`v0.16.0`), for an answer the GitHub connector took, `resolved_by` is `github:<login> (<account id>)` of the person it checked (`D-ANSWERER-RECORDED`) | that `by`/`resolved_by` names a verified person (`D-REVIEWER-IDENTITY`), that `state_hash` hides the input from someone who can guess it (`D-STATE-HASH-NOT-PSEUDONYM`), that the record is tamper-evident (`D-LOG-TAMPER-EVIDENCE`) | *(documented, docs/decision-log.md "What is stored", "`callback_url` ... not returned by the API"; docs/modules.md "Versions in the decision log": "Decisions made before modules have no `versions`")* |
 | the review list (`GET /v1/reviews`) | engine-api | constrained; `callback_url` and `callback` are stripped | — | *(documented, docs/reviews.md "Review queue")* |
 | the answer of a close (`POST /v1/reviews/{id}/close`, since pointsman#221, `v0.16.0`) | engine-api | constrained: the decision id and `review.status` `superseded`, or a fixed error; no callback is sent; `GET /v1/stats/{profile}` counts it under `superseded` | that anybody looked at a closed review, or that it was resolved | *(documented, docs/reviews.md "Closing a review")* |
@@ -1708,7 +1713,9 @@ what voids it.
   `no_log`) or a read is full; since pointsman#287 (not yet released) a
   value fact is missing as `no_value` when the request has no value at its
   path, and as `wrong_kind` for a value of another kind or a text over 64
-  characters, never converted (`packages/facts-field/src/provider.ts:19`);
+  characters, never converted (`no_value` at
+  `packages/module-api/src/capabilities.ts:197`, `wrong_kind` at
+  `packages/facts-field/src/provider.ts:19`, `:22` and `:25`);
   the model never sees the facts. Symptom: `bad-data-accepted`, `wrong-output`. Tier:
   security-critical (a guessed flood depth changes whether a report goes to
   a person; a guessed "docs only" skips a review; a guessed "dev patch only"
@@ -1801,7 +1808,7 @@ what voids it.
   true` on a `detour` fact, which keeps the section's place in the stored
   facts (`packages/facts-valhalla/src/router.ts`; §1.6 row), and, since
   pointsman#287 (not yet released), a value fact, which keeps the request
-  value it read (`packages/facts-field/src/provider.ts:20`; §1.6 row; Q50).
+  value it read (`packages/facts-field/src/provider.ts:20`, `:23` and `:26`; §1.6 row; Q50).
 - **`P-SECRETS-NOT-LOGGED`** — API keys for the model server and the routing
   server, the callback secret, the GitHub client secret, and the GitHub fact
   token, GitHub App key and installation tokens never appear in logs, error
@@ -2374,6 +2381,9 @@ One line each in this draft; expand before publication.
   profile can be made at the same moment (`D-LOG-FACTS-NOT-ATOMIC`).
 - Showing `github_workflows.detail`, the CodeRabbit facts' `author` or any
   fact value as Markdown or HTML without escaping (§1.8).
+- Pointing a value fact at personal data or free text, which is then kept
+  with every decision and written into the Decision entity
+  (`R-DATA-MINIMISATION`, Q50).
 - Using the connector with AI questions on a public repository while
   counting on the author not seeing how the model answered
   (`R-CONNECTOR-PUBLIC-DECISIONS`).
@@ -2619,7 +2629,7 @@ README, `docs/`, `bridge/README.md`, the Actions' READMEs, `openapi.yaml`,
 | State | The data a client sends to be decided about; the state author is whoever wrote it. |
 | Profile | One use of Pointsman: its questions, facts and rules, versioned. Trusted input written by the integrator. |
 | Policy | The profile's rules; the first rule whose condition is true gives the action, else the default. |
-| Fact | A measured value about a place (flood zone, nearest shelter, detour) or about a pull request (changed files, required checks), that rules can use; never guessed, never shown to the model. |
+| Fact | A measured value about a place (flood zone, nearest shelter, detour) or about a pull request (changed files, required checks), or a value copied from the request (value facts), that rules can use; never guessed, never shown to the model. |
 | Test token | A token whose decisions are made but not logged (`test: true`); for checking profiles. |
 | Callback | The signed POST the engine sends to a client's `callback_url` when a review is resolved. |
 | Bridge | The Worker that connects a FIWARE context broker to Pointsman. |

@@ -184,9 +184,9 @@
     },
     {
       "component": "engine-facts",
-      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including the workflow files, patches, comments, reviews and statuses those responses carry, the head statuses of other pull requests, and the asking client's own earlier decisions.",
+      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including the workflow files, patches, comments, reviews and statuses those responses carry, the head statuses of other pull requests, and the asking client's own earlier decisions.",
       "provenance": "documented",
-      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
       "source": "threat-model.md §1.4; docs/profile-format.md \"Facts\", \"GitHub pull requests\", \"CodeRabbit reviews\"; docs/modules.md \"Facts from the decision log\""
     },
     {
@@ -392,6 +392,15 @@
       "caller_must_enforce": "none — P-FACT-LOOKUP-BOUNDED",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Facts\" table, at"
+    },
+    {
+      "entry_point": "POST /v1/decide/{profile}",
+      "parameter": "fact-field-value",
+      "attacker_controllable": "yes",
+      "component": "engine-api",
+      "caller_must_enforce": "none — P-FACTS-NEVER-GUESSED",
+      "provenance": "documented",
+      "source": "docs/profile-format.md \"Values from the request\""
     },
     {
       "entry_point": "POST /v1/decide/{profile}",

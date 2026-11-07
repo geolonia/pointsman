@@ -138,7 +138,8 @@ With `"decisionEntity": true` in a route, the bridge also creates one
 `Decision` entity per decision, following the Decision model on
 [datamodels.jp](https://datamodels.jp/models/decision/Decision/): the answers with their probabilities,
 the profile version, the rule, the model, the time, how a person takes part,
-and, for profiles with spatial facts, every fact the profile asked for, as
+and, for profiles with facts, every fact the profile asked for (value facts
+keep the request value they read), as
 looked up for the decision (`facts`,
 see [docs/profile-format.md](../docs/profile-format.md#facts)). Decisions can then be queried across entities, for example all that wait
 for a person (`type=Decision&q=reviewStatus=="pending"`).
