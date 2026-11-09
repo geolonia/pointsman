@@ -8,7 +8,7 @@ import type { FactModule } from '@pointsman/module-api';
 export const definition: FactModule = {
   name: '@pointsman/facts-field',
   // As in package.json (a test checks); released with the engine for now.
-  version: '0.20.0',
+  version: '0.21.0',
   roles: ['facts'],
   capabilities: [{ type: 'field_number' }, { type: 'field_text' }, { type: 'field_flag' }],
   reasons: {

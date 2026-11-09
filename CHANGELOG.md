@@ -12,6 +12,28 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.21.0 (2026-11-09)
+
+Profiles can let the model look at photos (#289).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.21.0`, and change modules pinned with a version in `modules` to `@0.21.0` (for example `@pointsman/github@0.20.0` → `@pointsman/github@0.21.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
+- `POST /v1/decide/{profile}` now refuses a body over 14 MiB with `413`, also one sent without `Content-Length`. Smaller bodies are not affected.
+- Photos go to the model service as sent. On Workers AI, a call with photos goes through the AI Gateway without its log, so the gateway keeps no photo. A model server (`MODEL_SERVER_URL`) gets the photos in the same `images` field: it must support them, and what it keeps is its own.
+
+What changed:
+
+- **Profiles**: `images: { path, max }` sends up to `max` (1 to 4) photos from the request to the model, beside the state: base64 data URLs of PNG, JPEG or WebP images. They are checked before any model call (the first bytes must match the type, at most 4 MiB each and 8 MiB together, the whole model request at most 13 MiB); anything else is `400 invalid_request`, naming the image by its place. A missing path, `null` or an empty list means no photos. Clef takes at most 16 megapixels per image; the engine does not read sizes in pixels, so a larger image fails at the model service (`502 model_error`).
+- **Validator**: a profile with images needs `input` and questions. No `input` path and no fact's `at` may read the images (array indices are compared as numbers), and no `input` name may be the first key of the images path (over MCP the state is mapped by name).
+- **Photos are never stored**: not in the decision log, also not with `log.store_state`. The state hash of a request with photos covers a SHA-256 of each photo, so the log shows when two requests had the same photos.
+- **Errors**: a Workers AI error for a call with photos keeps no message from the model service (it could repeat the photos); other Workers AI error messages are cut to 200 characters in the logs.
+- **explain-profile** says that the AI also sees up to N photos and that they are never stored. For a rules-only profile it no longer says "No AI is asked" twice.
+- **Docs**: profile-format "Images" (English and Japanese), models.md, decision-log.md and the HTTP API reference (`413`).
+- **Threat model**: amended for images (#289), with one question answered on 2026-11-07. It is still bound to `v0.18.0`; it is not yet bound to 0.19.0, 0.20.0 or 0.21.0.
+
+Tested live before the merge: Clef-flash sees the photos, and the AI Gateway logs no call with photos.
+
 ## 0.20.0 (2026-11-07)
 
 Rules can read values from the request: a new fact module for numbers, texts and yes-or-no values (#287).
