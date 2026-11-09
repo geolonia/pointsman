@@ -121,7 +121,7 @@ images: { path: $.photos.value, max: 3 }
   whose first bytes are that format, at most 4 MiB each and 8 MiB
   together, at most `max` (1 to 4, the model's limit). Anything else is
   refused with `400 invalid_request`, naming the image by its place. A
-  missing path or an empty list means no images.
+  missing path, `null` or an empty list means no images.
 - The images go to the model as images (Clef's `images`), not in the
   state: a profile with images needs `input`, no `input` path and no
   fact's `at` may read the images (facts are stored with the decision), and no `input` name may be the first key of the images path

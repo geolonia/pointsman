@@ -6,7 +6,7 @@
 // Checked here, before any model call: at most `images.max` (up to 4), each a
 // base64 data URL of a PNG, JPEG or WebP whose first bytes are that format,
 // at most 4 MiB decoded, at most 8 MiB together (Clef's limits). A missing
-// path or an empty list is no images; anything else is refused.
+// path, null or an empty list is no images; anything else is refused.
 
 import { resolvePath } from './input';
 import type { Profile } from './types';

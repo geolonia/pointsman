@@ -296,7 +296,10 @@ export async function makeDecision(
       ...decision,
       client: client.client,
       // With images: the hash covers them too (a hash each), never the images themselves.
-      state_hash: await hashState(images.length > 0 ? { state, image_hashes: await Promise.all(images.map((i) => hashState(i))) } : state),
+      // With images, a tagged array: the state of a profile with images is
+      // always an object (it needs input), so no state without images can
+      // hash the same as one with them.
+      state_hash: await hashState(images.length > 0 ? ['images', state, await Promise.all(images.map((i) => hashState(i)))] : state),
       ...(profile.log?.store_state && { state }),
       ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
       ...(idempotencyKey !== undefined && digest !== undefined && { idempotency_key: idempotencyKey, request_digest: digest }),
