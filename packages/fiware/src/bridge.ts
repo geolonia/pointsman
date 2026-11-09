@@ -123,6 +123,10 @@ export interface BridgeMessage {
   path: '/notify' | '/reviews';
   /** The named route (`?route=`), for `/notify`. */
   route?: string;
+  /**
+   * On the queue, only the entity's id and type (the consumer reads the rest
+   * from the broker); handled without a queue, the notified entity.
+   */
   entity: Entity;
 }
 
@@ -332,29 +336,29 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   // ?route=<name> selects a named route; without it, the type's unnamed route.
   const route = url.searchParams.get('route') ?? undefined;
   const messages = (data as Entity[]).filter((entity) => forBridge(path, route, entity, config))
-    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity: chainedRef(path, route, entity, config) }));
+    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity: config.queue ? { id: entity.id, type: entity.type } : entity }));
 
-  let direct = messages;
   if (config.queue) {
     // Queued: answered at once, so the broker never sees a failure of
     // Pointsman or the bridge, and never pauses the subscription (#88).
-    // An entity too large for one queue message is handled right away.
+    // A message holds only the entity's id and type: the consumer reads the
+    // entity as it is now anyway, so no copy of its attributes waits in the
+    // queue (or the dead-letter queue) after the entity changed or was
+    // deleted, and every message fits the queue's size limit.
     const sized = messages.map((body) => ({ body, bytes: messageBytes(body) }));
-    const queued = sized.filter((m) => m.bytes <= QUEUE_MESSAGE_BYTES);
-    direct = sized.filter((m) => m.bytes > QUEUE_MESSAGE_BYTES).map((m) => m.body);
     try {
-      for (const batch of queueBatches(queued)) await config.queue.sendBatch(batch.map((m) => ({ body: m.body })));
+      for (const batch of queueBatches(sized)) await config.queue.sendBatch(batch.map((m) => ({ body: m.body })));
     } catch (err) {
       // Not queued: the broker may send it again.
       console.error(`bridge queue: ${err instanceof Error ? err.message : String(err)}`);
       return Response.json({ error: 'could not queue the notification' }, { status: 502 });
     }
-    if (direct.length === 0) return Response.json({ queued: queued.length }, { status: 202 });
+    return Response.json({ queued: sized.length }, { status: 202 });
   }
 
   const results: EntityResult[] = [];
   // One entity's failure must not stop the others in the notification.
-  for (const message of direct) results.push(await handleMessage(message, config));
+  for (const message of messages) results.push(await handleMessage(message, config));
   // A failure that may pass on a second try: answer 502, so a broker that
   // retries notifications sends it again. Entities that succeeded are skipped
   // on the retry (input hash). Failures that will not pass (Pointsman refused
@@ -364,12 +368,11 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
 }
 
 /**
- * Cloudflare Queues' limits: 100 messages and 256 KB per sendBatch, 128 KB
- * per message. Kept a little lower, for the queue's own envelope.
+ * Cloudflare Queues' limits: 100 messages and 256 KB per sendBatch. Kept a
+ * little lower, for the queue's own envelope.
  */
 const QUEUE_BATCH = 100;
 const QUEUE_BATCH_BYTES = 250_000;
-const QUEUE_MESSAGE_BYTES = 120_000;
 
 function messageBytes(message: BridgeMessage): number {
   return new TextEncoder().encode(JSON.stringify(message)).length;
@@ -391,17 +394,6 @@ export function queueBatches<T extends { bytes: number }>(messages: T[]): T[][] 
   }
   if (batch.length > 0) batches.push(batch);
   return batches;
-}
-
-/**
- * For a route with requires, only the entity's id and type: the queue
- * consumer reads the entity as it is now anyway, and a large entity then
- * still fits in a queue message (these routes run from the queue only).
- */
-function chainedRef(path: BridgeMessage['path'], routeName: string | undefined, entity: Entity, config: BridgeConfig): Entity {
-  if (path !== '/notify' || !config.queue) return entity;
-  const route = config.routes.find((r) => r.type === entity.type && r.name === routeName);
-  return route?.requires ? { id: entity.id, type: entity.type } : entity;
 }
 
 /** Whether the bridge handles this entity of a notification on this path. */
