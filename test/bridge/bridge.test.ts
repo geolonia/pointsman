@@ -1368,6 +1368,19 @@ describe('reliable delivery (queue)', () => {
     expect(queue.sent.at(-1)).toEqual([{ path: '/reviews', entity: { id: 'urn:ngsi-ld:Decision:d-1', type: 'Decision' } }]);
   });
 
+  it('keeps deletedAt of a deletion on the queue, so the consumer skips it without reading the broker', async () => {
+    const t = setup();
+    const queue = fakeQueue();
+    t.config.queue = queue;
+    await notify(t.config, [entity({ deletedAt: '2026-11-09T12:00:00Z' })]);
+    const [queued] = queue.sent.flat();
+    expect(queued!.entity).toEqual({ id: 'urn:ngsi-ld:RoadRestriction:1', type: 'RoadRestriction', deletedAt: '2026-11-09T12:00:00Z' });
+    const m = message(queued);
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.acked).toBe(true);
+    expect(t.calls).toHaveLength(0);
+  });
+
   it('answers 502 when the queue does not take the notification, so the broker sends it again', async () => {
     const t = setup();
     t.config.queue = fakeQueue(true);

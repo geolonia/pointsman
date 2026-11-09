@@ -493,8 +493,8 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   entity on the queue, and answer `202` at once. The broker never sees a
   failure of Pointsman or the bridge, so it never pauses the subscription.
   If the queue does not take the notification, the answer is `502`, and the
-  broker may send it again. A message holds only the entity's id and type,
-  never its attributes: no copy of what a person wrote waits in the queue
+  broker may send it again. A message holds only the entity's id and type
+  (and `deletedAt` for a deletion), never its attributes: no copy of what a person wrote waits in the queue
   after the entity changed or was deleted, and a large entity still fits.
 - **Processing:** the Worker's queue consumer runs the bridge for each
   message. It first reads the entity as it is now. So a message delivered

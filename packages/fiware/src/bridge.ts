@@ -124,8 +124,9 @@ export interface BridgeMessage {
   /** The named route (`?route=`), for `/notify`. */
   route?: string;
   /**
-   * On the queue, only the entity's id and type (the consumer reads the rest
-   * from the broker); handled without a queue, the notified entity.
+   * On the queue, only the entity's id and type, plus `deletedAt` for a
+   * deletion (see queuedRef; the consumer reads the rest from the broker);
+   * handled without a queue, the notified entity.
    */
   entity: Entity;
 }
@@ -336,7 +337,7 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   // ?route=<name> selects a named route; without it, the type's unnamed route.
   const route = url.searchParams.get('route') ?? undefined;
   const messages = (data as Entity[]).filter((entity) => forBridge(path, route, entity, config))
-    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity: config.queue ? { id: entity.id, type: entity.type } : entity }));
+    .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity: config.queue ? queuedRef(entity) : entity }));
 
   if (config.queue) {
     // Queued: answered at once, so the broker never sees a failure of
@@ -394,6 +395,15 @@ export function queueBatches<T extends { bytes: number }>(messages: T[]): T[][] 
   }
   if (batch.length > 0) batches.push(batch);
   return batches;
+}
+
+/**
+ * What a queued message keeps of an entity: its id and type, and `deletedAt`
+ * of a deletion notification (a time, so the consumer skips it without a
+ * broker read). Never an attribute a person wrote.
+ */
+function queuedRef(entity: Entity): Entity {
+  return { id: entity.id, type: entity.type, ...('deletedAt' in entity && { deletedAt: entity.deletedAt }) };
 }
 
 /** Whether the bridge handles this entity of a notification on this path. */
