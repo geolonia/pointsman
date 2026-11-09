@@ -107,10 +107,20 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
     // Indices compared as numbers ($.photos[00] reads the same as $.photos[0]).
     const norm = (p) => p.replace(/\[([0-9]+)\]/g, (_, n) => `[${Number(n)}]`);
     const img = norm(profile.images.path);
+    const overlaps = (path) => {
+      const p = norm(path);
+      return p === img || p.startsWith(`${img}.`) || p.startsWith(`${img}[`) || img.startsWith(`${p}.`) || img.startsWith(`${p}[`) || p === '$';
+    };
     (profile.input ?? []).forEach((m, i) => {
-      const p = norm(m.path);
-      if (p === img || p.startsWith(`${img}.`) || p.startsWith(`${img}[`) || img.startsWith(`${p}.`) || img.startsWith(`${p}[`) || p === '$') {
+      if (overlaps(m.path)) {
         errors.push(`/input/${i}/path: "${m.path}" would put the images (${profile.images.path}) into the state; images go to the model only as images`);
+      }
+    });
+    // Facts are stored with the decision (also without log.store_state): no
+    // fact may read the images either (a field_text fact would keep a small one).
+    (profile.facts ?? []).forEach((f, i) => {
+      if (typeof f.at === 'string' && overlaps(f.at)) {
+        errors.push(`/facts/${i}/at: "${f.at}" would store the images (${profile.images.path}) with the decision; images go to the model only as images`);
       }
     });
     // Over MCP the state is sent already mapped (fields by input name), and the

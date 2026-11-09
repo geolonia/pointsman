@@ -244,6 +244,11 @@ test('field facts: a rules-only profile with facts is valid, and comparisons are
       action: high`)), /cannot compare number with string/);
   refused(write('flag.yaml', fieldProfile(`    - when: "facts.checked.value >= 1"
       action: high`)), /cannot compare boolean with number/);
+  // Facts are stored with the decision: no fact may read the images.
+  const withImages = (at) => `id: concern\nversion: 1\ntitle: { en: Test, ja: テスト }\ndescription: { en: Test profile, ja: テスト用 }\nmodel: clef-flash\ninput:\n  - { name: description, path: $.description.value }\nimages: { path: $.photos.value, max: 3 }\nfacts:\n  - { name: photo, type: field_text, at: '${at}' }\nquestions:\n  - { name: danger_now, type: noul, instructions: Could people be hurt now? }\npolicy:\n  default: low\n`;
+  refused(write('img.yaml', withImages('$.photos.value[0]')), /would store the images/);
+  refused(write('img2.yaml', withImages('$.photos')), /would store the images/);
+  assert.deepEqual(write('img3.yaml', withImages('$.note.value')), []);
   // Without facts or requires, a profile still needs a question.
   const noFacts = `id: nothing\nversion: 1\ntitle: { en: Test, ja: テスト }\ndescription: { en: Test profile, ja: テスト用 }\nmodel: none\nquestions: []\npolicy:\n  default: review\n`;
   refused(write('none.yaml', noFacts), /questions/);
