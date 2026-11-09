@@ -129,8 +129,11 @@ images: { path: $.photos.value, max: 3 }
   at the same path). A profile without questions makes no model call and
   cannot have images.
 - The whole model request (state, questions and images) may be at most 13
-  MiB, and each image at most 16 megapixels (Clef's limits): a larger one
-  is refused with `400`, a request body over 14 MiB with `413`.
+  MiB (Clef's limit): a larger one is refused with `400`, a request body
+  over 14 MiB with `413`. Clef also takes at most 16 megapixels per image;
+  the engine does not read image sizes in pixels, so a larger image fails
+  at the model service (`502 model_error`). Send smaller images (see
+  below).
 - A model server (`MODEL_SERVER_URL`) gets the images in the same `images`
   field: it must support them, and what it keeps is its own
   ([models.md](models.md)).

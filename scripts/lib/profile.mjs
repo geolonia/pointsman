@@ -104,10 +104,13 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
   // Images reach the model only as images: no input path may read them (or a
   // part of them, or everything that holds them) into the text state.
   if (profile.images) {
-    const img = profile.images.path;
+    // Indices compared as numbers ($.photos[00] reads the same as $.photos[0]).
+    const norm = (p) => p.replace(/\[([0-9]+)\]/g, (_, n) => `[${Number(n)}]`);
+    const img = norm(profile.images.path);
     (profile.input ?? []).forEach((m, i) => {
-      if (m.path === img || m.path.startsWith(`${img}.`) || m.path.startsWith(`${img}[`) || img.startsWith(`${m.path}.`) || img.startsWith(`${m.path}[`) || m.path === '$') {
-        errors.push(`/input/${i}/path: "${m.path}" would put the images (${img}) into the state; images go to the model only as images`);
+      const p = norm(m.path);
+      if (p === img || p.startsWith(`${img}.`) || p.startsWith(`${img}[`) || img.startsWith(`${p}.`) || img.startsWith(`${p}[`) || p === '$') {
+        errors.push(`/input/${i}/path: "${m.path}" would put the images (${profile.images.path}) into the state; images go to the model only as images`);
       }
     });
     // Over MCP the state is sent already mapped (fields by input name), and the

@@ -126,9 +126,17 @@ describe('more about images', () => {
     expect(bodies[0]).toMatchObject({ images: [PNG] });
   });
 
-  it('a Workers AI error is cut short in the log, so it cannot carry images', async () => {
-    const ai: AiRunner = { run: async () => { throw new Error(`invalid input: ${'A'.repeat(5000)}`); } };
+  it('a Workers AI error keeps no message when the request had images, so it cannot carry them', async () => {
+    const ai: AiRunner = { run: async () => { throw new Error(`${PNG} is invalid`); } };
     const err = await new WorkersAiAdapter(ai).decide(toModelRequest(profile, {}, 'clef-flash', [PNG])).catch((e: Error) => e);
+    expect((err as Error).message).not.toContain('base64');
+    expect((err as Error).message).toMatch(/not kept/);
+  });
+
+  it('a Workers AI error without images is cut short', async () => {
+    const ai: AiRunner = { run: async () => { throw new Error(`invalid input: ${'A'.repeat(5000)}`); } };
+    const err = await new WorkersAiAdapter(ai).decide(toModelRequest(profile, {}, 'clef-flash')).catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/invalid input/);
     expect((err as Error).message.length).toBeLessThan(260);
   });
 
@@ -162,5 +170,24 @@ describe('limits of the whole request', () => {
   it('refuses a body over 14 MiB by its length, before reading it', async () => {
     const r = await post('{}', { 'content-length': String(15 * 1024 * 1024) });
     expect(r.status).toBe(413);
+  });
+
+  it('refuses a body over 14 MiB sent in chunks, without Content-Length, while reading it', async () => {
+    const chunk = new TextEncoder().encode('x'.repeat(1024 * 1024));
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({ pull(ctl) { if (sent++ < 15) ctl.enqueue(chunk); else ctl.close(); } });
+    const r = await post(body as unknown as string);
+    expect(r.status).toBe(413);
+    expect(r.asked).not.toHaveBeenCalled();
+    expect(sent).toBeLessThan(16);
+  });
+
+  it('counts the model request in UTF-8 bytes, so Japanese text cannot pass 13 MiB unseen', async () => {
+    const one = dataUrl('image/jpeg', bytes(0xff, 0xd8, 0xff) + 'x'.repeat(2_600_000));
+    // 2.4 M Japanese characters: 2.4 M UTF-16 units, but 7.2 MB in UTF-8.
+    const r = await post(JSON.stringify({ state: { description: { value: 'あ'.repeat(2_400_000) }, photos: { value: [one, one] } } }));
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toMatch(/13 MiB/);
+    expect(r.asked).not.toHaveBeenCalled();
   });
 });

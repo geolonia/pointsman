@@ -220,7 +220,7 @@ export async function makeDecision(
   if (!imagesRead.ok) return fail(400, 'invalid_request', imagesRead.message);
   const images = imagesRead.images;
   // With images, the model request can pass Clef's limit: refused here, not as a model error.
-  if (images.length > 0 && JSON.stringify(toModelRequest(profile, state, profile.model, images)).length > MAX_MODEL_REQUEST_BYTES) {
+  if (images.length > 0 && new TextEncoder().encode(JSON.stringify(toModelRequest(profile, state, profile.model, images))).length > MAX_MODEL_REQUEST_BYTES) {
     return fail(400, 'invalid_request', 'the images and the state together are larger than the model takes (13 MiB)');
   }
 

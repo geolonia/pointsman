@@ -46,8 +46,10 @@ export class WorkersAiAdapter implements ModelAdapter {
           : {},
       );
     } catch (err) {
-      // Errors from the binding can include the request; keep only the message.
-      // Cut short: a message that repeats the request could hold images.
+      // Errors from the binding can include the request. With images, even a
+      // short part of it could hold image data: keep no message at all.
+      // Without images, keep the message, cut short.
+      if (request.images?.length) throw new ModelError(`${name}: the model call failed (the message is not kept: the request had images)`);
       throw new ModelError(`${name}: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`);
     }
 
