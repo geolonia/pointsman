@@ -1350,17 +1350,35 @@ describe('reliable delivery (queue)', () => {
     expect(queueBatches([])).toEqual([]);
   });
 
-  it('handles an entity too large for one queue message right away', async () => {
+  it('queues only the id and type, also for a large entity and for reviews', async () => {
     const t = setup();
     const queue = fakeQueue();
     t.config.queue = queue;
     const big = entity({ description: P('x'.repeat(130_000)) });
     const res = await notify(t.config, [big, { ...entity(), id: 'urn:ngsi-ld:RoadRestriction:2' }]);
-    // The small one is queued, the large one decided now.
-    expect(queue.sent.flat().map((x) => x.entity.id)).toEqual(['urn:ngsi-ld:RoadRestriction:2']);
-    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(1);
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as { handled: { id: string }[] }).handled.map((h) => h.id)).toEqual(['urn:ngsi-ld:RoadRestriction:1']);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ queued: 2 });
+    // No attribute of the entity waits in the queue; nothing is decided at the door.
+    expect(queue.sent.flat().map((x) => x.entity)).toEqual([
+      { id: 'urn:ngsi-ld:RoadRestriction:1', type: 'RoadRestriction' },
+      { id: 'urn:ngsi-ld:RoadRestriction:2', type: 'RoadRestriction' },
+    ]);
+    expect(t.calls).toHaveLength(0);
+    await notify(t.config, [{ id: 'urn:ngsi-ld:Decision:d-1', type: 'Decision', resolution: P('accept') }], '/reviews');
+    expect(queue.sent.at(-1)).toEqual([{ path: '/reviews', entity: { id: 'urn:ngsi-ld:Decision:d-1', type: 'Decision' } }]);
+  });
+
+  it('keeps deletedAt of a deletion on the queue, so the consumer skips it without reading the broker', async () => {
+    const t = setup();
+    const queue = fakeQueue();
+    t.config.queue = queue;
+    await notify(t.config, [entity({ deletedAt: '2026-11-09T12:00:00Z' })]);
+    const [queued] = queue.sent.flat();
+    expect(queued!.entity).toEqual({ id: 'urn:ngsi-ld:RoadRestriction:1', type: 'RoadRestriction', deletedAt: '2026-11-09T12:00:00Z' });
+    const m = message(queued);
+    await handleQueueBatch({ messages: [m] }, t.config);
+    expect(m.acked).toBe(true);
+    expect(t.calls).toHaveLength(0);
   });
 
   it('answers 502 when the queue does not take the notification, so the broker sends it again', async () => {
@@ -1562,7 +1580,7 @@ describe('decision chains', () => {
     expect(await key({ check: result('c-1'), ...rest })).toBe(ask.headers.get('idempotency-key'));
   });
 
-  it('queues only the id and type for a route with requires', async () => {
+  it('queues a route with requires as id and type too', async () => {
     const sent: unknown[] = [];
     const { config } = setup({ route: final });
     const big = entity({ check: result('c-1'), geometry: P('x'.repeat(200_000)) });

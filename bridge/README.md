@@ -391,9 +391,7 @@ their ids, from the result attributes the earlier routes wrote.
 - **From the queue only:** routes with `requires` need the queue (below) with
   `max_concurrency` 1, so two runs for one entity never overlap and the
   newer decision is written last. Without the queue the Worker refuses the
-  configuration. Their messages hold only the entity's id and type (the
-  consumer reads the entity anyway), so a large entity still fits. In
-  addition, the bridge writes nothing (no Decision entity, Task or result)
+  configuration. In addition, the bridge writes nothing (no Decision entity, Task or result)
   for a decision older than the result on the entity (`observedAt`).
 - Routes that read each other's results in a circle (one route's attribute
   among the other's inputs, required or not) are refused.
@@ -495,8 +493,9 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   entity on the queue, and answer `202` at once. The broker never sees a
   failure of Pointsman or the bridge, so it never pauses the subscription.
   If the queue does not take the notification, the answer is `502`, and the
-  broker may send it again. An entity larger than a queue message (about
-  120 KB) is handled right away, as without a queue.
+  broker may send it again. A message holds only the entity's id and type
+  (and `deletedAt` for a deletion), never its attributes: no copy of what a person wrote waits in the queue
+  after the entity changed or was deleted, and a large entity still fits.
 - **Processing:** the Worker's queue consumer runs the bridge for each
   message. It first reads the entity as it is now. So a message delivered
   twice finds the result it already wrote (input hash), and a change made in
@@ -508,7 +507,8 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   then with the delay doubling up to an hour. With `max_retries` 20 that
   covers about 14 hours. After the last try, the message goes to the
   dead-letter queue (`pointsman-bridge-dlq` in the example). Its messages
-  hold the notified entity and can be sent to the queue again. Failures a
+  hold the entity's id and type and can be sent to the queue again; the
+  entity is then read as it is at that time. Failures a
   retry cannot fix (Pointsman refused the input) are logged and acknowledged.
   A redirect from the broker or Pointsman is retried too, although it will
   fail until the URL is fixed: the message then ends in the dead-letter
