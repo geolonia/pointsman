@@ -244,9 +244,40 @@ test('field facts: a rules-only profile with facts is valid, and comparisons are
       action: high`)), /cannot compare number with string/);
   refused(write('flag.yaml', fieldProfile(`    - when: "facts.checked.value >= 1"
       action: high`)), /cannot compare boolean with number/);
+  // Facts are stored with the decision: no fact may read the images.
+  const withImages = (at) => `id: concern\nversion: 1\ntitle: { en: Test, ja: テスト }\ndescription: { en: Test profile, ja: テスト用 }\nmodel: clef-flash\ninput:\n  - { name: description, path: $.description.value }\nimages: { path: $.photos.value, max: 3 }\nfacts:\n  - { name: photo, type: field_text, at: '${at}' }\nquestions:\n  - { name: danger_now, type: noul, instructions: Could people be hurt now? }\npolicy:\n  default: low\n`;
+  refused(write('img.yaml', withImages('$.photos.value[0]')), /would store the images/);
+  refused(write('img2.yaml', withImages('$.photos')), /would store the images/);
+  assert.deepEqual(write('img3.yaml', withImages('$.note.value')), []);
   // Without facts or requires, a profile still needs a question.
   const noFacts = `id: nothing\nversion: 1\ntitle: { en: Test, ja: テスト }\ndescription: { en: Test profile, ja: テスト用 }\nmodel: none\nquestions: []\npolicy:\n  default: review\n`;
   refused(write('none.yaml', noFacts), /questions/);
   // An empty facts list does not count.
   refused(write('empty.yaml', noFacts.replace('policy:', 'facts: []\npolicy:')), /questions/);
+});
+
+test('images: valid with an input mapping; refused without one, when input reads them, or with no questions', () => {
+  const base = {
+    id: 'concern', version: 1, title: { en: 'C', ja: 'C' }, description: { en: 'C', ja: 'C' }, model: 'clef-flash',
+    input: [{ name: 'description', path: '$.description.value' }],
+    images: { path: '$.photos.value', max: 3 },
+    questions: [{ name: 'danger_now', type: 'noul', instructions: 'Could people be hurt now?' }],
+    policy: { default: 'low' },
+  };
+  assert.deepEqual(validateProfile(base), []);
+  const { input: _, ...noInput } = base;
+  assert.ok(validateProfile(noInput).some((e) => /input/.test(e)), 'images need input');
+  for (const path of ['$.photos.value', '$.photos.value[0]', '$.photos', '$']) {
+    const errors = validateProfile({ ...base, input: [...base.input, { name: 'p', path }] });
+    assert.ok(errors.some((e) => e.includes('would put the images')), path);
+  }
+  assert.deepEqual(validateProfile({ ...base, input: [...base.input, { name: 'p', path: '$.photosTaken' }] }), []);
+  // Indices are compared as numbers: $.photos[00] reads the same image as $.photos[0].
+  const indexed = { ...base, images: { path: '$.photos[0]', max: 1 } };
+  assert.ok(validateProfile({ ...indexed, input: [...base.input, { name: 'p', path: '$.photos[00]' }] }).some((e) => e.includes('would put the images')), '$.photos[00]');
+  assert.deepEqual(validateProfile({ ...indexed, input: [...base.input, { name: 'p', path: '$.photos[1]' }] }), []);
+  // Over MCP the state is mapped by name: an input named like the images path's first key is refused.
+  assert.ok(validateProfile({ ...base, input: [...base.input, { name: 'photos', path: '$.note' }] }).some((e) => e.includes('first key of the images path')));
+  assert.ok(validateProfile({ ...base, images: { path: '$.photos.value', max: 5 } }).length > 0, 'max is at most 4');
+  assert.ok(validateProfile({ ...base, questions: [], facts: [{ name: 'y', type: 'field_number', at: '$.y' }] }).some((e) => e.includes('cannot use images')));
 });

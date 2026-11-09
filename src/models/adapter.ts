@@ -14,6 +14,8 @@ export interface ModelRequest {
   model: string;
   state: unknown;
   questions: Record<string, ModelQuestion>;
+  /** Base64 data URLs (PNG, JPEG, WebP), before the state; only when there are any (src/images.ts). */
+  images?: string[];
 }
 
 export type ModelAnswer =
@@ -43,7 +45,7 @@ export class ModelError extends Error {
 }
 
 /** Convert a profile's question list to the map the model APIs expect. */
-export function toModelRequest(profile: Profile, state: unknown, model = profile.model): ModelRequest {
+export function toModelRequest(profile: Profile, state: unknown, model = profile.model, images: string[] = []): ModelRequest {
   const questions: Record<string, ModelQuestion> = {};
   for (const q of profile.questions) {
     switch (q.type) {
@@ -64,5 +66,5 @@ export function toModelRequest(profile: Profile, state: unknown, model = profile
         break;
     }
   }
-  return { model, state, questions };
+  return images.length > 0 ? { model, state, questions, images } : { model, state, questions };
 }

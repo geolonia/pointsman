@@ -101,6 +101,37 @@ export function validateProfile(profile, { fileName, profiles = new Map() } = {}
   for (const d of duplicates((profile.facts ?? []).map(name))) {
     errors.push(`/facts: duplicate fact name "${d}"`);
   }
+  // Images reach the model only as images: no input path may read them (or a
+  // part of them, or everything that holds them) into the text state.
+  if (profile.images) {
+    // Indices compared as numbers ($.photos[00] reads the same as $.photos[0]).
+    const norm = (p) => p.replace(/\[([0-9]+)\]/g, (_, n) => `[${Number(n)}]`);
+    const img = norm(profile.images.path);
+    const overlaps = (path) => {
+      const p = norm(path);
+      return p === img || p.startsWith(`${img}.`) || p.startsWith(`${img}[`) || img.startsWith(`${p}.`) || img.startsWith(`${p}[`) || p === '$';
+    };
+    (profile.input ?? []).forEach((m, i) => {
+      if (overlaps(m.path)) {
+        errors.push(`/input/${i}/path: "${m.path}" would put the images (${profile.images.path}) into the state; images go to the model only as images`);
+      }
+    });
+    // Facts are stored with the decision (also without log.store_state): no
+    // fact may read the images either (a field_text fact would keep a small one).
+    (profile.facts ?? []).forEach((f, i) => {
+      if (typeof f.at === 'string' && overlaps(f.at)) {
+        errors.push(`/facts/${i}/at: "${f.at}" would store the images (${profile.images.path}) with the decision; images go to the model only as images`);
+      }
+    });
+    // Over MCP the state is sent already mapped (fields by input name), and the
+    // images are read from it at the same path: an input named like the
+    // path's first key would carry the images into the state.
+    const first = /^\$\.([A-Za-z0-9_-]+)/.exec(img)?.[1];
+    (profile.input ?? []).forEach((m, i) => {
+      if (first !== undefined && m.name === first) errors.push(`/input/${i}/name: "${m.name}" is the first key of the images path (${img}); over MCP it would carry the images into the state`);
+    });
+    if (profile.questions.length === 0) errors.push('/images: a profile without questions makes no model call, so it cannot use images');
+  }
   // Rules refer to facts as facts.<name>.<field>, so no question may use that prefix.
   profile.questions.forEach((q, i) => {
     if (q.name === 'facts' || q.name.startsWith(FACTS_PREFIX)) {

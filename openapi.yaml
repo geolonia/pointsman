@@ -74,6 +74,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: The request body is larger than 14 MiB (room for Clef's 13 MiB model request with images).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '502': { $ref: '#/components/responses/Error' }
         '500': { $ref: '#/components/responses/Error' }
   /v1/decisions/{id}:

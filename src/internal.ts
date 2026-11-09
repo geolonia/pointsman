@@ -30,6 +30,9 @@ export interface ApiAnswer {
 
 const error = (status: ContentfulStatusCode, code: string, message: string): ApiAnswer => ({ status, body: { error: { code, message } } });
 
+/** Thrown by a `readBody` that stops reading a body over its limit (a 413). */
+export class BodyTooLargeError extends Error {}
+
 /**
  * POST /v1/decide/{profile} for a known client. `version` as in the query
  * string; `readBody` throws when the body is not JSON.
@@ -48,7 +51,8 @@ export async function decideAnswer(
   let raw: unknown;
   try {
     raw = await readBody();
-  } catch {
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) return error(413, 'invalid_request', err.message);
     return error(400, 'invalid_request', 'body must be valid JSON');
   }
   const result = await makeDecision(deps, client, profile, raw, version === undefined ? undefined : Number(version),

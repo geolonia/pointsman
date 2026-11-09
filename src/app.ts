@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord } from './auth';
 import { connected, makeReplay, publicRecord, type Deps } from './decide';
-import { closeAnswer, decideAnswer, findDecision, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
+import { BodyTooLargeError, closeAnswer, decideAnswer, findDecision, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
 import { parseFeedback } from './feedback';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
@@ -13,6 +13,36 @@ import { explainProfile, explanationText } from './explain';
 import type { Profile } from './types';
 
 // The engine core, re-exported for the Worker entry and the tests.
+/** The largest decide request read: Clef's 13 MiB model request, plus room for the rest. */
+const MAX_DECIDE_BODY = 14 * 1024 * 1024;
+
+/**
+ * The JSON body, read up to `max` bytes: a longer one (also one sent without
+ * Content-Length, in chunks) throws BodyTooLargeError as soon as it passes
+ * the limit; one that is not JSON throws a SyntaxError.
+ */
+export async function readJsonUpTo(req: Request, max: number): Promise<unknown> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  if (req.body) {
+    const reader = req.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel();
+        throw new BodyTooLargeError(`the request is larger than ${max / 1024 / 1024} MiB`);
+      }
+      chunks.push(value);
+    }
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { all.set(c, at); at += c.byteLength; }
+  return JSON.parse(new TextDecoder().decode(all));
+}
+
 export { ConfigError, deliver, makeDecision, makeReplay, NO_MODEL, retryDueCallbacks, type DecisionResult, type Deps } from './decide';
 
 function error(status: ContentfulStatusCode, code: string, message: string) {
@@ -133,8 +163,14 @@ export function createApp(deps: (env: Env) => Deps) {
   // shared with internal calls (src/internal.ts).
   const json = (answer: ApiAnswer) => Response.json(answer.body, { status: answer.status });
 
-  app.post('/v1/decide/:profile', async (c) => json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => c.req.json(),
-    c.req.query('version'), c.req.header('Idempotency-Key'))));
+  app.post('/v1/decide/:profile', async (c) => {
+    // Images make large bodies normal (up to Clef's 13 MiB request); larger
+    // ones are refused before they are read.
+    if (Number(c.req.header('content-length') ?? 0) > MAX_DECIDE_BODY) return error(413, 'invalid_request', 'the request is larger than 14 MiB');
+    // Content-Length can be missing (a chunked body): the limit holds while reading too.
+    return json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => readJsonUpTo(c.req.raw, MAX_DECIDE_BODY),
+    c.req.query('version'), c.req.header('Idempotency-Key')));
+  });
 
   // A decision is visible only to tokens that may use its profile; for others
   // it does not exist (404), as for unknown ids.

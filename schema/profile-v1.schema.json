@@ -44,6 +44,20 @@
         }
       }
     },
+    "images": {
+      "description": "Images for the model (Clef's images): a path in the request to a base64 data URL of a PNG, JPEG or WebP image, or a list of them. Checked and sent beside the state, never stored. Needs input, so that the images reach the model only as images. See docs/profile-format.md, Images.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "description": "JSONPath into the request payload, for example $.photos.value.",
+          "type": "string",
+          "pattern": "^\\$(\\.[A-Za-z0-9_-]+|\\[[0-9]+\\])*$"
+        },
+        "max": { "description": "At most this many images (default 4, the model's limit).", "type": "integer", "minimum": 1, "maximum": 4 }
+      }
+    },
     "questions": {
       "description": "The questions sent to the model. A list (not a map) so that form editors can handle it. Empty only for a profile with requires: then rules only, with no model call.",
       "type": "array",
@@ -151,6 +165,10 @@
         ]
       },
       "else": { "properties": { "questions": { "type": "array", "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "images": true }, "required": ["images"] },
+      "then": { "properties": { "input": true }, "required": ["input"] }
     }
   ],
   "$defs": {

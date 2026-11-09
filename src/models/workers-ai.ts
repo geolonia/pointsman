@@ -12,7 +12,7 @@ export const WORKERS_AI_MODELS: Record<string, string> = {
 
 /** Only the part of the AI binding this adapter uses, so tests can fake it. */
 export interface AiRunner {
-  run(model: string, input: unknown, options?: { gateway?: { id: string; requestTimeoutMs?: number } }): Promise<unknown>;
+  run(model: string, input: unknown, options?: { gateway?: { id: string; requestTimeoutMs?: number; collectLog?: boolean } }): Promise<unknown>;
 }
 
 const TIMEOUT_MS = 10_000;
@@ -39,11 +39,18 @@ export class WorkersAiAdapter implements ModelAdapter {
       raw = await this.ai.run(
         name,
         request,
-        this.gatewayId ? { gateway: { id: this.gatewayId, requestTimeoutMs: TIMEOUT_MS } } : {},
+        // The gateway's log keeps whole requests: a request with images is not
+        // logged there, so photos are never kept (docs/models.md).
+        this.gatewayId
+          ? { gateway: { id: this.gatewayId, requestTimeoutMs: TIMEOUT_MS, ...(request.images?.length && { collectLog: false }) } }
+          : {},
       );
     } catch (err) {
-      // Errors from the binding can include the request; keep only the message.
-      throw new ModelError(`${name}: ${err instanceof Error ? err.message : String(err)}`);
+      // Errors from the binding can include the request. With images, even a
+      // short part of it could hold image data: keep no message at all.
+      // Without images, keep the message, cut short.
+      if (request.images?.length) throw new ModelError(`${name}: the model call failed (the message is not kept: the request had images)`);
+      throw new ModelError(`${name}: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`);
     }
 
     // Answers are checked in detail by normalizeAnswers(); here only the shape.

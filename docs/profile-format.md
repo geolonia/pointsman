@@ -71,6 +71,7 @@ To write a profile with an AI assistant, and check it, see
 | `model` | yes | Model id, for example `clef-flash`. `none` for a profile with no questions (rules only, no model call). |
 | `fallback_models` | no | Models to try, in order, when the primary model fails. |
 | `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
+| `images` | no | `{ path, max }`: photos for the model, read at `path` in the request; `max` 1 to 4 (default 4). Needs `input`. See [Images](#images). |
 | `questions` | yes | Up to 64 questions (see below). At least 1, unless the profile has `requires` or facts. |
 | `requires` | no | Up to 8 earlier decisions the rules read, as `{ name, profile, optional }` (see [Decision chains](#decision-chains)). |
 | `facts` | no | Up to 16 facts to look up for each decision, for rules: places, pull requests, reviews (see [Facts](#facts)). |
@@ -103,6 +104,48 @@ Question names follow the model APIs: letters, digits, `_`, `.`, `-`, at most
 100 characters. Answers come back under the same names. Choice option values
 use the same characters, so that policy conditions can refer to them
 (`team.probabilities.customer-support`); put readable text in `description`.
+
+## Images
+
+A profile can let the model look at photos, for example of a damaged
+building, beside the text. `images.path` points at a base64 data URL of a
+PNG, JPEG or WebP image in the request, or at a list of them:
+
+```yaml
+input:
+  - { name: description, path: $.description.value }
+images: { path: $.photos.value, max: 3 }
+```
+
+- The engine checks each image before the model is called: a data URL
+  whose first bytes are that format, at most 4 MiB each and 8 MiB
+  together, at most `max` (1 to 4, the model's limit). Anything else is
+  refused with `400 invalid_request`, naming the image by its place. A
+  missing path, `null` or an empty list means no images.
+- The images go to the model as images (Clef's `images`), not in the
+  state: a profile with images needs `input`, no `input` path and no
+  fact's `at` may read the images (facts are stored with the decision), and no `input` name may be the first key of the images path
+  (over MCP the state comes mapped by name, and the images are read from it
+  at the same path). A profile without questions makes no model call and
+  cannot have images.
+- The whole model request (state, questions and images) may be at most 13
+  MiB (Clef's limit): a larger one is refused with `400`, a request body
+  over 14 MiB with `413`. Clef also takes at most 16 megapixels per image;
+  the engine does not read image sizes in pixels, so a larger image fails
+  at the model service (`502 model_error`). Send smaller images (see
+  below).
+- A model server (`MODEL_SERVER_URL`) gets the images in the same `images`
+  field: it must support them, and what it keeps is its own
+  ([models.md](models.md)).
+- The model sees at most about 1 megapixel of each image (Clef scales a
+  larger one down, at most 1,024 tokens each): send photos of that size, a
+  larger file only costs time.
+- Images are never stored. The decision log keeps the hash of the state,
+  which then covers a hash of each image too
+  ([decision-log.md](decision-log.md)). Calls with images are not logged
+  by the AI Gateway ([models.md](models.md)).
+- Photos can show people, number plates and addresses: ask for them only
+  when the decision needs them, and tell the people who send them.
 
 ## Model API format (checked 2026-10-06)
 
