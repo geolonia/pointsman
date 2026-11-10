@@ -170,7 +170,7 @@ section.band.alt { background: var(--bg-alt); }
 
 /* Demos page (demos/): one tile per demo, a screenshot on top. */
 .section-head h1 { font-size: clamp(32px, 4vw, 44px); }
-/* The demos page intro is one short sentence: it uses the full width, like the tiles below it. */
+/* The demos page intro is two short lines: they use the full width, like the tiles below them. */
 #demos .section-head { max-width: none; }
 .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 18px; }
 .demo-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
