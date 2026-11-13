@@ -86,6 +86,20 @@ test('llms.txt lists every English page, and llms-full.txt has the text of every
   assert.doesNotMatch(full, /<svg|<!--|\]\(\/docs\//);
 });
 
+test('sitemap.xml lists every page of site/ with its other language, and robots.txt lists it', async () => {
+  const { landingPaths, landingSitemap } = await import('../docs-site/scripts/landing-sitemap.mjs');
+  const site = join(root, 'site');
+  const paths = landingPaths(site);
+  assert.ok(paths.includes('/') && paths.includes('/ja/'), 'the landing page in both languages');
+  const xml = landingSitemap(site);
+  for (const p of paths) assert.ok(xml.includes(`<loc>https://pointsman.net${p}</loc>`), `${p} is not in sitemap.xml`);
+  assert.ok(xml.includes('hreflang="ja" href="https://pointsman.net/ja/"'));
+  assert.doesNotMatch(xml, /\/docs\//, 'the docs have their own sitemap');
+  const robots = readFileSync(join(site, 'robots.txt'), 'utf8');
+  assert.match(robots, /^Sitemap: https:\/\/pointsman\.net\/sitemap\.xml$/m);
+  assert.match(robots, /^Sitemap: https:\/\/pointsman\.net\/docs\/sitemap-index\.xml$/m);
+});
+
 test('a translated older page keeps the English section ids, table rows and code, and names its source commit', (t) => {
   const en = '# Writing\n\nText.\n\n## Commands\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```sh\nnode x\n```\n';
   const dir = repo(t, {
