@@ -4,10 +4,17 @@
 
 import { z } from 'zod';
 
+/**
+ * Hints for MCP clients (they decide, for example, which calls need the
+ * user's confirmation). Reading tools change nothing and call no AI model.
+ */
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+
 export const TOOLS = {
   list_profiles: {
     description: 'List the decision profiles you can use: their questions, answer options and possible actions.',
     inputSchema: {},
+    annotations: READ_ONLY,
   },
   explain_profile: {
     description:
@@ -18,6 +25,7 @@ export const TOOLS = {
       lang: z.enum(['en', 'ja']).optional().describe('Language of the sentences (default en)'),
       version: z.number().int().positive().optional().describe('A published version (default: the latest)'),
     },
+    annotations: READ_ONLY,
   },
   replay_profile: {
     description:
@@ -34,6 +42,7 @@ export const TOOLS = {
       facts: z.array(z.unknown()).optional().describe("The draft's facts, to check they did not change"),
       requires: z.array(z.unknown()).optional().describe("The draft's requires, to check they did not change"),
     },
+    annotations: READ_ONLY,
   },
   decide: {
     description:
@@ -49,10 +58,13 @@ export const TOOLS = {
       idempotency_key: z.string().optional()
         .describe('Send the same key again to get the same decision instead of a new one'),
     },
+    // Logs a new decision and asks an AI model; an idempotency_key makes a repeat return the same decision.
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   get_decision: {
     description: 'Get a decision by id: answers, action, profile version, model, review status and feedback.',
     inputSchema: { decision_id: z.string().describe('decision_id returned by decide') },
+    annotations: READ_ONLY,
   },
   // Only for people logged in through OAuth (see mcp.ts).
   submit_feedback: {
@@ -65,6 +77,8 @@ export const TOOLS = {
         .describe('The right answers, by question name, for example {"team": "frontend"}'),
       note: z.string().optional().describe('Why, in a sentence'),
     },
+    // Adds feedback to the decision; earlier feedback stays.
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
 };
 
