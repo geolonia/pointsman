@@ -58,7 +58,8 @@ export const TOOLS = {
       idempotency_key: z.string().optional()
         .describe('Send the same key again to get the same decision instead of a new one'),
     },
-    // Logs a new decision and asks an AI model; an idempotency_key makes a repeat return the same decision.
+    // Logs a new decision and asks an AI model; in a chain it supersedes the earlier decision for the same ref.
+    // An idempotency_key makes a repeat return the same decision.
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   get_decision: {

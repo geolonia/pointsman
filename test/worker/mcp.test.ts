@@ -4,6 +4,7 @@ import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
 import { D1DecisionLog } from '../../src/log-d1';
+import { TOOLS } from '../../src/mcp-tools';
 
 const ALL = newToken();
 const DEPLOY_ONLY = newToken();
@@ -64,6 +65,11 @@ describe('/mcp', () => {
       expect(hints[name]).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
     }
     expect(hints.decide).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
+    // Only people logged in through OAuth get submit_feedback, so it is checked on its definition.
+    expect(TOOLS.submit_feedback.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
+    for (const [name, tool] of Object.entries(TOOLS)) {
+      if (tool.annotations.readOnlyHint) expect(tool.annotations.destructiveHint, name).toBe(false);
+    }
   });
 
   it('returns results as structured content, with the same JSON as text', async () => {
@@ -71,6 +77,12 @@ describe('/mcp', () => {
     expect(list.structured).toEqual(JSON.parse(list.text));
     const d = await call('decide', { profile: 'issue-triage', state: { title: 'T' } });
     expect(d.structured).toEqual(JSON.parse(d.text));
+    const got = await call('get_decision', { decision_id: JSON.parse(d.text).decision_id });
+    expect(got.isError).toBe(false);
+    expect(got.structured).toEqual(JSON.parse(got.text));
+    expect(got.structured).not.toHaveProperty('state');
+    const explained = await call('explain_profile', { profile: 'issue-triage' });
+    expect(explained.structured).toEqual(JSON.parse(explained.text));
     expect((await call('explain_profile', { profile: 'nope' })).structured).toBeUndefined();
   });
 
