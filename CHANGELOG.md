@@ -12,6 +12,24 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.22.0 (2026-11-13)
+
+MCP tools tell clients which calls only read and which change things, and every MCP result is also structured content (#298). The FIWARE bridge queue keeps only each entity's id and type (#292).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.22.0`, and change modules pinned with a version in `modules` to `@0.22.0` (for example `@pointsman/github@0.21.0` → `@pointsman/github@0.22.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
+- MCP clients see the new tool annotations and `structuredContent` after they reconnect. Nothing changes for clients that read only the text. A client that asks the user before destructive tools may now ask before `decide`.
+- Bridge: messages already on the queue in the old shape still work; the consumer reads only `id`, `type` and `deletedAt`, then the entity from the broker. Old-shape messages already queued or dead-lettered keep their copy of the entity until they are handled or purged.
+
+What changed:
+
+- **MCP annotations**: `list_profiles`, `explain_profile`, `replay_profile` and `get_decision` are marked read-only. `decide` is marked as a destructive write that asks an AI model: with a `ref` it marks the caller's earlier pending reviews for that ref as superseded. `submit_feedback` is a write that adds feedback. Clients can use these hints, for example to decide which calls need the user's confirmation.
+- **MCP structured content**: every tool result also carries `structuredContent`, with the same JSON as text. Tool errors stay text only.
+- **FIWARE bridge**: with a queue, the bridge puts only each entity's id and type on it (and `deletedAt` for a deletion), not the whole notified entity. New messages hold no copy of what a person wrote, in the queue or the dead-letter queue, and every message fits the queue's size limit, so the path for messages that were too large is gone.
+- **Site**: the demos page has a buildings demo tile, a full-width intro, shorter texts and new screenshots (#293, #294, #295, #297).
+- **Threat model**: the bridge queue consumer row is amended (#292). It is still bound to `v0.18.0`; it is not yet bound to 0.19.0 to 0.22.0.
+
 ## 0.21.0 (2026-11-09)
 
 Profiles can let the model look at photos (#289).
