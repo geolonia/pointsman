@@ -58,13 +58,13 @@ describe('/mcp', () => {
     expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles', 'replay_profile']);
   });
 
-  it('marks the reading tools read-only and decide as a write that asks a model', async () => {
+  it('marks the reading tools read-only and decide as a destructive write that asks a model', async () => {
     const tools = (await rpc('tools/list')).message.result.tools as any[];
     const hints = Object.fromEntries(tools.map((t) => [t.name, t.annotations]));
     for (const name of ['list_profiles', 'explain_profile', 'replay_profile', 'get_decision']) {
       expect(hints[name]).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
     }
-    expect(hints.decide).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
+    expect(hints.decide).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true });
     // Only people logged in through OAuth get submit_feedback, so it is checked on its definition.
     expect(TOOLS.submit_feedback.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
     for (const [name, tool] of Object.entries(TOOLS)) {

@@ -58,9 +58,10 @@ export const TOOLS = {
       idempotency_key: z.string().optional()
         .describe('Send the same key again to get the same decision instead of a new one'),
     },
-    // Logs a new decision and asks an AI model; in a chain it supersedes the earlier decision for the same ref.
+    // Logs a new decision and asks an AI model. Destructive in MCP's sense (not only additive): with a ref it
+    // marks the caller's earlier pending reviews for that ref as superseded, which takes them off the review queue.
     // An idempotency_key makes a repeat return the same decision.
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   },
   get_decision: {
     description: 'Get a decision by id: answers, action, profile version, model, review status and feedback.',
