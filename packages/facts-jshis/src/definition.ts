@@ -16,7 +16,7 @@ export const JSHIS_LAYERS = {
 export const definition: FactModule = {
   name: '@pointsman/facts-jshis',
   // As in package.json (a test checks); released with the engine for now.
-  version: '0.21.0',
+  version: '0.22.0',
   roles: ['facts'],
   capabilities: [{ type: 'inside', layers: Object.keys(JSHIS_LAYERS) }],
   settings: ['FACTS_MODE'],
