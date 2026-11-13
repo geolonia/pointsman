@@ -4,6 +4,7 @@ import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
 import { D1DecisionLog } from '../../src/log-d1';
+import { TOOLS } from '../../src/mcp-tools';
 
 const ALL = newToken();
 const DEPLOY_ONLY = newToken();
@@ -39,7 +40,7 @@ async function rpc(method: string, params: unknown = {}, token: string | null = 
 async function call(name: string, args: Record<string, unknown>, token: string | null = ALL) {
   const r = await rpc('tools/call', { name, arguments: args }, token);
   const result = r.message.result;
-  return { isError: result.isError === true, text: result.content[0].text as string };
+  return { isError: result.isError === true, text: result.content[0].text as string, structured: result.structuredContent };
 }
 
 describe('/mcp', () => {
@@ -55,6 +56,34 @@ describe('/mcp', () => {
     expect(init.message.result.serverInfo.name).toBe('pointsman');
     const tools = (await rpc('tools/list')).message.result.tools.map((t: any) => t.name).sort();
     expect(tools).toEqual(['decide', 'explain_profile', 'get_decision', 'list_profiles', 'replay_profile']);
+  });
+
+  it('marks the reading tools read-only and decide as a destructive write that asks a model', async () => {
+    const tools = (await rpc('tools/list')).message.result.tools as any[];
+    const hints = Object.fromEntries(tools.map((t) => [t.name, t.annotations]));
+    for (const name of ['list_profiles', 'explain_profile', 'replay_profile', 'get_decision']) {
+      expect(hints[name]).toEqual({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+    }
+    expect(hints.decide).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true });
+    // Only people logged in through OAuth get submit_feedback, so it is checked on its definition.
+    expect(TOOLS.submit_feedback.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
+    for (const [name, tool] of Object.entries(TOOLS)) {
+      if (tool.annotations.readOnlyHint) expect(tool.annotations.destructiveHint, name).toBe(false);
+    }
+  });
+
+  it('returns results as structured content, with the same JSON as text', async () => {
+    const list = await call('list_profiles', {});
+    expect(list.structured).toEqual(JSON.parse(list.text));
+    const d = await call('decide', { profile: 'issue-triage', state: { title: 'T' } });
+    expect(d.structured).toEqual(JSON.parse(d.text));
+    const got = await call('get_decision', { decision_id: JSON.parse(d.text).decision_id });
+    expect(got.isError).toBe(false);
+    expect(got.structured).toEqual(JSON.parse(got.text));
+    expect(got.structured).not.toHaveProperty('state');
+    const explained = await call('explain_profile', { profile: 'issue-triage' });
+    expect(explained.structured).toEqual(JSON.parse(explained.text));
+    expect((await call('explain_profile', { profile: 'nope' })).structured).toBeUndefined();
   });
 
   it('explains an MCP-visible profile in scope, and hides the others', async () => {

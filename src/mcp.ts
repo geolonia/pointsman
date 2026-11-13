@@ -32,8 +32,9 @@ export function clientOf(caller: Caller): TokenRecord {
     : { client: `github:${caller.id}`, profiles: ['*'], created_at: '' };
 }
 
-function json(value: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
+/** A result as structured content, and the same JSON as text for clients that read only text. */
+function json(value: object) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }], structuredContent: value as Record<string, unknown> };
 }
 
 function failure(message: string) {
