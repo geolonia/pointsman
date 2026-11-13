@@ -94,10 +94,34 @@ test('sitemap.xml lists every page of site/ with its other language, and robots.
   const xml = landingSitemap(site);
   for (const p of paths) assert.ok(xml.includes(`<loc>https://pointsman.net${p}</loc>`), `${p} is not in sitemap.xml`);
   assert.ok(xml.includes('hreflang="ja" href="https://pointsman.net/ja/"'));
+  assert.ok(xml.includes('hreflang="x-default" href="https://pointsman.net/"'));
   assert.doesNotMatch(xml, /\/docs\//, 'the docs have their own sitemap');
+  // The sitemap pairs the same pages as the pages' own hreflang links.
+  for (const p of paths) {
+    const head = readFileSync(join(site, p.slice(1), 'index.html'), 'utf8').split('</head>')[0];
+    for (const [, lang, href] of head.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)) {
+      const entry = xml.split('\n').find((l) => l.includes(`<loc>https://pointsman.net${p}</loc>`));
+      assert.ok(entry.includes(`hreflang="${lang}" href="${href}"`), `${p}: ${lang} ${href} is not in sitemap.xml`);
+    }
+  }
   const robots = readFileSync(join(site, 'robots.txt'), 'utf8');
   assert.match(robots, /^Sitemap: https:\/\/pointsman\.net\/sitemap\.xml$/m);
   assert.match(robots, /^Sitemap: https:\/\/pointsman\.net\/docs\/sitemap-index\.xml$/m);
+});
+
+test('sitemap.xml skips assets/, keeps a page in one language without alternates, and escapes paths', async (t) => {
+  const { landingSitemap } = await import('../docs-site/scripts/landing-sitemap.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'landing-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const f of ['index.html', 'ja/index.html', 'only-en/index.html', 'a&b c/index.html', 'assets/x/index.html']) {
+    mkdirSync(join(dir, dirname(f)), { recursive: true });
+    writeFileSync(join(dir, f), '<html></html>');
+  }
+  const xml = landingSitemap(dir);
+  assert.doesNotMatch(xml, /assets/);
+  assert.ok(xml.includes('<url><loc>https://pointsman.net/only-en/</loc></url>'));
+  assert.ok(xml.includes('<loc>https://pointsman.net/a%26b%20c/</loc>'));
+  assert.doesNotMatch(xml, /&(?!amp;|apos;)/, 'no bare & in the XML');
 });
 
 test('a translated older page keeps the English section ids, table rows and code, and names its source commit', (t) => {
