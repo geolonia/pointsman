@@ -51,7 +51,7 @@
     "@pointsman/facts-valhalla": "workspace:*",
     "@pointsman/fiware": "workspace:*",
     "@pointsman/module-api": "workspace:*",
-    "hono": "^4.13.13",
+    "hono": "^4.13.16",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   }
