@@ -113,7 +113,7 @@ function verify({ secret, client, url }, headers, rawBody, maxAgeSeconds = 300) 
 // verify({ secret, client: 'issue-bot', url: 'https://issue-bot.example.org/pointsman' }, req.headers, rawBody)
 ```
 
-**Changed after v0.18.0.** Callbacks up to v0.18.0 had no `client` and no
+**Changed after v0.22.0.** Callbacks up to v0.22.0 had no `client` and no
 `callback_url`. The signature is made the same way, so a receiver that checks
 only the signature keeps working. To be safe against other clients, add the
 `client` and `callback_url` checks. A receiver that refuses unknown fields
