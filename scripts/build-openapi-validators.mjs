@@ -30,6 +30,7 @@ const responses = {
   profileStats: { $ref: '#/components/schemas/ProfileStats' },
   resolution: { $ref: '#/components/schemas/Resolution' },
   closedReview: { $ref: '#/components/schemas/ClosedReview' },
+  callbackPayload: { $ref: '#/components/schemas/CallbackPayload' },
   reviewList: api.paths['/v1/reviews'].get.responses['200'].content['application/json'].schema,
   error: { $ref: '#/components/schemas/Error' },
   profileList: api.paths['/v1/profiles'].get.responses['200'].content['application/json'].schema,
