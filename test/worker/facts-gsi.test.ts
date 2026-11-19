@@ -135,6 +135,9 @@ describe('PNG tiles', () => {
     const grey = await decodePng(await png((x) => (x < 128 ? [9, 9, 9, 255] : [200, 200, 200, 255]), { type: 0, key: [200] }));
     expect(grey(10, 10)).toEqual([9, 9, 9, 255]);
     expect(grey(200, 10)).toEqual([200, 200, 200, 0]);
+    // An 8-bit image uses the low byte of each 16-bit key value, as libpng does.
+    const high = await decodePng(await png(() => [5, 6, 7, 255], { type: 2, key: [0x0105, 0x0106, 0x0107] }));
+    expect(high(0, 0)).toEqual([5, 6, 7, 0]);
   });
 
   it('refuse what they cannot read', async () => {

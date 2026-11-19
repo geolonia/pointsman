@@ -317,9 +317,9 @@ export async function decodePng(buf: Uint8Array): Promise<Pixels> {
       out[y * stride + i] = (raw[line + i]! + predicted) & 255;
     }
   }
-  // The colour key (8-bit images: the low byte of each 16-bit value); a value
-  // over 255 matches no 8-bit sample.
-  const key = (k: number) => (alpha && alpha.length >= 2 * (k + 1) ? (alpha[2 * k]! << 8) | alpha[2 * k + 1]! : -1);
+  // The colour key: tRNS holds one 16-bit value per channel; an 8-bit image
+  // uses its low byte, as libpng and browsers do. -1 (no key) matches nothing.
+  const key = (k: number) => (alpha && alpha.length >= 2 * (k + 1) ? alpha[2 * k + 1]! : -1);
   const greyKey = type === 0 ? key(0) : -1;
   const rgbKey = type === 2 ? [key(0), key(1), key(2)] : [-1, -1, -1];
   const pixel = (x: number, y: number): [number, number, number, number] => {
