@@ -669,6 +669,24 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   `HMAC(CALLBACK_SECRET, client)`), so that one receiver cannot sign
   callbacks for another.
 
+## Amendment for github_pr per field (pointsman#250, #262, #307, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that one failing extra read (a
+  deleted team in `CODEOWNERS`, a 5xx from the activity list) made the
+  whole `github_pr` fact missing, with the misleading reason `unavailable`
+  for the team (#250), and that the facts read a 403 secondary rate limit
+  without headers as `unavailable` (#262).
+- **Changed**: `P-FACTS-NEVER-GUESSED` (prose, YAML and JSON), the matrix
+  row for the GitHub facts' serialization, §1.1 and §1.16. The code
+  citations into `packages/github/src/provider.ts` and
+  `packages/github/src/connector/github.ts` were mapped line by line to
+  the new code by a short script; the one cited line that changed (the
+  membership read's 302 and 403 check) was re-cited by hand.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits).
+  The prose SHA-256 in the YAML was updated by a short script; the
+  confidence counts do not change (no claim was added or re-tagged).
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

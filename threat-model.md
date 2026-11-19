@@ -352,6 +352,20 @@
   lifecycle; a wider `P-CALLBACK-SIGNED`; the new disclaimer
   `D-CALLBACK-SHARED-SECRET`; a wider `R-VERIFY-CALLBACK`; one misuse
   pattern; §1.16. No new question.
+  Amended 2026-11-20, before the code is released (still bound to
+  `v0.18.0`), for pointsman#250 and #262 (from the review of 2026-11), in
+  pointsman#307: the three extra reads of `github_pr` (organization
+  membership, pushes, `CODEOWNERS` with its teams) run at the same time,
+  and one that fails gives only its own field the strict value
+  (`author_member` no value, `pushed_by_author` `unavailable`,
+  `author_sole_code_owner` false) while the other fields stay; a team that
+  does not exist owns nothing; a 403 whose message says it is a rate limit
+  is `error` (one check for the facts and the connector, reading at most
+  2,000 bytes of the body). Changed: a wider `P-FACTS-NEVER-GUESSED`; the
+  matrix row for the GitHub facts' serialization; the code citations into
+  the two changed files, moved to their lines after this change (mapped
+  line by line; the validator was not run for this amendment). No new
+  question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -435,7 +449,8 @@
   version and commit): the prose by hand from the code and documents of
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
-  question was picked, because the findings left none open.
+  question was picked, because the findings left none open. The amendment
+  of 2026-11-20 for pointsman#307 was done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -450,8 +465,9 @@
   pointsman#229, with two questions answered the same day; re-bound to
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
-  new question; the amendment of 2026-11-19 for pointsman#243 and #271,
-  before its code is released, so it re-binds at the next release). The maintainer answered all 24 questions
+  new question; the amendments of 2026-11-19 for pointsman#243 and #271
+  and of 2026-11-20 for pointsman#307, before their code is released, so
+  they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1706,7 +1722,13 @@ what voids it.
   file or team that cannot be read, or a pattern or section header the
   engine does not read, makes the whole `github_pr` fact missing, and pushes GitHub does not show
   make `pushed_by_author` `unavailable` unless a known push by someone else
-  already makes it `no`; for `github_bump`, a file it cannot read (no
+  already makes it `no`; since pointsman#307 (not yet released) such a
+  `CODEOWNERS` or team failure, a failed membership read and a failed
+  activity read each give only their own field the strict value, never one
+  that grants more (`author_sole_code_owner` false, `author_member` no
+  value, `pushed_by_author` `unavailable`), the other `github_pr` fields
+  stay, a team that does not exist owns nothing, and a 403 that says only
+  in its message that it is a rate limit is `error`; for `github_bump`, a file it cannot read (no
   patch, a patch that does not fit the file, a `package.json` over 512 KB,
   a tree cut short, more than 50 `package.json` files or more than 30
   bumped versions) or a registry that does not answer with the publish
@@ -2486,7 +2508,8 @@ Revise the model when any of these happens:
   model can see.
 - Not yet covered: nothing shipped up to `v0.18.0`. The amendment of
   2026-11-19 covers pointsman#243 and #271 (callbacks) before their
-  release. The re-binding to
+  release, and the amendment of 2026-11-20 covers pointsman#307
+  (`github_pr` per field, rate limits) before its release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to
