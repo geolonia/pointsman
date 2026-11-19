@@ -93,6 +93,7 @@ export * from './release';
 export * from './bump';
 export * from './lockfile';
 export * from './npm';
+export * from './rate-limit';
 export * from './connector/index.ts';
 
 export default githubModule;

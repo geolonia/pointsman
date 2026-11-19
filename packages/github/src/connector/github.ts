@@ -9,6 +9,7 @@ import { FactError, FactUnavailableError } from '@pointsman/module-api';
 import { GitHubAppAuth, type Scope } from '../provider.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
 import { COPILOT } from '../reviews.ts';
+import { rateLimited } from '../rate-limit.ts';
 import type { ReviewRef, ReviewSummary } from './comment.ts';
 
 const API = 'https://api.github.com';
@@ -259,11 +260,9 @@ export class AppGitHub implements ConnectorGitHub {
       throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
     }
     if (res.status >= 200 && res.status < 300) return res;
-    // A secondary rate limit is a 403 that may carry neither header; only its message says so.
-    const message = res.status === 403 ? (await res.text().catch(() => '')).slice(0, 2000) : (await res.body?.cancel(), '');
     // Busy, down or rate limited: later. Anything else (no permission, not found) needs a person.
-    const retry = res.status >= 500 || res.status === 429
-      || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after') || /rate limit/i.test(message)));
+    // rateLimited uses up the body (of a 403, at most its first bytes, for GitHub's message).
+    const retry = (await rateLimited(res)) || res.status >= 500;
     throw new GitHubError(`GitHub ${what}: ${res.status}`, retry, res.status);
   }
 

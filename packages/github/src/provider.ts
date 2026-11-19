@@ -28,6 +28,7 @@ import {
 import { APP_SLUG as APP_SLUG_PATTERN, GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
+import { rateLimited } from './rate-limit';
 import { manifestsOf, NOT_RELEASE, onlyVersionMoves, releaseFacts, type ReleaseFacts } from './release';
 import { ageInDays, bumpFacts, devOnlyInRepository, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
 import { publishTimes, REGISTRY_TIMEOUT_MS } from './npm';
@@ -47,6 +48,8 @@ const PER_PAGE = 100;
 export const MAX_FILES = 1000;
 /** Pages of the activity list (100 pushes each) read for pushed_by_author; older pushes stay unknown. */
 export const MAX_PUSH_PAGES = 5;
+/** Teams that own the changed files, read at the same time; with more, author_sole_code_owner has no value and none is read. */
+export const MAX_OWNER_TEAMS = 20;
 /** GitHub lists at most 250 commits of a pull request. */
 const MAX_COMMITS = 250;
 /** The compare API lists at most this many files. */
@@ -267,13 +270,11 @@ async function readJson(res: Response, what: string): Promise<unknown> {
       throw new FactError(`GitHub ${what}: not JSON`);
     }
   }
-  await res.body?.cancel();
+  // Uses up the body (of a 403, at most its first bytes, for GitHub's message).
+  const limited = await rateLimited(res);
   // Redirects are not followed: they would carry the token to another place.
   if (res.status >= 300 && res.status < 400) throw new FactError(`GitHub ${what}: redirect ${res.status} not followed`);
-  // A secondary rate limit is a 403 with retry-after.
-  if (res.status === 429 || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')))) {
-    throw new FactError(`GitHub ${what}: rate limited (${res.status})`);
-  }
+  if (limited) throw new FactError(`GitHub ${what}: rate limited (${res.status})`);
   // Not there, or this token may not see it: the facts are unavailable for it.
   if (res.status === 404 || res.status === 403) throw new FactUnavailableError(`GitHub ${what}: ${res.status}`);
   throw new FactError(`GitHub ${what}: ${res.status}`);
@@ -563,6 +564,22 @@ function pushes(v: unknown): Push[] {
     const actor = isObject(a.actor) && typeof a.actor.login === 'string' ? a.actor.login : '';
     return { before: a.before.toLowerCase(), after: a.after.toLowerCase(), actor, at: String(a.timestamp ?? ''), created: a.activity_type === 'branch_creation' };
   });
+}
+
+/**
+ * The value of a read, or `fallback` when the read fails: the field's value
+ * for "not known" (no value, or "unavailable"), never a known value.
+ * Stale still fails: the facts would describe another change. The failure
+ * goes to the log by field (its message names no token).
+ */
+async function orNotKnown<T, F>(read: Promise<T>, fallback: F, field: string, source: string): Promise<T | F> {
+  try {
+    return await read;
+  } catch (err) {
+    if (err instanceof FactStaleError) throw err;
+    console.warn(`github_pr ${field}: not known (${source}): ${err instanceof Error ? err.message : String(err)}`);
+    return fallback;
+  }
 }
 
 /**
@@ -869,9 +886,9 @@ export class Snapshot {
       if (res.status === 204) return true;
       if (res.status === 404) return false;
       // 302: this token is not a member, so GitHub shows public members only. 403: no
-      // permission to read members. Not known either way.
-      if (res.status === 302 || (res.status === 403 && res.headers.get('x-ratelimit-remaining') !== '0' && !res.headers.has('retry-after'))) {
-        await res.body?.cancel();
+      // permission to read members. Not known either way; but a rate limit is an error.
+      if (res.status === 302 || res.status === 403) {
+        if (await rateLimited(res)) throw new FactError(`GitHub organization member: rate limited (${res.status})`);
         return null;
       }
       await readJson(res, 'organization member');
@@ -1003,10 +1020,21 @@ export class Snapshot {
     });
   }
 
-  /** The members of a team, by login (at most 100; more is "more than one"). */
+  /**
+   * The members of a team, by login (at most 100; more is "more than one").
+   * None for a team that does not exist (404), for example one deleted
+   * while CODEOWNERS still names it: such a team is an owner that is not
+   * the author, so the author is not the only owner.
+   */
   private team(org: string, slug: string): Promise<string[]> {
     return this.part(`team:${org}/${slug}`.toLowerCase(), async () => {
-      const v = await this.json(`/orgs/${org}/teams/${slug}/members?per_page=${PER_PAGE}`, 'team members');
+      let v: unknown;
+      try {
+        v = await this.json(`/orgs/${org}/teams/${slug}/members?per_page=${PER_PAGE}`, 'team members');
+      } catch (err) {
+        if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return [];
+        throw err;
+      }
       if (!Array.isArray(v)) throw new FactError('GitHub team members: unexpected answer');
       return v.map((m) => (isObject(m) && typeof m.login === 'string' ? m.login.toLowerCase() : ''));
     });
@@ -1015,16 +1043,25 @@ export class Snapshot {
   /**
    * Whether the author is the only code owner of every changed file (both
    * names of a renamed file), by CODEOWNERS on the base branch. A team owns
-   * as its members. False without CODEOWNERS, for a file without an owner,
-   * for an email owner, for no changed files, and for more files than are
-   * read. CODEOWNERS or a team that cannot be read fails the fact, and so
-   * does CODEOWNERS over its limits (codeowners.ts).
+   * as its members, and a team that does not exist has none. False without
+   * CODEOWNERS, for a file without an owner, for an email owner, for no
+   * changed files, and for more files than are read. CODEOWNERS or a team
+   * that cannot be read fails it, and so do CODEOWNERS over its limits
+   * (codeowners.ts) and more than MAX_OWNER_TEAMS teams (none is read);
+   * github_pr then gives no value. Teams are read at the same time. A push
+   * or a new base while the files are read is stale, also when CODEOWNERS
+   * failed first.
    */
   soleCodeOwner(): Promise<boolean> {
     return this.part('owner', async () => {
       const { pr } = await this.base;
       if (pr.files === 0 || pr.files > MAX_FILES) return false;
-      const [files, text] = await Promise.all([this.files(), this.codeowners()]);
+      // Both settle first: a stale file list wins over a CODEOWNERS failure.
+      const [filesRead, textRead] = await Promise.allSettled([this.files(), this.codeowners()]);
+      if (filesRead.status === 'rejected') throw filesRead.reason;
+      if (textRead.status === 'rejected') throw textRead.reason;
+      const files = filesRead.value;
+      const text = textRead.value;
       if (text === null) return false;
       const ownersOf = ownerLookup(parseCodeowners(text));
       const author = pr.author.toLowerCase();
@@ -1036,17 +1073,16 @@ export class Snapshot {
           for (const x of o) owners.add(x);
         }
       }
+      const teams: [string, string][] = [];
       for (const owner of owners) {
         const team = TEAM.exec(owner);
-        if (team) {
-          const members = await this.team(team[1]!, team[2]!);
-          if (members.length !== 1 || members[0] !== author) return false;
-        } else if (owner.toLowerCase() !== `@${author}`) {
-          // Another person, or an email address that cannot be tied to the author.
-          return false;
-        }
+        if (team) teams.push([team[1]!, team[2]!]);
+        // Another person, or an email address that cannot be tied to the author.
+        else if (owner.toLowerCase() !== `@${author}`) return false;
       }
-      return true;
+      if (teams.length > MAX_OWNER_TEAMS) throw new FactError(`GitHub CODEOWNERS: more than ${MAX_OWNER_TEAMS} teams own the changed files`);
+      const members = await Promise.all(teams.map(([org, slug]) => this.team(org, slug)));
+      return members.every((m) => m.length === 1 && m[0] === author);
     });
   }
 
@@ -1356,20 +1392,31 @@ export class GitHubFactProvider implements FactProvider<GitHubFactQuery> {
     const { pr, commits: list } = await s.base;
     const source = `GitHub ${query.pr.owner}/${query.pr.repo}#${query.pr.number} at ${query.pr.head.slice(0, 7)}`;
     switch (query.type) {
-      case 'github_pr':
+      case 'github_pr': {
+        // Three more reads, at the same time. Each that fails gives only its own
+        // field the value for "not known" (no value; for pushed_by_author
+        // "unavailable", as when GitHub does not show the pushes), so the
+        // pull request's own fields stay;
+        // a push or a new base in between still makes the whole fact stale.
+        const [member, pushes, sole] = await Promise.all([
+          orNotKnown(s.member(), null, 'author_member', source),
+          orNotKnown(s.pushes(), null, 'pushed_by_author', source),
+          orNotKnown(s.soleCodeOwner(), null, 'author_sole_code_owner', source),
+        ]);
         return {
           values: {
             open: pr.open, merged: pr.merged, draft: pr.draft, wip_title: isWipTitle(pr.title),
             files: pr.files, changed_lines: pr.changedLines, base_is_default: pr.base === pr.defaultBranch,
-            author_member: await s.member(),
+            author_member: member,
             author_dependabot: pr.author === DEPENDABOT && pr.authorIsBot,
             fork: pr.fork,
             all_commits_verified: list ? allVerified(list, pr.author === DEPENDABOT && pr.authorIsBot) : null,
-            pushed_by_author: pushedByAuthor(list, await s.pushes(), pr.author),
-            author_sole_code_owner: await s.soleCodeOwner(),
+            pushed_by_author: pushedByAuthor(list, pushes, pr.author),
+            author_sole_code_owner: sole,
           },
           source,
         };
+      }
       case 'github_paths': {
         const paths = query.paths ?? [];
         const except = query.except ?? [];
