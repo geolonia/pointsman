@@ -677,11 +677,14 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   for the team (#250), and that the facts read a 403 secondary rate limit
   without headers as `unavailable` (#262).
 - **Changed**: `P-FACTS-NEVER-GUESSED` (prose, YAML and JSON), the matrix
-  row for the GitHub facts' serialization, §1.1 and §1.16. The code
+  row for the GitHub facts' serialization, the §1.7 rows for the GitHub
+  reads, the activity list and `CODEOWNERS`, the GitHub bounds (at most 20
+  teams), §1.1 and §1.16. The code
   citations into `packages/github/src/provider.ts` and
   `packages/github/src/connector/github.ts` were mapped line by line to
   the new code by a short script; the one cited line that changed (the
-  membership read's 302 and 403 check) was re-cited by hand.
+  membership read's 302 and 403 check) was re-cited by hand, and so was
+  the cursor citation, which pointed at a blank line before this change.
 - **Not run**: the plugin's validator and the backtest (Q49 still waits).
   The prose SHA-256 in the YAML was updated by a short script; the
   confidence counts do not change (no claim was added or re-tagged).

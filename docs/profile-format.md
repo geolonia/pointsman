@@ -838,7 +838,9 @@ without regular expressions, so a long pattern cannot slow a decision down.
   to 50 million steps; a file of 1,000 folder patterns such as `build/`
   against 2,000 file names stays far within it. Past any of these limits
   `author_sole_code_owner` is false, never a guessed owner. GitHub itself
-  ignores a `CODEOWNERS` file over 3 MB.
+  ignores a `CODEOWNERS` file over 3 MB. The teams that own the changed
+  files are read at the same time, at most 20; with more,
+  `author_sole_code_owner` is false and no team is read.
 
 #### Missing GitHub facts
 

@@ -9,7 +9,7 @@ import { ConfigError, createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
 import { FactError, lookupFacts, MockFactProvider, ModuleRouter, resultError, type FactProvider } from '../../src/facts';
 import { toPullRequest } from '@pointsman/github/definition';
-import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '@pointsman/github';
+import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_OWNER_TEAMS, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '@pointsman/github';
 import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '@pointsman/github';
 import { matchGlob } from '@pointsman/github';
 import { MAX_ERROR_BODY_BYTES, rateLimited } from '@pointsman/github';
@@ -159,10 +159,15 @@ describe('the pull request (github_pr)', () => {
   });
 
   it('a member read that fails leaves only author_member without a value', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     for (const res of [() => new Response('{}', { status: 500 }), () => new Response('{}', { status: 429 }), () => new Response('{"message":"You have exceeded a secondary rate limit."}', { status: 403 })]) {
+      warn.mockClear();
       expect(await values('pr', routes({ '/orgs/octo-org/members/alice': res }))).toMatchObject({ open: true, author_member: null, pushed_by_author: 'yes' });
+      // Not "GitHub does not tell": an error, said in the log.
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('author_member'));
     }
+    // A 403 that says it is a rate limit only in its message, too.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('rate limited (403)'));
   });
 
   it('starts the member, activity and CODEOWNERS reads at the same time', async () => {
@@ -401,6 +406,19 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
       '/orgs/octo-org/teams/editors/members': async () => (await both(), [{ login: 'alice' }]),
     });
     expect(await sole(table)).toBe(true);
+  });
+
+  it(`more than ${MAX_OWNER_TEAMS} teams: false, and no team is read`, async () => {
+    const n = MAX_OWNER_TEAMS + 1;
+    const names = Array.from({ length: n }, (_, i) => `t${i}.md`);
+    const server = fakeGitHub(owners(names.map((f, i) => `${f} @octo-org/team-${i}`).join('\n'), {
+      [PR]: () => pullRequest({ changed_files: n }),
+      [`${PR}/files`]: () => names.map((f) => file(f)),
+      ...Object.fromEntries(names.map((_, i) => [`/orgs/octo-org/teams/team-${i}/members`, () => [{ login: 'alice' }]])),
+    }));
+    const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
+    expect(f.missing === false && f.values.author_sole_code_owner).toBe(false);
+    expect(server.calls.some((c) => c.url.pathname.includes('/teams/'))).toBe(false);
   });
 
   it('a push while CODEOWNERS is matched is still stale, not false', async () => {

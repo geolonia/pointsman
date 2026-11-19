@@ -48,6 +48,8 @@ const PER_PAGE = 100;
 export const MAX_FILES = 1000;
 /** Pages of the activity list (100 pushes each) read for pushed_by_author; older pushes stay unknown. */
 export const MAX_PUSH_PAGES = 5;
+/** Teams that own the changed files, read at the same time; with more, author_sole_code_owner is false and none is read. */
+export const MAX_OWNER_TEAMS = 20;
 /** GitHub lists at most 250 commits of a pull request. */
 const MAX_COMMITS = 250;
 /** The compare API lists at most this many files. */
@@ -565,15 +567,6 @@ function pushes(v: unknown): Push[] {
 }
 
 /**
- * Who pushed the pull request's commits: "yes" when every commit came in a
- * push by the author, "no" when one came in a push by someone else, and
- * "unavailable" otherwise (pushes older than the activity list, or more
- * commits than GitHub lists). A push brings the commits after its "before"
- * commit up to its head; when "before" is not one of the pull request's
- * commits (a new branch, a force push), every commit up to its head that no
- * earlier push brought.
- */
-/**
  * The value of a read, or `fallback` when the read fails: the strict value
  * of a field, one that never grants more (no value, "unavailable", false).
  * Stale still fails: the facts would describe another change. The failure
@@ -589,6 +582,15 @@ async function orNotKnown<T, F>(read: Promise<T>, fallback: F, field: string, so
   }
 }
 
+/**
+ * Who pushed the pull request's commits: "yes" when every commit came in a
+ * push by the author, "no" when one came in a push by someone else, and
+ * "unavailable" otherwise (pushes older than the activity list, or more
+ * commits than GitHub lists). A push brings the commits after its "before"
+ * commit up to its head; when "before" is not one of the pull request's
+ * commits (a new branch, a force push), every commit up to its head that no
+ * earlier push brought.
+ */
 export function pushedByAuthor(commits: { sha: string }[] | null, list: Push[] | null, author: string): 'yes' | 'no' | 'unavailable' {
   if (!commits || !list) return 'unavailable';
   const index = new Map(commits.map((c, i) => [c.sha, i]));
@@ -1045,7 +1047,7 @@ export class Snapshot {
    * for no changed files, and for more files than are read. CODEOWNERS or
    * a team that cannot be read fails it, and so does CODEOWNERS over its
    * limits (codeowners.ts); github_pr then gives false. Teams are read at
-   * the same time.
+   * the same time; more than MAX_OWNER_TEAMS give false without a read.
    */
   soleCodeOwner(): Promise<boolean> {
     return this.part('owner', async () => {
@@ -1070,6 +1072,8 @@ export class Snapshot {
         // Another person, or an email address that cannot be tied to the author.
         else if (owner.toLowerCase() !== `@${author}`) return false;
       }
+      // One person alone cannot be the only member of this many teams that all matter.
+      if (teams.length > MAX_OWNER_TEAMS) return false;
       const members = await Promise.all(teams.map(([org, slug]) => this.team(org, slug)));
       return members.every((m) => m.length === 1 && m[0] === author);
     });

@@ -37,17 +37,18 @@ async function cappedText(res: Response, max: number): Promise<string> {
  * Whether a non-2xx answer is a rate limit: a 429, or a 403 with
  * `x-ratelimit-remaining: 0` or `retry-after`, or (GitHub's secondary rate
  * limit, which may carry neither header) "rate limit" in its message, from
- * the first MAX_ERROR_BODY_BYTES bytes of the body. Uses up the body: read
- * nothing else from `res` after it.
+ * the first MAX_ERROR_BODY_BYTES bytes of the body (a body already used
+ * reads as empty). Uses up the body: read nothing else from `res` after it.
  */
 export async function rateLimited(res: Response): Promise<boolean> {
   if (res.status === 403) {
     if (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')) {
-      await res.body?.cancel();
+      await res.body?.cancel().catch(() => undefined);
       return true;
     }
     return /rate limit/i.test(await cappedText(res, MAX_ERROR_BODY_BYTES).catch(() => ''));
   }
-  await res.body?.cancel();
+  // A body already read or locked cannot be cancelled; the status alone decides then.
+  await res.body?.cancel().catch(() => undefined);
   return res.status === 429;
 }
