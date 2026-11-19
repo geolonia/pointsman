@@ -679,7 +679,9 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Changed**: `P-FACTS-NEVER-GUESSED` (prose, YAML and JSON), the matrix
   row for the GitHub facts' serialization, the §1.7 rows for the GitHub
   reads, the activity list and `CODEOWNERS`, the GitHub bounds (at most 20
-  teams), §1.1 and §1.16. The code
+  teams), §1.1 and §1.16. After CodeRabbit's review, a failed
+  `CODEOWNERS` or team read gives `author_sole_code_owner` no value, not
+  false, so a rule that matches on false cannot match a read that failed. The code
   citations into `packages/github/src/provider.ts` and
   `packages/github/src/connector/github.ts` were mapped line by line to
   the new code by a short script; the one cited line that changed (the

@@ -402,7 +402,7 @@ pr-next-step @ 1a2b3c4
 
 - ファクトのトークンも権限を絞ります。エンジンは GitHub に、ファクトが使う権限(上の表のもの)だけを、それも `read` だけで持つトークンを求めます。そのため、ファクト用のアプリにもっと多くの権限や書き込みの権限があっても、エンジンが受け取るトークンは必要なものを読めるだけです。
 - GitHub アプリは非公開のリポジトリのチェックを読めます。fine-grained personal access token は読めません(Checks の権限がないため)。そのため、トークンを使う場合、非公開のリポジトリではファクト `github_checks` が `unavailable` になります。
-- Members(organization)が必要なのは、`author_member` と、CODEOWNERS のチームを数えるとき(`author_sole_code_owner`)だけです。この権限がなければ、`author_member` は値がありません。また、CODEOWNERS にチームが書かれていると、`author_sole_code_owner` は false になります(オーナーがユーザーだけなら使えます)。Custom properties は `github_property` のためだけ、Actions は `github_checks`(必須のワークフロー)のためだけです。
+- Members(organization)が必要なのは、`author_member` と、CODEOWNERS のチームを数えるとき(`author_sole_code_owner`)だけです。この権限がなければ、`author_member` は値がありません。また、CODEOWNERS にチームが書かれていると、`author_sole_code_owner` は値がありません(オーナーがユーザーだけなら使えます)。Custom properties は `github_property` のためだけ、Actions は `github_checks`(必須のワークフロー)のためだけです。
 - どちらのアプリも、コネクターが扱うリポジトリにだけインストールしてください。
 
 ## 設定 {#settings}

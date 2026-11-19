@@ -380,22 +380,24 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     }))).toBe(false);
   });
 
-  it('CODEOWNERS or a team that cannot be read, or a pattern it cannot read safely: false, and the other fields stay', async () => {
+  it('CODEOWNERS or a team that cannot be read, or a pattern it cannot read safely: no value, and the other fields stay', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const stays = { open: true, files: 2, author_member: true, pushed_by_author: 'yes', author_sole_code_owner: false };
+    // No value, not false: a rule that matches on false must not match a read that failed.
+    const stays = { open: true, files: 2, author_member: true, pushed_by_author: 'yes', author_sole_code_owner: null };
     expect(await values('pr', routes({ [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 403 }) }))).toMatchObject(stays);
     expect(await values('pr', routes({ [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 500 }) }))).toMatchObject(stays);
-    // A team that no longer exists (404), or members this token may not read (403).
-    expect(await values('pr', owners('* @octo-org/writers'))).toMatchObject(stays);
+    // Members this token may not read (403). A team that no longer exists (404) is known: false, below.
     expect(await values('pr', owners('* @octo-org/writers', { '/orgs/octo-org/teams/writers/members': () => new Response('{}', { status: 403 }) }))).toMatchObject(stays);
     expect(await values('pr', owners('* @alice\n!docs/ @bob'))).toMatchObject(stays);
     expect(await values('pr', owners('* @alice\n[ab].md @bob'))).toMatchObject(stays);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('author_sole_code_owner'));
   });
 
-  it('a team that no longer exists is no owner of anything: false without a warning', async () => {
+  it('a team that no longer exists is an owner that is not the author: false without a warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // Also when the author is named next to it.
     expect(await sole(owners('* @alice @octo-org/old-team'))).toBe(false);
+    expect(await sole(owners('* @octo-org/old-team'))).toBe(false);
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -408,7 +410,8 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     expect(await sole(table)).toBe(true);
   });
 
-  it(`more than ${MAX_OWNER_TEAMS} teams: false, and no team is read`, async () => {
+  it(`more than ${MAX_OWNER_TEAMS} teams: no value, and no team is read`, async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const n = MAX_OWNER_TEAMS + 1;
     const names = Array.from({ length: n }, (_, i) => `t${i}.md`);
     const server = fakeGitHub(owners(names.map((f, i) => `${f} @octo-org/team-${i}`).join('\n'), {
@@ -417,8 +420,19 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
       ...Object.fromEntries(names.map((_, i) => [`/orgs/octo-org/teams/team-${i}/members`, () => [{ login: 'alice' }]])),
     }));
     const f = (await lookupFacts(spec('pr'), state, provider(server))).pr!;
-    expect(f.missing === false && f.values.author_sole_code_owner).toBe(false);
+    expect(f.missing === false && f.values.author_sole_code_owner).toBeNull();
     expect(server.calls.some((c) => c.url.pathname.includes('/teams/'))).toBe(false);
+  });
+
+  it('a push while the files are read is stale, also when CODEOWNERS fails first', async () => {
+    let reads = 0;
+    const moved = routes({
+      [PR]: () => (++reads > 1 ? pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1, full_name: 'octo-org/demo' } } }) : pullRequest()),
+      // CODEOWNERS fails at once; the file list comes later and the pull request has moved by then.
+      [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 403 }),
+      [`${PR}/files`]: async () => (await new Promise((r) => setTimeout(r, 30)), [file('docs/guide.md'), file('README.md')]),
+    });
+    expect(await reasonOf('pr', moved)).toEqual({ missing: true, reason: 'stale' });
   });
 
   it('a push while CODEOWNERS is matched is still stale, not false', async () => {
@@ -442,16 +456,16 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     expect(parseCodeowners('#x @a\n\\#x @b#c\n docs/ @c\t# tab')).toEqual([{ pattern: '#x', owners: ['@b'] }, { pattern: 'docs/', owners: ['@c'] }]);
   });
 
-  it('a file over the size limit gives false, never a guessed owner', async () => {
+  it('a file over the size limit gives no value, never a guessed owner', async () => {
     // Exactly at the limit is read; one byte more is not.
     const sized = (bytes: number) => `* @alice\n${'#'.repeat(bytes - 9)}`;
     expect(sized(MAX_CODEOWNERS_BYTES)).toHaveLength(MAX_CODEOWNERS_BYTES);
     expect(await sole(owners(sized(MAX_CODEOWNERS_BYTES)))).toBe(true);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    expect(await sole(owners(sized(MAX_CODEOWNERS_BYTES + 1)))).toBe(false);
+    expect(await sole(owners(sized(MAX_CODEOWNERS_BYTES + 1)))).toBeNull();
     // GitHub's own size is checked before the content is decoded.
     const bySize = routes({ [`${REPO}/contents/.github/CODEOWNERS`]: () => ({ ...codeowners('* @alice'), size: MAX_CODEOWNERS_BYTES + 1 }) });
-    expect(await sole(bySize)).toBe(false);
+    expect(await sole(bySize)).toBeNull();
     expect(() => parseCodeowners(`${'a'.repeat(MAX_PATTERN_LENGTH + 1)} @x`)).toThrow(FactError);
   });
 
@@ -994,7 +1008,7 @@ describe('rate limits (one check for the facts and the connector)', () => {
     expect(await rateLimited(new Response('{}', { status: 500 }))).toBe(false);
   });
 
-  it(`reads at most ${MAX_ERROR_BODY_BYTES} bytes of a 403 body`, async () => {
+  it(`checks only the first ${MAX_ERROR_BODY_BYTES} bytes of a 403 body and stops reading`, async () => {
     const huge = big(1000);
     expect(await rateLimited(huge.res)).toBe(false);
     expect(huge.read()).toBeLessThanOrEqual(Math.ceil(MAX_ERROR_BODY_BYTES / 1024) + 1);

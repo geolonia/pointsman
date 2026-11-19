@@ -3,10 +3,14 @@
 // same answer the same way: a rate limit is "try again later" (the fact
 // `error`, a connector write left for the next run), never "no access".
 
-/** How much of a 403 body is read to find GitHub's message; the rest is not read. */
+/** How much of a 403 body is checked for GitHub's message; reading stops there and the rest is cancelled. */
 export const MAX_ERROR_BODY_BYTES = 2000;
 
-/** Up to `max` bytes of an answer's body as text; the rest of the body is cancelled, not read. */
+/**
+ * The first `max` bytes of an answer's body as text. Reading stops with the
+ * chunk that reaches `max` (a chunk can be larger), and the rest of the
+ * body is cancelled.
+ */
 async function cappedText(res: Response, max: number): Promise<string> {
   if (!res.body) return '';
   const reader = res.body.getReader();

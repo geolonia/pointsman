@@ -115,7 +115,7 @@ const base = (spec: FactSpec, pr: unknown) => ({ type: spec.type as GitHubFactTy
 const github_pr: FactTypeDef = {
   type: 'github_pr',
   description: 'github_pr: a pull request.',
-  // all_commits_verified and author_member have no value when GitHub cannot tell.
+  // all_commits_verified, author_member and author_sole_code_owner have no value when GitHub cannot tell (or the read fails).
   fields: {
     open: { kind: 'boolean' }, merged: { kind: 'boolean' }, draft: { kind: 'boolean' }, wip_title: { kind: 'boolean' },
     files: { kind: 'number' }, changed_lines: { kind: 'number' }, base_is_default: { kind: 'boolean' },
@@ -170,7 +170,7 @@ const github_pr: FactTypeDef = {
       },
     },
   },
-  cases: { nullable: ['author_member', 'all_commits_verified'], defaults: {} },
+  cases: { nullable: ['author_member', 'all_commits_verified', 'author_sole_code_owner'], defaults: {} },
 };
 
 /** Changed files that match the fact's paths and none of its except list. all is false when no file changed. */
