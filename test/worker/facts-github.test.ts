@@ -12,6 +12,7 @@ import { toPullRequest } from '@pointsman/github/definition';
 import { GitHubAppAuth, GitHubFactProvider, isWipTitle, MAX_FILES, MAX_PUSH_PAGES, nextCursor, privateKeyDer, TokenAuth } from '@pointsman/github';
 import { codeownersMatch, MAX_CODEOWNERS_BYTES, MAX_PATTERN_LENGTH, ownerLookup, parseCodeowners } from '@pointsman/github';
 import { matchGlob } from '@pointsman/github';
+import { MAX_ERROR_BODY_BYTES, rateLimited } from '@pointsman/github';
 import { depsFor } from '../../src/index';
 import { D1DecisionLog } from '../../src/log-d1';
 import { MockAdapter } from '../../src/models/mock';
@@ -101,6 +102,16 @@ const values = async (name: string, table?: Record<string, Handler>) => {
   return f.values;
 };
 const reasonOf = async (name: string, table?: Record<string, Handler>) => (await facts(table, spec(name))).facts[name];
+/** Resolves once `n` requests wait on it: reads made one after another never get there and fail after a second. */
+function gate(n: number): () => Promise<void> {
+  let waiting = 0;
+  let open!: () => void;
+  const all = new Promise<void>((resolve) => { open = resolve; });
+  return () => {
+    if (++waiting === n) open();
+    return Promise.race([all, new Promise<void>((_, reject) => setTimeout(() => reject(new Error(`only ${waiting} of ${n} reads at once`)), 1000))]);
+  };
+}
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -145,6 +156,22 @@ describe('the pull request (github_pr)', () => {
     const userRepo = (login: string) => routes({ [PR]: () => pullRequest({ user: { login, type: 'User' }, base: { ref: 'main', repo: { id: 1, default_branch: 'main', owner: { type: 'User' } } } }) });
     expect(await values('pr', userRepo('Octo-Org'))).toMatchObject({ author_member: true });
     expect(await values('pr', userRepo('bob'))).toMatchObject({ author_member: false });
+  });
+
+  it('a member read that fails leaves only author_member without a value', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    for (const res of [() => new Response('{}', { status: 500 }), () => new Response('{}', { status: 429 }), () => new Response('{"message":"You have exceeded a secondary rate limit."}', { status: 403 })]) {
+      expect(await values('pr', routes({ '/orgs/octo-org/members/alice': res }))).toMatchObject({ open: true, author_member: null, pushed_by_author: 'yes' });
+    }
+  });
+
+  it('starts the member, activity and CODEOWNERS reads at the same time', async () => {
+    const all3 = gate(3);
+    expect(await values('pr', routes({
+      '/orgs/octo-org/members/alice': async () => (await all3(), new Response(null, { status: 204 })),
+      [`${REPO}/activity`]: async () => (await all3(), [push(HEAD)]),
+      [`${REPO}/contents/.github/CODEOWNERS`]: async () => (await all3(), codeowners('* @alice')),
+    }))).toMatchObject({ author_member: true, pushed_by_author: 'yes', author_sole_code_owner: true });
   });
 
   it('Dependabot needs its login and the Bot type; a bot is not a member', async () => {
@@ -219,8 +246,16 @@ describe('who pushed (github_pr.pushed_by_author)', () => {
     expect(f.missing === false && f.values).toMatchObject({ fork: true, pushed_by_author: 'yes' });
   });
 
-  it('a failing activity list fails the fact', async () => {
-    expect(await reasonOf('pr', routes({ [`${REPO}/activity`]: () => new Response('{}', { status: 500 }) }))).toEqual({ missing: true, reason: 'error' });
+  it('a failing activity list leaves only pushed_by_author unknown; the other fields stay', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    for (const res of [() => new Response('{}', { status: 500 }), () => new Response('{}', { status: 429 })]) {
+      expect(await values('pr', routes({ [`${REPO}/activity`]: res }))).toMatchObject({
+        open: true, files: 2, changed_lines: 4, author_member: true, all_commits_verified: true, pushed_by_author: 'unavailable',
+      });
+    }
+    // Said in the log, by field, never with the token.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('pushed_by_author'));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(TOKEN);
   });
 
   /** Pages of the activity list, chained by an "after" cursor in the Link header. */
@@ -278,9 +313,10 @@ describe('who pushed (github_pr.pushed_by_author)', () => {
     expect(server.count(`${REPO}/activity`)).toBe(MAX_PUSH_PAGES);
   });
 
-  it('a later page that fails fails the fact; one that is not shown leaves older pushes unknown', async () => {
+  it('a later page that fails leaves pushed_by_author unknown; one that is not shown leaves older pushes unknown', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const pages = [[push(HEAD, 'alice', C2, '2026-10-21T02:00:00Z')], [push(C2, 'alice', '0'.repeat(40), '2026-10-21T01:00:00Z')]];
-    expect(await reasonOf('pr', three(paged(pages, { 1: () => new Response('{}', { status: 502 }) })))).toEqual({ missing: true, reason: 'error' });
+    expect(await pushed(three(paged(pages, { 1: () => new Response('{}', { status: 502 }) })))).toBe('unavailable');
     expect(await pushed(three(paged(pages, { 1: () => new Response('{}', { status: 403 }) })))).toBe('unavailable');
     // Someone else's push on the first page is still known.
     const bob = [[push(HEAD, 'bob', C2, '2026-10-21T02:00:00Z')], pages[1]!];
@@ -339,11 +375,38 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     }))).toBe(false);
   });
 
-  it('CODEOWNERS or a team that cannot be read, or a pattern it cannot read safely: the fact is missing', async () => {
-    expect(await reasonOf('pr', routes({ [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 403 }) }))).toEqual({ missing: true, reason: 'unavailable' });
-    expect(await reasonOf('pr', owners('* @octo-org/writers'))).toEqual({ missing: true, reason: 'unavailable' });
-    expect(await reasonOf('pr', owners('* @alice\n!docs/ @bob'))).toEqual({ missing: true, reason: 'error' });
-    expect(await reasonOf('pr', owners('* @alice\n[ab].md @bob'))).toEqual({ missing: true, reason: 'error' });
+  it('CODEOWNERS or a team that cannot be read, or a pattern it cannot read safely: false, and the other fields stay', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const stays = { open: true, files: 2, author_member: true, pushed_by_author: 'yes', author_sole_code_owner: false };
+    expect(await values('pr', routes({ [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 403 }) }))).toMatchObject(stays);
+    expect(await values('pr', routes({ [`${REPO}/contents/CODEOWNERS`]: () => new Response('{}', { status: 500 }) }))).toMatchObject(stays);
+    // A team that no longer exists (404), or members this token may not read (403).
+    expect(await values('pr', owners('* @octo-org/writers'))).toMatchObject(stays);
+    expect(await values('pr', owners('* @octo-org/writers', { '/orgs/octo-org/teams/writers/members': () => new Response('{}', { status: 403 }) }))).toMatchObject(stays);
+    expect(await values('pr', owners('* @alice\n!docs/ @bob'))).toMatchObject(stays);
+    expect(await values('pr', owners('* @alice\n[ab].md @bob'))).toMatchObject(stays);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('author_sole_code_owner'));
+  });
+
+  it('a team that no longer exists is no owner of anything: false without a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await sole(owners('* @alice @octo-org/old-team'))).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('reads the teams at the same time', async () => {
+    const both = gate(2);
+    const table = owners('docs/ @octo-org/writers\nREADME.md @octo-org/editors', {
+      '/orgs/octo-org/teams/writers/members': async () => (await both(), [{ login: 'alice' }]),
+      '/orgs/octo-org/teams/editors/members': async () => (await both(), [{ login: 'alice' }]),
+    });
+    expect(await sole(table)).toBe(true);
+  });
+
+  it('a push while CODEOWNERS is matched is still stale, not false', async () => {
+    let reads = 0;
+    const moved = owners('* @alice', { [PR]: () => (++reads > 1 ? pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1, full_name: 'octo-org/demo' } } }) : pullRequest()) });
+    expect(await reasonOf('pr', moved)).toEqual({ missing: true, reason: 'stale' });
   });
 
   it('matches patterns like GitHub', () => {
@@ -361,15 +424,16 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     expect(parseCodeowners('#x @a\n\\#x @b#c\n docs/ @c\t# tab')).toEqual([{ pattern: '#x', owners: ['@b'] }, { pattern: 'docs/', owners: ['@c'] }]);
   });
 
-  it('a file over the size limit makes the fact missing, never a guessed owner', async () => {
+  it('a file over the size limit gives false, never a guessed owner', async () => {
     // Exactly at the limit is read; one byte more is not.
     const sized = (bytes: number) => `* @alice\n${'#'.repeat(bytes - 9)}`;
     expect(sized(MAX_CODEOWNERS_BYTES)).toHaveLength(MAX_CODEOWNERS_BYTES);
     expect(await sole(owners(sized(MAX_CODEOWNERS_BYTES)))).toBe(true);
-    expect(await reasonOf('pr', owners(sized(MAX_CODEOWNERS_BYTES + 1)))).toEqual({ missing: true, reason: 'error' });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(await sole(owners(sized(MAX_CODEOWNERS_BYTES + 1)))).toBe(false);
     // GitHub's own size is checked before the content is decoded.
     const bySize = routes({ [`${REPO}/contents/.github/CODEOWNERS`]: () => ({ ...codeowners('* @alice'), size: MAX_CODEOWNERS_BYTES + 1 }) });
-    expect(await reasonOf('pr', bySize)).toEqual({ missing: true, reason: 'error' });
+    expect(await sole(bySize)).toBe(false);
     expect(() => parseCodeowners(`${'a'.repeat(MAX_PATTERN_LENGTH + 1)} @x`)).toThrow(FactError);
   });
 
@@ -669,6 +733,8 @@ describe('missing facts', () => {
       () => new Response('{}', { status: 429 }),
       () => new Response('{}', { status: 403, headers: { 'x-ratelimit-remaining': '0' } }),
       () => new Response('{}', { status: 403, headers: { 'retry-after': '60' } }),
+      // A secondary rate limit may carry neither header; only its message says so.
+      () => new Response('{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}', { status: 403 }),
       () => new Response(null, { status: 301, headers: { location: 'https://example.com/' } }),
       () => new Response('not json', { status: 200 }),
       () => ({ state: 'open' }),
@@ -887,5 +953,33 @@ describe('a decision with GitHub facts', () => {
   it('a stale snapshot goes to the retry rule', async () => {
     const d = await decide(new ModuleRouter(new Map([['@pointsman/github', provider(fakeGitHub(routes({ [`${PR}/commits`]: () => [commit(OTHER)] })))]])));
     expect(d).toMatchObject({ action: 'retry', rule: 0, facts: { pr: { missing: true, reason: 'stale' } } });
+  });
+});
+
+describe('rate limits (one check for the facts and the connector)', () => {
+  /** A body of `chunks` pieces of 1 KiB; counts how many were read. */
+  const big = (chunks: number, text = 'x') => {
+    let read = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { if (read++ < chunks) c.enqueue(new TextEncoder().encode(text.padEnd(1024, ' '))); else c.close(); },
+    });
+    return { res: new Response(body, { status: 403 }), read: () => read };
+  };
+
+  it('429, and a 403 with either header or with "rate limit" in its message', async () => {
+    expect(await rateLimited(new Response(null, { status: 429 }))).toBe(true);
+    expect(await rateLimited(new Response('{}', { status: 403, headers: { 'x-ratelimit-remaining': '0' } }))).toBe(true);
+    expect(await rateLimited(new Response('{}', { status: 403, headers: { 'retry-after': '60' } }))).toBe(true);
+    expect(await rateLimited(Response.json({ message: 'You have exceeded a secondary rate limit.' }, { status: 403 }))).toBe(true);
+    expect(await rateLimited(Response.json({ message: 'Resource not accessible by integration' }, { status: 403 }))).toBe(false);
+    expect(await rateLimited(new Response('{}', { status: 404 }))).toBe(false);
+    expect(await rateLimited(new Response('{}', { status: 500 }))).toBe(false);
+  });
+
+  it(`reads at most ${MAX_ERROR_BODY_BYTES} bytes of a 403 body`, async () => {
+    const huge = big(1000);
+    expect(await rateLimited(huge.res)).toBe(false);
+    expect(huge.read()).toBeLessThanOrEqual(Math.ceil(MAX_ERROR_BODY_BYTES / 1024) + 1);
+    expect(await rateLimited(big(1000, '{"message":"API rate limit exceeded"').res)).toBe(true);
   });
 });
