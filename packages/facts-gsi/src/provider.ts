@@ -8,7 +8,9 @@
 //
 // Both are free to use, also commercially, with attribution; the attribution
 // is in each fact's `source`. Background: docs/spikes/spatial-facts.md.
-// Tiles are cached for a day: in memory and in the Workers cache.
+// Tiles are cached for a day: in memory and in the Workers cache. GSI has
+// data for Japan only: a place outside it is missing ("unavailable"), never
+// "not in a zone" or "no site", which a missing tile would otherwise say.
 
 import {
   along, distanceTo, FactError, FactUnavailableError, offset, tileOf,
@@ -24,6 +26,17 @@ const TILE_TTL_S = 86_400;
 const MEMORY_TILES = 64;
 /** A tile load is shared, so it has its own limit, longer than one lookup's. */
 const LOAD_TIMEOUT_MS = 10_000;
+/** The size of every GSI raster tile; tileOf gives pixel positions in it. */
+const TILE_PX = 256;
+
+/**
+ * Whether a place is in Japan's box (20–46° N, 122–154° E), the same box
+ * as @pointsman/facts-jshis. GSI publishes no tile where there is no zone,
+ * so outside Japan a missing tile would read as "not in a zone".
+ */
+function inJapan([lon, lat]: Position): boolean {
+  return lat >= 20 && lat < 46 && lon >= 122 && lon < 154;
+}
 
 /** Depth classes by colour, from the portal's legend (shinsui_legend3.png). */
 const FLOOD_CLASSES: { rgb: [number, number, number]; rank: number; class: string }[] = [
@@ -55,7 +68,8 @@ const SHELTERS = {
 };
 
 
-type Pixels = (x: number, y: number) => [number, number, number, number];
+/** The colour of a pixel as red, green, blue and alpha; the image's size alongside. */
+type Pixels = ((x: number, y: number) => [number, number, number, number]) & { width: number; height: number };
 type Shelter = { at: Position; name: string };
 type Tile<T> = { data: T | null; date: string };
 
@@ -90,7 +104,10 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
     // it, so one lookup's time limit must not cancel it for the others. Loads
     // have their own time limit; lookupFacts stops waiting at the caller's.
     void signal;
-    return kind === 'inside' ? this.flood(query.geometry) : this.shelters(query.geometry);
+    const g = query.geometry;
+    // Every place of the geometry, before any tile is read.
+    if (!(g.type === 'Point' ? [g.coordinates] : g.coordinates).every(inJapan)) throw new FactUnavailableError('GSI covers Japan only');
+    return kind === 'inside' ? this.flood(g) : this.shelters(g);
   }
 
   /** The deepest class along the geometry, sampled every 15 m (at most 200 places). */
@@ -136,7 +153,8 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
     const ne = tileOf([east, north], SHELTERS.zoom);
     // Near a pole or the 180° meridian the box leaves the tile grid (NaN,
     // reversed or out-of-range tile numbers), and the count below would not
-    // catch it.
+    // catch it. Places outside Japan are refused before this; the check
+    // stays in case that box ever widens.
     const size = 2 ** SHELTERS.zoom;
     const inGrid = (n: number) => Number.isInteger(n) && n >= 0 && n < size;
     if (![sw.x, sw.y, ne.x, ne.y].every(inGrid) || ne.x < sw.x || sw.y < ne.y) throw new FactError('geometry is outside the tile grid');
@@ -180,7 +198,7 @@ export class GsiFactProvider implements FactProvider<SpatialFactQuery> {
       return {
         bytes,
         lastModified: res.headers.get('last-modified') ?? '',
-        tile: { data: format === 'png' ? await decodePng(bytes) : shelterList(bytes), date: Number.isNaN(modified) ? '' : new Date(modified).toISOString().slice(0, 10) },
+        tile: { data: format === 'png' ? await rasterTile(bytes) : shelterList(bytes), date: Number.isNaN(modified) ? '' : new Date(modified).toISOString().slice(0, 10) },
       };
     };
     // A cache that fails is a miss, never an error.
@@ -227,13 +245,24 @@ function shelterList(bytes: Uint8Array): Shelter[] {
   return out;
 }
 
+/** A raster tile: a PNG of exactly 256 × 256, or an error (so it is never cached, and never read at the wrong pixel). */
+async function rasterTile(bytes: Uint8Array): Promise<Pixels> {
+  const read = await decodePng(bytes);
+  if (read.width !== TILE_PX || read.height !== TILE_PX) throw new FactError(`PNG tile is ${read.width} × ${read.height}, not ${TILE_PX} × ${TILE_PX}`);
+  return read;
+}
+
 async function inflate(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   // "deflate" is the zlib format, as in PNG.
   const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** A small PNG decoder: 8-bit greyscale, RGB, palette, grey with alpha or RGBA, not interlaced. */
+/**
+ * A small PNG decoder: 8-bit greyscale, RGB, palette, grey with alpha or
+ * RGBA, not interlaced. Transparency from tRNS: per palette entry, or the
+ * one colour key of a greyscale or RGB image.
+ */
 export async function decodePng(buf: Uint8Array): Promise<Pixels> {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let pos = 8;
@@ -288,7 +317,12 @@ export async function decodePng(buf: Uint8Array): Promise<Pixels> {
       out[y * stride + i] = (raw[line + i]! + predicted) & 255;
     }
   }
-  return (x, y) => {
+  // The colour key (8-bit images: the low byte of each 16-bit value); a value
+  // over 255 matches no 8-bit sample.
+  const key = (k: number) => (alpha && alpha.length >= 2 * (k + 1) ? (alpha[2 * k]! << 8) | alpha[2 * k + 1]! : -1);
+  const greyKey = type === 0 ? key(0) : -1;
+  const rgbKey = type === 2 ? [key(0), key(1), key(2)] : [-1, -1, -1];
+  const pixel = (x: number, y: number): [number, number, number, number] => {
     const o = y * stride + x * channels;
     switch (type) {
       case 3: {
@@ -296,9 +330,13 @@ export async function decodePng(buf: Uint8Array): Promise<Pixels> {
         return [palette![i * 3]!, palette![i * 3 + 1]!, palette![i * 3 + 2]!, alpha && i < alpha.length ? alpha[i]! : 255];
       }
       case 6: return [out[o]!, out[o + 1]!, out[o + 2]!, out[o + 3]!];
-      case 2: return [out[o]!, out[o + 1]!, out[o + 2]!, 255];
+      case 2: {
+        const [r, g, b] = [out[o]!, out[o + 1]!, out[o + 2]!];
+        return [r, g, b, r === rgbKey[0] && g === rgbKey[1] && b === rgbKey[2] ? 0 : 255];
+      }
       case 4: return [out[o]!, out[o]!, out[o]!, out[o + 1]!];
-      default: return [out[o]!, out[o]!, out[o]!, 255];
+      default: return [out[o]!, out[o]!, out[o]!, out[o] === greyKey ? 0 : 255];
     }
   };
+  return Object.assign(pixel, { width, height });
 }

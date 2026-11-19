@@ -9,29 +9,51 @@ import { depsFor } from '../../src/index';
 
 /** The spatial provider behind the deployment's fact router. */
 
-/** A 256 × 256 PNG: colour type 6 (RGBA) or 3 (palette), each row with the given filter. */
-async function png(pixel: (x: number, y: number) => [number, number, number, number], { type = 6, filter = 0 } = {}): Promise<Uint8Array> {
-  const size = 256;
+/**
+ * A PNG of `size` × `size` (256 by default): colour type 6 (RGBA), 3
+ * (palette), 2 (RGB) or 0 (greyscale), each row with the given filter (0 to
+ * 4). `key`: a tRNS colour key for types 0 and 2 (one 16-bit value per
+ * channel, as PNG writes it).
+ */
+async function png(
+  pixel: (x: number, y: number) => [number, number, number, number],
+  { type = 6, filter = 0, size = 256, key }: { type?: number; filter?: number; size?: number; key?: number[] } = {},
+): Promise<Uint8Array> {
   const palette: number[][] = [];
   const index = (c: number[]) => {
     let i = palette.findIndex((p) => p.every((v, k) => v === c[k]));
     if (i < 0) i = palette.push(c) - 1;
     return i;
   };
-  const channels = type === 6 ? 4 : 1;
-  const rows = new Uint8Array(size * (size * channels + 1));
+  const channels = ({ 0: 1, 2: 3, 3: 1, 6: 4 } as Record<number, number>)[type]!;
+  const stride = size * channels;
+  const lines: Uint8Array[] = [];
   for (let y = 0; y < size; y++) {
-    const line = new Uint8Array(size * channels);
+    const line = new Uint8Array(stride);
     for (let x = 0; x < size; x++) {
       const c = pixel(x, y);
       if (type === 6) line.set(c, x * 4);
+      else if (type === 2) line.set(c.slice(0, 3), x * 3);
+      else if (type === 0) line[x] = c[0]!;
       else line[x] = index(c);
     }
-    const o = y * (size * channels + 1);
+    lines.push(line);
+  }
+  const rows = new Uint8Array(size * (stride + 1));
+  for (let y = 0; y < size; y++) {
+    const line = lines[y]!;
+    const up = y > 0 ? lines[y - 1]! : new Uint8Array(stride);
+    const o = y * (stride + 1);
     rows[o] = filter;
-    for (let i = 0; i < line.length; i++) {
-      // Filter 1 (sub): store the difference to the byte one pixel to the left.
-      rows[o + 1 + i] = filter === 1 ? (line[i]! - (i >= channels ? line[i - channels]! : 0)) & 255 : line[i]!;
+    for (let i = 0; i < stride; i++) {
+      // Each filter stores the difference to a prediction from the bytes left (a), above (b) and above-left (c).
+      const a = i >= channels ? line[i - channels]! : 0;
+      const b = up[i]!;
+      const c = i >= channels ? up[i - channels]! : 0;
+      const p = a + b - c;
+      const paeth = Math.abs(p - a) <= Math.abs(p - b) && Math.abs(p - a) <= Math.abs(p - c) ? a : Math.abs(p - b) <= Math.abs(p - c) ? b : c;
+      const predicted = [0, a, b, (a + b) >> 1, paeth][filter]!;
+      rows[o + 1 + i] = (line[i]! - predicted) & 255;
     }
   }
   const zipped = new Uint8Array(await new Response(new Blob([rows]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
@@ -51,6 +73,7 @@ async function png(pixel: (x: number, y: number) => [number, number, number, num
     parts.push(chunk('PLTE', new Uint8Array(palette.flatMap((p) => p.slice(0, 3)))));
     parts.push(chunk('tRNS', new Uint8Array(palette.map((p) => p[3]!))));
   }
+  if (key) parts.push(chunk('tRNS', new Uint8Array(key.flatMap((v) => [v >> 8, v & 255]))));
   parts.push(chunk('IDAT', zipped), chunk('IEND', new Uint8Array()));
   const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   parts.reduce((at, p) => (all.set(p, at), at + p.length), 0);
@@ -91,6 +114,29 @@ describe('PNG tiles', () => {
     }
   });
 
+  it('decode RGB and greyscale images, with every filter', async () => {
+    // A pattern that differs left, above and diagonally, so every predictor matters.
+    const pattern = (x: number, y: number): [number, number, number, number] => [(x * 7 + y * 3) & 255, (x * 5 + y * 11) & 255, (x * 13 + y) & 255, 255];
+    for (const type of [6, 2, 0]) {
+      for (const filter of [0, 1, 2, 3, 4]) {
+        const read = await decodePng(await png(pattern, { type, filter }));
+        for (const [x, y] of [[0, 0], [1, 0], [0, 1], [37, 91], [255, 255]] as const) {
+          const want = pattern(x, y);
+          expect(read(x, y), `type ${type} filter ${filter} at ${x},${y}`).toEqual(type === 0 ? [want[0], want[0], want[0], 255] : want);
+        }
+      }
+    }
+  });
+
+  it('read the colour key of RGB and greyscale images as transparent', async () => {
+    const rgb = await decodePng(await png((x) => (x < 128 ? DEEP : [1, 2, 3, 255]), { type: 2, key: [1, 2, 3] }));
+    expect(rgb(10, 10)).toEqual(DEEP);
+    expect(rgb(200, 10)).toEqual([1, 2, 3, 0]);
+    const grey = await decodePng(await png((x) => (x < 128 ? [9, 9, 9, 255] : [200, 200, 200, 255]), { type: 0, key: [200] }));
+    expect(grey(10, 10)).toEqual([9, 9, 9, 255]);
+    expect(grey(200, 10)).toEqual([200, 200, 200, 0]);
+  });
+
   it('refuse what they cannot read', async () => {
     await expect(decodePng(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]))).rejects.toThrow(FactError);
   });
@@ -126,6 +172,20 @@ describe('flood zones', () => {
     expect((await lookup(new GsiFactProvider({ fetch: fakeServer(() => png(() => NONE)).fetchFn }))).values).toEqual({ inside: false, rank: 0, class: '' });
     const missing = await lookup(new GsiFactProvider({ fetch: fakeServer(async () => null).fetchFn }));
     expect(missing).toEqual({ values: { inside: false, rank: 0, class: '' }, source: expect.stringContaining('日付不明') });
+  });
+
+  it('refuse a tile that is not 256 × 256, and do not keep it', async () => {
+    let calls = 0;
+    const big = (async () => (calls++, new Response(await png(() => DEEP, { size: 512 }), { headers: { 'last-modified': MODIFIED } }))) as typeof fetch;
+    const p = new GsiFactProvider({ fetch: big });
+    await expect(lookup(p)).rejects.toThrow(/512 × 512, not 256 × 256/);
+    await expect(lookup(p)).rejects.toThrow(/not 256 × 256/);
+    expect(calls).toBe(2);
+  });
+
+  it('a transparent colour key is outside every zone, not a colour outside the legend', async () => {
+    const keyed = fakeServer(() => png(() => [1, 2, 3, 255], { type: 2, key: [1, 2, 3] }));
+    expect((await lookup(new GsiFactProvider({ fetch: keyed.fetchFn }))).values).toEqual({ inside: false, rank: 0, class: '' });
   });
 
   it('fail on a colour that is not in the legend, even a close one, and on server errors', async () => {
@@ -257,26 +317,59 @@ describe('evacuation sites', () => {
     expect((await lookup(new GsiFactProvider({ fetch: fetchFn }), line)).values).toMatchObject({ found: true, name: 'Edge school' });
   });
 
-  it('refuse a geometry at or near a pole, as a missing fact, without fetching tiles', async () => {
+  it('refuse a geometry at or near a pole or the 180° meridian, as a missing fact, without fetching tiles', async () => {
     const server = fakeServer(async () => null);
     const p = new GsiFactProvider({ fetch: server.fetchFn });
-    for (const lat of [90, -90]) {
-      await expect(lookup(p, { type: 'Point', coordinates: [139.75, lat] })).rejects.toThrow(/outside the tile grid/);
+    // Far outside Japan: GSI has no data there (outside the tile grid, too).
+    for (const coordinates of [[139.75, 90], [139.75, -90], [180, 0], [-180, 0], [139.75, 89.99]] as [number, number][]) {
+      await expect(lookup(p, { type: 'Point', coordinates }), String(coordinates)).rejects.toThrow(FactUnavailableError);
     }
-    // At the 180° meridian the box's east edge is past the last tile column.
-    for (const lon of [180, -180]) {
-      await expect(lookup(p, { type: 'Point', coordinates: [lon, 0] })).rejects.toThrow(/outside the tile grid/);
-    }
-    // Close to a pole the box is finite but very wide: too many tiles.
-    await expect(lookup(p, { type: 'Point', coordinates: [139.75, 89.99] })).rejects.toThrow(FactError);
     const facts = await lookupFacts([{ name: 'shelter', type: 'nearest', layer: 'gsi-shelters-flood', at: '$.g' }], { g: { type: 'Point', coordinates: [0, 90] } }, p);
-    expect(facts.shelter).toEqual({ missing: true, reason: 'error' });
+    expect(facts.shelter).toEqual({ missing: true, reason: 'unavailable' });
     expect(server.calls).toHaveLength(0);
   });
 
   it('find none farther than 5 km', async () => {
     const far = { type: 'FeatureCollection', features: [site(139.82, 35.6855, 'Far school')] };
     expect((await lookup(new GsiFactProvider({ fetch: fakeServer(async () => null, far).fetchFn }))).values).toEqual({ found: false, distance_m: null, name: null });
+  });
+});
+
+describe('outside Japan', () => {
+  const specs = [
+    { name: 'flood', type: 'inside' as const, layer: 'gsi-flood-max', at: '$.g' },
+    { name: 'shelter', type: 'nearest' as const, layer: 'gsi-shelters-flood', at: '$.g' },
+  ];
+
+  it('is unavailable, never "not in a zone" or "no site", and fetches no tile', async () => {
+    const server = fakeServer(async () => null);
+    const p = new GsiFactProvider({ fetch: server.fetchFn });
+    // Paris; the sea south of Japan; a line that leaves Japan's box (beyond 154° E).
+    const outside: Geometry[] = [
+      { type: 'Point', coordinates: [2.3522, 48.8566] },
+      { type: 'Point', coordinates: [139.75, 15] },
+      { type: 'LineString', coordinates: [[153.9, 35], [154.1, 35]] },
+    ];
+    for (const g of outside) {
+      const facts = await lookupFacts(specs, { g }, p);
+      expect(facts, JSON.stringify(g)).toEqual({ flood: { missing: true, reason: 'unavailable' }, shelter: { missing: true, reason: 'unavailable' } });
+    }
+    expect(server.calls).toHaveLength(0);
+  });
+
+  it('swapped latitude and longitude of a place in Japan is no location at all', async () => {
+    const p = new GsiFactProvider({ fetch: fakeServer(async () => null).fetchFn });
+    // [lat, lon] instead of [lon, lat]: the latitude is then over 90.
+    const facts = await lookupFacts(specs, { g: { type: 'Point', coordinates: [35.6855, 139.753] } }, p);
+    expect(facts.flood).toEqual({ missing: true, reason: 'no_location' });
+  });
+
+  it('the edges of the box still count as Japan', async () => {
+    const p = new GsiFactProvider({ fetch: fakeServer(async () => null).fetchFn });
+    // Yonaguni (122.9° E), Minamitorishima (153.98° E), Okinotorishima (20.4° N), Wakkanai (45.4° N).
+    for (const coordinates of [[122.94, 24.45], [153.98, 24.28], [136.08, 20.42], [141.67, 45.41]] as [number, number][]) {
+      expect((await p.lookup({ type: 'inside', layer: 'gsi-flood-max', geometry: { type: 'Point', coordinates } }, signal)).values, String(coordinates)).toEqual({ inside: false, rank: 0, class: '' });
+    }
   });
 });
 

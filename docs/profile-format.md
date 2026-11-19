@@ -601,7 +601,14 @@ Layers of `gsi`:
 - The date in `source` is the oldest date of the tiles that had data, and
   "日付不明" when one of them has no date.
 - A colour that is not in the legend fails the lookup (`error`) instead of
-  guessing, so a change of the tiles shows up at once.
+  guessing, so a change of the tiles shows up at once. So does a tile that
+  is not 256 × 256 pixels. A transparent pixel (also the transparent colour
+  of an RGB or greyscale tile) is outside every zone.
+- GSI has data for Japan only. A geometry with a place outside 20–46° N
+  and 122–154° E (the same box as J-SHIS below) is missing as
+  `unavailable`, and no tile is read. Inside the box, a place without a
+  tile is outside every zone (GSI publishes no tile where there is none),
+  and the sea counts as Japan.
 
 Layers of `@pointsman/facts-jshis` (J-SHIS, the earthquake hazard station
 of NIED, per 250 m mesh; a place is `inside` where J-SHIS has its mesh, so
