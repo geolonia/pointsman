@@ -692,6 +692,20 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   confidence counts do not change (no claim was added or re-tagged).
 - **Questions**: none.
 
+## Amendment for GSI outside Japan and PNG tiles (pointsman#248, #261, #309, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that a GSI fact for a place outside
+  Japan read the missing tile as "not in a zone" or "no site" (#248), and
+  that the PNG decoder did not check the tile size or the colour key of
+  greyscale and RGB images (#261).
+- **Changed**: `P-FACTS-NEVER-GUESSED` (prose, YAML and JSON), the §1.7
+  row for the tile fetch, the matrix row for the facts' serialization,
+  §1.1 and §1.16. The citations into `packages/facts-gsi/src/provider.ts`
+  were mapped line by line by a short script and checked by hand.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

@@ -370,6 +370,18 @@
   the two changed files, moved to their lines after this change (mapped
   line by line; the validator was not run for this amendment). No new
   question.
+  Amended 2026-11-20 again, before the code is released (still bound to
+  `v0.18.0`), for pointsman#248 and #261 (from the review of 2026-11), in
+  pointsman#309: a GSI geometry with a place outside Japan's box (20–46°
+  N, 122–154° E, the box of `@pointsman/facts-jshis`) is `unavailable`
+  before any tile is read, where a missing tile read as "not in a zone" or
+  "no site"; a raster tile that is not 256 × 256 is `error`; the colour key
+  of an RGB or greyscale tile is transparent. Changed: a wider
+  `P-FACTS-NEVER-GUESSED`; the §1.7 row for the tile fetch; the matrix
+  row for the facts' serialization; the code citations into
+  `packages/facts-gsi/src/provider.ts`, moved to their lines after this
+  change (mapped line by line; the validator was not run for this
+  amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -453,8 +465,8 @@
   version and commit): the prose by hand from the code and documents of
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
-  question was picked, because the findings left none open. The amendment
-  of 2026-11-20 for pointsman#307 was done the same way.
+  question was picked, because the findings left none open. The amendments
+  of 2026-11-20 for pointsman#307 and #309 were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -470,8 +482,8 @@
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
-  and of 2026-11-20 for pointsman#307, before their code is released, so
-  they re-bind at the next release). The maintainer answered all 24 questions
+  and of 2026-11-20 for pointsman#307 and #309, before their code is
+  released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1097,7 +1109,7 @@ modeled tree.
   `action.yml` inputs)*.
 - **Storage writes, engine**: D1 `decisions` and `feedback` rows
   (`src/log-d1.ts`; since pointsman#221 (`v0.16.0`) also the close of a review, an
-  update of its status only), the Workers cache for GSI tiles (`packages/facts-gsi/src/provider.ts:202`),
+  update of its status only), the Workers cache for GSI tiles (`packages/facts-gsi/src/provider.ts:220`),
   `OAUTH_KV` (the purge cursor at `src/oauth.ts:297` and the OAuth library's
   grants and tokens). The engine never writes to `TOKENS` or `PROFILES`;
   tokens are written by `scripts/tokens.mjs` and profiles by
@@ -1232,7 +1244,7 @@ they are security-relevant.
 | cron `scheduled()` | the due callbacks read from D1 | no — the engine's own records | serialized-state | none | *(documented, docs/reviews.md "Retries are run by the Worker's cron trigger")* |
 | outbound callback | the receiver's HTTP status | yes (whoever is at `callback_url`) | data | none — any 2xx is delivered; else retried up to 6 attempts, then `failed` | *(documented, docs/reviews.md "Answer with any 2xx status")* |
 | outbound callback | the receiver's body and redirects | yes | data | none — the body is ignored, a 3xx is an error (`src/callbacks.ts:87`) | *(maintainer, 2026-10)* |
-| `engine-facts` tile fetch | PNG and GeoJSON tile bytes from GSI | no — public data from a fixed host, decoded by the engine's own PNG and GeoJSON readers | data, serialized-state | none — an unknown legend colour or unreadable tile is `error`, never a guess | *(documented, docs/profile-format.md "A colour that is not in the legend fails the lookup")* |
+| `engine-facts` tile fetch | PNG and GeoJSON tile bytes from GSI | no — public data from a fixed host, decoded by the engine's own PNG and GeoJSON readers | data, serialized-state | none — an unknown legend colour or unreadable tile is `error`, never a guess; since pointsman#309 (not yet released) so is a raster tile that is not 256 × 256, the colour key of an RGB or greyscale tile is transparent, and a place outside Japan's box is `unavailable` before any tile is read, never "not in a zone" | *(documented, docs/profile-format.md "A colour that is not in the legend fails the lookup"; "GSI has data for Japan only")* |
 | `engine-facts` routing | the Valhalla response (`trip.summary.length`, `error_code`) | no — operator-chosen server over OpenStreetMap data | data | none — a 3xx is an error; a missing length is an error | *(documented, docs/profile-format.md "Detours")* |
 | `engine-facts` GitHub reads | the pull request, its commits and files, the base branch's rules and protection, check runs, commit statuses, workflow runs, membership and custom properties | partly — GitHub is a trusted collaborator, but titles, file names, commits and check-run names are written by the pull-request author | data, size | none — answers are shape-checked and counted (`P-FACT-LOOKUP-BOUNDED`); a wrong shape, a redirect, a rate limit or too many files or checks is `error`, never a guess (`P-FACTS-NEVER-GUESSED`), except that since pointsman#307 (not yet released) a failed membership, activity or `CODEOWNERS` read of `github_pr` gives only its own field its value for "not known" (no value, or `unavailable` for `pushed_by_author`); globs are matched without regular expressions | *(documented, docs/profile-format.md "One snapshot", "Missing GitHub facts")* |
 | `engine-facts` GitHub reads | the head repository's activity list (up to the newest 500 entries for the head branch, back to the push that created it; the head repository can be a fork) | partly — GitHub records who pushed; the fork and its branch belong to the pull-request author | data | none — the head repository's name from GitHub's answer must be `owner/name`, with a name other than `.` or `..`; a 403 or 404 on the first page makes `pushed_by_author` `unavailable`; a later page that is not shown leaves the pushes older than it unknown; a commit whose push stays unknown makes it `unavailable`, unless a known push by someone else already makes it `no`; pushes older than the push that created the branch belong to an earlier branch with the same name and are left out; the next page is asked for with only the `after` cursor from GitHub's `Link` header (at most 500 characters), never the URL it names, so every request stays on the GitHub API; other failures failed the fact, and since pointsman#307 (not yet released) make `pushed_by_author` `unavailable` while the other `github_pr` fields stay | *(documented, docs/profile-format.md "GitHub pull requests" table, `pushed_by_author`, and "One snapshot"; the cursor: packages/github/src/provider.ts:611)* |
@@ -1393,7 +1405,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-facts | failure atomicity | claimed | a failed or slow lookup is recorded as `missing` with a reason; the decision still completes; a missing fact never makes a rule match; when GitHub has another head commit, every GitHub fact of the decision is `stale`; a push while the file list, the reviews, the comments or the review threads are read makes the facts that use them `stale` | §1.11 `P-FACTS-NEVER-GUESSED`, `P-GITHUB-FACTS-FOR-HEAD` | *(documented, docs/profile-format.md "A missing fact is never guessed"; "Missing GitHub facts")* |
 | engine-facts | recursive/cyclic topology | N/A — geometries are flat lists of positions | — | — | *(documented, docs/profile-format.md "Facts" table, `at`: Point or LineString)* |
 | engine-facts | callback execution | N/A — no caller-supplied code; providers are operator-configured | — | — | *(documented, docs/profile-format.md "Fact providers")* |
-| engine-facts | serialization/reconstruction | claimed | tile PNGs are decoded by the engine's own decoder (8-bit, non-interlaced only); GeoJSON tiles are parsed and reduced to point lists; GitHub answers are JSON checked field by field; `CODEOWNERS` is read by the engine's own parser, and a pattern or section header it does not read makes the fact missing; workflow files are parsed as YAML 1.2 core with limits, into maps without a prototype, and a file outside them is `unparsed`; CodeRabbit's comments are read with fixed patterns; anything else is `error` | §1.11 `P-FACTS-NEVER-GUESSED` | *(documented, docs/profile-format.md "Missing GitHub facts": "an answer of the wrong shape"; "Parser limits"; maintainer, 2026-10)* |
+| engine-facts | serialization/reconstruction | claimed | tile PNGs are decoded by the engine's own decoder (8-bit, non-interlaced only; since pointsman#309, not yet released, 256 × 256 only, with the colour key of RGB and greyscale tiles); GeoJSON tiles are parsed and reduced to point lists; GitHub answers are JSON checked field by field; `CODEOWNERS` is read by the engine's own parser, and a pattern or section header it does not read makes the fact missing; workflow files are parsed as YAML 1.2 core with limits, into maps without a prototype, and a file outside them is `unparsed`; CodeRabbit's comments are read with fixed patterns; anything else is `error` | §1.11 `P-FACTS-NEVER-GUESSED` | *(documented, docs/profile-format.md "Missing GitHub facts": "an answer of the wrong shape"; "Parser limits"; maintainer, 2026-10)* |
 | engine-facts | reference lifecycle | claimed | tiles are cached for a day in memory (64 entries) and in the Workers cache; a failed load is not kept; a GitHub App's installation tokens are kept in memory until 5 minutes before they expire, never stored | §1.11 `P-FACT-LOOKUP-BOUNDED`, `P-SECRETS-NOT-LOGGED` | *(documented, docs/profile-format.md "Tiles are cached for a day"; "Settings")* |
 | engine-facts | concurrency/reentrancy | claimed | a tile load is shared between lookups in one isolate and is not cancelled by one lookup's timeout; the GitHub and CodeRabbit facts of one decision read each part once, at the same time, and read the pull request again after its files, reviews and comments, so a push in between is `stale`; facts from the decision log read it as it is, so two decisions at the same moment can miss each other (`D-LOG-FACTS-NOT-ATOMIC`) | §1.11 `P-FACT-LOOKUP-BOUNDED`, `P-GITHUB-FACTS-FOR-HEAD`; §1.12 `D-LOG-FACTS-NOT-ATOMIC` | *(documented, docs/profile-format.md "One snapshot"; docs/modules.md "Facts from the decision log"; maintainer, 2026-10)* |
 | engine-facts | resource complexity | claimed | ≤ 1000 positions, ≤ 200 samples, ≤ 16 flood tiles, ≤ 9 shelter tiles (since pointsman#229, `v0.17.1`, a box off the tile grid is refused before the count), ≤ 5 km detour section, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s for all GitHub facts of a decision, ≤ 1,000 files, ≤ 250 commits, ≤ 300 check runs, ≤ 100 statuses and workflow runs, ≤ 5 pages of 100 activity entries, ≤ 100 globs per list matched in time linear in pattern and path length; `CODEOWNERS` patterns go through the same matcher, once per changed file and pattern, from a file of at most 128 KiB with patterns of at most 1,024 characters, and at most 50 million matching steps per decision; `github_bump`: `package.json` files up to 512 KB, at most 50 in the tree, at most 30 bumped versions, pnpm peers stripped in one pass (since pointsman#229, `v0.17.1`), registry documents streamed up to 64 MB with 8 s for all registry reads; `github_workflows`: at most 50 parsed files of 256 KB, 100 aliases and 50,000 values per file; reviews and comments up to 5 pages, statuses up to 3, editors up to 100; at most 1,000 logged decisions per read | §1.11 `P-FACT-LOOKUP-BOUNDED` | *(documented, docs/profile-format.md "One snapshot", "Parser limits", "CodeRabbit reviews"; maintainer, 2026-10)* |
@@ -1746,7 +1758,13 @@ what voids it.
   `packages/github/src/bump.ts:322`); since pointsman#229 (`v0.17.1`) a
   GSI shelters geometry whose box leaves the tile grid (at or near a pole,
   at or across the 180° meridian) is `error` and reads no tile
-  (`packages/facts-gsi/src/provider.ts:142`);
+  (`packages/facts-gsi/src/provider.ts:160`); since pointsman#309 (not yet
+  released) it is `unavailable` instead, as every GSI geometry with a place
+  outside Japan's box (20–46° N, 122–154° E) is, before any tile is read
+  (`packages/facts-gsi/src/provider.ts:109`), a raster tile that is not
+  256 × 256 is `error` (`packages/facts-gsi/src/provider.ts:251`), and the
+  colour key of an RGB or greyscale tile is transparent
+  (`packages/facts-gsi/src/provider.ts:324`);
   `github_workflows` counts a file it cannot read safely as `unparsed` and
   never skips it; `github_release` gives `version_only` false for anything
   it does not recognise as a version step, and since pointsman#235
@@ -1824,7 +1842,7 @@ what voids it.
   Voided by: nothing found. Search:
   `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" packages/module-api/src/capabilities.ts packages/facts-gsi/src/provider.ts packages/facts-valhalla/src/router.ts packages/github/src/definition.ts packages/github/src/provider.ts packages/github/src/codeowners.ts`
   — the limits at `packages/module-api/src/capabilities.ts:23`, `packages/github/src/definition.ts:93` (GitHub),
-  `packages/facts-gsi/src/provider.ts:100`, `packages/facts-gsi/src/provider.ts:142`, `packages/facts-gsi/src/provider.ts:143`, `packages/facts-valhalla/src/router.ts:27`,
+  `packages/facts-gsi/src/provider.ts:117`, `packages/facts-gsi/src/provider.ts:160`, `packages/facts-gsi/src/provider.ts:161`, `packages/facts-valhalla/src/router.ts:27`,
   `packages/github/src/provider.ts:48`, `packages/github/src/provider.ts:50`, `packages/github/src/provider.ts:58` and, for
   `CODEOWNERS`, `packages/github/src/codeowners.ts:24` to `packages/github/src/codeowners.ts:28`; for `github_bump`,
   `packages/github/src/provider.ts:67`, `packages/github/src/provider.ts:69`, `packages/github/src/bump.ts:59`,
@@ -2514,8 +2532,9 @@ Revise the model when any of these happens:
   model can see.
 - Not yet covered: nothing shipped up to `v0.18.0`. The amendment of
   2026-11-19 covers pointsman#243 and #271 (callbacks) before their
-  release, and the amendment of 2026-11-20 covers pointsman#307
-  (`github_pr` per field, rate limits) before its release. The re-binding to
+  release, and the amendments of 2026-11-20 cover pointsman#307
+  (`github_pr` per field, rate limits) and #309 (GSI outside Japan, PNG
+  tiles) before their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to
