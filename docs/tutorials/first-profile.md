@@ -14,7 +14,7 @@ made](../explanation/decision-model.md). You do not need to read it first.
 
 ## Before you start
 
-You need Node.js 24 or newer, pnpm and Git. Get the code:
+You need Node.js 24 or newer, pnpm 10 or newer, and Git. Get the code:
 
 ```sh
 git clone https://github.com/geolonia/pointsman.git
