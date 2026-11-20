@@ -24,10 +24,12 @@ function isObject(x: unknown): x is Record<string, unknown> {
 export class WorkersAiAdapter implements ModelAdapter {
   ai: AiRunner;
   gatewayId: string | undefined;
+  timeoutMs: number;
 
-  constructor(ai: AiRunner, gatewayId?: string) {
+  constructor(ai: AiRunner, gatewayId?: string, timeoutMs = TIMEOUT_MS) {
     this.ai = ai;
     this.gatewayId = gatewayId || undefined;
+    this.timeoutMs = timeoutMs;
   }
 
   async decide(request: ModelRequest): Promise<ModelResponse> {
@@ -35,23 +37,31 @@ export class WorkersAiAdapter implements ModelAdapter {
     if (!name) throw new ModelError(`model "${request.model}" is not on Workers AI`);
 
     let raw: unknown;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = Symbol('timed out');
     try {
-      raw = await this.ai.run(
+      // The gateway has its own limit; without a gateway the binding has none,
+      // so the call is raced against the same limit here.
+      const call = this.ai.run(
         name,
         request,
         // The gateway's log keeps whole requests: a request with images is not
         // logged there, so photos are never kept (docs/models.md).
         this.gatewayId
-          ? { gateway: { id: this.gatewayId, requestTimeoutMs: TIMEOUT_MS, ...(request.images?.length && { collectLog: false }) } }
+          ? { gateway: { id: this.gatewayId, requestTimeoutMs: this.timeoutMs, ...(request.images?.length && { collectLog: false }) } }
           : {},
       );
+      raw = await Promise.race([call, new Promise<typeof timedOut>((resolve) => { timer = setTimeout(() => resolve(timedOut), this.timeoutMs); })]);
     } catch (err) {
-      // Errors from the binding can include the request. With images, even a
-      // short part of it could hold image data: keep no message at all.
-      // Without images, keep the message, cut short.
+      // Errors from the binding can include the request (the state, or image
+      // data): only the kind of error is kept, as the HTTP adapter keeps only
+      // a status (P-STATE-NOT-STORED, docs/threat-model).
       if (request.images?.length) throw new ModelError(`${name}: the model call failed (the message is not kept: the request had images)`);
-      throw new ModelError(`${name}: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`);
+      throw new ModelError(`${name}: the model call failed (${err instanceof Error ? err.name : typeof err})`);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
+    if (raw === timedOut) throw new ModelError(`${name}: did not answer within ${this.timeoutMs} ms`);
 
     // Answers are checked in detail by normalizeAnswers(); here only the shape.
     if (!isObject(raw) || !isObject(raw.answers)) throw new ModelError(`${name}: response has no answers`);

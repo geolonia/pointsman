@@ -2,7 +2,7 @@
 
 import { createExecutionContext } from 'cloudflare:test';
 import { env, exports } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigError, createApp } from '../../src/app';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
 import { depsFor } from '../../src/index';
@@ -24,8 +24,11 @@ const s256 = async (v: string) => b64url(new Uint8Array(await crypto.subtle.dige
 function fakeGithub(members: string[]) {
   const codes = new Map<string, { login: string; challenge: string; id: number }>();
   const calls: string[] = [];
+  /** URLs that answer 503, as GitHub does when it is down. */
+  const down = new Set<string>();
   const fetch = async (url: string, init: RequestInit): Promise<Response> => {
     calls.push(url);
+    if (down.has(url)) return new Response('unavailable', { status: 503 });
     const auth = new Headers(init.headers).get('authorization') ?? '';
     if (url === 'https://github.com/login/oauth/access_token') {
       const form = new URLSearchParams(String(init.body));
@@ -42,7 +45,7 @@ function fakeGithub(members: string[]) {
     }
     return new Response('unexpected', { status: 500 });
   };
-  return { fetch, calls, issue: (code: string, login: string, challenge: string, id = 1000) => codes.set(code, { login, challenge, id }) };
+  return { fetch, calls, down, issue: (code: string, login: string, challenge: string, id = 1000) => codes.set(code, { login, challenge, id }) };
 }
 
 function setup(members = ['octo']) {
@@ -213,7 +216,38 @@ describe('GitHub login for /mcp', () => {
     const github = await allow(t, handle);
     t.github.issue('gh-code', 'octo', github.searchParams.get('code_challenge')!, 0);
     const back = await t.send(`/callback?code=gh-code&state=${github.searchParams.get('state')}`);
-    expect(back.status).toBeGreaterThanOrEqual(400);
+    // Back to the client with access_denied, not an error page (#257).
+    expect(back.status).toBe(302);
+    expect(new URL(back.headers.get('location')!).searchParams.get('error')).toBe('access_denied');
+  });
+
+  it('denies, and logs, when GitHub cannot be reached at the callback (#257)', async () => {
+    const t = setup();
+    const { handle } = await startLogin(t);
+    const github = await allow(t, handle);
+    t.github.issue('gh-code', 'octo', github.searchParams.get('code_challenge')!);
+    t.github.down.add('https://api.github.com/user');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const back = await t.send(`/callback?code=gh-code&state=${github.searchParams.get('state')}`);
+    const lines = logged.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    logged.mockRestore();
+    expect(back.status).toBe(302);
+    const to = new URL(back.headers.get('location')!);
+    expect(to.searchParams.get('error')).toBe('access_denied');
+    expect(to.searchParams.get('error_description')).toContain('GitHub');
+    expect(to.searchParams.get('state')).toBe('client-state');
+    expect(lines).toContain('HTTP 503');
+    // The GitHub token is never logged.
+    expect(lines).not.toContain('gh-token');
+  });
+
+  it('answers a consent that is not a form with a 400 page (#257)', async () => {
+    const t = setup();
+    await startLogin(t);
+    const res = await t.send('/authorize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"decision":"approve"}' });
+    expect(res.status).toBe(400);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(await res.text()).toContain('Login failed');
   });
 
   it('refuses invalid feedback and decisions that are not visible', async () => {

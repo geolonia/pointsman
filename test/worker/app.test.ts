@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fakeLog, noCallbacks } from './helpers';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
+import { makeDecision } from '../../src/decide';
 import { depsFor } from '../../src/index';
+import type { FactProvider } from '@pointsman/module-api';
 import type { DecisionLog } from '../../src/log';
 import { ModelError, type ModelAdapter, type ModelResponse } from '../../src/models/adapter';
 import { MockAdapter } from '../../src/models/mock';
@@ -153,6 +155,36 @@ describe('configuration', () => {
     } finally {
       logged.mockRestore();
     }
+  });
+});
+
+describe('fact lookups and model failures (#258)', () => {
+  // A profile with questions and a fact: the fact is looked up while the model answers.
+  const triage = profiles.find((p) => p.id === 'issue-triage')!;
+  const withFact = { ...triage, facts: [{ name: 'pr', type: 'github_pr', at: '$.pull_request' }] } as Profile;
+  const factStore = new MemoryProfileStore([withFact]);
+  const client = { client: 'test', profiles: ['*'], created_at: '' };
+  const state = { issue: { title: 'Login page is blank' }, pull_request: { repo: 'octo-org/demo', number: 1, head: 'a'.repeat(40) } };
+
+  it('looks up no fact when no model of the profile has an adapter', async () => {
+    let looked = false;
+    const facts: FactProvider = { lookup: async () => { looked = true; throw new Error('not needed'); } };
+    await expect(makeDecision({ store: factStore, adapterFor: () => null, log, facts }, client, 'issue-triage', { state }))
+      .rejects.toThrow('no adapter for any model');
+    expect(looked).toBe(false);
+  });
+
+  it('answers 502 when every model fails, without waiting for the fact lookups', async () => {
+    const vi_ = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // A lookup that never answers (its own limit is many seconds).
+    const facts: FactProvider = { lookup: () => new Promise(() => {}) };
+    const failing: ModelAdapter = { decide: async () => { throw new ModelError('down'); } };
+    const result = await Promise.race([
+      makeDecision({ store: factStore, adapterFor: () => failing, log, facts }, client, 'issue-triage', { state }),
+      new Promise((r) => setTimeout(() => r('waited'), 1000)),
+    ]);
+    expect(result).toMatchObject({ ok: false, status: 502 });
+    vi_.mockRestore();
   });
 });
 

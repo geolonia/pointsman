@@ -67,11 +67,21 @@ describe('WorkersAiAdapter', () => {
     await expect(new WorkersAiAdapter(ai).decide(req)).rejects.toThrow(message);
   });
 
-  it('turns binding errors into ModelError', async () => {
+  it('turns binding errors into ModelError, without the binding\'s message (#274)', async () => {
     const { ai } = fakeAi(() => {
-      throw new Error('3040: Capacity temporarily exceeded');
+      throw new TypeError('AiError: 5006: invalid input near "Login page is blank"');
     });
-    await expect(new WorkersAiAdapter(ai).decide(request)).rejects.toThrow(/clef-flash: 3040: Capacity/);
+    const err = await new WorkersAiAdapter(ai).decide(request).then(() => new Error("no error"), (e: unknown) => e as Error);
+    expect(err).toBeInstanceOf(ModelError);
+    // The kind of error only: the message can quote the request.
+    expect(err.message).toBe('@cf/cloudflare/clef-flash: the model call failed (TypeError)');
+  });
+
+  it('gives up on a binding that does not answer, also without AI Gateway (#274)', async () => {
+    const ai: AiRunner = { run: () => new Promise(() => {}) };
+    const err = await new WorkersAiAdapter(ai, undefined, 50).decide(request).then(() => new Error("no error"), (e: unknown) => e as Error);
+    expect(err).toBeInstanceOf(ModelError);
+    expect(err.message).toMatch(/did not answer within 50 ms/);
   });
 
   it('uses the requested model id when the response has none', async () => {

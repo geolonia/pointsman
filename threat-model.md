@@ -1069,7 +1069,7 @@ modeled tree.
 
 - **Outbound network, engine**: the engine fetches only these hosts: the
   model backend (`src/models/http.ts:67`, operator URL; or the `AI` binding,
-  `src/models/workers-ai.ts:39`), the GSI tile hosts
+  `src/models/workers-ai.ts:45`), the GSI tile hosts
   `disaportaldata.gsi.go.jp` and `cyberjapandata.gsi.go.jp`
   (`packages/facts-gsi/src/provider.ts`, fixed URLs), the Valhalla server
   (`packages/facts-valhalla/src/router.ts`,
@@ -1151,7 +1151,7 @@ modeled tree.
 - **Storage writes, engine**: D1 `decisions` and `feedback` rows
   (`src/log-d1.ts`; since pointsman#221 (`v0.16.0`) also the close of a review, an
   update of its status only), the Workers cache for GSI tiles (`packages/facts-gsi/src/provider.ts:220`),
-  `OAUTH_KV` (the purge cursor at `src/oauth.ts:297` and the OAuth library's
+  `OAUTH_KV` (the purge cursor at `src/oauth.ts:312` and the OAuth library's
   grants and tokens). The engine never writes to `TOKENS` or `PROFILES`;
   tokens are written by `scripts/tokens.mjs` and profiles by
   `scripts/publish-profiles.mjs`, both run by the operator. Search:
@@ -1263,7 +1263,7 @@ they are security-relevant.
 | `POST /v1/decide/{profile}` | `state` size and nesting | yes (state author) | size | the engine sets no limit; the platform's request body limit applies; rate-limit at the edge | *(documented, openapi.yaml `DecideRequest.state` has no `maxLength`; maintainer, 2026-10)* |
 | `POST /v1/decide/{profile}` | `ref` | yes (token holder; often derived from attacker-named things such as an issue number) | data | 1–200 characters; since pointsman#235 (`v0.18.0`) no control characters, line separators or direction marks (400 `invalid_request`, `src/decide.ts:48`), and `scripts/replay-profile.mjs` shows such characters in stored text escaped; it is logged and returned, so no secrets | *(documented, openapi.yaml `DecideRequest.ref`)* |
 | `POST /v1/decide/{profile}` | `decisions` (names → decision ids) | yes (token holder) | resource-name | none — only ids are taken; each must be a logged decision of the named profile, in scope, with the same `ref` and client, not replaced; every other id gives the same 400 (`P-CHAIN-INPUTS-FROM-LOG`) | *(documented, docs/profile-format.md "Decision chains")* |
-| `POST /v1/decide/{profile}` | `Idempotency-Key` header | yes (token holder) | data | 1–200 printable ASCII characters; keys are per client, so one client cannot reach another's decision with a key; since pointsman#236 (`v0.18.0`) a repeat gets the decision with its review as it is now: `resolved` with `final_action` and `resolved_at` once a person answered, `superseded` once a newer decision replaced it (`src/decide.ts:408`) | *(documented, docs/decision-log.md "Repeated requests")* |
+| `POST /v1/decide/{profile}` | `Idempotency-Key` header | yes (token holder) | data | 1–200 printable ASCII characters; keys are per client, so one client cannot reach another's decision with a key; since pointsman#236 (`v0.18.0`) a repeat gets the decision with its review as it is now: `resolved` with `final_action` and `resolved_at` once a person answered, `superseded` once a newer decision replaced it (`src/decide.ts:410`) | *(documented, docs/decision-log.md "Repeated requests")* |
 | `POST /v1/decide/{profile}` | `callback_url` | yes (token holder) | resource-name | https only; any public host; refused for test tokens | *(documented, openapi.yaml `DecideRequest.callback_url`; README "A test token ... gets no callbacks")* |
 | `POST /v1/decide/{profile}` | the profile read from the store (questions, rules, `input` paths, `facts`, `log`, `mcp`) | no — authored by the integrator, validated before publication | serialized-state, x-policy-rules | validate with `validate-profiles.mjs`; bump the version | *(documented, docs/deployment.md "Profile versions"; `src/profiles/store.ts` header: "Profiles are validated before they reach a store")* |
 | `POST /v1/decide/{profile}` | the model response (`answers`, `model`) | partly — the model backend is a collaborator; its answers are shaped by the state | collaborator-implementation, data | none — `P-ANSWER-SHAPE` rejects answers that do not fit the profile | *(documented, docs/profile-format.md "Engine answer format")* |
@@ -1716,7 +1716,7 @@ what voids it.
   may only decide (and list its profiles) over the REST API, not over MCP,
   and gets no callbacks")*. Voided by: nothing. Search:
   `grep -n "\.test" src/app.ts src/mcp.ts src/decide.ts` — the checks on lines 38 and 225 of `src/app.ts`, the unlogged return at
-  `src/decide.ts:290`, and the callback refusal in `makeDecision` (`src/decide.ts`). A test token
+  `src/decide.ts:303`, and the callback refusal in `makeDecision` (`src/decide.ts`). A test token
   also cannot send `decisions` or decide a profile with `requires`, so it
   never reads logged decisions (`makeDecision`, docs/decision-chains.md).
   The client of internal calls is never a test token *(documented,
@@ -1735,7 +1735,7 @@ what voids it.
   format": "Answers that do not fit the profile ... are rejected with a
   `model_error`")*. Voided by: nothing. Search:
   `grep -rn "normalizeAnswers" src` — called on the only decision path,
-  `src/decide.ts:257`, for every adapter. Since pointsman#313 a question,
+  `src/decide.ts:268`, for every adapter. Since pointsman#313 a question,
   fact or input name, or an option value, cannot be one that every plain
   object already has (`__proto__`, `constructor`, `prototype`, `toString`
   and the other `Object.prototype` members), so answers, facts and
@@ -1857,7 +1857,7 @@ what voids it.
   `grep -n "missing" src/policy.ts src/facts.ts` — the three-valued
   evaluation at `src/policy.ts:410`. A profile version whose facts no
   chosen module answers is refused before the model call (a config error,
-  `src/decide.ts:232`), not looked up as missing facts *(documented,
+  `src/decide.ts:241`), not looked up as missing facts *(documented,
   docs/modules.md "Choosing modules")*. The CodeRabbit checks: the edit
   check at `packages/coderabbit/src/provider.ts:66`, the full log read at
   `packages/coderabbit/src/provider.ts:171`, no log at
@@ -1912,7 +1912,7 @@ what voids it.
   log. Symptom: `x-unlogged-decision`, `integrity-bypass`. Tier:
   security-critical. *(documented, docs/decision-log.md "Every decision is
   stored in D1 ... before it is returned"; docs/mcp.md "Decisions through
-  MCP")*. Voided by: a test token (`src/decide.ts:290`, `if (client.test)
+  MCP")*. Voided by: a test token (`src/decide.ts:303`, `if (client.test)
   return`), by design and marked in the response.
 - **`P-PROFILE-VERSION-IMMUTABLE`** — a published profile id and version never
   change content: the deploy registers each version's content hash in D1 and
@@ -1932,7 +1932,7 @@ what voids it.
   returned; tokens never appear in logs, responses or the decision log.
   Symptom: `info-leak`. Tier: security-critical. *(documented,
   docs/decision-log.md "By default only the hash of the state is kept")*.
-  Voided by: `log.store_state: true` on a profile (`src/decide.ts:298`), the AI
+  Voided by: `log.store_state: true` on a profile (`src/decide.ts:318`), the AI
   Gateway's `collect_logs: true` (`ai-gateway.json`; documented in
   docs/models.md "Logs hold the state"), and a model server's own retention
   (`D-STATE-TO-BACKEND`). The first two are §1.6 rows. Narrowed by: `route:
@@ -1942,9 +1942,9 @@ what voids it.
   value it read (`packages/facts-field/src/provider.ts:20`, `:23` and `:26`; §1.6 row; Q50).
   Since pointsman#289 (not yet released), images sent to the model are
   never stored, also not with `log.store_state`; the state hash then covers
-  a SHA-256 of each image (`src/decide.ts:310`), and a call with images
+  a SHA-256 of each image (`src/decide.ts:308`), and a call with images
   goes through the AI Gateway with its log off (`collectLog: false`,
-  `src/models/workers-ai.ts:45`), so `collect_logs` does not void the
+  `src/models/workers-ai.ts:51`), so `collect_logs` does not void the
   property for images.
 - **`P-SECRETS-NOT-LOGGED`** — API keys for the model server and the routing
   server, the callback secret, the GitHub client secret, and the GitHub fact
@@ -2189,7 +2189,7 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-ANSWERER-RECORDED` | removal of who answered: since pointsman#222 (`v0.16.0`) the answerer's login and account id are stored as `resolved_by` for as long as the decision log keeps decisions (the engine sets no time limit; the operator decides), shown by `GET /v1/decisions/{id}` and `replay` to every token with the profile, sent to a callback where a client set one, and shown as "answered by <login>" to every reader of the pull request | `engine-api`, `connector-github`. Basis: stated, and a maintainer ruling (2026-10-25, Q40) | correctness-only | no | *(documented, docs/github-connector.md "Answering in the pull request", Personal data; maintainer, 2026-10)* |
 | `D-CONNECTOR-COPILOT-COST` | a limit on what Copilot reviews cost: since pointsman#220 (`v0.17.0`) each Copilot review the connector asks for uses Copilot premium requests, billed as GitHub decides for a request made by an app (most likely the organization); the connector asks at most once per head commit and never for a fork, but has no cap per pull request or per day, so a profile that maps `copilot_review` on every push asks for one review per push | `connector-github`; the profile's rules (`skip_drafts`, a rule on `github_copilot` such as its `reviews` count) decide how many heads get one, and the organization's Copilot budget and policy are the hard limit (`R-CONNECTOR-COPILOT`). Basis: stated, and a maintainer ruling (2026-10-25, Q46) | correctness-only | no | *(documented, docs/github-connector.md "Copilot reviews": "Cost"; maintainer, 2026-10)* |
 | `D-CONNECTOR-COPILOT-DATA` | control over what Copilot reads: since pointsman#220 (`v0.17.0`) a Copilot review reads the pull request's code and text under the organization's Copilot policy; the connector only asks, and never reads what Copilot writes; the engine's `github_copilot` fact reads only the review's state and commit | `connector-github`; map it only where the organization allows Copilot code review for those repositories (`R-CONNECTOR-COPILOT`). Basis: stated | correctness-only | no | *(documented, docs/github-connector.md "Copilot reviews": "Copilot reads the pull request's code and text")* |
-| `D-COMMAND-SHORT-COMMIT` | a command bound to one commit beyond the heads the connector kept: since pointsman#222 (`v0.16.0`) the command names the head by its first 12 hexadecimal characters, and a command whose 12 characters start more than one of the pull request's last 100 heads is refused (`P-CONNECTOR-ANSWER-BOUND`); the list holds only heads the connector ran on while answers were on, so a second commit with the same 12 characters (about 2^48 tries, hours of GPU time) still lets a command meant for one commit answer the question about the other when the commit the person meant is not in the list: pushed out by 100 later heads, a head that came and went within one burst of events that became a single run, or a head from before answers were switched on; since pointsman#236 (`v0.18.0`) the command also names the question by the first 8 characters of its decision id, so it answers the question about the other commit only when that question's decision id starts with the same 8 characters, and the engine draws decision ids at random (`src/decide.ts:273`) | `connector-github`, the command only (off by default, §1.6); buttons are bound to one check run and decision and are not affected; the answerer and pusher checks still apply (`P-CONNECTOR-ANSWER-AUTHORIZED`). Basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change instead of an accepted limit) | security-critical | yes: "the command names the commit" ≠ "only that commit" | *(documented, docs/github-connector.md "Answering in the pull request", The command: "a command whose 12 characters start more than one of them is refused"; maintainer, 2026-10)* |
+| `D-COMMAND-SHORT-COMMIT` | a command bound to one commit beyond the heads the connector kept: since pointsman#222 (`v0.16.0`) the command names the head by its first 12 hexadecimal characters, and a command whose 12 characters start more than one of the pull request's last 100 heads is refused (`P-CONNECTOR-ANSWER-BOUND`); the list holds only heads the connector ran on while answers were on, so a second commit with the same 12 characters (about 2^48 tries, hours of GPU time) still lets a command meant for one commit answer the question about the other when the commit the person meant is not in the list: pushed out by 100 later heads, a head that came and went within one burst of events that became a single run, or a head from before answers were switched on; since pointsman#236 (`v0.18.0`) the command also names the question by the first 8 characters of its decision id, so it answers the question about the other commit only when that question's decision id starts with the same 8 characters, and the engine draws decision ids at random (`src/decide.ts:286`) | `connector-github`, the command only (off by default, §1.6); buttons are bound to one check run and decision and are not affected; the answerer and pusher checks still apply (`P-CONNECTOR-ANSWER-AUTHORIZED`). Basis: stated, and a maintainer ruling (2026-10-25, Q43: a code change instead of an accepted limit) | security-critical | yes: "the command names the commit" ≠ "only that commit" | *(documented, docs/github-connector.md "Answering in the pull request", The command: "a command whose 12 characters start more than one of them is refused"; maintainer, 2026-10)* |
 | `D-EXACTLY-ONCE` | exactly-once callback delivery: a callback can arrive more than once when a 2xx answer is lost | `engine-callbacks`. Basis: stated | correctness-only | no | *(documented, docs/reviews.md "A callback can arrive more than once if your 2xx answer is lost")* |
 | `D-BRIDGE-BROKER-ACCESS-CONTROL` | its own access control for the broker side: whoever may write entities, Decision entities or completed Task entities in the tenant can trigger decisions, resolve reviews and name `reviewedBy`; the broker's access control owns this | `bridge`. Basis: stated | security-critical | no | *(documented, bridge/README.md "Who may resolve is decided by the broker's access control")* |
 | `D-BRIDGE-RACE-WINDOWS` | atomicity across broker writes: NGSI-LD has no conditional update, so a new decision written between a read and a write can be overwritten with an older result, and two simultaneous notifications can send the same feedback twice | `bridge`. Basis: stated | correctness-only | no | *(documented, bridge/README.md "NGSI-LD has no conditional update, so there is a short window")* |

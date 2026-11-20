@@ -1,7 +1,7 @@
 // MCP endpoint (/mcp): JSON-RPC over Streamable HTTP, with API tokens.
 
 import { env, exports } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
 import { D1DecisionLog } from '../../src/log-d1';
 import { TOOLS } from '../../src/mcp-tools';
@@ -211,6 +211,22 @@ describe('/mcp', () => {
     expect(record.requires.seen.decision).toBe(visible.decision_id);
     expect(record.requires.unseen).toEqual({ decision: null });
     expect(record.request_digest).toBeUndefined();
+  });
+});
+
+describe('tool errors (#247)', () => {
+  it('are logged, and the caller gets "internal error" without the details', async () => {
+    const down = vi.spyOn(D1DecisionLog.prototype, 'get').mockRejectedValue(new Error('D1_ERROR: no such table: decisions_secret'));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const r = await call('get_decision', { decision_id: crypto.randomUUID() });
+      expect(r).toMatchObject({ isError: true, text: 'internal error' });
+      expect(logged.mock.calls.map((c) => c.map(String).join(' ')).join('\n')).toContain('decisions_secret');
+      expect(logged.mock.calls.map((c) => c.map(String).join(' ')).join('\n')).toContain('get_decision');
+    } finally {
+      down.mockRestore();
+      logged.mockRestore();
+    }
   });
 });
 

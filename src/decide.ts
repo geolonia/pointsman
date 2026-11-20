@@ -241,6 +241,12 @@ export async function makeDecision(
   if (missing) throw new ConfigError(`profile ${profile.id} v${profile.version}: no chosen fact module answers ${missing.type} facts`);
   const policy = compilePolicy(profile, required?.ok ? required.profiles : {});
 
+  // The profile's model first, then its fallback models in order. Checked
+  // before the fact lookups start, so a broken deployment calls no fact
+  // source either (#258).
+  const served = profile.questions.length === 0 ? [] : [profile.model, ...(profile.fallback_models ?? [])].filter((m) => adapterFor(m) !== null);
+  if (profile.questions.length > 0 && served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
+
   // Facts read the client's data (the `at` paths), not the mapped state.
   // Looked up while the model answers; lookupFacts never throws.
   const factsLookup = profile.facts?.length
@@ -254,12 +260,8 @@ export async function makeDecision(
     answers = {};
     model = NO_MODEL;
   } else {
-    // The profile's model first, then its fallback models in order. A model
-    // error (failed call, or an answer that does not fit the profile) moves
-    // on to the next model; the decision records the model that answered.
-    const models = [profile.model, ...(profile.fallback_models ?? [])];
-    const served = models.filter((m) => adapterFor(m) !== null);
-    if (served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
+    // A model error (failed call, or an answer that does not fit the profile)
+    // moves on to the next model; the decision records the model that answered.
     for (const m of served) {
       try {
         const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m, images));
@@ -272,8 +274,10 @@ export async function makeDecision(
       }
     }
   }
-  const facts = factsLookup ? await factsLookup : undefined;
+  // Before waiting for the facts: they cannot help without answers (#258).
+  // The lookups left running end on their own limits.
   if (!answers || !model) return fail(502, 'model_error', 'the model did not return a usable answer');
+  const facts = factsLookup ? await factsLookup : undefined;
 
   const { action, rule } = policy.decide(answers, facts, required?.ok ? required.inputs : {});
   const opensReview = peopleCheck(profile).includes(action);
