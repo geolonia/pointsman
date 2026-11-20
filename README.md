@@ -5,6 +5,11 @@ which track it goes on, or calls a human when it is not sure.
 
 Website: https://pointsman.net/
 
+**Try it:** [Your first profile](docs/tutorials/first-profile.md) runs
+Pointsman on your computer in about 15 minutes, with no cloud account and
+no AI service. What you need to run your own or connect FIWARE:
+[Choose a setup](docs/how-to/choose-a-setup.md).
+
 Status: 0.x (not 1.0 yet). The API and the profile format may still change
 between 0.x releases. See
 [CHANGELOG.md](CHANGELOG.md) and the
