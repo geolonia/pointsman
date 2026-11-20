@@ -61,13 +61,14 @@ download takes a minute):
 git clone https://github.com/geolonia/pointsman engine
 tag=$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)
 echo "$tag"
-git -C engine checkout "$tag"
-pnpm --dir engine install --frozen-lockfile
+git -C engine fetch --tags
+git -C engine checkout "$tag" && pnpm --dir engine install --frozen-lockfile
 ```
 
 The `echo` line prints the latest release, for example `v1.2.3`. If it
-prints nothing or an error, `gh` is not signed in: run `gh auth login`, and
-the last three lines again.
+prints nothing or an error, `gh` is not signed in: run `gh auth login`,
+then the last four lines again, from `tag=` on. Go on only when the
+checkout worked.
 
 ## 2. Create the storage on Cloudflare
 

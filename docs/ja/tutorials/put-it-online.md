@@ -44,11 +44,11 @@ cp ../pointsman/examples/cases/lost-and-found.yaml cases/
 git clone https://github.com/geolonia/pointsman engine
 tag=$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)
 echo "$tag"
-git -C engine checkout "$tag"
-pnpm --dir engine install --frozen-lockfile
+git -C engine fetch --tags
+git -C engine checkout "$tag" && pnpm --dir engine install --frozen-lockfile
 ```
 
-`echo` の行は、最新のリリースを表示します(たとえば `v1.2.3`)。何も表示されないかエラーになったときは、`gh` にサインインしていません。`gh auth login` を実行し、最後の 3 行をもう一度実行します。
+`echo` の行は、最新のリリースを表示します(たとえば `v1.2.3`)。何も表示されないかエラーになったときは、`gh` にサインインしていません。`gh auth login` を実行し、`tag=` の行から最後の 4 行をもう一度実行します。チェックアウトがうまくいってから先に進みます。
 
 ## 2. Cloudflare に保存先を作る
 
