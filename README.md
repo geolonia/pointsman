@@ -211,7 +211,7 @@ everywhere.
 
 ## Development
 
-Requires Node.js 24 or newer and pnpm 10 or newer. pnpm switches by
+Requires Node.js 24 or newer and pnpm 10.23 or newer. pnpm switches by
 itself to the version that `packageManager` in `package.json` names. The Worker runs on Cloudflare Workers; the
 engine core does not depend on Cloudflare (see [docs/adapters.md](docs/adapters.md)).
 
