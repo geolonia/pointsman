@@ -424,9 +424,11 @@ from starting a new decision:
 Every call to the broker has 10 seconds, every decision by Pointsman 60
 seconds (`POINTSMAN_TIMEOUT_SECONDS`; it may wait for a model and its
 fallbacks, 10 seconds each by default: keep the profile's models within
-it). A call that takes longer fails as a timeout and is tried again (by the
-broker, or the queue), so one call that does not answer does not hold the
-other messages. This holds also inside the Pointsman Worker. Without a
+it). A call that takes longer fails as a timeout: with a queue, the queue
+tries the message again; without one, the bridge answers 502, and it is
+tried again only if the broker sends the notification again. Either way
+one call that does not answer does not hold the other messages. This also
+holds inside the Pointsman Worker. Without a
 queue the bridge handles a notification's entities one after another within
 the broker's request, which a broker may give up on first: for long
 decisions, use the queue. With a queue, keep a batch of slow messages

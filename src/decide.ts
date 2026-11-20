@@ -297,6 +297,12 @@ export async function makeDecision(
   // A test token's decisions are not logged (and marked as such): they
   // check profiles and examples, nobody acts on them.
   if (client.test) return { ok: true, decision: { ...decision, test: true } };
+  // With images: the hash covers them too (a hash each), never the images themselves.
+  // With images, a tagged array: the state of a profile with images is
+  // always an object (it needs input), so no state without images can
+  // hash the same as one with them.
+  const stateHash = await hashState(images.length > 0 ? ['images', state, await Promise.all(images.map((i) => hashState(i)))] : state);
+  // Checked after the last wait before the log write: nothing that waits lies between.
   if (signal?.aborted) return fail(502, 'model_error', 'the caller stopped waiting before the decision was made; it was not logged');
   // Every decision is logged before it is returned. If the log fails, the
   // client gets a 500 and must not act on an unlogged decision.
@@ -304,11 +310,7 @@ export async function makeDecision(
     await log.insert({
       ...decision,
       client: client.client,
-      // With images: the hash covers them too (a hash each), never the images themselves.
-      // With images, a tagged array: the state of a profile with images is
-      // always an object (it needs input), so no state without images can
-      // hash the same as one with them.
-      state_hash: await hashState(images.length > 0 ? ['images', state, await Promise.all(images.map((i) => hashState(i)))] : state),
+      state_hash: stateHash,
       ...(profile.log?.store_state && { state }),
       ...(body.callback_url !== undefined && { callback_url: body.callback_url }),
       ...(idempotencyKey !== undefined && digest !== undefined && { idempotency_key: idempotencyKey, request_digest: digest }),
