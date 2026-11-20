@@ -270,7 +270,9 @@ export class AppGitHub implements ConnectorGitHub {
     const pr = await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request');
     if (!isObject(pr) || !isObject(pr.head) || typeof pr.head.sha !== 'string' || !SHA.test(pr.head.sha) || !isObject(pr.base)
     // The base branch is part of what a decision is about: never taken as ''.
-    || typeof pr.base.ref !== 'string' || pr.base.ref === '') {
+    || typeof pr.base.ref !== 'string' || pr.base.ref === ''
+    // Closed closes every open question: never read from an answer without a state.
+    || typeof pr.state !== 'string' || typeof pr.draft !== 'boolean') {
       throw new GitHubError('GitHub pull request: unexpected answer', false);
     }
     return {
@@ -280,7 +282,7 @@ export class AppGitHub implements ConnectorGitHub {
       authorId: isObject(pr.user) && isId(pr.user.id) ? pr.user.id : 0,
       head: pr.head.sha,
       headRef: typeof pr.head.ref === 'string' ? pr.head.ref : '',
-      draft: pr.draft === true,
+      draft: pr.draft,
       base: pr.base.ref,
       title: typeof pr.title === 'string' ? pr.title : '',
       body: typeof pr.body === 'string' ? pr.body : '',
@@ -291,22 +293,33 @@ export class AppGitHub implements ConnectorGitHub {
     };
   }
 
-  /** Every page of a list (100 each, at most 10 pages). */
-  async #list(repo: string, path: string, what: string): Promise<Record<string, unknown>[]> {
-    const out: Record<string, unknown>[] = [];
-    for (let page = 1; page <= 10; page++) {
-      const data = await this.#call(repo, 'GET', `${path}?per_page=100&page=${page}`, what);
-      const items = Array.isArray(data) ? data.filter(isObject) : [];
-      out.push(...items);
-      if (items.length < 100) break;
+  /**
+   * Every page of a list, oldest first (100 each, at most 10 pages). `cut`:
+   * there are more than the 1,000 read (an 11th page is read only when the
+   * tenth is full). An answer that is not a list is an error, never empty.
+   */
+  async #list(repo: string, path: string, what: string): Promise<{ items: Record<string, unknown>[]; cut: boolean }> {
+    const page = async (n: number) => {
+      const data = await this.#call(repo, 'GET', `${path}?per_page=100&page=${n}`, what);
+      if (!Array.isArray(data)) throw new GitHubError(`GitHub ${what}: unexpected answer`, false);
+      return data;
+    };
+    const items: Record<string, unknown>[] = [];
+    for (let n = 1; n <= 10; n++) {
+      const data = await page(n);
+      items.push(...data.filter(isObject));
+      if (data.length < 100) return { items, cut: false };
     }
-    return out;
+    return { items, cut: (await page(11)).length > 0 };
   }
 
   async findComment(repo: string, number: number, marker: string): Promise<boolean> {
-    const comments = await this.#list(repo, `/issues/${number}/comments`, 'comments');
-    return comments.some((c) => typeof c.body === 'string' && c.body.startsWith(marker)
+    const { items, cut } = await this.#list(repo, `/issues/${number}/comments`, 'comments');
+    const found = items.some((c) => typeof c.body === 'string' && c.body.startsWith(marker)
       && isObject(c.performed_via_github_app) && c.performed_via_github_app.id === this.#appId);
+    // Not among the 1,000 read, and there are more: it may be after them (not known, so not written again).
+    if (!found && cut) throw new GitHubHistoryLimit('GitHub comments: more than 1,000, whether this comment was written is not known');
+    return found;
   }
 
   async createComment(repo: string, number: number, body: string): Promise<number> {
@@ -316,10 +329,12 @@ export class AppGitHub implements ConnectorGitHub {
   }
 
   async findOwnComment(repo: string, number: number, marker: string): Promise<number | undefined> {
-    const comments = await this.#list(repo, `/issues/${number}/comments`, 'comments');
+    const { items: comments, cut } = await this.#list(repo, `/issues/${number}/comments`, 'comments');
     const bot = await this.#botLogin(repo);
     const own = comments.filter((c) => typeof c.id === 'number' && typeof c.body === 'string' && c.body.startsWith(marker)
       && isObject(c.user) && c.user.type === 'Bot' && typeof c.user.login === 'string' && c.user.login.toLowerCase() === bot);
+    // The oldest is the one kept; not among the 1,000 read, and there are more: not known (a second one would be written).
+    if (own.length === 0 && cut) throw new GitHubHistoryLimit('GitHub comments: more than 1,000, whether the decision comment exists is not known');
     return own.length === 0 ? undefined : Math.min(...own.map((c) => c.id as number));
   }
 
@@ -344,13 +359,10 @@ export class AppGitHub implements ConnectorGitHub {
 
   async copilotAsked(repo: string, number: number, head: string): Promise<boolean> {
     if (listsCopilot(await this.#call(repo, 'GET', `/pulls/${number}`, 'pull request'))) return true;
-    const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    const { items: reviews, cut } = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
     if (reviews.some((r) => isCopilot(r.user) && r.commit_id === head && r.state !== 'PENDING')) return true;
-    // #list stops at 1,000 (oldest first): with exactly 1,000 the list is whole; with more, the head's review may be after them, so not known.
-    if (reviews.length >= 1000) {
-      const more = await this.#call(repo, 'GET', `/pulls/${number}/reviews?per_page=100&page=11`, 'reviews');
-      if (Array.isArray(more) && more.length > 0) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known');
-    }
+    // More than the 1,000 read (oldest first): the head's review may be after them, so not known.
+    if (cut) throw new GitHubHistoryLimit('GitHub reviews: more than 1,000, whether Copilot reviewed this head is not known');
     return false;
   }
 
@@ -392,11 +404,11 @@ export class AppGitHub implements ConnectorGitHub {
   }
 
   async ownApprovals(repo: string, number: number): Promise<OwnApprovals> {
-    const reviews = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
+    const { items: reviews, cut } = await this.#list(repo, `/pulls/${number}/reviews`, 'reviews');
     const bot = await this.#botLogin(repo);
     const own: OwnApprovals = reviews.map((r) => ownApprovalOf(r, bot)).filter((a): a is OwnApproval => a !== null);
-    // #list stops at 1,000 (oldest first): an approval after them is not in the list.
-    if (reviews.length >= 1000) own.cut = true;
+    // More than the 1,000 read (oldest first): an approval after them is not in the list.
+    if (cut) own.cut = true;
     return own;
   }
 
