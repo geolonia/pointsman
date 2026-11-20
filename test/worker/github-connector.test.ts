@@ -416,11 +416,12 @@ describe('settings and tokens', () => {
   describe('reading lists and the pull request: a bad or cut answer is an error, never "none" or "closed"', () => {
     const MARK = '<!-- pointsman:x -->';
     /** A fake GitHub: the pull request, and pages of comments and reviews (index 0 = page 1). */
-    const server = (o: { pr?: unknown; comments?: unknown[]; reviews?: unknown[] }) => {
+    const server = (o: { pr?: unknown; comments?: unknown[]; reviews?: unknown[]; page11?: unknown }) => {
       const pages: string[] = [];
       const pageOf = (list: unknown[] | undefined, url: string) => {
         const page = Number(new URL(url).searchParams.get('page'));
         pages.push(`${new URL(url).pathname.split('/').pop()}:${page}`);
+        if (page === 11 && o.page11 !== undefined) return Response.json(o.page11);
         return Response.json(Array.isArray(list) ? list.slice((page - 1) * 100, page * 100) : list);
       };
       const gh = new AppGitHub(APP_ID, KEY, (async (input: RequestInfo | URL) => {
@@ -442,17 +443,20 @@ describe('settings and tokens', () => {
       expect(await server({ pr }).gh.pullRequest(REPO, 7)).toMatchObject({ open: true, draft: false });
       expect(await server({ pr: { ...pr, state: 'closed' } }).gh.pullRequest(REPO, 7)).toMatchObject({ open: false });
       const { state: _, ...noState } = pr;
-      for (const bad of [noState, { ...pr, state: 7 }, { ...pr, state: null }, { ...pr, draft: 'no' }, (({ draft: _d, ...x }) => x)(pr)]) {
+      for (const bad of [noState, { ...pr, state: 7 }, { ...pr, state: null }, { ...pr, state: 'all' }, { ...pr, draft: 'no' }, (({ draft: _d, ...x }) => x)(pr)]) {
         await expect(server({ pr: bad }).gh.pullRequest(REPO, 7), JSON.stringify(bad)).rejects.toMatchObject({ retry: false, message: expect.stringContaining('unexpected answer') });
       }
     });
 
-    it('a list that is not a list is an error, not an empty list', async () => {
+    it('a list that is not a list is an error (tried again later), not an empty list', async () => {
       for (const bad of [{ message: 'oops' }, null, 'x']) {
-        await expect(server({ comments: bad as unknown as unknown[] }).gh.findComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: false, message: expect.stringContaining('unexpected answer') });
-        await expect(server({ comments: bad as unknown as unknown[] }).gh.findOwnComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: false });
-        await expect(server({ reviews: bad as unknown as unknown[] }).gh.ownApprovals(REPO, 7)).rejects.toMatchObject({ retry: false });
+        await expect(server({ comments: bad as unknown as unknown[] }).gh.findComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: true, message: expect.stringContaining('unexpected answer') });
+        await expect(server({ comments: bad as unknown as unknown[] }).gh.findOwnComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: true });
+        await expect(server({ reviews: bad as unknown as unknown[] }).gh.ownApprovals(REPO, 7)).rejects.toMatchObject({ retry: true });
       }
+      // Also the 11th page, read only to tell whether there are more: the whole read fails.
+      const full = Array.from({ length: 1000 }, (_, i) => other(i));
+      await expect(server({ comments: full, page11: { message: 'oops' } }).gh.findComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: true });
     });
 
     it('more than 1,000 comments: found among them is found; not found is not known (an error), never "none"', async () => {

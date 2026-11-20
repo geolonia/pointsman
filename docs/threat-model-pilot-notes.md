@@ -726,10 +726,11 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   list answer that is not a list as empty and stopped at 1,000 comments
   without saying so, which could post a second comment (#251), and read a
   pull request without a `state` as closed (#252).
-- **Changed**: the matrix row for the connector's serialization (prose,
-  YAML), §1.1 and §1.16. The citations into
+- **Changed**: the matrix rows for the connector's serialization and
+  resource complexity (prose, YAML), §1.1 and §1.16. The citations into
   `packages/github/src/connector/github.ts` and `pull-request.ts` were
-  mapped line by line by a short script; none of the cited lines changed.
+  mapped line by line by a short script: 16 of them moved, and the lines
+  they point at did not change.
 - **Not run**: the plugin's validator and the backtest (Q49 still waits);
   the confidence counts do not change.
 - **Questions**: none.

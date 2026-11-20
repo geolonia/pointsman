@@ -271,8 +271,8 @@ export class AppGitHub implements ConnectorGitHub {
     if (!isObject(pr) || !isObject(pr.head) || typeof pr.head.sha !== 'string' || !SHA.test(pr.head.sha) || !isObject(pr.base)
     // The base branch is part of what a decision is about: never taken as ''.
     || typeof pr.base.ref !== 'string' || pr.base.ref === ''
-    // Closed closes every open question: never read from an answer without a state.
-    || typeof pr.state !== 'string' || typeof pr.draft !== 'boolean') {
+    // Closed closes every open question: never read from an answer without a known state.
+    || (pr.state !== 'open' && pr.state !== 'closed') || typeof pr.draft !== 'boolean') {
       throw new GitHubError('GitHub pull request: unexpected answer', false);
     }
     return {
@@ -296,12 +296,13 @@ export class AppGitHub implements ConnectorGitHub {
   /**
    * Every page of a list, oldest first (100 each, at most 10 pages). `cut`:
    * there are more than the 1,000 read (an 11th page is read only when the
-   * tenth is full). An answer that is not a list is an error, never empty.
+   * tenth is full). An answer that is not a list is an error, never empty;
+   * tried again later, as a server error is (most likely passing).
    */
   async #list(repo: string, path: string, what: string): Promise<{ items: Record<string, unknown>[]; cut: boolean }> {
     const page = async (n: number) => {
       const data = await this.#call(repo, 'GET', `${path}?per_page=100&page=${n}`, what);
-      if (!Array.isArray(data)) throw new GitHubError(`GitHub ${what}: unexpected answer`, false);
+      if (!Array.isArray(data)) throw new GitHubError(`GitHub ${what}: unexpected answer`, true);
       return data;
     };
     const items: Record<string, unknown>[] = [];

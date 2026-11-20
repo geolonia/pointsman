@@ -261,8 +261,13 @@ describe('decision comment', () => {
     await event();
     expect(api.comments).toHaveLength(0);
     expect(api.log.filter((l) => l === 'POST /issues/7/comments')).toEqual([]);
+    expect(api.checkRuns.length).toBeGreaterThan(0);
     for (const run of api.checkRuns) expect(run.output.summary).toContain('more than 1,000 comments');
     for (const run of api.checkRuns) expect(run.output.summary).not.toContain('Read and write');
+    // Same text: not looked for again.
+    api.log.length = 0;
+    await event();
+    expect(api.log.filter((l) => l.startsWith('GET /issues/7/comments'))).toEqual([]);
     errors.mockRestore();
   });
 
