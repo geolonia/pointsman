@@ -38,7 +38,7 @@ AI エージェントからも Pointsman を使えます。[AI とエージェ�
 
 - **Cloudflare のアカウント**。Pointsman はプロファイル、トークン、判定ログをここに保存し、ここで Workers AI を呼び出します。
 - [`template/config-repo`](../../../template/config-repo/)(英語)から作る**非公開の GitHub リポジトリ**。
-- そのリポジトリの **2 つのシークレット**: Workers、KV、D1 を編集できる Cloudflare の API トークンと、Cloudflare のアカウント ID。
+- そのリポジトリの **2 つのシークレット**: Workers Admin、Workers KV Storage Write、D1 Write の権限を持つ Cloudflare の API トークンと、Cloudflare のアカウント ID。
 - 任意で **AI Gateway**。AI の呼び出しのログと制限に使います。[モデル](../../models.md)(英語)のとおりに作るか、設定から `AI_GATEWAY_ID` を消します。
 
 </details>

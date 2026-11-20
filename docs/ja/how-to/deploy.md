@@ -36,7 +36,7 @@ translatedFrom: 7d961e6
 4. `profiles/` に**プロファイルを追加します**(`<id>.yaml`。[profile-format.md](../../profile-format.md) を参照)。
 
 5. リポジトリに**シークレットを追加します**。置き場所は `production` という名前の環境です。
-   - `CLOUDFLARE_API_TOKEN`: そのアカウントで *Workers Scripts: Edit*、*Workers KV Storage: Edit*、*D1: Edit* の権限を持つ API トークン
+   - `CLOUDFLARE_API_TOKEN`: そのアカウントで *Workers Admin*、*Workers KV Storage Write*、*D1 Write* の権限を持つアカウントの API トークン。最初のデプロイは Worker を作るので *Admin* が必要です(*Workers Editor* は、すでにある Worker のデプロイしかできません)。最初のデプロイが「Uploaded」の直後に「This Worker does not exist」(code 10007)で止まったときは、もう一度実行します。
    - `CLOUDFLARE_ACCOUNT_ID`
 
 6. **`main` に push します。** デプロイのワークフローが、データベースのマイグレーションを適用し、エンジンをデプロイし、プロファイルを公開します。

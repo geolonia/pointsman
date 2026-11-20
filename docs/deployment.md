@@ -45,8 +45,12 @@ profiles. `scripts/check-public.mjs` checks that in CI.
 
 5. **Add the secrets** to the repository, in an environment named
    `production`:
-   - `CLOUDFLARE_API_TOKEN`: an API token with *Workers Scripts: Edit*,
-     *Workers KV Storage: Edit* and *D1: Edit* for the account
+   - `CLOUDFLARE_API_TOKEN`: an account API token with *Workers Admin*,
+     *Workers KV Storage Write* and *D1 Write* for the account. The first
+     deploy creates the Worker, which needs *Admin*; *Workers Editor* can
+     only deploy a Worker that exists. If the first deploy stops right
+     after "Uploaded" with "This Worker does not exist" (code 10007), run
+     it again.
    - `CLOUDFLARE_ACCOUNT_ID`
 
 6. **Push to `main`.** The deploy workflow applies the database migrations,

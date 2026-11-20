@@ -215,7 +215,7 @@ node scripts/test-profile.mjs examples/cases/lost-and-found.yaml --profiles exam
 
 本物の AI モデルが、文章と写真からプロファイルの質問に答えました。回答から足りない点が見えたので、ルールを直し、AI にもう一度聞かずにテストで確かめました。次は:
 
-- [使い方を選ぶ](../how-to/choose-a-setup.md): Pointsman をオンラインで動かし、ほかのシステムから使えるようにします。
+- [オンラインで動かす](put-it-online.md): 次のチュートリアル。自分の Pointsman を Cloudflare にデプロイし、ほかのシステムから使えるようにします。
 - [AI アシスタントとプロファイルを書く](../../authoring.md): 自分のプロファイルを下書きします。
 
 最後に、Pointsman を止め(Ctrl+C)、変更を元に戻し、リクエストのファイルを消します。
