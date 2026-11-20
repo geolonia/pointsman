@@ -12,7 +12,7 @@ Thank you for helping with Pointsman. Issues and pull requests are welcome.
 ## Making a change
 
 1. Fork the repository and create a branch.
-2. Set up as in the [README](README.md#development): Node.js 24 and pnpm 12,
+2. Set up as in the [README](README.md#development): Node.js 24 or newer and pnpm,
    then `pnpm install`.
 3. Make your change with tests. Keep pull requests small: one topic each.
 4. Run `pnpm check` (typecheck, tests, profile validation, public-data check

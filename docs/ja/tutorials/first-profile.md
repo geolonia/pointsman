@@ -10,7 +10,7 @@ sidebar: { order: 10 }
 
 ## 始める前に
 
-Node.js 24、pnpm 12、Git が必要です。コードを取得します。
+Node.js 24 以降、pnpm、Git が必要です。コードを取得します。
 
 ```sh
 git clone https://github.com/geolonia/pointsman.git

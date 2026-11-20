@@ -9,7 +9,7 @@ cloud account and no AI service: start with the first row.
 
 | You want to | You need | Start here |
 |---|---|---|
-| Try Pointsman and write a first profile | Node.js 24, pnpm 12 and Git | [Your first profile](../tutorials/first-profile.md) |
+| Try Pointsman and write a first profile | Node.js 24 or newer, pnpm and Git | [Your first profile](../tutorials/first-profile.md) |
 | Send cases to a Pointsman that someone already runs | Its URL and an API token from the people who run it | [HTTP API](../reference/http-api.md) |
 | Run your own Pointsman | A Cloudflare account and a private GitHub repository for your profiles | [Deploy Pointsman](../deployment.md) |
 | Connect a FIWARE platform | A running Pointsman, a Cloudflare account for the bridge, and access to the broker | [FIWARE bridge](../../bridge/README.md) |

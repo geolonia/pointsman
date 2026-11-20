@@ -8,7 +8,7 @@ sidebar: { order: 5 }
 
 | したいこと | 必要なもの | 始めるページ |
 |---|---|---|
-| Pointsman を試し、最初のプロファイルを書く | Node.js 24、pnpm 12、Git | [はじめてのプロファイル](../tutorials/first-profile.md) |
+| Pointsman を試し、最初のプロファイルを書く | Node.js 24 以降、pnpm、Git | [はじめてのプロファイル](../tutorials/first-profile.md) |
 | ほかの人が動かしている Pointsman にケースを送る | その Pointsman の URL と、動かしている人からもらう API トークン | [HTTP API](../reference/http-api.md) |
 | 自分の Pointsman を動かす | Cloudflare のアカウントと、プロファイルを置く非公開の GitHub リポジトリ | [Pointsman をデプロイする](../../deployment.md) |
 | FIWARE のプラットフォームとつなぐ | 動いている Pointsman、ブリッジ用の Cloudflare のアカウント、ブローカーへのアクセス | [FIWARE ブリッジ](../../../bridge/README.md)(英語) |
