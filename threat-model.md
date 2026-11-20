@@ -438,6 +438,16 @@
   that pointed at the wrong line before it set to the line their sentence
   describes (the validator was not run for this amendment). No new
   question.
+  Amended 2026-11-20 a seventh time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#253, #254 and #273 (from the review
+  of 2026-11), in pointsman#325: the triage Action sets its outputs before
+  it adds labels and keeps the Pointsman error when the review label fails
+  too; the deploy-watch Action asks nothing while no watched stack exists,
+  starts the cancel count again after a round it could not read, and
+  fails on a command it cannot start. Changed: `P-WATCH-FAILSAFE`, the
+  matrix rows for both Actions' failure atomicity; the code citations
+  into both Actions, moved to their lines after this change (the
+  validator was not run for this amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -522,8 +532,8 @@
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
-  of 2026-11-20 for pointsman#307, #309, #313, #319, #323 and #324 were
-  done the same way.
+  of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324 and #325
+  were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -539,8 +549,8 @@
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
-  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323 and #324,
-  before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
+  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324 and
+  #325, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1499,7 +1509,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | bridge | x-prompt-injection | disclaimed | the whole entity is the state; whoever writes an entity writes the prompt text | §1.12 `D-PROMPT-INJECTION` | *(maintainer, 2026-10)* |
 | bridge | x-probabilistic-result | disclaimed | probabilities are written to the broker as sub-properties for people to read; the action is the value | §1.12 `D-MODEL-ACCURACY` | *(documented, bridge/README.md "The result on the entity")* |
 | action-triage | numeric domain | claimed | label names 1–50 characters; mapping keys ≤ 100 characters; 30 s timeout | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md "Inputs")* |
-| action-triage | failure atomicity | claimed | when Pointsman fails, the review label is added and the step fails; no issue is left unlabelled | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md "Pointsman cannot be reached or fails: the review label, and the step fails")* |
+| action-triage | failure atomicity | claimed | when Pointsman fails, the review label is added and the step fails; no issue is left unlabelled (since pointsman#325, not yet released: the outputs are set before the labels, and when the review label fails too both errors are logged and the step fails with the Pointsman error) | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md "Pointsman cannot be reached or fails: the review label, and the step fails")* |
 | action-triage | recursive/cyclic topology | N/A — one event, one decision, one label call | — | — | *(documented, actions/triage/README.md)* |
 | action-triage | callback execution | claimed | the issue text never reaches a shell or the step summary | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md)* |
 | action-triage | serialization/reconstruction | claimed | the event is `JSON.parse`d from `GITHUB_EVENT_PATH`; only `issues` events with `opened`/`reopened` and no `pull_request` are handled | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/triage.mjs comment "Only new (or reopened) issues")* |
@@ -1509,7 +1519,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | action-triage | x-prompt-injection | disclaimed | the issue author writes the prompt text; the labels an answer can produce come from the allow-list | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-TRIAGE-ALLOWLIST` | *(maintainer, 2026-10)* |
 | action-triage | x-probabilistic-result | disclaimed | the job summary shows `p`; the policy threshold decides | §1.12 `D-MODEL-ACCURACY` | *(documented, actions/triage/README.md "The job summary shows the answers, their probabilities")* |
 | action-deploy-watch | numeric domain | claimed | `consecutive` ≥ 1, `interval-seconds` ≥ 0.05, `kill-after-seconds` ≥ 0; stack names bounded | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "Inputs")* |
-| action-deploy-watch | failure atomicity | claimed | an unreachable Pointsman or unreadable stack never cancels; the exit code is the command's, or 1 after a cancel | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
+| action-deploy-watch | failure atomicity | claimed | an unreachable Pointsman or unreadable stack never cancels (since pointsman#325, not yet released, it starts the cancel count again; nothing is asked while no watched stack exists; a command that cannot be started fails the step); the exit code is the command's, or 1 after a cancel | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
 | action-deploy-watch | recursive/cyclic topology | N/A — a polling loop bounded by the deploy command's lifetime | — | — | *(documented, actions/deploy-watch/README.md "How it decides")* |
 | action-deploy-watch | callback execution | N/A — `run` is executed with `bash -c` as written and is a trusted workflow-author input (§1.7); the Action does not sanitise it |  — | *(documented, actions/deploy-watch/action.yml `run`: "Comes from the workflow, never from event data")* |
 | action-deploy-watch | serialization/reconstruction | claimed | `aws` CLI JSON is parsed and reduced to a fixed set of fields, reasons truncated to 300 characters | §1.11 `P-WATCH-FAILSAFE` | *(maintainer, 2026-10)* |
@@ -2141,7 +2151,10 @@ what voids it.
   (`actions/deploy-watch/watch.mjs:173`); since pointsman#235 (`v0.18.0`)
   neither does a `cancel` for a test token (`test: true`,
   `actions/deploy-watch/watch.mjs:175`); an unreachable or failing Pointsman, or an
-  unreadable stack, never cancels. Symptom: `x-unwarranted-cancel`. Tier:
+  unreadable stack, never cancels, and since pointsman#325 (not yet
+  released) also starts the count again, so the cancels are really in a
+  row; while none of the watched stacks exists yet, nothing is asked
+  (`actions/deploy-watch/watch.mjs:146`). Symptom: `x-unwarranted-cancel`. Tier:
   correctness-only (stopping a deploy is an availability effect on the
   integrator's own pipeline). *(documented, actions/deploy-watch/README.md
   "Cancel only when sure"; "If Pointsman cannot be reached, nothing is
@@ -2609,7 +2622,8 @@ Revise the model when any of these happens:
   (`github_pr` per field, rate limits), #309 (GSI outside Japan, PNG
   tiles), #313 (complete probability maps, older options, names), #319
   (connector reads), #323 (bridge writes, time limits, inputs, routes)
-  and #324 (MCP and login errors, fact lookups, Workers AI time limit)
+  #324 (MCP and login errors, fact lookups, Workers AI time limit) and
+  #325 (triage outputs, deploy-watch before any stack, cancels in a row)
   before their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to

@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:5a256d0f043c5cc7281f6398f8d2ddda863a15eb81f655d2cf0265a690a8b995"
+prose_version: "threat-model.md@sha256:c05eccd1f2e8d3c11e60d400a6cb121304751090105ac7baa5c17866d1a313bd"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -849,7 +849,7 @@ contract_dimensions:
   - {component: bridge, dimension: x-probabilistic-result, status: disclaimed, conditions: "probabilities are written to the broker as sub-properties; the action is the value", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "bridge/README.md \"The result on the entity\""}}
   # action-triage
   - {component: action-triage, dimension: numeric-domain, status: claimed, conditions: "label names 1–50 characters; mapping keys ≤100; 30 s timeout", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Inputs\""}}
-  - {component: action-triage, dimension: failure-atomicity, status: claimed, conditions: "on failure the review label is added and the step fails", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Pointsman cannot be reached or fails\""}}
+  - {component: action-triage, dimension: failure-atomicity, status: claimed, conditions: "on failure the review label is added and the step fails; since pointsman#325 (not yet released) outputs set before labels, both errors logged when the review label fails too", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Pointsman cannot be reached or fails\""}}
   - {component: action-triage, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "one event, one decision, one label call", provenance: {kind: documented, source: "actions/triage/README.md"}}
   - {component: action-triage, dimension: callback-execution, status: claimed, conditions: "issue text never reaches a shell or the step summary", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md"}}
   - {component: action-triage, dimension: serialization-reconstruction, status: claimed, conditions: "event JSON parsed; only issues opened/reopened without pull_request handled", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/triage.mjs comment \"Only new (or reopened) issues\""}}
@@ -860,7 +860,7 @@ contract_dimensions:
   - {component: action-triage, dimension: x-probabilistic-result, status: disclaimed, conditions: "the job summary shows p; the policy threshold decides", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "actions/triage/README.md \"The job summary shows the answers, their probabilities\""}}
   # action-deploy-watch
   - {component: action-deploy-watch, dimension: numeric-domain, status: claimed, conditions: "consecutive ≥1, interval-seconds ≥0.05, kill-after-seconds ≥0; stack names bounded", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Inputs\""}}
-  - {component: action-deploy-watch, dimension: failure-atomicity, status: claimed, conditions: "unreachable Pointsman or unreadable stack never cancels", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"If Pointsman cannot be reached, nothing is cancelled\""}}
+  - {component: action-deploy-watch, dimension: failure-atomicity, status: claimed, conditions: "unreachable Pointsman or unreadable stack never cancels; since pointsman#325 (not yet released) it resets the cancel count, nothing is asked while no watched stack exists, and a command that cannot start fails the step", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"If Pointsman cannot be reached, nothing is cancelled\""}}
   - {component: action-deploy-watch, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "a polling loop bounded by the deploy command's lifetime", provenance: {kind: documented, source: "actions/deploy-watch/README.md \"How it decides\""}}
   - {component: action-deploy-watch, dimension: callback-execution, status: not-applicable, conditions: "run is executed with bash -c as written and is a trusted workflow-author input (§1.7)", provenance: {kind: documented, source: "actions/deploy-watch/action.yml run: \"Comes from the workflow, never from event data\""}}
   - {component: action-deploy-watch, dimension: serialization-reconstruction, status: claimed, conditions: "aws CLI JSON reduced to fixed fields; reasons truncated to 300 characters", property_id: P-WATCH-FAILSAFE, provenance: {kind: maintainer, date: "2026-10"}}
