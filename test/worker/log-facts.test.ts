@@ -104,3 +104,25 @@ describe('a decision gives its facts the context', () => {
     expect(await contextOf(token({ test: true }))).toBeUndefined();
   });
 });
+
+describe('more profile ids than D1 binds (#259)', () => {
+  // D1 binds at most 100 parameters per query; a token may list more profiles.
+  const many = Array.from({ length: 150 }, (_, i) => `profile-${i}`);
+
+  it('the log for facts takes them', async () => {
+    const log = new D1DecisionLog(DB);
+    const r = record({ client: 'many-client', profile: 'profile-149', created_at: '2026-10-22T10:00:00.000Z' });
+    await log.insert(r);
+    const rows = await log.recentFor('many-client', many, '2026-10-01T00:00:00.000Z', 10);
+    expect(rows.map((x) => x.decision_id)).toEqual([r.decision_id]);
+  });
+
+  it('the pending reviews take them', async () => {
+    const log = new D1DecisionLog(DB);
+    const r = record({ client: 'many-client', profile: 'profile-120', review: { status: 'pending' } } as Partial<DecisionRecord>);
+    await log.insert(r);
+    const pending = await log.pendingReviews(many, 100);
+    expect(pending.map((x) => x.decision_id)).toContain(r.decision_id);
+    expect(pending.every((x) => many.includes(x.profile))).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -306,4 +306,37 @@ test('names that plain objects already have are refused: they would break the an
   }
   // Only the exact names: longer names that contain them are fine.
   assert.deepEqual(validateProfile({ ...base, questions: [{ ...base.questions[0], name: 'constructor_risk' }, base.questions[1]] }), []);
+});
+
+// build-profiles reads a set of profiles the way validate-profiles and
+// publish-profiles do: with subfolders, distinct ids, a file or a folder (#249).
+test('build-profiles reads subfolders, refuses duplicate ids, and takes a file', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-build-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const build = (...args) => spawnSync(process.execPath, [join(root, 'scripts', 'build-profiles.mjs'), join(dir, 'out.json'), ...args], { cwd: root, encoding: 'utf8' });
+  const triage = readFileSync(join(examples, 'issue-triage.yaml'), 'utf8');
+  const set = join(dir, 'set');
+  mkdirSync(join(set, 'sub'), { recursive: true });
+  writeFileSync(join(set, 'issue-triage.yaml'), triage);
+  writeFileSync(join(set, 'sub', 'deploy-progress.yaml'), readFileSync(join(examples, 'deploy-progress.yaml'), 'utf8'));
+  const r = build(set);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'out.json'), 'utf8')).map((p) => p.id).sort(), ['deploy-progress', 'issue-triage']);
+
+  writeFileSync(join(set, 'issue-triage.json'), JSON.stringify(parseYaml(triage)));
+  const twice = build(set);
+  assert.equal(twice.status, 1);
+  assert.match(twice.stderr, /duplicate profile id "issue-triage"/);
+
+  const file = build(join(examples, 'issue-triage.yaml'));
+  assert.equal(file.status, 0, file.stdout + file.stderr);
+  const missing = build(join(dir, 'nowhere'));
+  assert.equal(missing.status, 2);
+  assert.doesNotMatch(missing.stderr, /at .*\.mjs:\d+/);
+});
+
+test('the same folder given twice, or by another spelling, is read once (#249)', () => {
+  const r = spawnSync(process.execPath, [cli, examples, `${examples}/`, join(examples, '..', 'profiles')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /duplicate profile id/);
 });

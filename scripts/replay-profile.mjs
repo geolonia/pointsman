@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
-import { collectProfileFiles, parseProfile, validateProfile } from './lib/profile.mjs';
+import { loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile } from '../src/explain.ts';
 
 const USAGE = 'Usage: replay-profile <file> --url <url> [--limit N] [--version N] [--with <file-or-directory>]... [--lang en|ja] [--json]';
@@ -68,13 +68,14 @@ let profile;
 const others = new Map();
 try {
   profile = parseProfile(readFileSync(file, 'utf8'), file);
-  for (const f of [dirname(file), ...values.with].flatMap(collectProfileFiles)) {
-    try {
-      const p = parseProfile(readFileSync(f, 'utf8'), f);
-      if (p && typeof p.id === 'string' && p.id !== profile.id) others.set(p.id, p);
-    } catch {
-      // Another file that does not parse: reported below if this profile requires it.
-    }
+  // The folder of the profile and --with, read as every script reads profiles
+  // (#249). Another file that does not parse is not this profile's problem; a
+  // profile that requires it is reported by the validation below. Two files
+  // with one id: the first is used, and a warning says so.
+  const set = loadProfileSet([dirname(file), ...values.with]);
+  for (const d of set.duplicates) console.error(`warning: ${d}; the first is used`);
+  for (const [id, p] of set.byId) {
+    if (id !== profile.id) others.set(id, p);
   }
 } catch (err) {
   console.error(`${file}: ${err.message.split('\n')[0]}`);

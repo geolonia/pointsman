@@ -449,6 +449,18 @@
   matrix rows for both Actions' failure atomicity; the code citations
   into both Actions, moved to their lines after this change (the
   validator was not run for this amendment). No new question.
+  Amended 2026-11-20 an eighth time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#249 and #259 (from the review of
+  2026-11), in pointsman#326: the profile scripts read a set of profiles
+  one way (subfolders, distinct ids), `GET /v1/reviews` and the decision
+  log for facts bind the token's profile ids as one JSON array (a token
+  with 100 or more profiles no longer gets a 500), `publish-profiles`
+  writes the KV index from a file, and `tokens.mjs` refuses a record over
+  the KV metadata limit and a revoke of a hash no token has. Changed: the
+  §1.6 rows for `GET /v1/reviews` and `scripts/tokens.mjs`; the code
+  citations into `src/log-d1.ts` and `scripts/tokens.mjs`, moved to their
+  lines after this change (the validator was not run for this
+  amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -533,8 +545,8 @@
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
-  of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324 and #325
-  were done the same way.
+  of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325 and
+  #326 were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -550,8 +562,8 @@
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
-  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324 and
-  #325, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
+  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325
+  and #326, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1084,7 +1096,7 @@ Reachability preconditions per family:
   delivery and the cron retry do not send the same attempt twice
   *(maintainer, 2026-10)*. Since pointsman#221 (`v0.16.0`) a review can also be
   closed by the client that made the decision, with an update that
-  matches only a pending review of that client (`src/log-d1.ts:294`), so
+  matches only a pending review of that client (`src/log-d1.ts:297`), so
   of a close and a resolve at the same moment only one succeeds
   *(documented, docs/reviews.md "Closing a review": "Of a close and a
   resolve at the same moment, only one succeeds")*.
@@ -1193,7 +1205,7 @@ modeled tree.
   connector's own Worker *(documented, `packages/github/src/connector/pull-request.ts`
   header comment: "One object per pull request holds its state")*. GitHub
   and CodeRabbit facts write nothing, and facts from the decision log only
-  read it (a `SELECT` of the asking client's rows, `src/log-d1.ts:141`): a GitHub App's installation tokens are held in
+  read it (a `SELECT` of the asking client's rows, `src/log-d1.ts:142`): a GitHub App's installation tokens are held in
   memory only, until 5 minutes before they expire *(documented,
   docs/profile-format.md "Settings": "The token is kept until 5 minutes
   before it expires")*.
@@ -1305,7 +1317,7 @@ they are security-relevant.
 | `POST /v1/decisions/{id}/feedback` | `correct` | yes (token holder) | data, type-class | none — checked against the decision's profile version | *(documented, docs/decision-log.md "Feedback")* |
 | `POST /v1/decisions/{id}/feedback` | `by`, `note` | yes (token holder) | data | `by` 1–100 characters, `note` ≤ 1000; `by` is recorded as given, not verified | *(documented, openapi.yaml `Feedback` schema; migrations/0001 comment "who corrected it, as given by the client")* |
 | `GET /v1/stats/{profile}` | `{profile}`, `?days` | yes (token holder) | resource-name, data | none — scope checked; `days` 1–90 | *(documented, openapi.yaml `/v1/stats/{profile}`)* |
-| `GET /v1/reviews` | `?profile` | yes (token holder) | resource-name | none — scope checked; at most 100 rows returned | *(documented, docs/reviews.md "Review queue")* |
+| `GET /v1/reviews` | `?profile` | yes (token holder) | resource-name | none — scope checked; at most 100 rows returned; since pointsman#326 (not yet released) the token's profile ids are bound as one JSON array, so a token with 100 or more listed profiles is answered too (D1 binds at most 100 parameters) | *(documented, docs/reviews.md "Review queue")* |
 | `POST /v1/reviews/{id}/resolve` | `action` | yes (token holder) | data | one of the profile's `people_answers`, else 400; it is the final action the client will act on; any token whose scope has the profile may resolve, also a decision another client made, and since pointsman#221 (`v0.16.0`) a question of the GitHub connector, which then carries out the action mapped to the answer (`D-RESOLVE-BY-SCOPE`): list `people_answers` | *(documented, docs/reviews.md "`action` is the final answer"; docs/github-connector.md "Asking a person", Who can answer)* |
 | `POST /v1/reviews/{id}/resolve` | `correct`, `by`, `note` | yes (token holder) | data, type-class | as for feedback; `by` is recorded as given; since pointsman#222 (`v0.16.0`) the GitHub connector sends `github:<login> (<account id>)` after its own check of the person, and no `correct` | *(documented, docs/reviews.md "Review queue")* |
 | `POST /v1/reviews/{id}/close` (since pointsman#221, `v0.16.0`) | `{id}` | yes (token holder) | resource-name | none — a UUID of a decision that the token's own client made, of a profile in its scope, else 404 as if it did not exist; a test token gets 403; only a pending review, else 409; it becomes `superseded`, sends no callback, and a later resolve gets 409 (`P-TOKEN-SCOPE`, `P-REVIEW-RESOLVED-ONCE`) | *(documented, docs/reviews.md "Closing a review")* |
@@ -1375,7 +1387,7 @@ they are security-relevant.
 | `config-repo` workflows | `engine.json` `modules` | no — the config repository's own contributors; `main` is protected | resource-name | none — names outside this repository's module catalog, a module listed twice or a pinned version that differs fail the config check and the build | *(documented, docs/modules.md "Choosing modules"; docs/deployment.md "Set up")* |
 | `config-repo` workflows | `engine.json` `ref` | no — the repository is fixed to `geolonia/pointsman` in the workflow; `ref` must be a 40-character SHA | resource-name | change `ENGINE_REPOSITORY` only on purpose | *(documented, docs/deployment.md "Updating the engine")* |
 | `config-repo` workflows | `wrangler.jsonc`, `ai-gateway.json`, the `production` environment secrets | no — operator | serialized-state | placeholders refused (`check-config.mjs`); secrets only in the three Cloudflare steps | *(documented, docs/deployment.md "What the workflows do")* |
-| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client | *(documented, README "API tokens")* |
+| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client; since pointsman#326 (not yet released) a record over 1024 bytes (the KV metadata limit) is refused before anything is written, and `revoke` refuses a hash no token has, so a mistyped hash never reports a revoke | *(documented, README "API tokens")* |
 
 ### Size, shape and rate
 
@@ -1734,7 +1746,7 @@ what voids it.
   of each token is stored"; `src/auth.ts` header: "Tokens are 32 random bytes,
   so a plain hash is enough")*. Voided by: nothing. Search:
   `grep -rn "TOKENS\|tokenKey" src scripts/tokens.mjs` — the only write is
-  `scripts/tokens.mjs:162` with `tokenKey(hash)`.
+  `scripts/tokens.mjs:168` with `tokenKey(hash)`.
 - **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide` and
   `GET /v1/profiles`; its decisions are marked `test: true`, are not logged,
   never reach the review queue or the stats, get no callback, and `/mcp`
@@ -2012,8 +2024,8 @@ what voids it.
   decision can also close its pending review: it becomes `superseded`,
   sends no callback, and a later resolve or close answers 409; of a close
   and a resolve, or of two closes, only one succeeds, each in one update
-  that matches only a pending review (`src/log-d1.ts:267`,
-  `src/log-d1.ts:294`) *(documented, docs/reviews.md "Closing a review")*.
+  that matches only a pending review (`src/log-d1.ts:270`,
+  `src/log-d1.ts:297`) *(documented, docs/reviews.md "Closing a review")*.
 - **`P-CALLBACK-SIGNED`** — every callback carries `x-pointsman-timestamp` and
   `x-pointsman-signature`, an HMAC-SHA256 over `<timestamp>.<body>` with
   `CALLBACK_SECRET`; since pointsman#271 the signed body names the client
@@ -2044,7 +2056,7 @@ what voids it.
 - **`P-CONNECTOR-ANSWER-AUTHORIZED`** — since pointsman#222 (`v0.16.0`), an answer given in the pull request is resolved in the engine only when its sender is a GitHub account of type `User` (never a bot, an app or `ghost`); whose collaborator permission on the repository, read from GitHub with the connector's token when the answer is taken, is `write` or `admin` (maintain counts as write; GitHub's "not found" counts as no access), for the same account id as the sender; who is not the pull request's author (by account id); and who is not the actor of the head branch's newest push, which must have ended at the head commit; an answer whose pull request, permission or push cannot be read is refused (fail closed), a pull request from a fork is never answered, and nothing is kept from one answer to the next. Symptom: `x-authorization-bypass`, `x-self-approval`. Tier: security-critical (an answer can lead to an approval). *(documented, docs/github-connector.md "Who may answer"; maintainer, 2026-10)*. Voided by: nothing in the connector; who has write access is the repository owner's (`R-CONNECTOR-ANSWERS`); what changes between the read and the action is `D-CONNECTOR-ANSWER-WINDOW`; an answer given in Pointsman's review queue does not pass these checks (`D-RESOLVE-BY-SCOPE`). Search: `grep -n "refuse(" packages/github/src/connector/answers.ts` — the fork check at `packages/github/src/connector/answers.ts:190`, the author at `packages/github/src/connector/answers.ts:192`, the account and permission at `packages/github/src/connector/answers.ts:206` and `packages/github/src/connector/answers.ts:207`, the pusher at `packages/github/src/connector/answers.ts:215`; the sender's type at `packages/github/src/connector/webhook.ts:149`; the reads in `permission` (`packages/github/src/connector/github.ts:469`) and `headPusher` (`packages/github/src/connector/github.ts:479`).
 - **`P-CONNECTOR-ANSWER-BOUND`** — since pointsman#221 and #222 (`v0.16.0`), a person's answer counts only for the question the connector keeps for the current head and profile: a decision a person checks is kept once per pull request, profile and head and read back, not decided anew, while the title, description, base, draft flag, settings and required decisions it rests on stay the same; a click counts only on a check run the connector recorded for the current head, with the identifier of an offered answer and the decision id of the open question; a command only for an open question that offers its answer on the head whose first 12 characters it names, and not when those characters also start another of the pull request's last 100 heads that the connector ran on (`packages/github/src/connector/answers.ts:322`; the heads are kept by `#seeHead`, `packages/github/src/connector/pull-request.ts:418`, at most `HEADS_KEPT`, `packages/github/src/connector/pull-request.ts:186`), and since pointsman#236 (`v0.18.0`) only for the one whose decision id starts with the 8 characters the command names, so a command for a question that a new decision on the same head replaced, or one without the question, is refused with a fixed note (`packages/github/src/connector/answers.ts:333`; up to `v0.17.2` the one open question on the head that offered its answer); since pointsman#236 (`v0.18.0`) a click or a command counts only while the current settings (`answers.profiles`) still offer its answer for the profile (`packages/github/src/connector/answers.ts:165`); before resolving, the pull request is read again (open, the same head, not a fork) and the engine must still show the question pending; the engine resolves once, and when another answer came first, that one is read back and acted on instead; on a push, a close of the pull request, a change of what it rests on, or the profile leaving the settings, the question is closed in the engine (`superseded`; a late resolve gets 409) and its buttons removed, and an answer to it is not acted on; the answer then goes through the action table and guards of any decision (`P-CONNECTOR-ACTIONS-MAPPED`, `P-CONNECTOR-APPROVE-HEAD`). Symptom: `x-toctou`, `x-replay`, `x-unauthorized-write`. Tier: security-critical. *(documented, docs/github-connector.md "Asking a person", "What else is checked"; maintainer, 2026-10)*. Voided by: nothing in the connector. Narrowed by: a close that fails is tried again (every 5 minutes at most, 10 tries or a day), and until it succeeds the question stays open in Pointsman's queue, though the connector no longer acts on it; a command names the head by 12 characters, and the check against earlier heads covers only those the connector kept (`D-COMMAND-SHORT-COMMIT`). Search: `grep -n "#readBack\|#closeAsked\|startsWith" packages/github/src/connector/pull-request.ts packages/github/src/connector/answers.ts` — the button's binding at `packages/github/src/connector/answers.ts:306`, the command's at `packages/github/src/connector/answers.ts:315`, the read back before the resolve at `packages/github/src/connector/answers.ts:220` and the 409 at `packages/github/src/connector/answers.ts:237`; the basis check at `packages/github/src/connector/pull-request.ts:682` in `#readBack` (`packages/github/src/connector/pull-request.ts:665`), and `#closeAsked` at `packages/github/src/connector/pull-request.ts:722`.
 - **`P-CONNECTOR-COMMAND-EXACT`** — since pointsman#222 (`v0.16.0`), a comment is an answer only where the deployment set `answers.command` to `true`, only from an `issue_comment` `created` event on a pull request whose comment was written by the sender, a `User`, and only when the whole comment, trimmed, is one line `/pointsman <answer> <commit> <question>` matching the fixed pattern at `packages/github/src/connector/webhook.ts:142` (an action name in lower case, one space, the head's first 12 hexadecimal characters, and since pointsman#236 (`v0.18.0`) one space and the first 8 hexadecimal characters of the question's decision id; no other text, no quote, no code block, no upper case); edits and deletions never answer; since pointsman#236 (`v0.18.0`) a command without the question, for a question no longer open, or that matches more than one open question is refused (up to `v0.17.2` the command had no `<question>`, and one whose answer more than one open question offered was refused), and so is one whose 12 characters start more than one of the pull request's last 100 heads (`P-CONNECTOR-ANSWER-BOUND`); a button's identifier is the connector's own code, the answer's place and the first 8 characters of the decision id (`packages/github/src/connector/webhook.ts:133`), never an answer name or other text from the payload, and it is mapped through the connector's record; nothing from the comment is written back (no reply comment, a fixed line on the check run). Symptom: `x-command-injection`, `x-spoofing`. Tier: security-critical. *(documented, docs/github-connector.md "Answering in the pull request", The command, The buttons; maintainer, 2026-10)*. Voided by: nothing. The command is off unless switched on (§1.6). Search: `commandOf` and `answerOf` in `packages/github/src/connector/webhook.ts` — the event and author checks at `packages/github/src/connector/webhook.ts:189` and `packages/github/src/connector/webhook.ts:194`.
-- **`P-LOG-FACTS-OWN-CLIENT`** — a fact that reads the decision log reads only the asking client's own decisions, of profiles its token may use (others are left out silently), never discarded ones, at most 1,000 per read, with only the columns facts use (id, time, ref, profile, action, facts; never answers, state or `callback_url`), read only; a test token's lookups get no log, so such facts are missing (`no_log`); the internal client reads only its own. Symptom: `info-leak`, `x-authorization-bypass`, `x-unlogged-decision-acted-on`. Tier: security-critical. *(documented, docs/modules.md "Facts from the decision log"; `src/log-facts.ts` header comment)*. Voided by: nothing; a token created with `--profiles '*'` has every profile in its scope, so it reads all of its own client's decisions, never another client's (`P-TOKEN-SCOPE`). Search: `grep -n "canUse\|client.test\|recentFor" src/log-facts.ts src/log-d1.ts` — the scope at `src/log-facts.ts:20`, no context for a test token at `src/log-facts.ts:31`, and the query by client at `src/log-d1.ts:141`.
+- **`P-LOG-FACTS-OWN-CLIENT`** — a fact that reads the decision log reads only the asking client's own decisions, of profiles its token may use (others are left out silently), never discarded ones, at most 1,000 per read, with only the columns facts use (id, time, ref, profile, action, facts; never answers, state or `callback_url`), read only; a test token's lookups get no log, so such facts are missing (`no_log`); the internal client reads only its own. Symptom: `info-leak`, `x-authorization-bypass`, `x-unlogged-decision-acted-on`. Tier: security-critical. *(documented, docs/modules.md "Facts from the decision log"; `src/log-facts.ts` header comment)*. Voided by: nothing; a token created with `--profiles '*'` has every profile in its scope, so it reads all of its own client's decisions, never another client's (`P-TOKEN-SCOPE`). Search: `grep -n "canUse\|client.test\|recentFor" src/log-facts.ts src/log-d1.ts` — the scope at `src/log-facts.ts:20`, no context for a test token at `src/log-facts.ts:31`, and the query by client at `src/log-d1.ts:142`.
 - **`P-SERVICE-ACCOUNT-ONLY`** — facts that read a service's reviews, comments, review requests or commit statuses count only that service's own account: Copilot by its bot's login and account id; CodeRabbit's reviews and statuses by its bot's login and account id, its comments only when its bot made them through its GitHub App; `github_app_approval` only reviews by an account of type Bot with the login `<app>[bot]` and, with `bot_id`, that account id; text about one head commit counts only when it is tied to that commit; when anyone but CodeRabbit last edited one of its comments or reviews, or the editors cannot be read, the whole CodeRabbit fact is missing; since pointsman#229 (`v0.17.1`) the editors are read with each comment's and review's text, and a text that differs from the copy read before counts as edited, so an edit between the two reads cannot pass as CodeRabbit's (a GraphQL node without an id is left out, and its comment then counts as edited). Symptom: `x-spoofing`, `wrong-output`. Tier: security-critical (a faked "CodeRabbit approved" or "the app approved this commit" can let an allowing rule match). *(documented, docs/modules.md "Facts from reviews and comments"; docs/profile-format.md "CodeRabbit reviews": "Anyone else who writes the same text, or an account with the same login, does not count"; the `github_app_approval` row)*. Voided by: a `github_app_approval` fact without `bot_id`, where an app that takes over a deleted app's slug counts (`R-APP-APPROVAL-BOT`). Search: `grep -n "isService\|isAppBot\|commentByCodeRabbit" packages/github/src/reviews.ts packages/coderabbit/src/coderabbit.ts` — the id check at `packages/github/src/reviews.ts:206`, the bot check at `packages/github/src/reviews.ts:249`, the app check at `packages/coderabbit/src/coderabbit.ts:24`, and the edit check, with the text compared, at `packages/coderabbit/src/coderabbit.ts:113`.
 - **`P-CONNECTORS-IN-ENGINE-API-ONLY`** — a connector inside the engine Worker reaches the engine only through its own `/v1/` routes, in process, with its own token, so each of its decisions passes the same token check, profile scope, policy and decision log as any client's; a URL that is not the in-process origin's `/v1/` after normalisation is refused; the connector is handed only the settings its module lists, not the engine's or other modules'; only connectors chosen in `engine.json` with the placement `engine` are served, under `/connectors/<id>/`, and the Worker's queue goes to its connector with a queue only when there is exactly one: with none, or two or more, no connector gets the batch and it is retried after 300 s (`src/index.ts:276`); one connector's broken settings do not stop another. Symptom: `x-authorization-bypass`, `x-unlogged-decision`. Tier: security-critical. *(documented, docs/connectors.md "The rule: through the public API", "Where it runs")*. Voided by: nothing in the engine; the connector's code runs in the same isolate as the engine's secrets, so the list of settings binds the module's code by review, not by isolation (docs/connectors.md "Trust"). Search: `grep -n "IN_PROCESS\|connector.settings\|consumers.length" src/index.ts` — the URL check at `src/index.ts:218`, the settings at `src/index.ts:226`, the queue at `src/index.ts:276`.
 - **`P-OUTBOUND-PUBLIC-ONLY`** — outbound fetches from the engine, the
@@ -2624,9 +2636,9 @@ Revise the model when any of these happens:
   (`github_pr` per field, rate limits), #309 (GSI outside Japan, PNG
   tiles), #313 (complete probability maps, older options, names), #319
   (connector reads), #323 (bridge writes, time limits, inputs, routes),
-  #324 (MCP and login errors, fact lookups, Workers AI time limit) and
-  #325 (triage outputs, deploy-watch before any stack, cancels in a row)
-  before their release. The re-binding to
+  #324 (MCP and login errors, fact lookups, Workers AI time limit), #325
+  (triage outputs, deploy-watch before any stack, cancels in a row) and
+  #326 (profile loading, size limits) before their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to

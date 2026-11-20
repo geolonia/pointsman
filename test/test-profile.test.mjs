@@ -242,7 +242,7 @@ test('an invalid profile or case file is not run', (t) => {
   // Two files with the same id.
   const twice = tempDir(t);
   for (const name of ['a.yaml', 'b.yaml']) copyFileSync(join(examples, 'profiles', 'issue-triage.yaml'), join(twice, name));
-  assert.match(run([join(dir, 'issue-triage.yaml'), '--profiles', twice]).stderr, /the id "issue-triage" is also used by/);
+  assert.match(run([join(dir, 'issue-triage.yaml'), '--profiles', twice]).stderr, /duplicate profile id "issue-triage": .*a\.yaml, .*b\.yaml/);
   assert.equal(run([dir]).status, 2);
   assert.equal(run([dir, '--profiles', examples, '--url', 'http://localhost:1']).status, 2); // no token
 });

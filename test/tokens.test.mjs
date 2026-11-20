@@ -40,9 +40,25 @@ test('create --test marks the token as a test token', () => {
 
 test('revoke deletes the key for a hash', () => {
   const hash = 'a'.repeat(64);
-  const r = run('revoke', '--hash', hash, '--remote', '--config', 'other.jsonc', '--dry-run');
+  const r = runWith(stored([hash, { client: 'demo', profiles: ['*'] }]), 'revoke', '--hash', hash, '--remote', '--config', 'other.jsonc', '--dry-run');
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, new RegExp(`kv key delete token:${hash} --binding TOKENS --remote --config other.jsonc`));
+});
+
+test('revoke refuses a hash that no token has (#259)', () => {
+  const r = runWith(stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }]), 'revoke', '--hash', 'b'.repeat(64), '--local', '--dry-run');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /no token with the hash b{64}/);
+  assert.deepEqual(writes(r.stdout), []);
+});
+
+test('create refuses a token record larger than KV metadata takes (#259)', () => {
+  const profiles = Array.from({ length: 40 }, (_, i) => `a-rather-long-profile-id-${i}`).join(',');
+  const r = run('create', '--client', 'demo', '--profiles', profiles, '--local', '--dry-run');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /KV metadata takes at most 1024/);
+  assert.deepEqual(writes(r.stdout), []);
+  assert.doesNotMatch(r.stdout, /pm_/);
 });
 
 test('create refuses a client name that already has a token', () => {
