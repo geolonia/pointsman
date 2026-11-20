@@ -104,6 +104,11 @@ Question names follow the model APIs: letters, digits, `_`, `.`, `-`, at most
 100 characters. Answers come back under the same names. Choice option values
 use the same characters, so that policy conditions can refer to them
 (`team.probabilities.customer-support`); put readable text in `description`.
+A name or option value cannot be one that every plain object already has
+(`__proto__`, `constructor`, `prototype`, `toString`, `valueOf` and the
+other members of `Object.prototype`): answers, facts and probabilities are
+kept by name, so such a name is refused when the profile is validated.
+`constructor_risk` is fine.
 
 ## Images
 
@@ -210,7 +215,10 @@ always the probability of `value`:
 
 Policy conditions use these fields, for example `team.p >= 0.85` or
 `stuck.yes >= 0.9` (see below). Answers that do not fit the profile (missing question,
-unknown option, probability outside 0–1) are rejected with a `model_error`.
+unknown option, probability outside 0–1) are rejected with a `model_error`,
+and so is a `choice` or `score` answer whose `probabilities` are not a map
+with every option (or level), or do not add up to 1 within 0.02: a rule
+reads `probabilities.<option>`, and `{ "low": 1 }` is not an answer.
 
 ## Policy conditions
 

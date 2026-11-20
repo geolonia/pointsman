@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildState, resolvePath } from '../../src/input';
 import { ModelError, toModelRequest } from '../../src/models/adapter';
 import { normalizeAnswers } from '../../src/models/normalize';
+import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import { KvProfileStore } from '../../src/profiles/store-kv';
 import type { Profile } from '../../src/types';
@@ -63,7 +64,7 @@ describe('normalizeAnswers', () => {
     model: 'm',
     answers: {
       stuck: { type: 'noul', noul: p },
-      phase: { type: 'choice', choice: 'waiting', probabilities: { waiting: 0.6, creating: 0.4 }, confidence: 0.5 },
+      phase: { type: 'choice', choice: 'waiting', probabilities: { waiting: 0.6, creating: 0.4, rolling_back: 0, cleaning_up: 0 }, confidence: 0.5 },
     },
   });
 
@@ -98,7 +99,7 @@ describe('normalizeAnswers', () => {
   it('rejects a score level the profile does not have', () => {
     expect(() => normalizeAnswers({ ...triage, questions: [triage.questions[2]!] }, {
       model: 'm',
-      answers: { effort: { type: 'score', score: 4, legend: {}, probabilities: { '4': 1 }, confidence: 1 } },
+      answers: { effort: { type: 'score', score: 4, legend: {}, probabilities: { '0': 0, '1': 0, '2': 0, '3': 0, '4': 1 }, confidence: 1 } },
     })).toThrow(ModelError);
   });
 
@@ -106,7 +107,7 @@ describe('normalizeAnswers', () => {
     expect(() => normalizeAnswers({ ...triage, questions: [triage.questions[2]!] }, {
       model: 'm',
       answers: {
-        effort: { type: 'score', score: score as number, legend: {}, probabilities: { '0': 0.5, '1': 0.5 }, confidence: 1 },
+        effort: { type: 'score', score: score as number, legend: {}, probabilities: { '0': 0.5, '1': 0.5, '2': 0, '3': 0 }, confidence: 1 },
       },
     })).toThrow(/score outside 0\.\.3/);
   });
@@ -114,13 +115,52 @@ describe('normalizeAnswers', () => {
   it('accepts the weighted score at the top level', () => {
     const answers = normalizeAnswers({ ...triage, questions: [triage.questions[2]!] }, {
       model: 'm',
-      answers: { effort: { type: 'score', score: 3, legend: {}, probabilities: { '3': 1 }, confidence: 1 } },
+      answers: { effort: { type: 'score', score: 3, legend: {}, probabilities: { '0': 0, '1': 0, '2': 0, '3': 1 }, confidence: 1 } },
     });
     expect(answers.effort).toMatchObject({ value: 3, score: 3 });
   });
 
   it('rejects a negative probability', () => {
     expect(() => noul(-0.1)).toThrow(ModelError);
+  });
+
+  // A rule reads probabilities.<option>: every option must be there, and together they are one answer.
+  const phase = (probabilities: unknown) => normalizeAnswers(deploy, {
+    model: 'm',
+    answers: { stuck: { type: 'noul', noul: 0.1 }, phase: { type: 'choice', choice: 'waiting', probabilities: probabilities as Record<string, number>, confidence: 1 } },
+  });
+  const effort = (probabilities: unknown) => normalizeAnswers({ ...triage, questions: [triage.questions[2]!] }, {
+    model: 'm',
+    answers: { effort: { type: 'score', score: 1, legend: {}, probabilities: probabilities as Record<string, number>, confidence: 1 } },
+  });
+
+  it.each<[string, unknown]>([
+    ['an option left out', { waiting: 0.99, creating: 0.01 }],
+    ['probabilities that add up to 2', { waiting: 1, creating: 1, rolling_back: 0, cleaning_up: 0 }],
+    ['probabilities that add up to 0.9', { waiting: 0.5, creating: 0.4, rolling_back: 0, cleaning_up: 0 }],
+    ['a list instead of a map', [0.25, 0.25, 0.25, 0.25]],
+  ])('rejects a choice answer with %s', (_, probabilities) => {
+    expect(() => phase(probabilities)).toThrow(ModelError);
+  });
+
+  it.each<[string, unknown]>([
+    ['a level left out', { '0': 0.5, '1': 0.5, '2': 0 }],
+    ['a list instead of a map', [0.25, 0.25, 0.25, 0.25]],
+    ['probabilities that add up to 1.5', { '0': 0.5, '1': 0.5, '2': 0.5, '3': 0 }],
+  ])('rejects a score answer with %s', (_, probabilities) => {
+    expect(() => effort(probabilities)).toThrow(ModelError);
+  });
+
+  it('accepts a sum within 0.02 of 1 (rounding)', () => {
+    expect(phase({ waiting: 0.335, creating: 0.335, rolling_back: 0.335, cleaning_up: 0.005 }).phase).toMatchObject({ value: 'waiting' });
+    expect(effort({ '0': 0.25, '1': 0.26, '2': 0.25, '3': 0.255 }).effort).toMatchObject({ value: 1 });
+  });
+
+  it('every answer of the mock adapter passes', async () => {
+    for (const p of [deploy, triage]) {
+      const res = await new MockAdapter().decide(toModelRequest(p, { title: 'T' }));
+      expect(() => normalizeAnswers(p, res), p.id).not.toThrow();
+    }
   });
 });
 

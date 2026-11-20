@@ -176,7 +176,11 @@ action it leaves a report at needs a way out (see the example above).
   requires it, so a question, fact or action it removes or changes fails the
   publish in CI and names the profile to update.
 - A decision of an older version that lacks a field gives *unknown* at run
-  time.
+  time. So does a probability option its answer does not have
+  (`answers.<question>.probabilities.<option>`), while in the current
+  answers a probability is never left out. When a person corrected an
+  answer, every option the model's answer had stays, at 0 except the
+  person's value.
 
 ## In the request: decisions by id, read from the log
 

@@ -34,7 +34,8 @@
 // `requires`, read from the decision log. They are checked against the
 // required profile; at run time a decision that was not given, or a value
 // that is missing or of another type (an older version of that profile), is
-// unknown too.
+// unknown too: also a probability option its answer does not have, which in
+// the current answers reads as 0.
 //
 // This file is also imported by the profile validator under Node.js, so it
 // uses only TypeScript syntax that Node can strip (no enums, no parameter
@@ -365,7 +366,7 @@ function decisionValue(operand: DecisionOperand, decisions: Decisions): Value | 
   let v: Value | undefined;
   if ('inner' in operand) {
     try {
-      v = valueOf(operand.inner, d.answers ?? {}, d.facts ?? {}, {});
+      v = valueOf(operand.inner, d.answers ?? {}, d.facts ?? {}, {}, true);
     } catch (err) {
       // An answer that decision does not have (an older version of its profile).
       if (err instanceof PolicyError) return undefined;
@@ -378,12 +379,17 @@ function decisionValue(operand: DecisionOperand, decisions: Decisions): Value | 
   return typeof v === operand.kind ? v : undefined;
 }
 
-/** undefined = unknown (a missing fact, or a fact field without a value). */
-function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Record<string, Fact>, decisions: Decisions): Value | undefined {
+/**
+ * undefined = unknown (a missing fact, or a fact field without a value).
+ * A probability option the answer does not have reads as 0 in the current
+ * answers (checked complete), and as unknown in a `logged` one.
+ * Maps are read with hasOwn: a name like "constructor" is never inherited.
+ */
+function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Record<string, Fact>, decisions: Decisions, logged = false): Value | undefined {
   if ('literal' in operand) return operand.literal;
   if ('decision' in operand) return decisionValue(operand, decisions);
   if ('fact' in operand) {
-    const f = facts[operand.fact];
+    const f = Object.hasOwn(facts, operand.fact) ? facts[operand.fact] : undefined;
     if (!f) return operand.field === 'missing' ? true : undefined; // never looked up
     if (operand.field === 'missing') return f.missing;
     if (operand.field === 'reason') return f.missing ? f.reason : undefined;
@@ -391,12 +397,10 @@ function valueOf(operand: Operand, answers: Record<string, Answer>, facts: Recor
     const v = Object.hasOwn(f.values, operand.field) ? f.values[operand.field] : undefined;
     return v === null ? undefined : v;
   }
-  const a = answers[operand.question];
+  const a = Object.hasOwn(answers, operand.question) ? answers[operand.question] : undefined;
   if (!a) throw new PolicyError(`no answer for "${operand.question}"`);
   if (operand.field === 'probabilities') {
-    // hasOwn: an option named like an Object.prototype member ("constructor")
-    // that the model left out reads as 0, not as an inherited function.
-    if (!('probabilities' in a) || !Object.hasOwn(a.probabilities, operand.key!)) return 0;
+    if (!('probabilities' in a) || !Object.hasOwn(a.probabilities, operand.key!)) return logged ? undefined : 0;
     return a.probabilities[operand.key!]!;
   }
   return (a as unknown as Record<string, Value>)[operand.field]!;

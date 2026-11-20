@@ -189,9 +189,9 @@
       "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
     },
     "name": {
-      "description": "Same rule as question ids in the decision model APIs.",
+      "description": "Same rule as question ids in the decision model APIs. Not a name that every plain object already has (__proto__, constructor, prototype, toString, valueOf and the other Object.prototype members): answers, facts and probabilities are kept in maps by name.",
       "type": "string",
-      "pattern": "^[A-Za-z0-9_.-]{1,100}$"
+      "pattern": "^(?!(?:__proto__|constructor|prototype|toString|toLocaleString|valueOf|hasOwnProperty|isPrototypeOf|propertyIsEnumerable|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__)$)[A-Za-z0-9_.-]{1,100}$"
     },
     "action": {
       "description": "auto, review, or a custom action name such as cancel.",

@@ -90,7 +90,7 @@ AI アシスタントと一緒にプロファイルを書き、確かめる方�
 | `choice` | 選択肢から 1 つ選ぶ | `{ value, description? }` のリストで、2 から 255 個 | `choice`(最も確率の高い選択肢)、選択肢ごとの `probabilities`、`confidence` |
 | `score` | 順序のある基準で段階を評価する | 段階の説明のリストで、低い段階から順に 2 から 10 個 | `score`(確率で重み付けした段階。段階と段階の間の値になることもある)、段階ごとの `probabilities`、`legend`、`confidence` |
 
-質問名に使える文字はモデルの API と同じで、英字、数字、`_`、`.`、`-` です。長さは 100 文字までです。回答は同じ名前で返ります。選択肢の値にも同じ文字を使うため、ポリシーの条件から参照できます(`team.probabilities.customer-support`)。読みやすい説明は `description` に書いてください。
+質問名に使える文字はモデルの API と同じで、英字、数字、`_`、`.`、`-` です。長さは 100 文字までです。回答は同じ名前で返ります。選択肢の値にも同じ文字を使うため、ポリシーの条件から参照できます(`team.probabilities.customer-support`)。読みやすい説明は `description` に書いてください。名前と選択肢の値には、どのオブジェクトにも最初からある名前(`__proto__`、`constructor`、`prototype`、`toString`、`valueOf` など、`Object.prototype` のメンバー)は使えません。回答、ファクト、確率を名前で保つためです。プロファイルを検証するときに断ります。`constructor_risk` は使えます。
 
 ## 画像 {#images}
 
@@ -161,7 +161,7 @@ Clef / Clef-flash(Workers AI、`@cf/cloudflare/clef`、`@cf/cloudflare/clef-flas
 | `choice` | 最も確率の高い選択肢 | その確率 | `probabilities` |
 | `score` | 最も確率の高い段階(0 が最も低い) | その確率 | `score`(重み付けした段階)、`probabilities` |
 
-ポリシーの条件は、これらのフィールドを使います。たとえば `team.p >= 0.85` や `stuck.yes >= 0.9` です(下記を参照)。プロファイルに合わない回答(質問がない、知らない選択肢がある、確率が 0 から 1 の範囲外)は、`model_error` として拒否します。
+ポリシーの条件は、これらのフィールドを使います。たとえば `team.p >= 0.85` や `stuck.yes >= 0.9` です(下記を参照)。プロファイルに合わない回答(質問がない、知らない選択肢がある、確率が 0 から 1 の範囲外)は、`model_error` として拒否します。`choice` や `score` の回答で、`probabilities` がすべての選択肢(またはレベル)を持つマップでないときや、合計が 1 から 0.02 より離れているときも同じです。ルールは `probabilities.<option>` を読むため、`{ "low": 1 }` は回答になりません。
 
 ## ポリシーの条件 {#policy-conditions}
 

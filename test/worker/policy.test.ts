@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { compileCondition, compilePolicy, peopleAnswers, policyErrors, PolicyError, type PolicyProfile, type RequiredProfiles } from '../../src/policy';
 import type { Answer, Fact, FactSpec, Profile, Question, RequiredDecisionInput } from '../../src/types';
 import bundledProfiles from '../../generated/profiles.json';
+import { inputOf } from '../../src/chains';
+import type { DecisionRecord } from '../../src/log';
 
 const questions: Question[] = [
   { name: 'stuck', type: 'noul', instructions: 'Stuck?' },
@@ -293,6 +295,40 @@ describe('decisions', () => {
     const old: RequiredDecisionInput = { ...checkInput, answers: { danger: { type: 'choice', value: 'yes', p: 1, probabilities: {} } as unknown as Answer } };
     const policy = compilePolicy(final([{ when: 'decisions.check.answers.danger.yes >= 0', action: 'a' }, { when: "decisions.check.answers.category.value == 'works'", action: 'b' }]), required);
     expect(policy.decide({}, {}, { check: old }).action).toBe('review');
+  });
+
+  it('reads an option that an older decision\'s answer does not have as unknown, not 0', () => {
+    // An older version of road-check had only "weather"; a rule asks for "works".
+    const old: RequiredDecisionInput = { ...checkInput, answers: { ...checkInput.answers, category: { type: 'choice', value: 'weather', p: 1, probabilities: { weather: 1 } } } };
+    const policy = compilePolicy(final([
+      { when: 'decisions.check.answers.category.probabilities.works < 0.5', action: 'a' },
+      { when: 'not (decisions.check.answers.category.probabilities.works < 0.5)', action: 'b' },
+    ]), required);
+    expect(policy.decide({}, {}, { check: old }).action).toBe('review');
+    expect(policy.read({ check: old })).toEqual({ check: { 'answers.category.probabilities.works': null } });
+    // When the decision has the option, it is read as usual.
+    expect(policy.decide({}, {}, { check: checkInput }).action).toBe('a');
+  });
+
+  it('a person\'s answer keeps every option the model had, at 0 except the chosen one', () => {
+    const record = {
+      action: 'review',
+      answers: { category: { type: 'choice', value: 'weather', p: 0.9, probabilities: { weather: 0.9, works: 0.1 } } },
+      facts: {},
+      review: { status: 'resolved', final_action: 'publish', final_answers: { category: { value: 'works', source: 'human' } } },
+    } as unknown as DecisionRecord;
+    const input = inputOf(record);
+    expect(input.answers.category).toEqual({ type: 'choice', value: 'works', p: 1, probabilities: { weather: 0, works: 1 } });
+    // So a rule on the option the person did not choose still reads 0, not unknown.
+    const policy = compilePolicy(final([{ when: 'decisions.check.answers.category.probabilities.weather < 0.5', action: 'hit' }]), required);
+    expect(policy.decide({}, {}, { check: { ...checkInput, answers: { ...checkInput.answers, ...input.answers } } }).action).toBe('hit');
+  });
+
+  it('reads a fact of an older decision named like an object member as never looked up', () => {
+    const withFact: PolicyProfile = { ...check, facts: [{ name: 'constructor', type: 'inside', layer: 'flood', at: '$.location' }] };
+    const req = { 'road-check': withFact, evacuation };
+    const policy = compilePolicy(final([{ when: 'decisions.check.facts.constructor.missing == true', action: 'hit' }]), req);
+    expect(policy.decide({}, {}, { check: { ...checkInput, facts: {} } }).action).toBe('hit');
   });
 
   it('records every value the rules read, also of rules that did not match', () => {

@@ -19,7 +19,9 @@ adapters behind the same interface (`src/models/adapter.ts`).
 ## Model server (local or self-hosted models)
 
 Any server that answers `POST /v1/systemone` in the shared request and answer
-format can serve models, for example a local
+format (a `choice` or `score` answer gives a probability for every option or
+level, adding up to 1; otherwise the decision fails with `model_error`) can
+serve models, for example a local
 [Strands Decider](https://strandsagents.com/blog/introducing-strands-decider/)
 (see the spike, [spikes/local-decider.md](spikes/local-decider.md)).
 

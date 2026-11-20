@@ -8,10 +8,15 @@
 //
 // Answers are checked against the profile, so a backend that returns an
 // unknown option or misses a question fails loudly instead of driving an
-// action.
+// action. A probability map must name every option (or level) and add up to
+// 1 within SUM_MARGIN: rules read probabilities.<option>, and a map such as
+// {low: 1} or {low: 1, high: 1} is not an answer.
 
 import type { Answer, Profile } from '../types';
 import { ModelError, type ModelAnswer, type ModelResponse } from './adapter';
+
+/** How far the probabilities of one answer may add up from 1 (rounding by the backend). */
+const SUM_MARGIN = 0.02;
 
 function isProbability(x: unknown): x is number {
   return typeof x === 'number' && x >= 0 && x <= 1;
@@ -29,10 +34,24 @@ function top(probabilities: Record<string, number>): [string, number] {
   return best;
 }
 
-function checkKeys(name: string, probabilities: Record<string, number>, allowed: string[]): void {
-  for (const k of Object.keys(probabilities)) {
+/** A plain object with exactly the allowed keys, each a probability, adding up to 1. */
+function checkProbabilities(name: string, probabilities: unknown, allowed: string[]): Record<string, number> {
+  if (typeof probabilities !== 'object' || probabilities === null || Array.isArray(probabilities)) {
+    throw new ModelError(`question "${name}": probabilities must be a map of options`);
+  }
+  const map = probabilities as Record<string, unknown>;
+  for (const k of Object.keys(map)) {
     if (!allowed.includes(k)) throw new ModelError(`question "${name}": unknown option in the answer`);
   }
+  if (Object.keys(map).length === 0) throw new ModelError('empty probabilities');
+  if (!allowed.every((k) => Object.hasOwn(map, k))) throw new ModelError(`question "${name}": an option is missing from the answer`);
+  let sum = 0;
+  for (const v of Object.values(map)) {
+    if (!isProbability(v)) throw new ModelError('invalid probability');
+    sum += v;
+  }
+  if (Math.abs(sum - 1) > SUM_MARGIN) throw new ModelError(`question "${name}": probabilities do not add up to 1`);
+  return map as Record<string, number>;
 }
 
 export function normalizeAnswers(profile: Profile, response: ModelResponse): Record<string, Answer> {
@@ -51,15 +70,15 @@ export function normalizeAnswers(profile: Profile, response: ModelResponse): Rec
       }
       case 'choice': {
         if (q.type !== 'choice') break;
-        checkKeys(q.name, a.probabilities ?? {}, q.criteria.map((c) => c.value));
-        const [value, p] = top(a.probabilities ?? {});
-        answers[q.name] = { type: 'choice', value, p, probabilities: a.probabilities };
+        const probabilities = checkProbabilities(q.name, a.probabilities, q.criteria.map((c) => c.value));
+        const [value, p] = top(probabilities);
+        answers[q.name] = { type: 'choice', value, p, probabilities };
         break;
       }
       case 'score': {
         if (q.type !== 'score') break;
-        checkKeys(q.name, a.probabilities ?? {}, q.criteria.map((_, i) => String(i)));
-        const [level, p] = top(a.probabilities ?? {});
+        const probabilities = checkProbabilities(q.name, a.probabilities, q.criteria.map((_, i) => String(i)));
+        const [level, p] = top(probabilities);
         const maxLevel = q.criteria.length - 1;
         if (!Number.isFinite(a.score) || a.score < 0 || a.score > maxLevel) {
           throw new ModelError(`question "${q.name}": score outside 0..${maxLevel}`);
@@ -69,7 +88,7 @@ export function normalizeAnswers(profile: Profile, response: ModelResponse): Rec
           value: Number(level),
           p,
           score: a.score,
-          probabilities: a.probabilities,
+          probabilities,
         };
         break;
       }
