@@ -44,8 +44,14 @@ mkdir cases
 cp ../pointsman/examples/cases/lost-and-found.yaml cases/
 ```
 
-The config repository uses its own copy of the engine, at a fixed version,
-in the folder `engine/` (Git ignores it). Get version 0.22.0:
+The profile must be version 1: if you did not clean up after the last
+tutorial, run `git -C ../pointsman checkout examples` and copy the two files
+again.
+
+Every deploy uses one fixed version of the engine, and the scripts on your
+computer should use the same one. So the config repository keeps a copy in
+the folder `engine/`, which Git ignores. Get version 0.22.0 (the download
+takes a minute):
 
 ```sh
 git clone https://github.com/geolonia/pointsman engine
@@ -55,8 +61,10 @@ pnpm --dir engine install --frozen-lockfile
 
 ## 2. Create the storage on Cloudflare
 
-Open `wrangler.jsonc` and give your Worker a name. It becomes part of its
-web address, so use lowercase letters and dashes:
+Open `wrangler.jsonc` in your editor. It is JSON that may contain comments
+(*JSONC*). Give your Worker a name: replace the line with `"name"` by this
+one. The name becomes part of the Worker's web address, so use lowercase
+letters and dashes:
 
 ```jsonc
   "name": "my-pointsman",
@@ -70,7 +78,8 @@ engine/node_modules/.bin/wrangler kv namespace create TOKENS
 engine/node_modules/.bin/wrangler d1 create my-pointsman
 ```
 
-Each command prints an id, for example:
+Each command prints an id (the D1 command calls it `database_id`), for
+example:
 
 ```text
     {
@@ -81,7 +90,7 @@ Each command prints an id, for example:
 ```
 
 Answer **No**: the template already has the entries, you only fill in the
-ids in the next step.
+ids in the next step. Keep the three ids until then.
 
 ## 3. Fill in the config
 
@@ -91,9 +100,18 @@ In `wrangler.jsonc`, replace each `<placeholder>` with your values:
 - `<D1 database name, e.g. pointsman>`: `my-pointsman`.
 - `<D1 database id>`: the D1 id.
 
-Also delete the line `"AI_GATEWAY_ID": "pointsman"` (and the comment above
-it), and the comma after `"MODEL_MODE": "workers-ai"`. As in the last
-tutorial, Pointsman then calls Workers AI directly.
+Also delete the line `"AI_GATEWAY_ID": "pointsman"` and the comment above
+it. As in the last tutorial, Pointsman then calls Workers AI directly. The
+line before it now ends the list, so delete its comma too. The start of
+`vars` then reads:
+
+```jsonc
+  "vars": {
+    "PROFILE_SOURCE": "kv",
+    "MODEL_MODE": "workers-ai"
+```
+
+If you break the file, the check below names the line.
 
 Replace the whole of `engine.json` with:
 
@@ -145,16 +163,19 @@ gh api -X PUT 'repos/{owner}/{repo}/environments/production'
 The last command creates the environment `production`. The deploy reads
 its secrets from there. Do not push yet: the deploy needs two secrets first.
 
-**A Cloudflare API token for the deploy.** In the Cloudflare dashboard, open
+**A Cloudflare API token for the deploy.** GitHub keeps it as a *secret*:
+the deploy can use it, but nobody can read it back. In the Cloudflare
+dashboard, open
 [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens),
-select **Create Token**, and create a custom token for your account with
-these permissions:
+select **Create Token**, then **Get started** next to **Custom token**.
+Choose your account, and add these permissions:
 
 - **Workers Admin**: the first deploy creates the Worker.
 - **Workers KV Storage Write**: the deploy publishes the profiles.
 - **D1 Write**: the deploy prepares the decision log.
 
-Store the token as a secret. The command asks you to paste it:
+Store the token as a secret. The command asks you to paste it; nothing
+appears while you paste, so press Enter once:
 
 ```sh
 gh secret set CLOUDFLARE_API_TOKEN --env production
@@ -174,9 +195,14 @@ git push -u origin main
 gh run watch
 ```
 
-The workflow checks the config and the profile, prepares the database,
-deploys Pointsman, and publishes the profile. In its log
-(`gh run view --log`), the end of the deploy reads (with your names):
+`gh run watch` asks which run to follow: two start at the same time.
+Choose **Deploy**. It checks the config and the profile, prepares the
+database, deploys Pointsman, and publishes the profile, in a few minutes.
+If the push is refused because of `.github/workflows`, run
+`gh auth refresh -s workflow` and push again.
+
+To find the address, read the log of the same run (`gh run view --log`,
+choose **Deploy** again). The end of the deploy reads (with your names):
 
 ```text
 Uploaded my-pointsman (2.04 sec)
@@ -188,9 +214,11 @@ Index: lost-and-found@1
 Published.
 ```
 
-The address in the third line is your Pointsman.
+The line that ends in `workers.dev` is the address of your Pointsman.
 
 <details><summary>If the deploy fails</summary>
+
+`gh run view --log-failed` shows the error.
 
 - **"No access to the specified resource"** right after the upload starts:
   the token cannot create a Worker. Give it **Workers Admin**, store it
@@ -200,13 +228,17 @@ The address in the third line is your Pointsman.
   Run `gh run rerun --failed`.
 - **"Config not ready"**: a `<placeholder>` is left, or a module name is
   wrong. The message names it.
+- **An error about a workers.dev subdomain**: your account has none yet.
+  Open **Workers & Pages** in the Cloudflare dashboard once, choose a
+  subdomain, and run `gh run rerun --failed`.
 
 </details>
 
 ## 6. Call it over the internet
 
 Make an API token on the deployed Pointsman, for the lost-and-found
-profile only:
+profile only. The command prints the token once: put it into
+`POINTSMAN_TOKEN`, and your address from step 5 into `POINTSMAN_URL`:
 
 ```sh
 node engine/scripts/tokens.mjs create --client tutorial --profiles lost-and-found --remote --config wrangler.jsonc
@@ -240,8 +272,8 @@ git switch -c bento-rule
 ```
 
 In `profiles/lost-and-found.yaml`, make the same change as in step 6 of
-[the last tutorial](real-answers.md): `version: 2` and
-the two new rules. Add the two new test cases to
+[the last tutorial](real-answers.md): `version: 2`, and the `policy` block
+with the two new rules. Add the two new test cases to
 `cases/lost-and-found.yaml` too. Then:
 
 ```sh
@@ -251,9 +283,11 @@ gh pr create --fill
 ```
 
 On the pull request, the check **Validate profiles and config** runs the
-test cases and checks that the version went up. When it passes, merge:
+test cases and checks that the version went up. Wait until it passes, then
+merge:
 
 ```sh
+gh pr checks --watch
 gh pr merge --squash --delete-branch
 gh run watch
 ```
@@ -290,7 +324,8 @@ that was checked before it went live. Next:
 ## Clean up
 
 To delete everything this tutorial created, run these commands in
-`my-pointsman`. Each one asks you to confirm. Use the KV ids from step 2:
+`my-pointsman`. Each one asks you to confirm. The KV ids are in
+`wrangler.jsonc`:
 
 ```sh
 engine/node_modules/.bin/wrangler delete --config wrangler.jsonc
@@ -302,4 +337,5 @@ gh repo delete
 ```
 
 `gh` may delete repositories only after `gh auth refresh -s delete_repo`.
+Deleting the repository also deletes its secrets.
 Then delete the API token in the Cloudflare dashboard.

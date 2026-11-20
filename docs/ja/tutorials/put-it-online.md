@@ -36,7 +36,9 @@ mkdir cases
 cp ../pointsman/examples/cases/lost-and-found.yaml cases/
 ```
 
-設定リポジトリは、決まったバージョンのエンジンを自分のフォルダー `engine/` に持ちます(Git はこのフォルダーを無視します)。バージョン 0.22.0 を取ってきます。
+プロファイルはバージョン 1 でなければなりません。前のチュートリアルの最後で元に戻していないときは、`git -C ../pointsman checkout examples` を実行し、2 つのファイルをもう一度コピーします。
+
+デプロイはいつも決まったバージョンのエンジンを使い、自分のコンピューターのスクリプトも同じバージョンを使うべきです。そのため、設定リポジトリはフォルダー `engine/` にエンジンの写しを持ちます(Git はこのフォルダーを無視します)。バージョン 0.22.0 を取ってきます(ダウンロードに 1 分ほどかかります)。
 
 ```sh
 git clone https://github.com/geolonia/pointsman engine
@@ -46,7 +48,7 @@ pnpm --dir engine install --frozen-lockfile
 
 ## 2. Cloudflare に保存先を作る
 
-`wrangler.jsonc` を開き、Worker に名前を付けます。名前はウェブのアドレスの一部になるので、小文字の英字とダッシュを使います。
+`wrangler.jsonc` をエディターで開きます。コメントを含められる JSON(*JSONC*)のファイルです。`"name"` の行を次の行に置き換えて、Worker に名前を付けます。名前は Worker のウェブのアドレスの一部になるので、小文字の英字とダッシュを使います。
 
 ```jsonc
   "name": "my-pointsman",
@@ -60,7 +62,7 @@ engine/node_modules/.bin/wrangler kv namespace create TOKENS
 engine/node_modules/.bin/wrangler d1 create my-pointsman
 ```
 
-それぞれのコマンドが ID を表示します。たとえば次のとおりです。
+それぞれのコマンドが ID を表示します(D1 のコマンドでは `database_id` という名前です)。たとえば次のとおりです。
 
 ```text
     {
@@ -70,7 +72,7 @@ engine/node_modules/.bin/wrangler d1 create my-pointsman
 ? Would you like Wrangler to add it on your behalf?
 ```
 
-**No** と答えます。テンプレートにはすでに項目があるので、次の手順で ID を書き入れるだけです。
+**No** と答えます。テンプレートにはすでに項目があるので、次の手順で ID を書き入れるだけです。それまで 3 つの ID を控えておきます。
 
 ## 3. 設定を書き入れる
 
@@ -80,7 +82,15 @@ engine/node_modules/.bin/wrangler d1 create my-pointsman
 - `<D1 database name, e.g. pointsman>`: `my-pointsman`。
 - `<D1 database id>`: D1 の ID。
 
-また、`"AI_GATEWAY_ID": "pointsman"` の行(とその上のコメント)と、`"MODEL_MODE": "workers-ai"` の後ろのコンマを消します。前のチュートリアルと同じく、Pointsman が Workers AI を直接呼び出すようになります。
+また、`"AI_GATEWAY_ID": "pointsman"` の行とその上のコメントを消します。前のチュートリアルと同じく、Pointsman が Workers AI を直接呼び出すようになります。その前の行が一覧の最後になるので、その行のコンマも消します。`vars` の最初の部分は次のようになります。
+
+```jsonc
+  "vars": {
+    "PROFILE_SOURCE": "kv",
+    "MODEL_MODE": "workers-ai"
+```
+
+ファイルを壊してしまっても、次の確認で行が示されます。
 
 `engine.json` は、全体を次の内容に置き換えます。
 
@@ -126,13 +136,13 @@ gh api -X PUT 'repos/{owner}/{repo}/environments/production'
 
 最後のコマンドは、環境 `production` を作ります。デプロイはここからシークレットを読みます。まだプッシュしません。デプロイには、先に 2 つのシークレットが必要です。
 
-**デプロイ用の Cloudflare の API トークン。** Cloudflare のダッシュボードで [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens) を開き、**Create Token** を選んで、自分のアカウント用のカスタムトークンを次の権限で作ります。
+**デプロイ用の Cloudflare の API トークン。** GitHub はこれを*シークレット*として保存します。デプロイは使えますが、誰も読み出せません。Cloudflare のダッシュボードで [Account API tokens](https://dash.cloudflare.com/?to=/:account/api-tokens) を開き、**Create Token** を選び、**Custom token** の横の **Get started** を選びます。自分のアカウントを選び、次の権限を加えます。
 
 - **Workers Admin**: 最初のデプロイが Worker を作ります。
 - **Workers KV Storage Write**: デプロイがプロファイルを公開します。
 - **D1 Write**: デプロイが判定ログを準備します。
 
-トークンをシークレットに保存します。コマンドがトークンの貼り付けを求めます。
+トークンをシークレットに保存します。コマンドがトークンの貼り付けを求めます。貼り付けても何も表示されないので、Enter を 1 回押します。
 
 ```sh
 gh secret set CLOUDFLARE_API_TOKEN --env production
@@ -151,7 +161,9 @@ git push -u origin main
 gh run watch
 ```
 
-ワークフローが設定とプロファイルを確かめ、データベースを準備し、Pointsman をデプロイし、プロファイルを公開します。ログ(`gh run view --log`)の、デプロイの最後の部分は次のとおりです(名前は自分のものになります)。
+実行が 2 つ同時に始まるので、`gh run watch` はどれを見るかを尋ねます。**Deploy** を選びます。設定とプロファイルを確かめ、データベースを準備し、Pointsman をデプロイし、プロファイルを公開します。数分かかります。`.github/workflows` のためにプッシュが拒否されたときは、`gh auth refresh -s workflow` を実行してからもう一度プッシュします。
+
+アドレスは、同じ実行のログで確かめます(`gh run view --log`、もう一度 **Deploy** を選ぶ)。デプロイの最後の部分は次のとおりです(名前は自分のものになります)。
 
 ```text
 Uploaded my-pointsman (2.04 sec)
@@ -163,19 +175,22 @@ Index: lost-and-found@1
 Published.
 ```
 
-3 行目のアドレスが、自分の Pointsman です。
+`workers.dev` で終わる行が、自分の Pointsman のアドレスです。
 
 <details><summary>デプロイが失敗したとき</summary>
+
+`gh run view --log-failed` でエラーを表示できます。
 
 - アップロードが始まった直後の **「No access to the specified resource」**: トークンが Worker を作れません。トークンに **Workers Admin** を付けて保存し直し、`gh run rerun --failed` を実行します。
 - 「Uploaded」の直後の **「This Worker does not exist on your account」(code 10007)**: 最初のデプロイでは、Cloudflare の準備が間に合わないことがあります。`gh run rerun --failed` を実行します。
 - **「Config not ready」**: `<placeholder>` が残っているか、モジュールの名前が誤っています。メッセージにその名前が出ます。
+- **workers.dev のサブドメインについてのエラー**: アカウントにまだサブドメインがありません。Cloudflare のダッシュボードで一度 **Workers & Pages** を開いてサブドメインを選び、`gh run rerun --failed` を実行します。
 
 </details>
 
 ## 6. インターネット越しに呼び出す
 
-デプロイした Pointsman に、忘れ物のプロファイルだけに使える API トークンを作ります。
+デプロイした Pointsman に、忘れ物のプロファイルだけに使える API トークンを作ります。コマンドはトークンを一度だけ表示します。それを `POINTSMAN_TOKEN` に、手順 5 のアドレスを `POINTSMAN_URL` に設定します。
 
 ```sh
 node engine/scripts/tokens.mjs create --client tutorial --profiles lost-and-found --remote --config wrangler.jsonc
@@ -205,7 +220,7 @@ curl -s "$POINTSMAN_URL/v1/decide/lost-and-found" \
 git switch -c bento-rule
 ```
 
-`profiles/lost-and-found.yaml` に、[前のチュートリアル](real-answers.md)の手順 6 と同じ変更をします。`version: 2` と、2 つの新しいルールです。`cases/lost-and-found.yaml` にも、2 つの新しいテストケースを加えます。そのあと次を実行します。
+`profiles/lost-and-found.yaml` に、[前のチュートリアル](real-answers.md)の手順 6 と同じ変更をします。`version: 2` と、2 つの新しいルールの入った `policy` の部分です。`cases/lost-and-found.yaml` にも、2 つの新しいテストケースを加えます。そのあと次を実行します。
 
 ```sh
 git commit -am "lost-and-found v2: a person checks what may be alive; throw away food that spoils"
@@ -213,9 +228,10 @@ git push -u origin bento-rule
 gh pr create --fill
 ```
 
-プルリクエストでは、チェック **Validate profiles and config** がテストケースを実行し、バージョンが上がったかを確かめます。合格したらマージします。
+プルリクエストでは、チェック(check run)**Validate profiles and config** がテストケースを実行し、バージョンが上がったかを確かめます。合格するまで待ち、マージします。
 
 ```sh
+gh pr checks --watch
 gh pr merge --squash --delete-branch
 gh run watch
 ```
@@ -244,7 +260,7 @@ gh run watch
 
 ## 片付け {#clean-up}
 
-このチュートリアルで作ったものをすべて消すには、`my-pointsman` で次のコマンドを実行します。どのコマンドも確認を求めます。KV の ID は手順 2 のものを使います。
+このチュートリアルで作ったものをすべて消すには、`my-pointsman` で次のコマンドを実行します。どのコマンドも確認を求めます。KV の ID は `wrangler.jsonc` にあります。
 
 ```sh
 engine/node_modules/.bin/wrangler delete --config wrangler.jsonc
@@ -255,4 +271,4 @@ gh auth refresh -s delete_repo
 gh repo delete
 ```
 
-`gh` がリポジトリを消せるのは、`gh auth refresh -s delete_repo` のあとです。最後に、Cloudflare のダッシュボードで API トークンを消します。
+`gh` がリポジトリを消せるのは、`gh auth refresh -s delete_repo` のあとです。リポジトリを消すと、そのシークレットも消えます。最後に、Cloudflare のダッシュボードで API トークンを消します。
