@@ -273,21 +273,41 @@ test('openapi.yaml has no value cut by a comma and no unknown schema keyword (#2
   const typo = text.replace('replaces: { type: string, format: uuid,', 'replaces: { type: string, fromat: uuid,');
   assert.notEqual(typo, text);
   assert.match(openapiProblems(parseYaml(typo)).join('\n'), /unknown keyword: "fromat"/);
+  // A null inside an example, a default or an enum is data, not a cut text.
+  const examples = parseYaml(text);
+  examples.components.schemas.Error.example = { error: { code: null, list: [null] } };
+  assert.deepEqual(openapiProblems(examples), []);
+  // Parameters shared by every operation of a path are checked too.
+  const shared = parseYaml(text);
+  shared.paths['/v1/reviews'].parameters = [{ name: 'x', in: 'query', schema: { type: 'integer', minimun: 1 } }];
+  assert.match(openapiProblems(shared).join('\n'), /paths\.\/v1\/reviews\.parameters\.x: .*unknown keyword: "minimun"/);
 });
+
+/** The /v1 routes of src/app.ts as "METHOD /path", and the /v1 paths passed as a call argument. */
+function v1Routes(app) {
+  const routes = [...app.matchAll(/app\.(get|post|put|patch|delete)\(\s*['"`](\/v1\/[^'"`]*)['"`]/g)]
+    .map(([, m, path]) => `${m.toUpperCase()} ${path.replace(/:(\w+)/g, '{$1}')}`).sort();
+  // Every /v1 path passed to a call, as the first argument or a later one
+  // (app.on('GET', '/v1/…')): each must be one of the routes above (or the
+  // /v1/* middleware), so a route written another way fails instead of being
+  // missed. A path compared in code (=== '/v1/…') is not an argument.
+  const literals = [...app.matchAll(/[(,]\s*['"`](\/v1\/[^'"`]*)['"`]/g)].map(([, p]) => p).filter((p) => p !== '/v1/*');
+  return { routes, literals };
+}
 
 test('openapi.yaml describes every /v1 route of the Worker, and only those (#264)', () => {
   const api = parseYaml(readFileSync(join(root, 'openapi.yaml'), 'utf8'));
   const inSpec = Object.entries(api.paths).flatMap(([path, item]) =>
     ['get', 'post', 'put', 'patch', 'delete'].filter((m) => item[m]).map((m) => `${m.toUpperCase()} ${path}`)).sort();
   const app = readFileSync(join(root, 'src', 'app.ts'), 'utf8');
-  const routes = [...app.matchAll(/app\.(get|post|put|patch|delete)\(\s*['"`](\/v1\/[^'"`]*)['"`]/g)]
-    .map(([, m, path]) => `${m.toUpperCase()} ${path.replace(/:(\w+)/g, '{$1}')}`).sort();
+  const { routes, literals } = v1Routes(app);
   assert.ok(routes.length > 5, 'routes found in src/app.ts');
-  // Every /v1 path passed to a call is one of those routes (or the /v1/*
-  // middleware), so a route written another way (app.all, app.on, app.route)
-  // fails here instead of being missed.
-  const literals = [...app.matchAll(/\(\s*['"`](\/v1\/[^'"`]*)['"`]/g)].map(([, p]) => p).filter((p) => p !== '/v1/*');
   assert.equal(literals.length, routes.length, `every /v1 path passed to a call in src/app.ts is an app.<method>('/v1/…') route: ${literals.join(', ')}`);
   assert.doesNotMatch(app, /:\w+[?{]/, 'optional or pattern parameters are not mapped to openapi.yaml here');
   assert.deepEqual(routes, inSpec);
+  // A route written another way is noticed.
+  for (const extra of ["app.on('GET', '/v1/extra', h);", "app.all('/v1/extra', h);", 'app.route(\n  "/v1/extra", sub);']) {
+    const r = v1Routes(`${app}\n${extra}`);
+    assert.notEqual(r.literals.length, r.routes.length, extra);
+  }
 });

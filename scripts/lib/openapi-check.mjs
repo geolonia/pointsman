@@ -11,14 +11,17 @@ const OPENAPI_KEYWORDS = ['example', 'discriminator', 'externalDocs', 'xml'];
 /** Problems in a parsed openapi.yaml, as messages; empty when it is fine. */
 export function openapiProblems(api) {
   const problems = [];
-  (function walk(value, path, key) {
-    // A null that means null (a default, an example, an enum value) is fine.
-    if (value === null && !['default', 'example', 'enum'].includes(key)) {
+  (function walk(value, path, data) {
+    // A null that means null, anywhere inside a default, an example or an
+    // enum (data, not schema), is fine.
+    if (value === null && !data) {
       problems.push(`${path}: no value (an unquoted comma in { ... } cuts a text there; quote it, or write null where null is meant)`);
     } else if (value !== null && typeof value === 'object') {
-      for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k, Array.isArray(value) ? key : k);
+      for (const [k, v] of Object.entries(value)) {
+        walk(v, path ? `${path}.${k}` : k, data || (!Array.isArray(value) && ['default', 'example', 'enum'].includes(k)));
+      }
     }
-  })(api, '', '');
+  })(api, '', false);
   // Unknown keywords only (strictSchema); type rules are left to the contract tests.
   const ajv = new Ajv2020({ strictSchema: true, strictTypes: false, strictTuples: false, strictRequired: false, allErrors: true, validateFormats: false });
   // `components` only holds the wrapper below, so the document's
@@ -52,7 +55,10 @@ export function openapiProblems(api) {
 function pathSchemas(api) {
   const out = [];
   for (const [path, item] of Object.entries(api.paths ?? {})) {
-    for (const [method, op] of Object.entries(item)) {
+    // Parameters shared by every operation of the path.
+    for (const p of item.parameters ?? []) if (p.schema) out.push([`paths.${path}.parameters.${p.name}`, p.schema]);
+    for (const method of ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']) {
+      const op = item[method];
       if (!op || typeof op !== 'object') continue;
       for (const p of op.parameters ?? []) if (p.schema) out.push([`paths.${path}.${method}.parameters.${p.name}`, p.schema]);
       for (const [type, c] of Object.entries(op.requestBody?.content ?? {})) if (c.schema) out.push([`paths.${path}.${method}.requestBody.${type}`, c.schema]);
