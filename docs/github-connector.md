@@ -112,7 +112,7 @@ This is the whole list: a deployment can switch actions on, never add one. A dec
 Rules for every action:
 
 - **At most once per head commit**, per profile and kind. The record is written before the action and closed after it. A new commit starts again.
-- **A stop in between:** a record left open is settled by its trace on GitHub (the comment or approval with its marker, the labels, the requested reviewers). Without a trace, the action may be done again only after 10 minutes; the connector looks again then, also without a new event.
+- **A stop in between:** a record left open is settled by its trace on GitHub (the comment or approval with its marker, the labels, the requested reviewers). Without a trace, the action may be done again only after 10 minutes; the connector looks again then, also without a new event. Comments and reviews are read up to 1,000, oldest first: a trace among them counts; when it is not among them and there are more, whether it is there is not known, so the action is not done again. A list that GitHub answers with something other than a list is an error (tried again later), never an empty list, and so is a pull request without a state (`open` or `closed`) or a draft flag: never read as closed, which would close the open questions.
 - **A person first:** while a person still checks the decision (the profile's `people_check`, `review: pending`), nothing is done. Once they answered, their answer is the action ([Asking a person](#asking-a-person)).
 - **Refused by GitHub** (no permission, a reviewer who cannot be asked): shown on the check run and logged, and not tried again for that commit. Busy or down: tried again later.
 - **One record per profile and kind:** two decision actions of one profile mapped to the same kind (for example two `label` actions) are done only once per commit, whichever comes first.
@@ -266,6 +266,8 @@ One comment per pull request shows the latest decision of each chosen profile, r
   }
 }
 ```
+
+The connector finds its comment among the first 1,000 comments. On a pull request with more, where it is not among them, it writes no second one and says so on the check runs.
 
 The comment for that pull request, when `pr-risk` decided `approvable` by its rule 3 and `pr-next-step` decided `ask-person` by its rule 8:
 

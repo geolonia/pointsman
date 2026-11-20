@@ -53,7 +53,8 @@ function fakeApi() {
    * `reviewsFail` answers the GraphQL query with this status; `graphqlErrors` with errors.
    */
   const reviews: { id: number; state: string; commit_id: string; body: string; user: { login: string; type: string } | null }[] = [];
-  const api = { pr, comments, checkRuns, log, reviews, decision: null as string | null, fail: 0, reviewsFail: 0, graphqlErrors: false };
+  // manyComments: every page of comments is full of other people's comments (more than 1,000).
+  const api = { pr, comments, checkRuns, log, reviews, decision: null as string | null, fail: 0, reviewsFail: 0, graphqlErrors: false, manyComments: false };
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const method = init.method ?? 'GET';
@@ -95,6 +96,7 @@ function fakeApi() {
     if (path === `/repos/${REPO}/issues/7/comments`) {
       if (method === 'GET') {
         const page = Number(url.searchParams.get('page') ?? '1');
+        if (api.manyComments) return Response.json(Array.from({ length: 100 }, (_, i) => ({ id: page * 1000 + i, body: 'hi', user: { login: 'someone', type: 'User' } })));
         return Response.json(page === 1 ? comments : []);
       }
       if (api.fail) return Response.json({ message: 'no' }, { status: api.fail });
@@ -249,6 +251,23 @@ describe('decision comment', () => {
     fresh.answers['pr-next-step'] = () => ({ ...decision('pr-next-step'), test: true });
     await fresh.event();
     expect(commentCalls(fresh.api.log)).toEqual([]);
+    errors.mockRestore();
+  });
+
+  it('more than 1,000 comments without its own: no second comment, and the check runs say why', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { api, event } = setup();
+    api.manyComments = true;
+    await event();
+    expect(api.comments).toHaveLength(0);
+    expect(api.log.filter((l) => l === 'POST /issues/7/comments')).toEqual([]);
+    expect(api.checkRuns.length).toBeGreaterThan(0);
+    for (const run of api.checkRuns) expect(run.output.summary).toContain('more than 1,000 comments');
+    for (const run of api.checkRuns) expect(run.output.summary).not.toContain('Read and write');
+    // Same text: not looked for again.
+    api.log.length = 0;
+    await event();
+    expect(api.log.filter((l) => l.startsWith('GET /issues/7/comments'))).toEqual([]);
     errors.mockRestore();
   });
 

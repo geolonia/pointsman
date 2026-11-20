@@ -563,10 +563,12 @@ export class PullRequestWork {
         // Busy or rate limited: the record stays open, the next run writes it.
         note = `The decision comment could not be written (GitHub busy or rate limited, ${status}); the next run tries again.`;
       } else {
-        // Refused (no permission): not tried again until the comment's text changes.
+        // Refused (no permission), or its earlier comment cannot be found: not tried again until the comment's text changes.
         delete record.pending;
         record.failed = hash;
-        note = `The decision comment could not be written (${status}); not tried again until it changes. Does the app have "Pull requests: Read and write"?`;
+        note = err instanceof GitHubHistoryLimit
+          ? 'The decision comment could not be written: the pull request has more than 1,000 comments, and its earlier comment is not among the first 1,000, so a second one is not written; not tried again until it changes.'
+          : `The decision comment could not be written (${status}); not tried again until it changes. Does the app have "Pull requests: Read and write"?`;
       }
       await this.#storage.put({ comment: record });
       return this.#noteOnChecks(target, head, shown, note);

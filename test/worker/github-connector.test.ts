@@ -413,6 +413,82 @@ describe('settings and tokens', () => {
     expect(requests.at(-1)).toMatchObject({ method: 'POST', body: { name: 'Pointsman: x', head_sha: HEAD, status: 'completed', conclusion: 'neutral' } });
   });
 
+  describe('reading lists and the pull request: a bad or cut answer is an error, never "none" or "closed"', () => {
+    const MARK = '<!-- pointsman:x -->';
+    /** A fake GitHub: the pull request, and pages of comments and reviews (index 0 = page 1). */
+    const server = (o: { pr?: unknown; comments?: unknown[]; reviews?: unknown[]; page11?: unknown }) => {
+      const pages: string[] = [];
+      const pageOf = (list: unknown[] | undefined, url: string) => {
+        const page = Number(new URL(url).searchParams.get('page'));
+        pages.push(`${new URL(url).pathname.split('/').pop()}:${page}`);
+        if (page === 11 && o.page11 !== undefined) return Response.json(o.page11);
+        return Response.json(Array.isArray(list) ? list.slice((page - 1) * 100, page * 100) : list);
+      };
+      const gh = new AppGitHub(APP_ID, KEY, (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/installation')) return Response.json({ id: 9, app_slug: 'pointsman', permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' } });
+        if (url.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+        if (url.includes('/issues/7/comments')) return pageOf(o.comments, url);
+        if (url.includes('/pulls/7/reviews')) return pageOf(o.reviews, url);
+        if (url.endsWith('/pulls/7')) return Response.json(o.pr);
+        throw new Error(`unexpected ${url}`);
+      }) as typeof fetch, true);
+      return { gh, pages };
+    };
+    const other = (i: number) => ({ id: 1000 + i, body: 'hello', user: { login: 'someone', type: 'User' } });
+    const mine = (id: number) => ({ id, body: `${MARK}\nDecision`, user: { login: 'pointsman[bot]', type: 'Bot' }, performed_via_github_app: { id: APP_ID } });
+    const pr = { state: 'open', draft: false, head: { sha: HEAD, ref: 'f', repo: { full_name: REPO } }, base: { ref: 'main', repo: { full_name: REPO } }, user: { login: 'a', id: 1 } };
+
+    it('a pull request without a text state or a yes/no draft is an error, never closed', async () => {
+      expect(await server({ pr }).gh.pullRequest(REPO, 7)).toMatchObject({ open: true, draft: false });
+      expect(await server({ pr: { ...pr, state: 'closed' } }).gh.pullRequest(REPO, 7)).toMatchObject({ open: false });
+      const { state: _, ...noState } = pr;
+      for (const bad of [noState, { ...pr, state: 7 }, { ...pr, state: null }, { ...pr, state: 'all' }, { ...pr, draft: 'no' }, (({ draft: _d, ...x }) => x)(pr)]) {
+        await expect(server({ pr: bad }).gh.pullRequest(REPO, 7), JSON.stringify(bad)).rejects.toMatchObject({ retry: false, message: expect.stringContaining('unexpected answer') });
+      }
+    });
+
+    it('a list that is not a list is an error (tried again later), not an empty list', async () => {
+      for (const bad of [{ message: 'oops' }, null, 'x']) {
+        await expect(server({ comments: bad as unknown as unknown[] }).gh.findComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: true, message: expect.stringContaining('unexpected answer') });
+        await expect(server({ comments: bad as unknown as unknown[] }).gh.findOwnComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: true });
+        await expect(server({ reviews: bad as unknown as unknown[] }).gh.ownApprovals(REPO, 7)).rejects.toMatchObject({ retry: true });
+      }
+      // Also the 11th page, read only to tell whether there are more: the whole read fails.
+      const full = Array.from({ length: 1000 }, (_, i) => other(i));
+      await expect(server({ comments: full, page11: { message: 'oops' } }).gh.findComment(REPO, 7, MARK)).rejects.toMatchObject({ retry: true });
+    });
+
+    it('more than 1,000 comments: found among them is found; not found is not known (an error), never "none"', async () => {
+      const many = Array.from({ length: 1001 }, (_, i) => other(i));
+      // Not among the first 1,000, and there are more: the comment may be after them.
+      await expect(server({ comments: many }).gh.findComment(REPO, 7, MARK)).rejects.toMatchObject({ name: 'GitHubHistoryLimit' });
+      await expect(server({ comments: many }).gh.findOwnComment(REPO, 7, MARK)).rejects.toMatchObject({ name: 'GitHubHistoryLimit' });
+      // Among the first 1,000: found, also with more after them.
+      const withMine = [...many.slice(0, 250), mine(5), ...many.slice(250)];
+      expect(await server({ comments: withMine }).gh.findComment(REPO, 7, MARK)).toBe(true);
+      expect(await server({ comments: withMine }).gh.findOwnComment(REPO, 7, MARK)).toBe(5);
+      // Exactly 1,000 (an empty 11th page): the whole list was read, so none.
+      const thousand = many.slice(0, 1000);
+      const t = server({ comments: thousand });
+      expect(await t.gh.findComment(REPO, 7, MARK)).toBe(false);
+      expect(t.pages.at(-1)).toBe('comments:11');
+      expect(await server({ comments: thousand }).gh.findOwnComment(REPO, 7, MARK)).toBeUndefined();
+      // Fewer: no 11th page is read.
+      const few = server({ comments: many.slice(0, 120) });
+      expect(await few.gh.findComment(REPO, 7, MARK)).toBe(false);
+      expect(few.pages).toEqual(['comments:1', 'comments:2']);
+    });
+
+    it('exactly 1,000 reviews are the whole list: the approvals are not cut', async () => {
+      const review = (i: number) => ({ id: i, state: 'COMMENTED', body: '', commit_id: HEAD, user: { login: 'someone', type: 'User' } });
+      const thousand = await server({ reviews: Array.from({ length: 1000 }, (_, i) => review(i)) }).gh.ownApprovals(REPO, 7);
+      expect(thousand.cut).toBeUndefined();
+      const more = await server({ reviews: Array.from({ length: 1001 }, (_, i) => review(i)) }).gh.ownApprovals(REPO, 7);
+      expect(more.cut).toBe(true);
+    });
+  });
+
   it('classifies failures: not installed needs a person, a network error is tried again', async () => {
     const notInstalled = new AppGitHub(APP_ID, KEY, (async () => new Response(null, { status: 404 })) as unknown as typeof fetch);
     await expect(notInstalled.pullRequest(REPO, 7)).rejects.toMatchObject({ retry: false });
