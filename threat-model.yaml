@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:84217e7dc975d5317803235404fd34ea9e23aab7ceab6da4670c119c108bf696"
+prose_version: "threat-model.md@sha256:f04ac73eb1eed0e1e44e1103baa51cf15da065e7a3631be88742795a070223b9"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -839,12 +839,12 @@ contract_dimensions:
   # bridge
   - {component: bridge, dimension: numeric-domain, status: claimed, conditions: "queue messages ≤120 KB, batches ≤100/250 KB; retries 30 s doubling to 1 h; reviewedBy ≤100 characters", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Reliable delivery (queue)\"; \"Work orders from other apps\""}}
   - {component: bridge, dimension: failure-atomicity, status: disclaimed, conditions: "NGSI-LD has no conditional update; a writer can get through between a read and a write", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"NGSI-LD has no conditional update, so there is a short window\""}}
-  - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}}
+  - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision; since pointsman#323 (not yet released) multi-instance inputs hashed by every instance (sorted by datasetId) and a 207 to the first result write is a failure", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}}
   - {component: bridge, dimension: callback-execution, status: not-applicable, conditions: "the bridge runs no caller code; routes are operator configuration", provenance: {kind: documented, source: "bridge/README.md \"Configuration\""}}
-  - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339; since pointsman#323 (not yet released) a bare-value input (keyValues) is refused and an unknown ?route= answers 404", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: reference-lifecycle, status: claimed, conditions: "Task ids derived from entity id, attribute and input hash; own Tasks recognised by id", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Task entities\""}}
   - {component: bridge, dimension: concurrency-reentrancy, status: disclaimed, conditions: "two simultaneous notifications for one Decision can both send the same feedback; max_concurrency 1 is the operator's job", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"Two notifications for the same Decision at the same moment can both send the same corrections\""}}
-  - {component: bridge, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call and a bounded number of broker calls per entity; oversized entities handled inline", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: bridge, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call and a bounded number of broker calls per entity; oversized entities handled inline; since pointsman#323 (not yet released) 10 s per broker call and 30 s per Pointsman call, a timeout tried again", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: x-prompt-injection, status: disclaimed, conditions: "the whole entity is the state; whoever writes an entity writes the prompt text", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: x-probabilistic-result, status: disclaimed, conditions: "probabilities are written to the broker as sub-properties; the action is the value", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "bridge/README.md \"The result on the entity\""}}
   # action-triage

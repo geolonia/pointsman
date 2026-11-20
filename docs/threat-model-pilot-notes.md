@@ -735,6 +735,20 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for the FIWARE bridge (pointsman#244, #245, #260, #323, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that the bridge took a `207` to the
+  first result write as success (#244), had no time limit on its calls
+  (#245), hashed inputs with several instances as `null`, and dropped an
+  unknown `?route=` silently (#260).
+- **Changed**: the matrix rows for the bridge's recursive topology,
+  serialization and resource complexity (prose, YAML), §1.1 and §1.16. The
+  citations into `packages/fiware/src/bridge.ts` were mapped line by line
+  by a short script; the lines they point at did not change.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
