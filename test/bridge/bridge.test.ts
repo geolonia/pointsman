@@ -1723,6 +1723,24 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
     expect(result).not.toHaveProperty('write');
   });
 
+  it('a call that ignores the abort signal (the engine in process) still times out', async () => {
+    const t = setup();
+    const plain = t.config.fetch!;
+    // Like the engine Worker's in-process fetch: it does not watch init.signal.
+    t.config.pointsman.fetch = () => new Promise<Response>(() => {});
+    t.config.fetch = plain;
+    t.config.pointsman.timeoutMs = 20;
+    const result = await handleMessage({ path: '/notify', entity: entity() }, t.config);
+    expect(result).toMatchObject({ retry: true, error: 'pointsman did not answer within 20 ms (timed out)' });
+  });
+
+  it('POINTSMAN_TIMEOUT_SECONDS sets the time limit of a decision, 10 to 600 seconds', () => {
+    const env = (extra: Partial<Env>): Env => ({ BRIDGE_ROUTES: JSON.stringify([route]), POINTSMAN_URL: 'https://pm.test', BROKER_URL: 'https://broker.test', NOTIFY_SECRET: SECRET, POINTSMAN_TOKEN: PM_TOKEN, BROKER_TOKEN, ...extra } as Env);
+    expect(configFrom(env({})).pointsman.timeoutMs).toBeUndefined();
+    expect(configFrom(env({ POINTSMAN_TIMEOUT_SECONDS: '120' })).pointsman.timeoutMs).toBe(120_000);
+    for (const bad of ['5', '601', '1.5', 'soon']) expect(() => configFrom(env({ POINTSMAN_TIMEOUT_SECONDS: bad })), bad).toThrow(/POINTSMAN_TIMEOUT_SECONDS/);
+  });
+
   it('a call to the broker or Pointsman that does not answer times out, and is tried again', async () => {
     for (const slow of ['pointsman', 'broker'] as const) {
       const t = setup();
@@ -1752,12 +1770,33 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
     expect(await inputHash(entity({ description: [...instances('one', 'two')].reverse() }), route.inputs)).toBe(base);
     // Not the hash of a missing input.
     expect(base).not.toBe(await inputHash(entity({ description: undefined }), route.inputs));
+    // No instance left: as when the attribute is not there.
+    expect(await inputHash(entity({ description: [] }), route.inputs)).toBe(await inputHash(entity({ description: undefined }), route.inputs));
+    // A single value hashes as before (stored hashes still match after the upgrade).
+    expect(await inputHash(entity(), route.inputs)).toBe(await inputHash(entity({ description: P('冠水のため通行止め') }), route.inputs));
   });
 
   it('an input that is not a normalized attribute (keyValues) is refused with a clear error, not tried again', async () => {
+    // A bare text, and an object without an NGSI-LD type (a keyValues GeoJSON point).
+    for (const bare of ['冠水のため通行止め', { type: 'Point', coordinates: [139.7, 35.6] }, [{ type: 'Point', coordinates: [1, 2] }]]) {
+      const t = setup();
+      const result = await handleMessage({ path: '/notify', entity: entity({ description: bare }) }, t.config);
+      expect(result, JSON.stringify(bare)).toMatchObject({ retry: false, error: expect.stringContaining('description') });
+      expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(0);
+    }
+    // Without a queue the broker gets 200 for it, so it is logged.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const t = setup();
-    const result = await handleMessage({ path: '/notify', entity: entity({ description: '冠水のため通行止め' }) }, t.config);
-    expect(result).toMatchObject({ retry: false, error: expect.stringContaining('description') });
-    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(0);
+    expect((await t.notify([entity({ description: 'x' })])).status).toBe(200);
+    expect(logged.mock.calls.join(' ')).toContain('keyValues');
+    logged.mockRestore();
+  });
+
+  it('an unknown route from a caller without the secret is 403, so route names are not learned', async () => {
+    const { config } = setup();
+    const res = await handleRequest(new Request('https://bridge.test/notify?route=other', {
+      method: 'POST', headers: { 'x-bridge-secret': 'wrong' }, body: JSON.stringify({ type: 'Notification', data: [] }),
+    }), config);
+    expect(res.status).toBe(403);
   });
 });

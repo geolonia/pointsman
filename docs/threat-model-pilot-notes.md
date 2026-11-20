@@ -744,7 +744,9 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Changed**: the matrix rows for the bridge's recursive topology,
   serialization and resource complexity (prose, YAML), §1.1 and §1.16. The
   citations into `packages/fiware/src/bridge.ts` were mapped line by line
-  by a short script; the lines they point at did not change.
+  by a short script, and five that pointed at the wrong line already on
+  main (found by the self-review) were set to the line their sentence
+  describes.
 - **Not run**: the plugin's validator and the backtest (Q49 still waits);
   the confidence counts do not change.
 - **Questions**: none.

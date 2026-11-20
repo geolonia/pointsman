@@ -84,6 +84,8 @@ export interface BridgeConfig {
     token: string;
     /** Sends the requests to Pointsman; defaults to `fetch` below. Inside the engine Worker, a call in process (docs/connectors.md). */
     fetch?: (url: string, init: RequestInit) => Promise<Response>;
+    /** How long a decision may take; POINTSMAN_TIMEOUT_MS when left out. */
+    timeoutMs?: number;
   };
   broker: {
     url: string;
@@ -117,8 +119,11 @@ export interface BridgeConfig {
 
 /** How long a call to the broker may take. */
 export const BROKER_TIMEOUT_MS = 10_000;
-/** How long a decision may take: Pointsman may wait for a model and its fallbacks. */
-export const POINTSMAN_TIMEOUT_MS = 30_000;
+/**
+ * How long a decision may take by default: Pointsman may wait for a model and
+ * its fallbacks (10 s each by default). POINTSMAN_TIMEOUT_SECONDS changes it.
+ */
+export const POINTSMAN_TIMEOUT_MS = 60_000;
 
 /** What the bridge needs of a Cloudflare Queue producer binding. */
 export interface BridgeQueue {
@@ -304,15 +309,23 @@ export async function inputHash(entity: Entity, inputs: string[], requires?: Rec
  */
 function inputValue(attribute: unknown, name: string): unknown {
   if (attribute === undefined || attribute === null) return null;
+  // A normalized attribute is an object with a type (Property, GeoProperty,
+  // Relationship, …); a keyValues value is not, also when it is an object
+  // (a GeoJSON geometry).
+  const normalized = (a: unknown): a is Record<string, unknown> =>
+    Boolean(a) && typeof a === 'object' && !Array.isArray(a) && typeof (a as Record<string, unknown>).type === 'string'
+    && ['Property', 'Relationship', 'GeoProperty', 'LanguageProperty', 'VocabProperty', 'JsonProperty', 'ListProperty', 'ListRelationship'].includes((a as Record<string, unknown>).type as string);
+  const refused = new Unsupported(`input ${name}: not a normalized NGSI-LD attribute (the bridge needs normalized notifications, not keyValues)`);
   if (Array.isArray(attribute)) {
+    // No instance left is no input, as when the attribute is not there.
+    if (attribute.length === 0) return null;
     const instances = attribute.map((a) => {
-      if (!a || typeof a !== 'object' || Array.isArray(a)) throw new Unsupported(`input ${name}: an instance is not a normalized NGSI-LD attribute`);
-      const d = (a as Record<string, unknown>).datasetId;
-      return [typeof d === 'string' ? d : '', valueOf(a) ?? null] as const;
+      if (!normalized(a)) throw refused;
+      return [typeof a.datasetId === 'string' ? a.datasetId : '', valueOf(a) ?? null] as const;
     });
     return instances.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   }
-  if (typeof attribute !== 'object') throw new Unsupported(`input ${name}: not a normalized NGSI-LD attribute (the bridge needs normalized notifications, not keyValues)`);
+  if (!normalized(attribute)) throw refused;
   return valueOf(attribute) ?? null;
 }
 
@@ -399,6 +412,9 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   // on the retry (input hash). Failures that will not pass (Pointsman refused
   // the input) are reported but do not ask for a retry.
   const retry = results.some((r) => 'retry' in r && r.retry);
+  // A failure that will not pass is logged too, as the queue consumer does
+  // (for example an input in keyValues form): the broker gets 200 for it.
+  for (const r of results) if ('error' in r && !('retry' in r && r.retry)) console.error(`bridge: ${r.id}: ${r.error}`);
   return Response.json({ handled: results }, { status: retry ? 502 : 200 });
 }
 
@@ -858,14 +874,28 @@ export class Unsupported extends Error {
 async function send(config: BridgeConfig, to: 'broker' | 'pointsman', url: string, init: RequestInit): Promise<Response> {
   const call = (to === 'pointsman' ? config.pointsman.fetch : undefined) ?? config.fetch ?? fetch;
   // A call that does not answer must not hold the rest of the queue batch (or
-  // the broker's request): it fails as a timeout, which is tried again.
-  const signal = AbortSignal.timeout(config.timeoutMs ?? (to === 'pointsman' ? POINTSMAN_TIMEOUT_MS : BROKER_TIMEOUT_MS));
+  // the broker's request): it fails as a timeout, which is tried again. Raced,
+  // not only signalled: the engine in process does not watch the signal.
+  const ms = config.timeoutMs ?? (to === 'pointsman' ? config.pointsman.timeoutMs ?? POINTSMAN_TIMEOUT_MS : BROKER_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(ms);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  const timedOut = new Error(`${to} did not answer within ${ms} ms (timed out)`);
+  let stop: () => void = () => {};
+  const late = new Promise<never>((_, reject) => {
+    const abort = () => reject(timeout.aborted ? timedOut : signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    stop = () => signal.removeEventListener('abort', abort);
+  });
   let res: Response;
   try {
-    res = await call(url, { ...init, redirect: 'manual', signal });
+    const answer = call(url, { ...init, redirect: 'manual', signal });
+    // The call that lost the race may still fail later: nobody waits for it.
+    answer.catch(() => {});
+    res = await Promise.race([answer, late]);
   } catch (err) {
-    if (signal.aborted) throw new Error(`${to} did not answer within ${config.timeoutMs ?? (to === 'pointsman' ? POINTSMAN_TIMEOUT_MS : BROKER_TIMEOUT_MS)} ms (timed out)`);
-    throw err;
+    throw timeout.aborted ? timedOut : err;
+  } finally {
+    stop();
   }
   if (res.status >= 300 && res.status < 400) {
     await res.body?.cancel().catch(() => {});

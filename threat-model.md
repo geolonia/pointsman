@@ -410,13 +410,17 @@
   bound to `v0.18.0`), for pointsman#244, #245 and #260 (from the review of
   2026-11), in pointsman#323: the FIWARE bridge treats a `207` to the first
   result write as a failure, gives every call a time limit (10 s to the
-  broker, 30 s to Pointsman), hashes an input with several instances by
+  broker; 60 s to Pointsman by default, `POINTSMAN_TIMEOUT_SECONDS`),
+  hashes an input with several instances by
   all of them, refuses a bare-value (keyValues) input, and answers 404 to
   an unknown `?route=`. Changed: the matrix rows for the bridge's
   recursive topology, serialization and resource complexity; the code
   citations into `packages/fiware/src/bridge.ts`, moved to their lines
-  after this change (mapped line by line; the validator was not run for
-  this amendment). No new question.
+  after this change, and five that pointed at the wrong line before it
+  (the routes and the secret check, the answer clash, the Decision a first
+  try left pending, the completed Task, the superseded retry) set to the
+  line their sentence describes (the validator was not run for this
+  amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -1471,10 +1475,10 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | bridge | failure atomicity | disclaimed | NGSI-LD has no conditional update; between a read and a write another writer can get through; the Decision entity is created before the result property so a retry does not decide twice | §1.12 `D-BRIDGE-RACE-WINDOWS` | *(documented, bridge/README.md "Reviews resolved in the broker": "NGSI-LD has no conditional update, so there is a short window")* |
 | bridge | recursive/cyclic topology | claimed | the input hash and attribute-level PATCH keep the bridge's own writes from starting a new decision (since pointsman#323, not yet released: an input with several instances is hashed by all of them, sorted by `datasetId`, and a `207` to the first result write is a failure, so a result that was not stored is never taken as written) | §1.11 `P-BRIDGE-LOOP-GUARD` | *(documented, bridge/README.md "How it avoids loops")* |
 | bridge | callback execution | N/A — the bridge runs no caller code; routes are operator configuration; inside the engine Worker it is the same code, with the engine in process in place of `POINTSMAN_URL` | — | — | *(documented, bridge/README.md "Configuration"; `packages/fiware/src/config.ts` header comment)* |
-| bridge | serialization/reconstruction | claimed | entities are plain JSON; attribute values are read by NGSI-LD kind (`value`, `object`, `languageMap`, `vocab`, `json`); dates are checked as RFC 3339; since pointsman#323 (not yet released) an input that is a bare value (keyValues) is refused, not retried, and `/notify?route=` with a name no route has answers 404 and logs | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(maintainer, 2026-10)* |
+| bridge | serialization/reconstruction | claimed | entities are plain JSON; attribute values are read by NGSI-LD kind (`value`, `object`, `languageMap`, `vocab`, `json`); dates are checked as RFC 3339; since pointsman#323 (not yet released) an input that is not a normalized attribute with an NGSI-LD `type` (keyValues: a bare value or an object such as a GeoJSON geometry) is refused, not retried, and `/notify?route=` with a name no route has answers 404 and logs | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(maintainer, 2026-10)* |
 | bridge | reference lifecycle | claimed | a Task's id is derived from entity id, attribute and input hash, so a retry finds the Task it made; the bridge's own Tasks are recognised by id | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(documented, bridge/README.md "Task entities")* |
 | bridge | concurrency/reentrancy | disclaimed | two notifications for the same Decision at the same moment can both send the same feedback; with a queue, `max_concurrency: 1` is the operator's job | §1.12 `D-BRIDGE-RACE-WINDOWS` | *(documented, bridge/README.md "Two notifications for the same Decision at the same moment can both send the same corrections")* |
-| bridge | resource complexity | claimed | one Pointsman call and a bounded number of broker calls per entity; entities larger than a queue message are handled inline; since pointsman#323 (not yet released) each call has a time limit (10 s to the broker, 30 s to Pointsman), and a timeout is tried again | §1.11 `P-BRIDGE-LOOP-GUARD` | *(maintainer, 2026-10)* |
+| bridge | resource complexity | claimed | one Pointsman call and a bounded number of broker calls per entity; entities larger than a queue message are handled inline; since pointsman#323 (not yet released) each call has a time limit (10 s to the broker; 60 s to Pointsman by default, `POINTSMAN_TIMEOUT_SECONDS` 10 to 600), raced against the call so it holds also for the engine in process, and a timeout is tried again | §1.11 `P-BRIDGE-LOOP-GUARD` | *(maintainer, 2026-10)* |
 | bridge | x-prompt-injection | disclaimed | the whole entity is the state; whoever writes an entity writes the prompt text | §1.12 `D-PROMPT-INJECTION` | *(maintainer, 2026-10)* |
 | bridge | x-probabilistic-result | disclaimed | probabilities are written to the broker as sub-properties for people to read; the action is the value | §1.12 `D-MODEL-ACCURACY` | *(documented, bridge/README.md "The result on the entity")* |
 | action-triage | numeric domain | claimed | label names 1–50 characters; mapping keys ≤ 100 characters; 30 s timeout | §1.11 `P-TRIAGE-ALLOWLIST` | *(documented, actions/triage/README.md "Inputs")* |
@@ -2050,14 +2054,14 @@ what voids it.
   `x-authentication-bypass`. Tier: security-critical. *(documented,
   bridge/README.md "Configuration": "other notifications are refused")*.
   Voided by: nothing. Search: `grep -n "sameSecret\|pathname" packages/fiware/src/bridge.ts`
-  — the two routes at `packages/fiware/src/bridge.ts:345` and the secret check at `packages/fiware/src/bridge.ts:347`.
+  — the two routes at `packages/fiware/src/bridge.ts:364` and the secret check at `packages/fiware/src/bridge.ts:366`.
 - **`P-BRIDGE-LOOP-GUARD`** — the bridge stores a hash of the input attribute
   values with the result and skips a notification whose inputs already have
   that hash; it writes with attribute-level `PATCH` so its own write does not
   start a new decision; since pointsman#229 (`v0.17.1`) an answer named
   like a field of the result, such as `inputHash`, cannot replace the hash:
   such a decision is refused before anything is written
-  (`packages/fiware/src/bridge.ts:651`). For a route with `requires` the hash also covers each
+  (`packages/fiware/src/bridge.ts:670`). For a route with `requires` the hash also covers each
   earlier decision's id (and, with `rerunOnReview`, the person's answer on
   it), so a final decision runs again only when an earlier one changes; routes
   that read each other's results in a circle are refused when the routes are
@@ -2075,20 +2079,20 @@ what voids it.
   final action is written and the Task completed only when Pointsman has
   the review resolved with the same action: a review still pending is
   tried again (not when its profile version is gone), and one closed as
-  superseded is reported (`packages/fiware/src/bridge.ts:1162`,
-  `packages/fiware/src/bridge.ts:1168`). Since pointsman#232 (`v0.17.2`)
+  superseded is reported (`packages/fiware/src/bridge.ts:1192`,
+  `packages/fiware/src/bridge.ts:1198`). Since pointsman#232 (`v0.17.2`)
   a decision whose review is pending gets its Task under the same derived
   id also when `task.actions` leaves its action out
-  (`packages/fiware/src/bridge.ts:702`), and a work order resolves only a
+  (`packages/fiware/src/bridge.ts:718`), and a work order resolves only a
   result still waiting for a person (pending, or by the older action
   rules) and without a final action, whatever the
-  route's `reviewActions` (`packages/fiware/src/bridge.ts:1341`). Since
+  route's `reviewActions` (`packages/fiware/src/bridge.ts:1371`). Since
   pointsman#236 (`v0.18.0`) a retry that Pointsman answers with the
   review resolved by a person writes it as resolved with their action:
   the result, the Decision entity (also one the first try left pending,
-  `packages/fiware/src/bridge.ts:677`) and the Task, completed
-  (`packages/fiware/src/bridge.ts:701`); a retry of a superseded decision
-  writes nothing (`packages/fiware/src/bridge.ts:654`). Every decide request carries an `Idempotency-Key` from the route,
+  `packages/fiware/src/bridge.ts:696`) and the Task, completed
+  (`packages/fiware/src/bridge.ts:720`); a retry of a superseded decision
+  writes nothing (`packages/fiware/src/bridge.ts:673`). Every decide request carries an `Idempotency-Key` from the route,
   the entity and the exact request, so a retry of the same request after
   Pointsman logged the decision gets the same decision; for a route with `requires`, which runs
   from the queue only, a result older than the one on the entity is not
@@ -2301,13 +2305,13 @@ the receivers must do for §1.5–§1.11 to hold.
   (`actions/deploy-watch/watch.mjs:156`); since pointsman#232
   (`v0.17.2`) the FIWARE bridge on every route: an answer with
   `review: {status: pending}` counts as checked by a person whatever the
-  route's `reviewActions` (`packages/fiware/src/bridge.ts:954`), which
-  only add actions to check (`packages/fiware/src/bridge.ts:955`). The
+  route's `reviewActions` (`packages/fiware/src/bridge.ts:984`), which
+  only add actions to check (`packages/fiware/src/bridge.ts:985`). The
   bridge then marks the result and the Decision entity `reviewStatus`
   `pending`, on a route with `task` opens a Task even when `task.actions`
-  leaves the action out (`packages/fiware/src/bridge.ts:702`), and writes
+  leaves the action out (`packages/fiware/src/bridge.ts:718`), and writes
   `finalAction` only after a person resolves the review, also when a
-  work order resolves it (`packages/fiware/src/bridge.ts:1341`). Up to `v0.17.1` a route whose
+  work order resolves it (`packages/fiware/src/bridge.ts:1371`). Up to `v0.17.1` a route whose
   `reviewActions` left out an action of `people_check` marked that action
   as taken. The result's `value` is the pending action in every case, so
   a broker consumer must read `reviewStatus` too. Since pointsman#236

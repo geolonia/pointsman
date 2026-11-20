@@ -322,7 +322,9 @@ the closure cuts people off from their evacuation site (route 2).
   `/notify?route=<name>`. `/notify` without a name serves the type's route
   without a name; each type has at most one of those. A name that no route
   has (a typo in the subscription, or `?route=` empty) is answered with 404
-  and a log line, so the broker shows the subscription as failing.
+  and a log line, so the broker shows the subscription as failing. So when
+  a route is removed from `BRIDGE_ROUTES`, remove its subscription too (or
+  first): the broker may stop a subscription that keeps failing.
 - Its `inputs` include the first route's attribute (`check`), and its
   subscription watches that attribute, with `q` limiting it to the actions
   that should go on (for example `check=="urgent"`).
@@ -419,10 +421,17 @@ from starting a new decision:
   failure, so the next notification decides again instead of finding no
   result every time.
 
-Every call to the broker has 10 seconds, every decision by Pointsman 30
-seconds (it may wait for a model and its fallbacks). A call that takes
-longer fails as a timeout and is tried again (by the broker, or the queue),
-so one call that does not answer does not hold the other messages.
+Every call to the broker has 10 seconds, every decision by Pointsman 60
+seconds (`POINTSMAN_TIMEOUT_SECONDS`; it may wait for a model and its
+fallbacks, 10 seconds each by default: keep the profile's models within
+it). A call that takes longer fails as a timeout and is tried again (by the
+broker, or the queue), so one call that does not answer does not hold the
+other messages. This holds also inside the Pointsman Worker. Without a
+queue the bridge handles a notification's entities one after another within
+the broker's request, which a broker may give up on first: for long
+decisions, use the queue. With a queue, keep `max_batch_size` such that a
+batch of slow messages stays within the consumer's 15 minutes (about a
+minute and a half per message in the worst case).
 
 A notification about a deleted entity (with `deletedAt`) is skipped.
 
@@ -434,6 +443,7 @@ Variables (`vars` in [wrangler.jsonc](wrangler.jsonc)):
 |---|---|
 | `BRIDGE_ROUTES` | JSON list of routes: `type`, `profile`, `inputs` (the attributes the profile reads), `attribute` (where the result goes; must not be an input); optional `decisionEntity` (true: also create Decision entities), `reviewActions` (more actions a person checks first, for Pointsman versions or profiles that do not say so; a decision Pointsman opens a review for, from the profile's `people_check`, is always checked), `name`, `informedBy` and `requires` (for chains, above), `task` (also create Task entities, above) |
 | `POINTSMAN_URL` | Pointsman's base URL (in its own Worker only; leave it out inside the Pointsman Worker) |
+| `POINTSMAN_TIMEOUT_SECONDS` | Optional: how long a decision by Pointsman may take, 10 to 600 seconds (default 60). Past it the call fails and is tried again. |
 | `BRIDGE_WORK_ORDERS` | Optional JSON object: a completed work order's `statusLabel` to the final action, for example `{"Published": "publish"}` (see "Work orders from other apps") |
 | `BROKER_URL` | The broker's base URL (without `/ngsi-ld/v1`) |
 | `BROKER_TENANT` | Optional: sent as `NGSILD-Tenant`. One bridge serves one tenant. |
@@ -458,9 +468,9 @@ that redirects to it.
 ## The subscription
 
 One per entity type. Watch the profile's input attributes, ask for the
-normalized format (an input that comes as a bare value, as keyValues sends
-it, fails with an error that names it, and is not tried again), and send
-the shared secret:
+normalized format (an input that is not a normalized attribute, as
+keyValues sends it, fails with an error that names it, is logged, and is
+not tried again), and send the shared secret:
 
 ```json
 {
