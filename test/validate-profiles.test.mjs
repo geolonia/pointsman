@@ -334,3 +334,9 @@ test('build-profiles reads subfolders, refuses duplicate ids, and takes a file',
   assert.equal(missing.status, 2);
   assert.doesNotMatch(missing.stderr, /at .*\.mjs:\d+/);
 });
+
+test('the same folder given twice, or by another spelling, is read once (#249)', () => {
+  const r = spawnSync(process.execPath, [cli, examples, `${examples}/`, join(examples, '..', 'profiles')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /duplicate profile id/);
+});

@@ -1746,7 +1746,7 @@ what voids it.
   of each token is stored"; `src/auth.ts` header: "Tokens are 32 random bytes,
   so a plain hash is enough")*. Voided by: nothing. Search:
   `grep -rn "TOKENS\|tokenKey" src scripts/tokens.mjs` — the only write is
-  `scripts/tokens.mjs:167` with `tokenKey(hash)`.
+  `scripts/tokens.mjs:168` with `tokenKey(hash)`.
 - **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide` and
   `GET /v1/profiles`; its decisions are marked `test: true`, are not logged,
   never reach the review queue or the stats, get no callback, and `/mcp`

@@ -158,8 +158,9 @@ async function putToken(client, profiles, test, expiresAt) {
   const json = JSON.stringify(record);
   // KV keeps at most 1024 bytes of metadata (#259): refused here, before any
   // write, instead of failing inside wrangler.
-  if (new TextEncoder().encode(json).length > 1024) {
-    fail(`this token record is ${new TextEncoder().encode(json).length} bytes; KV metadata takes at most 1024. Give fewer or shorter profile ids, or "*" for every profile.`);
+  const bytes = new TextEncoder().encode(json).length;
+  if (bytes > 1024) {
+    fail(`this token record is ${bytes} bytes; KV metadata takes at most 1024. Give fewer or shorter profile ids, or "*" for every profile.`);
   }
   // Metadata makes `list` show the client without reading every value. With
   // an expiry, KV also deletes the key then (the Worker checks it anyway).
@@ -210,7 +211,11 @@ switch (command) {
     if (!values.hash || !HASH.test(values.hash)) fail('--hash must be a SHA-256 hex hash (see `list`)');
     // Deleting a key that does not exist succeeds: a mistyped hash would print
     // "revoked" while the real token stays valid (#259).
-    if (!listTokens().some((t) => t.hash === values.hash)) fail(`no token with the hash ${values.hash}; see \`list\``);
+    // KV lists a new key up to about a minute late: right after create or
+    // rotate, try again then.
+    if (!listTokens().some((t) => t.hash === values.hash)) {
+      fail(`no token with the hash ${values.hash}; see \`list\` (a token created in the last minute may not be listed yet: try again in a minute)`);
+    }
     wrangler(['delete', tokenKey(values.hash)]);
     console.log(`revoked ${values.hash}`);
     break;

@@ -246,7 +246,9 @@ revoked 3138a1cc…
 
 `revoke` first checks that a token with that hash exists, so a mistyped
 hash fails (`no token with the hash …`) instead of printing `revoked` while
-the real token stays valid.
+the real token stays valid. KV lists a new key up to about a minute late,
+so right after `create` or `rotate` the check can miss a token: try again a
+minute later.
 
 It can take up to about 60 seconds until the old token stops working
 everywhere.

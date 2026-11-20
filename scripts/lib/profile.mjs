@@ -5,7 +5,7 @@
 // file name matching the id, policy conditions).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, extname, dirname, join } from 'node:path';
+import { basename, extname, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { parse as parseYaml } from 'yaml';
@@ -262,7 +262,14 @@ export function collectProfileFiles(path) {
  * - duplicates: a message for each id used by more than one file.
  */
 export function loadProfileSet(paths) {
-  const files = [...new Set(paths.flatMap(collectProfileFiles))];
+  // The same file reached twice (a folder given twice, or as `d` and `./d`) is read once.
+  const seen = new Set();
+  const files = paths.flatMap(collectProfileFiles).filter((f) => {
+    const key = resolve(f);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const entries = files.map((path) => {
     try {
       return { path, profile: parseProfile(readFileSync(path, 'utf8'), path) };

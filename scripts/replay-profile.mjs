@@ -70,8 +70,11 @@ try {
   profile = parseProfile(readFileSync(file, 'utf8'), file);
   // The folder of the profile and --with, read as every script reads profiles
   // (#249). Another file that does not parse is not this profile's problem; a
-  // profile that requires it is reported by the validation below.
-  for (const [id, p] of loadProfileSet([dirname(file), ...values.with]).byId) {
+  // profile that requires it is reported by the validation below. Two files
+  // with one id: the first is used, and a warning says so.
+  const set = loadProfileSet([dirname(file), ...values.with]);
+  for (const d of set.duplicates) console.error(`warning: ${d}; the first is used`);
+  for (const [id, p] of set.byId) {
     if (id !== profile.id) others.set(id, p);
   }
 } catch (err) {
