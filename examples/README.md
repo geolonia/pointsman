@@ -9,6 +9,7 @@ that belong to it, and how to try them.
 | [Disaster response](disaster-response/) | Check reported road closures before they are published; alert when people on foot are cut off from an evacuation site | 3 profiles, flood / shelter / detour facts, FIWARE bridge |
 | [DevOps](devops/) | Is a slow deploy stuck, or still making progress? | 1 profile, deploy watch action |
 | [Developer workflow](developer-workflow/) | Which team gets a new issue, and is it urgent? | 1 profile, issue triage action |
+| [Tutorials](tutorials/) | What a station does with a found item (used in the tutorials) | 1 profile, 4 photos |
 
 The profiles themselves stay in [profiles/](profiles/), one flat folder.
 The build, the validator, the tests and config repositories read that folder,

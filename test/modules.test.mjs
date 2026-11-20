@@ -26,7 +26,7 @@ import { schemaWithFacts } from '../scripts/lib/schema.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const ROAD = ['road-restriction-check', 'road-closure-final', 'evacuation-access-check'];
 const PR = ['pr-docs-check', 'workflow-check'];
-const NO_FACTS = ['issue-triage', 'deploy-progress'];
+const NO_FACTS = ['issue-triage', 'deploy-progress', 'lost-and-found'];
 
 const own = (type, extra = {}) => ({
   ...inside, type, description: `${type}: test.`, input: inside.input, ...extra,

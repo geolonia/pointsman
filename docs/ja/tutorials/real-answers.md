@@ -4,47 +4,52 @@ description: 本物の AI モデルにプロファイルの質問に答えさせ
 sidebar: { order: 20 }
 ---
 
-[はじめてのプロファイル](first-profile.md)では、モックの AI モデルが決まった回答を返しました。今回は、自分の Cloudflare のアカウントで本物の AI モデルが答えます。例は駅の忘れ物の受付です。届いた忘れ物をどう扱うかを、Pointsman が判定します。20 分ほどかかります。
+[はじめてのプロファイル](first-profile.md)では、モックの AI モデルが決まった回答を返しました。今回は、自分の Cloudflare のアカウントで本物の AI モデルが答えます。例は駅の忘れ物の受付です。届いた忘れ物をどう扱うかを、Pointsman が判定します。AI が確率を返し、自分で書いたルールがそれをアクションに変える、という Pointsman の考え方を実際に確かめます。20〜30 分ほどかかります。
 
 ## 始める前に
 
-- 先に[はじめてのプロファイル](first-profile.md)を終えてください。同じフォルダーと同じトークンを使います。
+- 先に[はじめてのプロファイル](first-profile.md)を終えてください。同じフォルダーを使います。
 - Cloudflare のアカウントが必要です。無料のプランで足ります。
 
-<details><summary>費用について</summary>
+<details><summary>費用と、データの送り先</summary>
 
-AI モデルは、自分の Cloudflare のアカウントの Workers AI で動きます。Workers AI には毎日の無料枠があり([料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)、英語)、このチュートリアルの呼び出しは 10 回ほどです。それ以外のもの(Pointsman、プロファイル、トークン、判定ログ)は、すべて自分のコンピューターの中にあります。
+AI モデルは、自分の Cloudflare のアカウントの Workers AI(Cloudflare の AI サービス)で動きます。Workers AI には毎日の無料枠があり([料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)、英語)、このチュートリアルの呼び出しは 10 回ほどです。送った忘れ物の説明と写真は、自分のアカウントの Workers AI に送られます。それ以外のもの(Pointsman、プロファイル、トークン、判定ログ)は、すべて自分のコンピューターの中にあります。
 
 </details>
 
 ## 1. 本物のモデルで Pointsman を起動する
 
-Cloudflare にサインインし(ブラウザーが開きます)、Pointsman を起動します。
+Cloudflare のコマンドラインツール Wrangler で Cloudflare にサインインし(ブラウザーが開きます)、Pointsman を起動します。
 
 ```sh
 pnpm exec wrangler login
 pnpm dev:live --var AI_GATEWAY_ID:
 ```
 
-`Ready on http://localhost:8787` と表示されたら準備完了です。次の手順は 2 つ目のターミナルで行い、最初のチュートリアルと同じように `POINTSMAN_TOKEN` を設定しておきます。
+最後のコロンは誤りではありません。空の値を設定します。`Ready on http://localhost:8787` と表示されたら準備完了です。ポート 8787 がほかで使われているときは別のポートが表示されるので、以下のコマンドではそのポートを使ってください。
+
+次の手順は 2 つ目のターミナルで行い、最初のチュートリアルと同じように `POINTSMAN_TOKEN` を設定しておきます。トークンが手元にないときは、別の名前で新しく作ります。
+
+```sh
+node scripts/tokens.mjs create --client tutorial-2 --profiles '*' --local
+export POINTSMAN_TOKEN=pm_...
+```
 
 <details><summary><code>--var AI_GATEWAY_ID:</code> を付ける理由</summary>
 
 `pnpm dev:live` は、ふつうはモデルの呼び出しを `pointsman` という名前の AI Gateway に通し、呼び出しのログを残します。自分のアカウントにはこのゲートウェイがないので、空の値を渡して Workers AI を直接呼び出させます。ゲートウェイの作り方は[モデル](../../models.md)(英語)にあります。
 
-ポート 8787 がほかで使われているときは、Wrangler が別のポートを選んで表示します。以下のコマンドでは、そのポートを使ってください。
-
 </details>
 
 ## 2. プロファイルを読む
 
-プロファイルはリポジトリにすでにあります: [`examples/profiles/lost-and-found.yaml`](../../../examples/profiles/lost-and-found.yaml)。AI に 2 つの質問をします。どんな種類の物か(一覧から 1 つ選ぶ)と、明日までに傷むか(はい・いいえ)です。ルールを読みます。
+プロファイルはリポジトリにすでにあります: [`examples/profiles/lost-and-found.yaml`](../../../examples/profiles/lost-and-found.yaml)。AI に 2 つの質問をします。どんな種類の物か(一覧から 1 つ選ぶ)と、明日までに傷むか(はい・いいえ)です。文章で読みます。
 
 ```sh
 node scripts/explain-profile.mjs examples/profiles/lost-and-found.yaml
 ```
 
-表示されるルールは次のとおりです(`--lang ja` を付けると日本語になります)。
+ルールの部分は次のとおりです(`--lang ja` を付けると日本語になります)。
 
 ```text
 ## Rules
@@ -82,9 +87,12 @@ curl -s localhost:8787/v1/decide/lost-and-found \
 }
 ```
 
-AI は 97.5 % の確率で傘だと答え、傷まないとも答えたので、忘れ物は棚に置かれます。`rule` は 0 から数えるので、`3` は 4 番目のルールです。数字は少し違うことがあります。
+- `value` は AI の回答、`p` はその回答の確率です。
+- `noul` は、はい・いいえで答える質問です。`yes` は「はい」の確率です。
 
-次に、説明を `"A goldfish, found on the ground."`(地面にいた金魚)にして送ってみます。AI は `alive`(生き物、86 %)と答え、アクションは `care-now` になります。すぐに誰かが金魚の世話をします。
+AI は 97.5% の確率で傘だと答え、91% の確率で傷まないと答えたので、忘れ物は棚に置かれます。`rule` は 0 から数えるので、`3` は 4 番目のルールです。モデルが返す数字は毎回同じとは限らないので、少し違うことがあります。
+
+次に、説明を `"A goldfish, found on the ground."`(地面に落ちていた金魚)にして送ってみます。AI は `alive`(生き物、86%)と答え、アクションは `care-now` になります。すぐに誰かが金魚の世話をします。
 
 <details><summary>選択の質問の回答をすべて見る</summary>
 
@@ -94,12 +102,12 @@ AI は 97.5 % の確率で傘だと答え、傷まないとも答えたので、
 
 ## 4. 写真を付ける
 
-このプロファイルは、リクエストの `item.photos` にある写真を 2 枚まで読みます。写真は文字列(base64 のデータ URL)として送ります。次のコマンドは、リクエストをファイルに書いてから送ります。説明には「金魚」と書きますが、写真には別の物が写っています。
+このプロファイルは、リクエストの `item.photos` にある写真を 2 枚まで読みます。写真は文字列として送ります。ファイルの中身を base64 で文字にして、*データ URL* にしたものです。次のコマンドは、リクエストをファイル `request.json` に書いてから送ります。説明には「金魚」と書きますが、写真には別の物が写っています。
 
 ```sh
 printf '{"state": {"item": {"description": "%s", "photos": ["data:image/jpeg;base64,%s"]}}}' \
   "A goldfish, found on the ground." \
-  "$(base64 < examples/photos/goldfish-cracker.jpg | tr -d '\n')" > request.json
+  "$(base64 < examples/tutorials/photos/goldfish-cracker.jpg | tr -d '\n')" > request.json
 curl -s localhost:8787/v1/decide/lost-and-found \
   -H "authorization: Bearer $POINTSMAN_TOKEN" \
   -H 'content-type: application/json' \
@@ -109,7 +117,10 @@ curl -s localhost:8787/v1/decide/lost-and-found \
 ```json
 {
   "answers": {
-    "kind": { "type": "choice", "value": "food", "p": 0.4547 },
+    "kind": {
+      "type": "choice", "value": "food", "p": 0.4547,
+      "probabilities": { "food": 0.4547, "alive": 0.3299, … }
+    },
     "perishable": { "type": "noul", "value": true, "p": 0.7641, "yes": 0.7641 }
   },
   "action": "review",
@@ -118,34 +129,59 @@ curl -s localhost:8787/v1/decide/lost-and-found \
 }
 ```
 
-写真に写っているのは、金魚の形のクラッカーです。今度は AI に確信がありません。食べ物が 45 %、生き物が 33 % です。当てはまるルールがないので、人が確認します。
+写真に写っているのは、金魚の形のクラッカーです。今度は AI に確信がありません。食べ物が 45%、生き物が 33% です。当てはまるルールがないので、最初のチュートリアルと同じように、人が確認します。Pointsman は写真を保存しません。
 
 <details><summary>写真について詳しく</summary>
 
 - 写真の場所はプロファイルに書きます: `images: { path: $.item.photos, max: 2 }`。
 - PNG、JPEG、WebP が使えます。1 枚 4 MiB までです。文章のない写真だけでも判定できます。
-- Pointsman は写真を保存しません。判定ログにはハッシュだけを残します。
-- ほかに試せる写真が [`examples/photos/`](../../../examples/photos/) にあります。傘、財布、弁当です。PNG のファイルでは、`data:image/jpeg` の代わりに `data:image/png` と書きます。
+- 判定ログには、写真ごとのハッシュだけを残します。ハッシュは短い指紋のようなもので、ここから写真を元に戻すことはできません。
+- ほかに試せる写真が [`examples/tutorials/photos/`](../../../examples/tutorials/photos/) にあります。傘、財布、弁当です。PNG のファイルでは、`data:image/jpeg` の代わりに `data:image/png` と書きます。
 - 詳しくは[プロファイルの形式の「画像」](../../profile-format.md#images)にあります。
 
 </details>
 
-## 5. ルールを直す
+## 5. 足りない点を見つける
 
-`bento.jpg` を、説明 `"A bento box."` と一緒に送ります。AI は 94 % の確率で食べ物だと答え、72 % の確率で傷むと答えます。3 番目のルールの 80 % に届かないので、弁当は毎回、人が確認することになります。また、私たちが試したときには一度、クラッカーの写真が食べ物 61 %、生き物 19 % となり、3 番目のルールで捨てる判定になりました。生き物かもしれない物は、人が確認するべきです。
+弁当を送ります。
 
-`examples/profiles/lost-and-found.yaml` で、3 番目のルールの前に 2 つのルールを加え、バージョンを上げます。
-
-```yaml
-version: 2
+```sh
+printf '{"state": {"item": {"description": "%s", "photos": ["data:image/jpeg;base64,%s"]}}}' \
+  "A bento box." \
+  "$(base64 < examples/tutorials/photos/bento.jpg | tr -d '\n')" > request.json
+curl -s localhost:8787/v1/decide/lost-and-found \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d @request.json
 ```
 
+AI は 94% の確率で食べ物だと答え、72% の確率で傷むと答えます。3 番目のルールの 80% に届かないので、アクションは `review` です。弁当は毎回、人が確認することになります。
+
+足りない点はもう 1 つあります。モデルの回答は毎回同じとは限りません。試したときに一度、クラッカーの写真が食べ物 61%、生き物 19% となり、3 番目のルールで捨てる判定になりました。生き物かもしれない物は、人が確認するべきです。
+
+## 6. ルールを直す
+
+`examples/profiles/lost-and-found.yaml` で、`version: 1` を `version: 2` に変えます。次に、`policy` に `# new` の付いた 2 つのルールを加えます。
+
 ```yaml
-    - when: "kind.probabilities.alive >= 0.1"
+policy:
+  rules:
+    - when: "kind.probabilities.alive >= 0.5"
+      action: care-now
+    - when: "kind.probabilities.id-or-money >= 0.5"
+      action: police
+    - when: "kind.probabilities.alive >= 0.1" # new
       action: review
-    - when: "kind.probabilities.food >= 0.8 and perishable.yes >= 0.6"
+    - when: "kind.probabilities.food >= 0.8 and perishable.yes >= 0.6" # new
       action: discard
+    - when: "perishable.yes >= 0.8"
+      action: discard
+    - when: "kind.p >= 0.7 and perishable.yes < 0.3"
+      action: shelf
+  default: review
 ```
+
+数字は自分で決めるものです。ここでは、生き物の確率が 10% あれば人を呼び、食べ物が傷む確率が 60% あれば捨てることにしました。自分のケースに合わせて決めてください。
 
 `examples/cases/lost-and-found.yaml` の最後に 2 つのテストケースを加え、実行します。
 
@@ -163,9 +199,9 @@ version: 2
 node scripts/test-profile.mjs examples/cases/lost-and-found.yaml --profiles examples/profiles
 ```
 
+出力の最後の部分です(前からある 5 つのケースも合格します)。
+
 ```text
-examples/cases/lost-and-found.yaml (lost-and-found, v2)
-  …
   PASS  a bento that will spoil is thrown away: discard
          If the probability that "kind" is "food" is at least 80 % and the probability that "perishable" is yes is at least 60 %, the action is discard.
   PASS  something that may be alive goes to a person: review
@@ -173,7 +209,7 @@ examples/cases/lost-and-found.yaml (lost-and-found, v2)
 7 passed, 0 failed, 0 could not run, 0 skipped
 ```
 
-Pointsman を起動し直し(Ctrl+C のあと `pnpm dev:live --var AI_GATEWAY_ID:`)、弁当をもう一度送ります。今度はアクションが `discard` になり、`"profile_version": 2` と表示されます。
+バージョン 2 を読み込ませるため、Pointsman を起動し直します。Pointsman のターミナルで Ctrl+C を押し、もう一度 `pnpm dev:live --var AI_GATEWAY_ID:` を実行します。弁当をもう一度送ると、今度はアクションが `discard` になり、`"profile_version": 2` と表示されます。
 
 ## ここまでで行ったこと
 
@@ -182,7 +218,7 @@ Pointsman を起動し直し(Ctrl+C のあと `pnpm dev:live --var AI_GATEWAY_ID
 - [使い方を選ぶ](../how-to/choose-a-setup.md): Pointsman をオンラインで動かし、ほかのシステムから使えるようにします。
 - [AI アシスタントとプロファイルを書く](../../authoring.md): 自分のプロファイルを下書きします。
 
-最後に、変更を元に戻し、リクエストのファイルを消します。
+最後に、Pointsman を止め(Ctrl+C)、変更を元に戻し、リクエストのファイルを消します。
 
 ```sh
 git checkout examples/profiles/lost-and-found.yaml examples/cases/lost-and-found.yaml
