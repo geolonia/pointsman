@@ -13,27 +13,43 @@ const DATA_KEYWORDS = ['default', 'example', 'enum', 'const'];
 
 /** Keywords whose value maps names (which may look like keywords) to objects. */
 const NAME_MAPS = ['paths', 'webhooks', 'schemas', 'properties', 'patternProperties', '$defs', 'dependentSchemas',
-  'responses', 'headers', 'content', 'encoding', 'examples', 'links', 'callbacks', 'parameters', 'requestBodies',
+  'responses', 'headers', 'content', 'encoding', 'links', 'callbacks', 'parameters', 'requestBodies',
   'securitySchemes', 'pathItems', 'variables', 'mapping', 'scopes'];
 
 /** Problems in a parsed openapi.yaml, as messages; empty when it is fine. */
 export function openapiProblems(api) {
   const problems = [];
-  (function walk(value, path, data, keysAreNames) {
+  // `keys` says what the keys of `value` are: keywords, names (under
+  // properties, headers, ...), names of Example objects, or the keywords of
+  // an Example object, whose `value` is data.
+  (function walk(value, path, data, keys) {
     // A null that means null, anywhere inside a default, an example or an
     // enum (data, not schema), is fine.
     if (value === null && !data) {
       problems.push(`${path}: no value (an unquoted comma in { ... } cuts a text there; quote it, or write null where null is meant)`);
     } else if (value !== null && typeof value === 'object') {
       for (const [k, v] of Object.entries(value)) {
-        // Under a map of names (properties, headers, ...) a key is a name,
-        // so a header called "example" holds no data.
-        const keyword = !keysAreNames && !Array.isArray(value);
-        const isData = keyword && (DATA_KEYWORDS.includes(k) || (k === 'examples' && Array.isArray(v)));
-        walk(v, path ? `${path}.${k}` : k, data || isData, keyword && !isData && NAME_MAPS.includes(k));
+        let isData = false;
+        let next = 'keywords';
+        if (Array.isArray(value)) {
+          next = 'keywords';
+        } else if (keys === 'names') {
+          next = 'keywords';
+        } else if (keys === 'exampleNames') {
+          next = 'example';
+        } else if (keys === 'example' && k === 'value') {
+          isData = true;
+        } else if (DATA_KEYWORDS.includes(k) || (k === 'examples' && Array.isArray(v))) {
+          isData = true;
+        } else if (k === 'examples') {
+          next = 'exampleNames';
+        } else if (NAME_MAPS.includes(k)) {
+          next = 'names';
+        }
+        walk(v, path ? `${path}.${k}` : k, data || isData, next);
       }
     }
-  })(api, '', false, false);
+  })(api, '', false, 'keywords');
   // Unknown keywords only (strictSchema); type rules are left to the contract tests.
   const ajv = new Ajv2020({ strictSchema: true, strictTypes: false, strictTuples: false, strictRequired: false, allErrors: true, validateFormats: false });
   // `components` only holds the wrapper below, so the document's
