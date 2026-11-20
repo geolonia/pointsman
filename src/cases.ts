@@ -99,6 +99,9 @@ export function answerOf(q: Question, value: unknown, where: string): Answer {
       const probs = typeof value === 'string' ? probabilities(where, { [value]: 1 }, options)
         : isObject(value) ? probabilities(where, value, options) : undefined;
       if (!probs) throw new CaseError(`${where}: give an option, or probabilities by option`);
+      // As for score: no option to pick. Also, keys that look like integers come
+      // first in an object, so a tie at 0 could pick an option the case left out.
+      if (Object.values(probs).every((x) => x === 0)) throw new CaseError(`${where}: the probabilities cannot all be 0`);
       const [v, p] = top(probs);
       return { type: 'choice', value: v, p, probabilities: probs };
     }
