@@ -196,7 +196,18 @@ test('the examples pass, with the matching rule as a sentence; a state case is s
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /PASS {2}a possible danger in a deep flood zone is urgent: urgent\n {9}If the rank of "flood" is at least 5 and /);
   assert.match(r.stdout, /SKIP {2}a real issue about the login page: needs a model: run with --url/);
-  assert.match(r.stdout, /\n\d+ passed, 0 failed, 0 could not run, 1 skipped\n$/);
+  // Check the summary line on its own: a failed match on the whole output
+  // shows only its start, and the summary is at the end.
+  const lines = r.stdout.trimEnd().split('\n');
+  const notPassed = lines.filter((line) => /^ {2}(FAIL |SKIP |ERROR)/.test(line));
+  assert.match(lines.at(-1), /^\d+ passed, 0 failed, 0 could not run, 1 skipped$/, [
+    `last line: ${JSON.stringify(lines.at(-1))}`,
+    `output: ${lines.length} lines, ${r.stdout.length} characters`,
+    'cases that did not pass:',
+    ...notPassed,
+    `stderr: ${r.stderr || '(empty)'}`,
+  ].join('\n'));
+  assert.ok(r.stdout.endsWith('\n'), 'the output ends with a newline');
   const ja = run([join(examples, 'cases', 'deploy-progress.yaml'), '--profiles', join(examples, 'profiles'), '--lang', 'ja']);
   assert.match(ja.stdout, /「stuck」が「はい」である確率が 90 % 以上なら、アクションは cancel です。/);
 });
