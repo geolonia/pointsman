@@ -65,7 +65,7 @@ engine/node_modules/.bin/wrangler d1 create my-pointsman
 ```text
     {
       "binding": "PROFILES",
-      "id": "2d018756a1aa4de3bc9cce225de6f12d"
+      "id": "<32 characters: 0-9 and a-f>"
     }
 ? Would you like Wrangler to add it on your behalf?
 ```
