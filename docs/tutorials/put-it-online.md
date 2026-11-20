@@ -14,7 +14,9 @@ Pointsman to your Cloudflare account. It takes about 45 minutes.
 - Do [Real answers, with photos](real-answers.md) first. You are signed in
   to Cloudflare with Wrangler from there.
 - You need a GitHub account, and the [GitHub CLI](https://cli.github.com/)
-  (`gh`), signed in with `gh auth login`.
+  (`gh`), signed in with `gh auth login`. The deploy keeps its secrets in a
+  GitHub *environment*; in a private repository, that needs GitHub Pro,
+  Team or Enterprise.
 
 <details><summary>What you will create, and what it costs</summary>
 
@@ -30,8 +32,10 @@ At the end you can delete everything; see [Clean up](#clean-up).
 
 ## 1. Make the config repository
 
-Start in the folder that holds your `pointsman` folder. Copy the template,
-and put the lost-and-found profile and its test cases into it:
+Start in your `pointsman` folder, as at the end of the last tutorial. The
+first command goes up one folder; the new folder `my-pointsman` is created
+next to `pointsman`. Copy the template, and put the lost-and-found profile
+and its test cases into it:
 
 ```sh
 cd ..
@@ -293,8 +297,19 @@ gh run watch
 ```
 
 The deploy publishes the new version (`New: lost-and-found@2`). Send the
-bento photo (step 5 of the last tutorial, with `$POINTSMAN_URL`): the action
-is now `discard`, with `"profile_version": 2`.
+bento photo:
+
+```sh
+printf '{"state": {"item": {"description": "%s", "photos": ["data:image/jpeg;base64,%s"]}}}' \
+  "A bento box." \
+  "$(base64 < ../pointsman/examples/tutorials/photos/bento.jpg | tr -d '\n')" > request.json
+curl -s "$POINTSMAN_URL/v1/decide/lost-and-found" \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d @request.json
+```
+
+The action is now `discard`, with `"profile_version": 2`.
 
 <details><summary>Where to keep profiles</summary>
 

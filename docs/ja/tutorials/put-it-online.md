@@ -9,7 +9,7 @@ sidebar: { order: 30 }
 ## 始める前に
 
 - 先に[本物の AI で判定する(写真付き)](real-answers.md)を終えてください。そこで Wrangler から Cloudflare にサインインしています。
-- GitHub のアカウントと、`gh auth login` でサインインした [GitHub CLI](https://cli.github.com/)(`gh`、英語)が必要です。
+- GitHub のアカウントと、`gh auth login` でサインインした [GitHub CLI](https://cli.github.com/)(`gh`、英語)が必要です。デプロイはシークレットを GitHub の*環境*(environment)に保存します。非公開のリポジトリでこれを使うには、GitHub Pro、Team、Enterprise のいずれかが必要です。
 
 <details><summary>作るものと費用</summary>
 
@@ -23,7 +23,7 @@ sidebar: { order: 30 }
 
 ## 1. 設定リポジトリを作る
 
-`pointsman` フォルダーがあるフォルダーから始めます。テンプレートをコピーし、忘れ物のプロファイルとテストケースを入れます。
+前のチュートリアルの最後と同じく、`pointsman` フォルダーの中から始めます。最初のコマンドで 1 つ上のフォルダーに移り、新しいフォルダー `my-pointsman` を `pointsman` の隣に作ります。テンプレートをコピーし、忘れ物のプロファイルとテストケースを入れます。
 
 ```sh
 cd ..
@@ -236,7 +236,19 @@ gh pr merge --squash --delete-branch
 gh run watch
 ```
 
-デプロイが新しいバージョンを公開します(`New: lost-and-found@2`)。弁当の写真を送ると(前のチュートリアルの手順 5 を `$POINTSMAN_URL` で)、今度はアクションが `discard` になり、`"profile_version": 2` と表示されます。
+デプロイが新しいバージョンを公開します(`New: lost-and-found@2`)。弁当の写真を送ります。
+
+```sh
+printf '{"state": {"item": {"description": "%s", "photos": ["data:image/jpeg;base64,%s"]}}}' \
+  "A bento box." \
+  "$(base64 < ../pointsman/examples/tutorials/photos/bento.jpg | tr -d '\n')" > request.json
+curl -s "$POINTSMAN_URL/v1/decide/lost-and-found" \
+  -H "authorization: Bearer $POINTSMAN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d @request.json
+```
+
+今度はアクションが `discard` になり、`"profile_version": 2` と表示されます。
 
 <details><summary>プロファイルをどこに置くか</summary>
 
