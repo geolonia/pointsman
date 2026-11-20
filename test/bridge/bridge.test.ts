@@ -1,6 +1,6 @@
 // The FIWARE bridge (packages/fiware, bridge/src) against a fake broker and a fake Pointsman.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, clashingAnswer, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity, toProperty } from '../../packages/fiware/src/bridge.ts';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom, type Env } from '../../bridge/src/index';
@@ -575,18 +575,25 @@ describe('chains of decisions', () => {
     expect(t.calls.some((c) => c.method === 'PATCH' && c.url.endsWith('/attrs/evacuation'))).toBe(true);
   });
 
-  it('keeps /notify for the unnamed route, and ignores names it does not know', async () => {
+  it('keeps /notify for the unnamed route, and answers 404 with a log line for a name it does not know', async () => {
     const t = setup();
     t.config.routes = [route, step2];
     await t.notify([entity({ check })]);
     expect(t.calls[0]!.url).toBe('https://pm.test/v1/decide/road-restriction-check');
-    const none = setup();
-    none.config.routes = [route, step2];
-    const res = await handleRequest(new Request('https://bridge.test/notify?route=other', {
-      method: 'POST', headers: { 'x-bridge-secret': SECRET }, body: JSON.stringify({ type: 'Notification', data: [entity({ check })] }),
-    }), none.config);
-    expect(await res.json()).toEqual({ handled: [] });
-    expect(none.calls).toHaveLength(0);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const name of ['other', '']) {
+      const none = setup();
+      none.config.routes = [route, step2];
+      const res = await handleRequest(new Request(`https://bridge.test/notify?route=${name}`, {
+        method: 'POST', headers: { 'x-bridge-secret': SECRET }, body: JSON.stringify({ type: 'Notification', data: [entity({ check })] }),
+      }), none.config);
+      // A subscription with a misspelled route shows up: on the broker and in the log.
+      expect(res.status, name).toBe(404);
+      expect(await res.json()).toMatchObject({ error: expect.stringContaining('route') });
+      expect(none.calls).toHaveLength(0);
+    }
+    expect(logged.mock.calls.join(' ')).toContain('route');
+    logged.mockRestore();
   });
 
   it('leaves wasInformedBy out when the earlier result has no decision link', () => {
@@ -1705,5 +1712,52 @@ describe('decision chains', () => {
     await r;
     const write = calls.find((c) => c.url.endsWith('/attrs/final'));
     expect(write?.body).toMatchObject({ value: 'urgent', reviewStatus: P('pending') });
+  });
+});
+
+describe('review findings of 2026-11 (#244, #245, #260)', () => {
+  it('a 207 on the first result write (POST …/attrs) is a failure: nothing was stored', async () => {
+    const t = setup({ broker: { PATCH: 404, POST: 207 } });
+    const result = await handleMessage({ path: '/notify', entity: entity() }, t.config);
+    expect(result).toMatchObject({ error: 'broker write failed: 207' });
+    expect(result).not.toHaveProperty('write');
+  });
+
+  it('a call to the broker or Pointsman that does not answer times out, and is tried again', async () => {
+    for (const slow of ['pointsman', 'broker'] as const) {
+      const t = setup();
+      const hang = (init?: RequestInit) => new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+      });
+      const plain = t.config.fetch!;
+      t.config.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const isPm = url.startsWith('https://pm.test/');
+        if ((slow === 'pointsman') === isPm && (isPm || init?.method === 'PATCH')) return hang(init);
+        return plain(input, init);
+      }) as typeof fetch;
+      t.config.timeoutMs = 20;
+      const result = await handleMessage({ path: '/notify', entity: entity() }, t.config);
+      expect(result, slow).toMatchObject({ retry: true });
+      expect('error' in result && result.error, slow).toMatch(/timed? ?out|abort/i);
+    }
+  });
+
+  it('an input with several instances is hashed by all of them (by datasetId), not as null', async () => {
+    const instances = (a: string, b: string) => [{ type: 'Property', value: a, datasetId: 'urn:x:a' }, { type: 'Property', value: b, datasetId: 'urn:x:b' }];
+    const base = await inputHash(entity({ description: instances('one', 'two') }), route.inputs);
+    // A change in one instance changes the hash.
+    expect(await inputHash(entity({ description: instances('one', 'three') }), route.inputs)).not.toBe(base);
+    // The same instances in another order: the same hash.
+    expect(await inputHash(entity({ description: [...instances('one', 'two')].reverse() }), route.inputs)).toBe(base);
+    // Not the hash of a missing input.
+    expect(base).not.toBe(await inputHash(entity({ description: undefined }), route.inputs));
+  });
+
+  it('an input that is not a normalized attribute (keyValues) is refused with a clear error, not tried again', async () => {
+    const t = setup();
+    const result = await handleMessage({ path: '/notify', entity: entity({ description: '冠水のため通行止め' }) }, t.config);
+    expect(result).toMatchObject({ retry: false, error: expect.stringContaining('description') });
+    expect(t.calls.filter((c) => c.url.startsWith('https://pm.test/'))).toHaveLength(0);
   });
 });

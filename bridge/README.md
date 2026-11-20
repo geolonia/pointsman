@@ -320,7 +320,9 @@ the closure cuts people off from their evacuation site (route 2).
 
 - Give the second route a `name`, and point its subscription to
   `/notify?route=<name>`. `/notify` without a name serves the type's route
-  without a name; each type has at most one of those.
+  without a name; each type has at most one of those. A name that no route
+  has (a typo in the subscription, or `?route=` empty) is answered with 404
+  and a log line, so the broker shows the subscription as failing.
 - Its `inputs` include the first route's attribute (`check`), and its
   subscription watches that attribute, with `q` limiting it to the actions
   that should go on (for example `check=="urgent"`).
@@ -407,9 +409,20 @@ from starting a new decision:
 - It stores a hash of the input values (`inputHash`) with the result, and
   ignores a notification whose inputs have that hash. For an attribute in
   `requires` the hash also covers the earlier decision's id (and with
-  `rerunOnReview` the person's answer on it). For this the
+  `rerunOnReview` the person's answer on it). An input with several
+  instances (NGSI-LD `datasetId`) counts with all of them, sorted by
+  `datasetId`, so a change in any one decides again. For this the
   notification must include the result attribute: do not limit
   `notification.attributes`, or include the result attribute in it.
+- The result counts as written only when the broker stored it: a `207` to
+  the first write (`POST …/attrs`, the attribute was not appended) is a
+  failure, so the next notification decides again instead of finding no
+  result every time.
+
+Every call to the broker has 10 seconds, every decision by Pointsman 30
+seconds (it may wait for a model and its fallbacks). A call that takes
+longer fails as a timeout and is tried again (by the broker, or the queue),
+so one call that does not answer does not hold the other messages.
 
 A notification about a deleted entity (with `deletedAt`) is skipped.
 
@@ -445,7 +458,9 @@ that redirects to it.
 ## The subscription
 
 One per entity type. Watch the profile's input attributes, ask for the
-normalized format, and send the shared secret:
+normalized format (an input that comes as a bare value, as keyValues sends
+it, fails with an error that names it, and is not tried again), and send
+the shared secret:
 
 ```json
 {
