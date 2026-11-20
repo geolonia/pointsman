@@ -8,20 +8,32 @@ import Ajv2020 from 'ajv/dist/2020.js';
 /** OpenAPI 3.1 keywords that may stand next to JSON Schema ones. */
 const OPENAPI_KEYWORDS = ['example', 'discriminator', 'externalDocs', 'xml'];
 
+/** Keywords whose value is data, where null may mean null. */
+const DATA_KEYWORDS = ['default', 'example', 'enum', 'const'];
+
+/** Keywords whose value maps names (which may look like keywords) to objects. */
+const NAME_MAPS = ['paths', 'webhooks', 'schemas', 'properties', 'patternProperties', '$defs', 'dependentSchemas',
+  'responses', 'headers', 'content', 'encoding', 'examples', 'links', 'callbacks', 'parameters', 'requestBodies',
+  'securitySchemes', 'pathItems', 'variables', 'mapping', 'scopes'];
+
 /** Problems in a parsed openapi.yaml, as messages; empty when it is fine. */
 export function openapiProblems(api) {
   const problems = [];
-  (function walk(value, path, data) {
+  (function walk(value, path, data, keysAreNames) {
     // A null that means null, anywhere inside a default, an example or an
     // enum (data, not schema), is fine.
     if (value === null && !data) {
       problems.push(`${path}: no value (an unquoted comma in { ... } cuts a text there; quote it, or write null where null is meant)`);
     } else if (value !== null && typeof value === 'object') {
       for (const [k, v] of Object.entries(value)) {
-        walk(v, path ? `${path}.${k}` : k, data || (!Array.isArray(value) && ['default', 'example', 'enum'].includes(k)));
+        // Under a map of names (properties, headers, ...) a key is a name,
+        // so a header called "example" holds no data.
+        const keyword = !keysAreNames && !Array.isArray(value);
+        const isData = keyword && (DATA_KEYWORDS.includes(k) || (k === 'examples' && Array.isArray(v)));
+        walk(v, path ? `${path}.${k}` : k, data || isData, keyword && !isData && NAME_MAPS.includes(k));
       }
     }
-  })(api, '', false);
+  })(api, '', false, false);
   // Unknown keywords only (strictSchema); type rules are left to the contract tests.
   const ajv = new Ajv2020({ strictSchema: true, strictTypes: false, strictTuples: false, strictRequired: false, allErrors: true, validateFormats: false });
   // `components` only holds the wrapper below, so the document's

@@ -277,6 +277,12 @@ test('openapi.yaml has no value cut by a comma and no unknown schema keyword (#2
   const examples = parseYaml(text);
   examples.components.schemas.Error.example = { error: { code: null, list: [null] } };
   assert.deepEqual(openapiProblems(examples), []);
+  // A header named "example" is a name, not data: a null in it is still a cut text.
+  const named = parseYaml(text);
+  const firstOp = Object.values(named.paths['/v1/reviews']).find((op) => op?.responses);
+  const firstResponse = Object.values(firstOp.responses)[0];
+  firstResponse.headers = { ...firstResponse.headers, example: { description: null, schema: { type: 'string' } } };
+  assert.match(openapiProblems(named).join('\n'), /headers\.example\.description: no value/);
   // Parameters shared by every operation of a path are checked too.
   const shared = parseYaml(text);
   shared.paths['/v1/reviews'].parameters = [{ name: 'x', in: 'query', schema: { type: 'integer', minimun: 1 } }];
