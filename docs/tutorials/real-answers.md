@@ -23,8 +23,9 @@ The AI model runs on Workers AI, Cloudflare's AI service, in your Cloudflare
 account. Workers AI has a free amount every day
 ([pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)),
 and this tutorial makes about ten calls. The item texts and photos you send
-go to Workers AI in your account. Everything else stays on your computer:
-Pointsman, the profile, the token and the decision log.
+go to Workers AI in your account, with the profile's questions and their
+criteria. Everything else stays on your computer: Pointsman, the rules,
+the token and the decision log.
 
 </details>
 
@@ -170,8 +171,9 @@ tutorial. Pointsman never stores the photos.
 <details><summary>More about photos</summary>
 
 - The profile says where the photos are: `images: { path: $.item.photos, max: 2 }`.
-- PNG, JPEG and WebP work, at most 4 MiB each. A photo alone, without
-  text, works too.
+- PNG, JPEG and WebP work, at most 4 MiB each. A photo without text works
+  too, but the request must still have a field the profile reads: send
+  `"description": ""` with it. Without one, Pointsman answers `400`.
 - The decision log keeps only a hash of each photo: a short fingerprint,
   from which the photo cannot be made again.
 - More photos to try are in [`examples/tutorials/photos/`](../../examples/tutorials/photos/):

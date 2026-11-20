@@ -13,7 +13,7 @@ sidebar: { order: 20 }
 
 <details><summary>費用と、データの送り先</summary>
 
-AI モデルは、自分の Cloudflare のアカウントの Workers AI(Cloudflare の AI サービス)で動きます。Workers AI には毎日の無料枠があり([料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)、英語)、このチュートリアルの呼び出しは 10 回ほどです。送った忘れ物の説明と写真は、自分のアカウントの Workers AI に送られます。それ以外のもの(Pointsman、プロファイル、トークン、判定ログ)は、すべて自分のコンピューターの中にあります。
+AI モデルは、自分の Cloudflare のアカウントの Workers AI(Cloudflare の AI サービス)で動きます。Workers AI には毎日の無料枠があり([料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)、英語)、このチュートリアルの呼び出しは 10 回ほどです。送った忘れ物の説明と写真は、プロファイルの質問とその基準と一緒に、自分のアカウントの Workers AI に送られます。それ以外のもの(Pointsman、ルール、トークン、判定ログ)は、すべて自分のコンピューターの中にあります。
 
 </details>
 
@@ -134,7 +134,7 @@ curl -s localhost:8787/v1/decide/lost-and-found \
 <details><summary>写真について詳しく</summary>
 
 - 写真の場所はプロファイルに書きます: `images: { path: $.item.photos, max: 2 }`。
-- PNG、JPEG、WebP が使えます。1 枚 4 MiB までです。文章のない写真だけでも判定できます。
+- PNG、JPEG、WebP が使えます。1 枚 4 MiB までです。文章のない写真でも判定できますが、プロファイルが読む項目はリクエストに必要です。`"description": ""` を一緒に送ります。ない場合、Pointsman は `400` を返します。
 - 判定ログには、写真ごとのハッシュだけを残します。ハッシュは短い指紋のようなもので、ここから写真を元に戻すことはできません。
 - ほかに試せる写真が [`examples/tutorials/photos/`](../../../examples/tutorials/photos/) にあります。傘、財布、弁当です。PNG のファイルでは、`data:image/jpeg` の代わりに `data:image/png` と書きます。
 - 詳しくは[プロファイルの形式の「画像」](../../profile-format.md#images)にあります。
