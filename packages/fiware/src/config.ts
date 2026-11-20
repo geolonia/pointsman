@@ -15,6 +15,8 @@ export interface Env {
   BRIDGE_WORK_ORDERS?: string | undefined;
   /** In its own Worker only. */
   POINTSMAN_URL?: string | undefined;
+  /** Optional: how long a decision may take, in seconds (10 to 600; default 60). */
+  POINTSMAN_TIMEOUT_SECONDS?: string | undefined;
   BROKER_URL?: string | undefined;
   BROKER_TENANT?: string | undefined;
   BROKER_CONTEXT?: string | undefined;
@@ -53,6 +55,9 @@ export function configFrom(env: Env, engine?: EngineApi): BridgeConfig {
   // GeonicDB prefers the Bearer token when both are sent; refuse instead of guessing.
   if (env.BROKER_TOKEN && env.BROKER_API_KEY) throw new Error('set BROKER_TOKEN or BROKER_API_KEY, not both');
   const trim = (u: string) => u.replace(/\/+$/, '');
+  const seconds = env.POINTSMAN_TIMEOUT_SECONDS === undefined || env.POINTSMAN_TIMEOUT_SECONDS === '' ? undefined : Number(env.POINTSMAN_TIMEOUT_SECONDS);
+  if (seconds !== undefined && (!Number.isInteger(seconds) || seconds < 10 || seconds > 600)) throw new Error('POINTSMAN_TIMEOUT_SECONDS must be a whole number from 10 to 600');
+  const timeout = seconds === undefined ? {} : { timeoutMs: seconds * 1000 };
   const routes = parseRoutes(env.BRIDGE_ROUTES!);
   // Decision chains run one message at a time from the queue (docs/decision-chains.md).
   const chained = routes.find((r) => r.requires);
@@ -64,8 +69,8 @@ export function configFrom(env: Env, engine?: EngineApi): BridgeConfig {
     ...(env.BRIDGE_WORK_ORDERS && { workOrders: parseWorkOrders(env.BRIDGE_WORK_ORDERS) }),
     notifySecret: env.NOTIFY_SECRET!,
     pointsman: inEngine
-      ? { url: trim(engine.url), token: env.POINTSMAN_TOKEN!, fetch: (url, init) => engine.fetch(url, init) }
-      : { url: trim(env.POINTSMAN_URL!), token: env.POINTSMAN_TOKEN! },
+      ? { url: trim(engine.url), token: env.POINTSMAN_TOKEN!, fetch: (url, init) => engine.fetch(url, init), ...timeout }
+      : { url: trim(env.POINTSMAN_URL!), token: env.POINTSMAN_TOKEN!, ...timeout },
     broker: {
       url: trim(env.BROKER_URL!),
       ...(env.BROKER_TOKEN && { token: env.BROKER_TOKEN }),

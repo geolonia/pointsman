@@ -84,6 +84,8 @@ export interface BridgeConfig {
     token: string;
     /** Sends the requests to Pointsman; defaults to `fetch` below. Inside the engine Worker, a call in process (docs/connectors.md). */
     fetch?: (url: string, init: RequestInit) => Promise<Response>;
+    /** How long a decision may take; POINTSMAN_TIMEOUT_MS when left out. */
+    timeoutMs?: number;
   };
   broker: {
     url: string;
@@ -111,7 +113,17 @@ export interface BridgeConfig {
   deadLetter?: BridgeQueue;
   /** For tests; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** For tests: one time limit for every call, instead of BROKER_TIMEOUT_MS and POINTSMAN_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
+
+/** How long a call to the broker may take. */
+export const BROKER_TIMEOUT_MS = 10_000;
+/**
+ * How long a decision may take by default: Pointsman may wait for a model and
+ * its fallbacks (10 s each by default). POINTSMAN_TIMEOUT_SECONDS changes it.
+ */
+export const POINTSMAN_TIMEOUT_MS = 60_000;
 
 /** What the bridge needs of a Cloudflare Queue producer binding. */
 export interface BridgeQueue {
@@ -276,7 +288,7 @@ function parseTask(task: unknown, where: string): void {
  */
 export async function inputHash(entity: Entity, inputs: string[], requires?: Record<string, Requirement>): Promise<string> {
   const values = inputs.map((name) => {
-    const value = valueOf(entity[name]) ?? null;
+    const value = inputValue(entity[name], name);
     const req = Object.values(requires ?? {}).find((r) => r.attribute === name);
     if (!req) return value;
     // An earlier decision: its id, so that a new decision with the same
@@ -288,11 +300,40 @@ export async function inputHash(entity: Entity, inputs: string[], requires?: Rec
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * An input's value for the hash: an attribute's value, or, for an attribute
+ * with several instances (an array, NGSI-LD datasetId), every instance's
+ * value sorted by datasetId, so a change in any of them changes the hash. A
+ * value that is not a normalized attribute (a keyValues notification) is
+ * refused: it would hash the same for every value.
+ */
+function inputValue(attribute: unknown, name: string): unknown {
+  if (attribute === undefined || attribute === null) return null;
+  // A normalized attribute is an object with a type (Property, GeoProperty,
+  // Relationship, …); a keyValues value is not, also when it is an object
+  // (a GeoJSON geometry).
+  const normalized = (a: unknown): a is Record<string, unknown> =>
+    Boolean(a) && typeof a === 'object' && !Array.isArray(a) && typeof (a as Record<string, unknown>).type === 'string'
+    && ['Property', 'Relationship', 'GeoProperty', 'LanguageProperty', 'VocabProperty', 'JsonProperty', 'ListProperty', 'ListRelationship'].includes((a as Record<string, unknown>).type as string);
+  const refused = new Unsupported(`input ${name}: not a normalized NGSI-LD attribute (the bridge needs normalized notifications, not keyValues)`);
+  if (Array.isArray(attribute)) {
+    // No instance left is no input, as when the attribute is not there.
+    if (attribute.length === 0) return null;
+    const instances = attribute.map((a) => {
+      if (!normalized(a)) throw refused;
+      return [typeof a.datasetId === 'string' ? a.datasetId : '', valueOf(a) ?? null] as const;
+    });
+    return instances.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+  if (!normalized(attribute)) throw refused;
+  return valueOf(attribute) ?? null;
+}
+
 function valueOf(attribute: unknown): unknown {
   if (!attribute || typeof attribute !== 'object') return undefined;
   const a = attribute as Record<string, unknown>;
-  // Property, Relationship, GeoProperty, LanguageProperty, VocabProperty, JsonProperty
-  return a.value ?? a.object ?? a.languageMap ?? a.vocab ?? a.json;
+  // Property, Relationship, GeoProperty, LanguageProperty, VocabProperty, JsonProperty, ListProperty, ListRelationship
+  return a.value ?? a.object ?? a.languageMap ?? a.vocab ?? a.json ?? a.valueList ?? a.objectList;
 }
 
 async function sameSecret(a: string, b: string): Promise<boolean> {
@@ -337,6 +378,11 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   const path = url.pathname as BridgeMessage['path'];
   // ?route=<name> selects a named route; without it, the type's unnamed route.
   const route = url.searchParams.get('route') ?? undefined;
+  // A name no route has (a typo in a subscription) would handle nothing, silently.
+  if (path === '/notify' && route !== undefined && !config.routes.some((r) => r.name === route)) {
+    console.error(`bridge: /notify?route=${JSON.stringify(route).slice(1, -1).slice(0, 100)} names no configured route`);
+    return Response.json({ error: 'unknown route: no configured route has this name' }, { status: 404 });
+  }
   const messages = (data as Entity[]).filter((entity) => forBridge(path, route, entity, config))
     .map((entity): BridgeMessage => ({ path, ...(route !== undefined && { route }), entity: config.queue ? queuedRef(entity) : entity }));
 
@@ -366,6 +412,9 @@ export async function handleRequest(request: Request, config: BridgeConfig): Pro
   // on the retry (input hash). Failures that will not pass (Pointsman refused
   // the input) are reported but do not ask for a retry.
   const retry = results.some((r) => 'retry' in r && r.retry);
+  // A failure that will not pass is logged too, as the queue consumer does
+  // (for example an input in keyValues form): the broker gets 200 for it.
+  for (const r of results) if ('error' in r && !('retry' in r && r.retry)) console.error(`bridge: ${r.id}: ${r.error}`);
   return Response.json({ handled: results }, { status: retry ? 502 : 200 });
 }
 
@@ -465,7 +514,7 @@ export async function handleMessage(message: BridgeMessage, config: BridgeConfig
 function failure(id: string, err: unknown, decision?: string): EntityResult {
   const error = err instanceof Error ? err.message : String(err);
   const redirect = err instanceof Redirected;
-  return { id, error, retry: !redirect, ...(decision !== undefined && { decision }), ...(redirect && { redirect: true as const }) };
+  return { id, error, retry: !redirect && !(err instanceof Unsupported), ...(decision !== undefined && { decision }), ...(redirect && { redirect: true as const }) };
 }
 
 /** An entity as it is now (normalized, with the given context's names), 'gone', or the failed response. */
@@ -685,8 +734,9 @@ async function handleEntity(entity: Entity, route: Route, config: BridgeConfig):
     const property = toProperty(d, hash, decidedAt, decisionRef, isChecked(d, route));
     const write = await writeAttribute(entity.id, route.attribute, property, config);
     // Without a successful write the input hash is not stored either, so the
-    // next notification decides again: report it as a failure.
-    if (!write.ok) {
+    // next notification decides again: report it as a failure. A 207 from the
+    // first write (POST …/attrs) means the attribute was not appended.
+    if (!updatedAll(write)) {
       return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
     }
     return { id: entity.id, action: d.action, decision: d.decision_id, write: write.status };
@@ -808,6 +858,11 @@ export class Redirected extends Error {
   override name = 'Redirected';
 }
 
+/** An entity the bridge cannot read (a keyValues attribute): a second try gives the same. */
+export class Unsupported extends Error {
+  override name = 'Unsupported';
+}
+
 /**
  * Every request of the bridge goes through here. A redirect would send the
  * credentials (broker token or API key, Pointsman token) and the entity to
@@ -818,7 +873,30 @@ export class Redirected extends Error {
  */
 async function send(config: BridgeConfig, to: 'broker' | 'pointsman', url: string, init: RequestInit): Promise<Response> {
   const call = (to === 'pointsman' ? config.pointsman.fetch : undefined) ?? config.fetch ?? fetch;
-  const res = await call(url, { ...init, redirect: 'manual' });
+  // A call that does not answer must not hold the rest of the queue batch (or
+  // the broker's request): it fails as a timeout, which is tried again. Raced,
+  // not only signalled: the engine in process does not watch the signal.
+  const ms = config.timeoutMs ?? (to === 'pointsman' ? config.pointsman.timeoutMs ?? POINTSMAN_TIMEOUT_MS : BROKER_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(ms);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  const timedOut = new Error(`${to} did not answer within ${ms} ms (timed out)`);
+  let stop: () => void = () => {};
+  const late = new Promise<never>((_, reject) => {
+    const abort = () => reject(timeout.aborted ? timedOut : signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    stop = () => signal.removeEventListener('abort', abort);
+  });
+  let res: Response;
+  try {
+    const answer = call(url, { ...init, redirect: 'manual', signal });
+    // The call that lost the race may still fail later: nobody waits for it.
+    answer.catch(() => {});
+    res = await Promise.race([answer, late]);
+  } catch (err) {
+    throw timeout.aborted ? timedOut : err;
+  } finally {
+    stop();
+  }
   if (res.status >= 300 && res.status < 400) {
     await res.body?.cancel().catch(() => {});
     throw new Redirected(`${to} answered ${res.status}, a redirect: the bridge does not follow redirects, check the ${to} URL`);

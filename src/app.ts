@@ -169,7 +169,7 @@ export function createApp(deps: (env: Env) => Deps) {
     if (Number(c.req.header('content-length') ?? 0) > MAX_DECIDE_BODY) return error(413, 'invalid_request', 'the request is larger than 14 MiB');
     // Content-Length can be missing (a chunked body): the limit holds while reading too.
     return json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => readJsonUpTo(c.req.raw, MAX_DECIDE_BODY),
-    c.req.query('version'), c.req.header('Idempotency-Key')));
+    c.req.query('version'), c.req.header('Idempotency-Key'), c.req.raw.signal));
   });
 
   // A decision is visible only to tokens that may use its profile; for others

@@ -44,6 +44,8 @@ export async function decideAnswer(
   readBody: () => Promise<unknown>,
   version: string | undefined,
   idempotencyKey: string | undefined,
+  /** The request's signal: a decision whose caller stopped waiting is not logged (makeDecision). */
+  signal?: AbortSignal,
 ): Promise<ApiAnswer> {
   if (version !== undefined && !/^[1-9][0-9]{0,8}$/.test(version)) {
     return error(400, 'invalid_request', '"version" must be a positive integer');
@@ -56,7 +58,7 @@ export async function decideAnswer(
     return error(400, 'invalid_request', 'body must be valid JSON');
   }
   const result = await makeDecision(deps, client, profile, raw, version === undefined ? undefined : Number(version),
-    idempotencyKey === undefined ? {} : { idempotencyKey });
+    { ...(idempotencyKey !== undefined && { idempotencyKey }), ...(signal && { signal }) });
   if (!result.ok) return error(result.status, result.code, result.message);
   // A repeated request returns the logged decision: hide what the client may no longer see.
   const requires = visibleRequires(result.decision.requires, (p) => canUse(client, p));
