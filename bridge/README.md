@@ -429,9 +429,14 @@ broker, or the queue), so one call that does not answer does not hold the
 other messages. This holds also inside the Pointsman Worker. Without a
 queue the bridge handles a notification's entities one after another within
 the broker's request, which a broker may give up on first: for long
-decisions, use the queue. With a queue, keep `max_batch_size` such that a
-batch of slow messages stays within the consumer's 15 minutes (about a
-minute and a half per message in the worst case).
+decisions, use the queue. With a queue, keep a batch of slow messages
+within the consumer's 15 minutes: `max_batch_size` × (the Pointsman time
+limit + about a minute for the broker calls of one message) should stay
+under 15 minutes, so with the default 60 seconds at most 7 messages.
+Inside the Pointsman Worker a decision whose time limit has passed is not
+logged, so a later try decides again and a late decision never replaces a
+newer one; in its own Worker the bridge cannot stop it, so keep the time
+limit above the time the profile's models take.
 
 A notification about a deleted entity (with `deletedAt`) is skipped.
 

@@ -87,6 +87,21 @@ describe('model failures', () => {
     await expectError(await decide(appWith(tampered(edit))), 502, 'model_error');
   });
 
+  it('a caller that stopped waiting (its request aborted) gets no decision logged', async () => {
+    const inserts: unknown[] = [];
+    const slow: ModelAdapter = { decide: async (req) => (await new Promise((r) => setTimeout(r, 40)), new MockAdapter().decide(req)) };
+    const deps: Deps = { callbacks: noCallbacks, store, tokens, log: fakeLog({ insert: async (d) => { inserts.push(d); } }), adapterFor: () => slow };
+    const app = createApp(() => deps);
+    // As the FIWARE bridge calls the engine in process: the time limit fires while the model answers.
+    const gone = await app.request(new Request('https://pointsman.test/v1/decide/deploy-progress', { method: 'POST', body, headers, signal: AbortSignal.timeout(10) }), undefined, env);
+    expect(gone.status).toBe(502);
+    expect(inserts).toHaveLength(0);
+    // A caller that waits gets its decision, logged.
+    const waited = await app.request('/v1/decide/deploy-progress', { method: 'POST', body, headers }, env);
+    expect(waited.status).toBe(200);
+    expect(inserts).toHaveLength(1);
+  });
+
   it('answers 500 without details when no adapter serves the model', async () => {
     const data = await expectError(await decide(appWith(null)), 500, 'internal_error');
     expect(data.error.message).toBe('internal error');

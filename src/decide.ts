@@ -150,6 +150,7 @@ export async function makeDecision(
   {
     stateIsMapped = false,
     idempotencyKey,
+    signal,
   }: {
     /**
      * The state already has the profile's input fields (MCP callers send
@@ -158,6 +159,13 @@ export async function makeDecision(
     stateIsMapped?: boolean;
     /** A repeated request with this key from the same client gets the logged decision again. */
     idempotencyKey?: string;
+    /**
+     * The request's signal: when the caller stopped waiting before the decision
+     * is logged, it is not logged. A caller that gave up (the FIWARE bridge's
+     * time limit) tries again later; a late decision must not then replace a
+     * newer one (supersede) or count as made.
+     */
+    signal?: AbortSignal;
   } = {},
 ): Promise<DecisionResult> {
   // Checked before the profile lookup, so a token cannot probe which
@@ -289,6 +297,7 @@ export async function makeDecision(
   // A test token's decisions are not logged (and marked as such): they
   // check profiles and examples, nobody acts on them.
   if (client.test) return { ok: true, decision: { ...decision, test: true } };
+  if (signal?.aborted) return fail(502, 'model_error', 'the caller stopped waiting before the decision was made; it was not logged');
   // Every decision is logged before it is returned. If the log fails, the
   // client gets a 500 and must not act on an unlogged decision.
   try {

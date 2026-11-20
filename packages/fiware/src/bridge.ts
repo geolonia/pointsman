@@ -332,8 +332,8 @@ function inputValue(attribute: unknown, name: string): unknown {
 function valueOf(attribute: unknown): unknown {
   if (!attribute || typeof attribute !== 'object') return undefined;
   const a = attribute as Record<string, unknown>;
-  // Property, Relationship, GeoProperty, LanguageProperty, VocabProperty, JsonProperty
-  return a.value ?? a.object ?? a.languageMap ?? a.vocab ?? a.json;
+  // Property, Relationship, GeoProperty, LanguageProperty, VocabProperty, JsonProperty, ListProperty, ListRelationship
+  return a.value ?? a.object ?? a.languageMap ?? a.vocab ?? a.json ?? a.valueList ?? a.objectList;
 }
 
 async function sameSecret(a: string, b: string): Promise<boolean> {

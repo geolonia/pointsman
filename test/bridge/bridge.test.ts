@@ -1770,6 +1770,11 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
     expect(await inputHash(entity({ description: [...instances('one', 'two')].reverse() }), route.inputs)).toBe(base);
     // Not the hash of a missing input.
     expect(base).not.toBe(await inputHash(entity({ description: undefined }), route.inputs));
+    // List values (ListProperty valueList, ListRelationship objectList) count too.
+    const list = (v: unknown[]) => ({ type: 'ListProperty', valueList: v });
+    expect(await inputHash(entity({ description: list(['a', 'b']) }), route.inputs)).not.toBe(await inputHash(entity({ description: list(['a', 'c']) }), route.inputs));
+    const rel = (o: string[]) => ({ type: 'ListRelationship', objectList: o.map((x) => ({ object: x })) });
+    expect(await inputHash(entity({ description: rel(['urn:a']) }), route.inputs)).not.toBe(await inputHash(entity({ description: rel(['urn:b']) }), route.inputs));
     // No instance left: as when the attribute is not there.
     expect(await inputHash(entity({ description: [] }), route.inputs)).toBe(await inputHash(entity({ description: undefined }), route.inputs));
     // A single value hashes as before (stored hashes still match after the upgrade).
