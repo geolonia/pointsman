@@ -382,6 +382,17 @@
   `packages/facts-gsi/src/provider.ts`, moved to their lines after this
   change (mapped line by line; the validator was not run for this
   amendment). No new question.
+  Amended 2026-11-20 a third time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#256, #255 and #272 (from the review of
+  2026-11), in pointsman#313: a `choice` or `score` answer must give a
+  probability for every option or level, adding up to 1 within 0.02; a
+  probability option an earlier decision's answer does not have is
+  unknown, not 0; a name or option value cannot be an `Object.prototype`
+  member, and the rules read their maps with `Object.hasOwn`. Changed: a
+  wider `P-ANSWER-SHAPE` and `P-CHAIN-INPUTS-FROM-LOG` (two new documented
+  claims, so the counts are 466 and 549); the matrix row for the API's
+  numeric domain; the citation into `src/policy.ts` (the validator was
+  not run for this amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -466,7 +477,7 @@
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
-  of 2026-11-20 for pointsman#307 and #309 were done the same way.
+  of 2026-11-20 for pointsman#307, #309 and #313 were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -482,7 +493,7 @@
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
-  and of 2026-11-20 for pointsman#307 and #309, before their code is
+  and of 2026-11-20 for pointsman#307, #309 and #313, before their code is
   released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
@@ -509,7 +520,7 @@
   question `QN` in §1.18.
 - **Glossary**: a short plain-language glossary is at the end of this document
   (Appendix A).
-- **Draft confidence**: 464 documented / 83 maintainer / 0 inferred / 0 assumption.
+- **Draft confidence**: 466 documented / 83 maintainer / 0 inferred / 0 assumption.
   Counted as the plugin's validator counts, over §1.2 to §1.19: one count per
   parenthesised tag, by its first kind, so a combined tag such as
   *(documented, source; maintainer, 2026-10)* counts once as documented; the
@@ -1391,7 +1402,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 
 | Component | Dimension | Status | Conditions / boundary | Routes to | Provenance |
 | --- | --- | --- | --- | --- | --- |
-| engine-api | numeric domain | claimed | `version` 1–999999999, `days` 1–90, probabilities 0–1, score within the level range; anything else is 400 or `model_error` | §1.11 `P-ANSWER-SHAPE` | *(documented, openapi.yaml; docs/profile-format.md "Engine answer format")* |
+| engine-api | numeric domain | claimed | `version` 1–999999999, `days` 1–90, probabilities 0–1 (since pointsman#313, not yet released, one for every option or level, adding up to 1 within 0.02), score within the level range; anything else is 400 or `model_error` | §1.11 `P-ANSWER-SHAPE` | *(documented, openapi.yaml; docs/profile-format.md "Engine answer format")* |
 | engine-api | failure atomicity | claimed | a decision is logged before it is returned; a failed log is a 500 and no decision; a review resolves (or, since pointsman#221 (`v0.16.0`), is closed) once or not at all | §1.11 `P-DECISION-LOGGED-FIRST`, `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/decision-log.md; docs/reviews.md)* |
 | engine-api | recursive/cyclic topology | disclaimed | `state` may be arbitrarily nested; the engine neither limits depth nor promises a bound; JSON has no cycles | §1.12 `D-STATE-SIZE` | *(documented, openapi.yaml `DecideRequest.state`)* |
 | engine-api | callback execution | claimed | policy conditions are parsed and evaluated by the engine's own parser; nothing from a profile or a state runs as code | §1.11 `P-POLICY-NOT-CODE` | *(documented, docs/profile-format.md "The engine evaluates conditions with its own parser; nothing is run as code")* |
@@ -1683,7 +1694,9 @@ what voids it.
   expires")*.
 - **`P-ANSWER-SHAPE`** — a model answer is accepted only when every question
   of the profile is answered with the right type, every option or level is
-  one the profile lists, every probability is in 0–1 and a score is within
+  one the profile lists, every probability is in 0–1, since pointsman#313
+  (not yet released) a `choice` or `score` answer gives a probability for
+  every option or level, adding up to 1 within 0.02, and a score is within
   the level range; anything else is a `model_error` and the next fallback
   model is tried; a decision's `answers[*].value` is therefore always a
   boolean, a listed option or a listed level. Symptom: `bad-data-accepted`.
@@ -1692,7 +1705,13 @@ what voids it.
   format": "Answers that do not fit the profile ... are rejected with a
   `model_error`")*. Voided by: nothing. Search:
   `grep -rn "normalizeAnswers" src` — called on the only decision path,
-  `src/decide.ts:249`, for every adapter.
+  `src/decide.ts:249`, for every adapter. Since pointsman#313 a question,
+  fact or input name, or an option value, cannot be one that every plain
+  object already has (`__proto__`, `constructor`, `prototype`, `toString`
+  and the other `Object.prototype` members), so answers, facts and
+  probabilities are always own entries of their maps, and the rules read
+  them with `Object.hasOwn` *(documented, docs/profile-format.md: "A name
+  or option value cannot be one that every plain object already has")*.
 - **`P-ACTION-FROM-POLICY`** — the action is the first rule whose condition
   is true over the typed answers, facts and required decisions, else the
   profile's default; a
@@ -1722,6 +1741,12 @@ what voids it.
   "Pointsman reads them from the decision log; the caller cannot claim a
   result")*. Voided by: nothing; test tokens cannot use it
   (`P-TEST-TOKEN-ISOLATED`). Search: `loadRequired` in `src/chains.ts`.
+  A value an earlier decision does not have, or of another type (an older
+  version of the required profile), is unknown, never a default; since
+  pointsman#313 (not yet released) also a probability option its answer
+  does not have, which before read as 0 *(documented, docs/decision-chains.md:
+  "A decision of an older version that lacks a field gives *unknown* at run
+  time. So does a probability option its answer does not have")*.
 - **`P-POLICY-NOT-CODE`** — profile conditions are parsed by the engine's own
   parser and evaluated as data; nothing from a profile or a state is
   executed; conditions are compiled at validation time so a bad reference
@@ -1800,7 +1825,7 @@ what voids it.
   the whole fact missing"; "Parser limits": "it is never skipped"; "CodeRabbit
   reviews")*. Voided by: nothing. Search:
   `grep -n "missing" src/policy.ts src/facts.ts` — the three-valued
-  evaluation at `src/policy.ts:406`. A profile version whose facts no
+  evaluation at `src/policy.ts:410`. A profile version whose facts no
   chosen module answers is refused before the model call (a config error,
   `src/decide.ts:224`), not looked up as missing facts *(documented,
   docs/modules.md "Choosing modules")*. The CodeRabbit checks: the edit
@@ -2533,8 +2558,9 @@ Revise the model when any of these happens:
 - Not yet covered: nothing shipped up to `v0.18.0`. The amendment of
   2026-11-19 covers pointsman#243 and #271 (callbacks) before their
   release, and the amendments of 2026-11-20 cover pointsman#307
-  (`github_pr` per field, rate limits) and #309 (GSI outside Japan, PNG
-  tiles) before their release. The re-binding to
+  (`github_pr` per field, rate limits), #309 (GSI outside Japan, PNG
+  tiles) and #313 (complete probability maps, older options, names) before
+  their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to
@@ -2702,8 +2728,8 @@ re-binding to `v0.18.0` it is the bound commit (`9dec36e`). The
 hand completion sets each boundary's text from fixed strings and asserts
 that each added phrase occurs once, so a repeated run cannot repeat it. The JSON's `confidence` has no maintainer or assumption
 count: the exporter folds maintainer claims into documented and
-assumption claims into inferred, so it reads 547 documented and 0
-inferred while §1.1 counts 464, 83, 0 and 0.
+assumption claims into inferred, so it reads 549 documented and 0
+inferred while §1.1 counts 466, 83, 0 and 0.
 
 ## Appendix: prior security-policy back-map
 

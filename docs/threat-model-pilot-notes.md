@@ -706,6 +706,20 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for policy inputs (pointsman#256, #255, #272, #313, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that the model's probability maps
+  were not checked for completeness or their sum (#272), that a probability
+  option an older decision lacks read as 0 (#256), and that names such as
+  `__proto__` or `constructor` broke the answer and fact maps (#255).
+- **Changed**: `P-ANSWER-SHAPE` (prose, YAML and JSON) and
+  `P-CHAIN-INPUTS-FROM-LOG`, each with one new documented claim, so the
+  counts are 466 documented in §1.1 and 549 in the JSON; the matrix row for
+  the API's numeric domain; §1.1 and §1.16. The citation into
+  `src/policy.ts` was mapped by a short script and checked by hand.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits).
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
