@@ -34,10 +34,14 @@ function answersAfterReview(record: DecisionRecord): Record<string, Answer> {
     const model = record.answers[name];
     if (!model || a.source !== 'human' || a.value === model.value) continue;
     // A person's value is certain; the model's probabilities no longer apply.
+    // Every option the model's answer named stays, at 0: a rule reads an
+    // option a decision does not have as unknown (an older version).
+    const certain = (probabilities: Record<string, number>, chosen: string) =>
+      Object.fromEntries([...Object.keys(probabilities).filter((k) => k !== chosen).map((k) => [k, 0] as const), [chosen, 1] as const]);
     if (model.type === 'noul' && typeof a.value === 'boolean') out[name] = { type: 'noul', value: a.value, p: 1, yes: a.value ? 1 : 0 };
-    if (model.type === 'choice' && typeof a.value === 'string') out[name] = { type: 'choice', value: a.value, p: 1, probabilities: { [a.value]: 1 } };
+    if (model.type === 'choice' && typeof a.value === 'string') out[name] = { type: 'choice', value: a.value, p: 1, probabilities: certain(model.probabilities, a.value) };
     if (model.type === 'score' && typeof a.value === 'number') {
-      out[name] = { type: 'score', value: a.value, p: 1, score: a.value, probabilities: { [String(a.value)]: 1 } };
+      out[name] = { type: 'score', value: a.value, p: 1, score: a.value, probabilities: certain(model.probabilities, String(a.value)) };
     }
   }
   return out;

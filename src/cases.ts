@@ -13,6 +13,7 @@
 import { compilePolicy, peopleAnswers, profileActions } from './policy.ts';
 import type { RequiredProfiles } from './policy.ts';
 import { factRegistry } from './modules/registry.ts';
+import { addsUpToOne } from './probability.ts';
 import type { FactTypeDef } from '@pointsman/module-api';
 import type { Answer, Fact, Profile, Question, RequiredDecisionInput } from './types.ts';
 
@@ -70,6 +71,14 @@ function probabilities(where: string, value: Record<string, unknown>, allowed: s
     out[k] = v;
   }
   if (Object.keys(out).length === 0) throw new CaseError(`${where}: give at least one probability`);
+  // Every option the case left out is 0, as in an answer the engine keeps:
+  // a rule on an earlier decision reads a missing option as unknown.
+  // The given ones keep their order (a tie picks the first, as for a model's answer).
+  for (const k of allowed) if (!Object.hasOwn(out, k)) out[k] = 0;
+  // As for a model's answer: a case cannot pass with one the engine refuses.
+  if (Object.values(out).some((x) => x > 0) && !addsUpToOne(Object.values(out), allowed.length)) {
+    throw new CaseError(`${where}: the probabilities must add up to 1`);
+  }
   return out;
 }
 
@@ -95,6 +104,9 @@ export function answerOf(q: Question, value: unknown, where: string): Answer {
       const probs = typeof value === 'string' ? probabilities(where, { [value]: 1 }, options)
         : isObject(value) ? probabilities(where, value, options) : undefined;
       if (!probs) throw new CaseError(`${where}: give an option, or probabilities by option`);
+      // As for score: no option to pick. Also, keys that look like integers come
+      // first in an object, so a tie at 0 could pick an option the case left out.
+      if (Object.values(probs).every((x) => x === 0)) throw new CaseError(`${where}: the probabilities cannot all be 0`);
       const [v, p] = top(probs);
       return { type: 'choice', value: v, p, probabilities: probs };
     }

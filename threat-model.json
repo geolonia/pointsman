@@ -6,7 +6,7 @@
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 547,
+    "documented": 549,
     "inferred": 0
   },
   "components": [
@@ -1480,7 +1480,7 @@
       "property": "P-ANSWER-SHAPE",
       "violation_symptom": "bad-data-accepted",
       "severity_tier": "security",
-      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error",
+      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (not yet released) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Engine answer format\": \"Answers that do not fit the profile ... are rejected with a model_error\""
     },
@@ -1496,7 +1496,7 @@
       "property": "P-CHAIN-INPUTS-FROM-LOG",
       "violation_symptom": "x-authorization-bypass, x-unauthorized-action, info-leak",
       "severity_tier": "security",
-      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions",
+      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (not yet released) also a probability option its answer lacks",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""
     },

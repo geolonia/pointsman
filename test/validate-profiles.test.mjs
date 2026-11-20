@@ -281,3 +281,29 @@ test('images: valid with an input mapping; refused without one, when input reads
   assert.ok(validateProfile({ ...base, images: { path: '$.photos.value', max: 5 } }).length > 0, 'max is at most 4');
   assert.ok(validateProfile({ ...base, questions: [], facts: [{ name: 'y', type: 'field_number', at: '$.y' }] }).some((e) => e.includes('cannot use images')));
 });
+
+test('names that plain objects already have are refused: they would break the answer and fact maps', () => {
+  const base = {
+    id: 'names', version: 1, title: { en: 'N', ja: 'N' }, description: { en: 'N', ja: 'N' }, model: 'clef-flash',
+    questions: [
+      { name: 'danger', type: 'noul', instructions: 'Danger?' },
+      { name: 'kind', type: 'choice', instructions: 'Which?', criteria: [{ value: 'a' }, { value: 'b' }] },
+    ],
+    policy: { default: 'review' },
+  };
+  assert.deepEqual(validateProfile(base), []);
+  for (const bad of ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty', 'valueOf']) {
+    const asQuestion = { ...base, questions: [{ ...base.questions[0], name: bad }, base.questions[1]] };
+    assert.ok(validateProfile(asQuestion).some((e) => e.includes('/questions/0/name')), `question ${bad}`);
+    const asOption = { ...base, questions: [base.questions[0], { ...base.questions[1], criteria: [{ value: bad }, { value: 'b' }] }] };
+    assert.ok(validateProfile(asOption).some((e) => e.includes('/questions/1/criteria/0/value')), `option ${bad}`);
+    const asInput = { ...base, input: [{ name: bad, path: '$.x' }] };
+    assert.ok(validateProfile(asInput).some((e) => e.includes('/input/0/name')), `input ${bad}`);
+    const asRequires = { ...base, requires: [{ name: bad, profile: 'other' }] };
+    assert.ok(validateProfile(asRequires).some((e) => e.includes('/requires/0/name')), `requires ${bad}`);
+    // The message says why, not the pattern.
+    assert.ok(validateProfile(asQuestion).some((e) => e.includes('not a name every object already has')), `message ${bad}`);
+  }
+  // Only the exact names: longer names that contain them are fine.
+  assert.deepEqual(validateProfile({ ...base, questions: [{ ...base.questions[0], name: 'constructor_risk' }, base.questions[1]] }), []);
+});

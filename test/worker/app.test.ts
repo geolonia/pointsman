@@ -75,6 +75,14 @@ describe('model failures', () => {
       const a = r.answers.phase;
       if (a?.type === 'choice') a.probabilities = {};
     }],
+    ['an option left out', (r) => {
+      const a = r.answers.phase;
+      if (a?.type === 'choice') a.probabilities = { waiting: 1 };
+    }],
+    ['probabilities that do not add up to 1', (r) => {
+      const a = r.answers.phase;
+      if (a?.type === 'choice') a.probabilities = { creating: 1, rolling_back: 1, cleaning_up: 1, waiting: 1 };
+    }],
   ])('answers 502 for %s', async (_, edit) => {
     await expectError(await decide(appWith(tampered(edit))), 502, 'model_error');
   });

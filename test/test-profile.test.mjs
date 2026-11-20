@@ -32,13 +32,21 @@ test('short answers become the engine format, as the normalizer makes them', () 
   assert.deepEqual(answerOf(q('noul'), true, 'a'), { type: 'noul', value: true, p: 1, yes: 1 });
   assert.deepEqual(answerOf(q('noul'), 0.3, 'a'), { type: 'noul', value: false, p: 0.7, yes: 0.3 });
   const choice = q('choice', [{ value: 'a' }, { value: 'b' }]);
-  assert.deepEqual(answerOf(choice, 'b', 'a'), { type: 'choice', value: 'b', p: 1, probabilities: { b: 1 } });
+  // Every option is in the map; the ones left out are 0.
+  assert.deepEqual(answerOf(choice, 'b', 'a'), { type: 'choice', value: 'b', p: 1, probabilities: { a: 0, b: 1 } });
   assert.deepEqual(answerOf(choice, { a: 0.7, b: 0.3 }, 'a'), { type: 'choice', value: 'a', p: 0.7, probabilities: { a: 0.7, b: 0.3 } });
+  // Given in another order, with a tie: the first given wins, as for a model's answer.
+  assert.equal(answerOf(choice, { b: 0.5, a: 0.5 }, 'a').value, 'b');
+  // Not adding up to 1: the engine would refuse the model's answer, so the case is refused too.
+  assert.throws(() => answerOf(choice, { a: 0.7 }, 'a'), /must add up to 1/);
+  // All 0: no option to pick (options named like integers would otherwise pick one the case left out).
+  assert.throws(() => answerOf(q('choice', [{ value: '0' }, { value: '1' }, { value: '2' }]), { 2: 0 }, 'a'), /cannot all be 0/);
   const score = q('score', ['low', 'mid', 'high']);
-  assert.deepEqual(answerOf(score, 2, 'a'), { type: 'score', value: 2, p: 1, score: 2, probabilities: { 2: 1 } });
+  assert.deepEqual(answerOf(score, 2, 'a'), { type: 'score', value: 2, p: 1, score: 2, probabilities: { 0: 0, 1: 0, 2: 1 } });
   const weighted = answerOf(score, { 1: 0.25, 2: 0.75 }, 'a');
   assert.equal(weighted.value, 2);
   assert.equal(weighted.score, 1.75);
+  assert.throws(() => answerOf(score, { 1: 0.5, 2: 0.8 }, 'a'), /must add up to 1/);
   for (const [question, bad, message] of [
     [q('noul'), 'yes', /true, false, or the probability of yes/],
     [q('noul'), 1.5, /true, false, or the probability of yes/],

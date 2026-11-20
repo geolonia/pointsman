@@ -215,8 +215,8 @@ export function replay(base: Profile, policy: Policy, compiled: CompiledPolicy, 
       decisions[name] = inputFromSnapshot(snapshot, r ? required[r.profile] : undefined);
     }
     // Inexact when a rule reads a value of an earlier decision that its
-    // snapshot did not keep: a rebuilt value would be made up (an absent fact
-    // reads as missing, absent probabilities as 0), so the decision is not
+    // snapshot did not keep: a rebuilt value would be made up or unknown (an
+    // absent fact reads as missing, an absent probability as unknown), so the decision is not
     // replayed. Every rule's reads count, also rules after the one that would
     // match, so this errs on the side of inexact.
     const needed = compiled.read(decisions);

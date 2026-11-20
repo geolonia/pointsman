@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:fcfe2fc5fce2b9235d900aa4b55c812fcb86ba134359a3f4f6e2c04dbeb88973"
+prose_version: "threat-model.md@sha256:7ea10f3a486095749fca1d8699e1221442c467d2ec230e9a9ef136b7f4c5f1be"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 464, maintainer: 83, inferred: 0, assumption: 0}
+confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, the re-binding to v0.17.1 with pointsman#229 and R-PEOPLE-CHECK-PENDING (Q48), the re-binding to v0.17.2 with pointsman#232, and the re-binding to v0.18.0 with pointsman#235 and #236: Claude Opus 5.5 (claude-opus-5-5)"
@@ -793,7 +793,7 @@ entry_points:
 
 contract_dimensions:
   # engine-api
-  - {component: engine-api, dimension: numeric-domain, status: claimed, conditions: "version 1–999999999, days 1–90, probabilities 0–1, score within range; else 400 or model_error", property_id: P-ANSWER-SHAPE, provenance: {kind: documented, source: "openapi.yaml; docs/profile-format.md \"Engine answer format\""}}
+  - {component: engine-api, dimension: numeric-domain, status: claimed, conditions: "version 1–999999999, days 1–90, probabilities 0–1 (since pointsman#313, not yet released, one for every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1), score within range; else 400 or model_error", property_id: P-ANSWER-SHAPE, provenance: {kind: documented, source: "openapi.yaml; docs/profile-format.md \"Engine answer format\""}}
   - {component: engine-api, dimension: failure-atomicity, status: claimed, conditions: "logged before returned; a failed log is 500 and no decision; a review resolves once", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/decision-log.md; docs/reviews.md"}}
   - {component: engine-api, dimension: recursive-cyclic-topology, status: disclaimed, conditions: "state may be arbitrarily nested; no depth limit promised", property_id: D-STATE-SIZE, provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}}
   - {component: engine-api, dimension: callback-execution, status: claimed, conditions: "policy conditions are parsed and evaluated as data; nothing runs as code", property_id: P-POLICY-NOT-CODE, provenance: {kind: documented, source: "docs/profile-format.md \"nothing is run as code\""}}
@@ -1734,7 +1734,7 @@ properties_claimed:
     kind: output-sanitization
     components: [engine-api, engine-mcp, bridge]
     tier: security-critical
-    conditions: "every model answer, every adapter; anything that does not fit the profile is model_error"
+    conditions: "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (not yet released) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members"
     violation_symptoms: [bad-data-accepted]
     provenance: {kind: documented, source: "docs/profile-format.md \"Engine answer format\": \"Answers that do not fit the profile ... are rejected with a model_error\""}
   - id: P-ACTION-FROM-POLICY
@@ -1748,7 +1748,7 @@ properties_claimed:
     kind: x-authorization
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions"
+    conditions: "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (not yet released) also a probability option its answer lacks"
     violation_symptoms: [x-authorization-bypass, x-unauthorized-action, info-leak]
     provenance: {kind: documented, source: "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""}
   - id: P-POLICY-NOT-CODE
