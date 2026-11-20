@@ -83,7 +83,12 @@ export function labelsFor(decision, map, reviewLabel) {
 }
 
 function setOutput(name, value) {
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+  // A file that cannot be written must not hide the real error or skip the labels.
+  try {
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+  } catch (err) {
+    console.log(`::warning::could not set the output ${name}: ${err.message}`);
+  }
 }
 
 function summary(text) {
@@ -161,12 +166,12 @@ export async function run() {
   // A test token's answer is not acted on: a later step that reads "auto" must not act on it either.
   setOutput('action', decision.test === true ? 'test' : decision.action);
   const labels = labelsFor(decision, map, reviewLabel);
-  await addLabels(labels, github);
-
+  // The summary first: the decision stays visible when the labels fail.
   const rows = Object.entries(decision.answers ?? {})
     .map(([q, a]) => `| ${q} | ${String(a?.value)} | ${Number(a?.p).toFixed(2)} |`)
     .join('\n');
   summary(`### Pointsman: ${decision.action}\n\nDecision \`${decision.decision_id}\` (${decision.profile} v${decision.profile_version}, ${decision.model})\n\n| Question | Answer | p |\n|---|---|---|\n${rows}\n\nLabels: ${labels.map((l) => `\`${l}\``).join(', ') || '(none)'}`);
+  await addLabels(labels, github);
   console.log(`Pointsman ${decision.action} (decision ${decision.decision_id}); labels: ${labels.join(', ') || '(none)'}`);
 }
 

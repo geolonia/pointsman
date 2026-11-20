@@ -80,19 +80,21 @@ watched stacks, besides what the deploy itself needs.
 | `cancel-update` | `true` | Also cancel stack updates in progress |
 | `kill-after-seconds` | `30` | SIGKILL the command if it is still running this long after SIGTERM |
 
-Output `result`: `finished` or `cancelled`.
+Output `result`: `finished`, `cancelled`, or `not-started` (the command
+could not be started).
 
 ## Notes
 
 - Events from before the command started are ignored, so an old stack does
   not count as quiet.
-- While none of the watched stacks exists yet (a first deploy, or a long
-  asset or Docker build before CloudFormation starts), nothing is asked:
-  there is no stack to judge. Once one exists, the quiet time counts from
-  its last event, or from the start when it has none from this run. Set a
-  `timeout-minutes` on the job for a command that hangs before any stack
-  exists.
+- Nothing is asked until CloudFormation works on a watched stack in this
+  run: a stack in an `*_IN_PROGRESS` status, or with an event since the
+  command started. Before that (asset or Docker builds, on a first deploy
+  or an update) there is nothing to judge. If no watched stack has changed
+  after `quiet-minutes`, a warning asks you to check the stack names. Set a
+  `timeout-minutes` on the job for a command that hangs before
+  CloudFormation starts.
 - A command that cannot be started fails the step (`::error::could not
-  start the command`).
+  start the command`, `result` is `not-started`).
 - Pointsman calls are logged with `ref: github:<repo>/actions/runs/<run id>`,
   so the decisions can be found and corrected with feedback.

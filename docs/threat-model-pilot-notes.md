@@ -772,7 +772,9 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 
 - **Why**: the review of 2026-11 found that the triage Action lost the
   Pointsman error and its `action` output when the review label failed too
-  (#253), that deploy-watch asked the model before any stack existed and
+  (#253), that deploy-watch asked the model before CloudFormation started
+  (a long asset build; found for a first deploy, and by the self-review
+  also for an update) and
   waited forever on a command it could not start (#254), and that a round
   it could not read did not start the cancel count again, so
   `P-WATCH-FAILSAFE` ("in a row") was not true (#273).

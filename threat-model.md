@@ -442,7 +442,8 @@
   bound to `v0.18.0`), for pointsman#253, #254 and #273 (from the review
   of 2026-11), in pointsman#325: the triage Action sets its outputs before
   it adds labels and keeps the Pointsman error when the review label fails
-  too; the deploy-watch Action asks nothing while no watched stack exists,
+  too; the deploy-watch Action asks nothing until CloudFormation works on
+  a watched stack in this run,
   starts the cancel count again after a round it could not read, and
   fails on a command it cannot start. Changed: `P-WATCH-FAILSAFE`, the
   matrix rows for both Actions' failure atomicity; the code citations
@@ -1170,7 +1171,7 @@ modeled tree.
   "Nothing is run")*. The engine reads its configuration from Worker bindings and
   vars only *(maintainer, 2026-10)*. `action-deploy-watch` spawns `bash -c <run>`
   in its own process group and runs the `aws` CLI
-  (`actions/deploy-watch/watch.mjs:17,118`); both Actions read `INPUT_*` and
+  (`actions/deploy-watch/watch.mjs:20,122`); both Actions read `INPUT_*` and
   `GITHUB_*` environment variables and append to `GITHUB_OUTPUT` and
   `GITHUB_STEP_SUMMARY` *(documented, the Actions' header comments and
   `action.yml` inputs)*.
@@ -1519,7 +1520,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | action-triage | x-prompt-injection | disclaimed | the issue author writes the prompt text; the labels an answer can produce come from the allow-list | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-TRIAGE-ALLOWLIST` | *(maintainer, 2026-10)* |
 | action-triage | x-probabilistic-result | disclaimed | the job summary shows `p`; the policy threshold decides | §1.12 `D-MODEL-ACCURACY` | *(documented, actions/triage/README.md "The job summary shows the answers, their probabilities")* |
 | action-deploy-watch | numeric domain | claimed | `consecutive` ≥ 1, `interval-seconds` ≥ 0.05, `kill-after-seconds` ≥ 0; stack names bounded | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "Inputs")* |
-| action-deploy-watch | failure atomicity | claimed | an unreachable Pointsman or unreadable stack never cancels (since pointsman#325, not yet released, it starts the cancel count again; nothing is asked while no watched stack exists; a command that cannot be started fails the step); the exit code is the command's, or 1 after a cancel | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
+| action-deploy-watch | failure atomicity | claimed | an unreachable Pointsman or unreadable stack never cancels (since pointsman#325, not yet released, it starts the cancel count again; nothing is asked until CloudFormation works on a watched stack in this run; a command that cannot be started fails the step); the exit code is the command's, or 1 after a cancel | §1.11 `P-WATCH-FAILSAFE` | *(documented, actions/deploy-watch/README.md "If Pointsman cannot be reached, nothing is cancelled")* |
 | action-deploy-watch | recursive/cyclic topology | N/A — a polling loop bounded by the deploy command's lifetime | — | — | *(documented, actions/deploy-watch/README.md "How it decides")* |
 | action-deploy-watch | callback execution | N/A — `run` is executed with `bash -c` as written and is a trusted workflow-author input (§1.7); the Action does not sanitise it |  — | *(documented, actions/deploy-watch/action.yml `run`: "Comes from the workflow, never from event data")* |
 | action-deploy-watch | serialization/reconstruction | claimed | `aws` CLI JSON is parsed and reduced to a fixed set of fields, reasons truncated to 300 characters | §1.11 `P-WATCH-FAILSAFE` | *(maintainer, 2026-10)* |
@@ -2134,7 +2135,7 @@ what voids it.
   pending}`, from the profile's `people_check`;
   `actions/triage/triage.mjs:75`), and since pointsman#235 (`v0.18.0`) also
   for an answer for a test token (`test: true`), and the `action` output
-  is then `test` (`actions/triage/triage.mjs:162`); the issue text is sent to Pointsman as
+  is then `test` (`actions/triage/triage.mjs:167`); the issue text is sent to Pointsman as
   JSON and never reaches a shell command or the job summary. Symptom:
   `x-command-injection`, `x-unlisted-label`. Tier: security-critical.
   *(documented, actions/triage/README.md "Only labels you list in `labels` are
@@ -2148,13 +2149,14 @@ what voids it.
   arrived for `quiet-minutes`; since pointsman#229 (`v0.17.1`) a `cancel`
   that a person still checks (`review: {status: pending}`, from the
   profile's `people_check`) does not count and starts the count again
-  (`actions/deploy-watch/watch.mjs:173`); since pointsman#235 (`v0.18.0`)
+  (`actions/deploy-watch/watch.mjs:185`); since pointsman#235 (`v0.18.0`)
   neither does a `cancel` for a test token (`test: true`,
-  `actions/deploy-watch/watch.mjs:175`); an unreachable or failing Pointsman, or an
+  `actions/deploy-watch/watch.mjs:187`); an unreachable or failing Pointsman, or an
   unreadable stack, never cancels, and since pointsman#325 (not yet
   released) also starts the count again, so the cancels are really in a
-  row; while none of the watched stacks exists yet, nothing is asked
-  (`actions/deploy-watch/watch.mjs:146`). Symptom: `x-unwarranted-cancel`. Tier:
+  row; until CloudFormation works on a watched stack in this run (a stack
+  in progress, or an event since the start), nothing is asked
+  (`actions/deploy-watch/watch.mjs:154`). Symptom: `x-unwarranted-cancel`. Tier:
   correctness-only (stopping a deploy is an availability effect on the
   integrator's own pipeline). *(documented, actions/deploy-watch/README.md
   "Cancel only when sure"; "If Pointsman cannot be reached, nothing is
@@ -2334,7 +2336,7 @@ the receivers must do for §1.5–§1.11 to hold.
   `packages/github/src/connector/pull-request.ts:963`); since
   pointsman#229 (`v0.17.1`) the triage Action
   (`actions/triage/triage.mjs:75`) and the deploy-watch Action
-  (`actions/deploy-watch/watch.mjs:173`); since pointsman#232
+  (`actions/deploy-watch/watch.mjs:185`); since pointsman#232
   (`v0.17.2`) the FIWARE bridge on every route: an answer with
   `review: {status: pending}` counts as checked by a person whatever the
   route's `reviewActions` (`packages/fiware/src/bridge.ts:984`), which
@@ -2621,7 +2623,7 @@ Revise the model when any of these happens:
   release, and the amendments of 2026-11-20 cover pointsman#307
   (`github_pr` per field, rate limits), #309 (GSI outside Japan, PNG
   tiles), #313 (complete probability maps, older options, names), #319
-  (connector reads), #323 (bridge writes, time limits, inputs, routes)
+  (connector reads), #323 (bridge writes, time limits, inputs, routes),
   #324 (MCP and login errors, fact lookups, Workers AI time limit) and
   #325 (triage outputs, deploy-watch before any stack, cancels in a row)
   before their release. The re-binding to

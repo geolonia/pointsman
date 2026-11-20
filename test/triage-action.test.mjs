@@ -194,6 +194,8 @@ test('labels refused after a decision: the outputs are still set, and the step f
   const r = await runAction(t, { url: s.url, event: issueEvent() });
   assert.equal(r.code, 1);
   assert.match(r.stdout, /::error::adding labels failed: HTTP 403/);
+  // The decision is still in the job summary.
+  assert.match(r.summary, /Decision `00000000-0000-4000-8000-000000000001`/);
   assert.match(r.output, /^action=auto$/m);
   assert.match(r.output, /^decision-id=00000000-0000-4000-8000-000000000001$/m);
 });

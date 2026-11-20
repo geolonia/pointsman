@@ -217,7 +217,21 @@ test('a command that cannot be started ends the step with an error (#254)', asyn
   const r = await runWatch(t, { url: p.url, command: 'true', path: '/nonexistent' });
   assert.equal(r.code, 1, r.stdout);
   assert.match(r.stdout, /could not start the command/);
+  assert.match(r.output, /^result=not-started$/m);
   assert.equal(p.asked.length, 0);
+});
+
+test('no question while an existing stack has not changed in this run (an update with a long build first, #254)', async (t) => {
+  const p = await pointsman(['cancel']);
+  t.after(p.close);
+  // The stack's last event is an hour old and it is not in progress: CloudFormation has not started.
+  const r = await runWatch(t, { url: p.url, command: 'sleep 1', aws: { ageSeconds: 3600, status: 'UPDATE_COMPLETE' } });
+  assert.equal(r.code, 0, r.stdout);
+  assert.equal(p.asked.length, 0);
+  assert.match(r.stdout, /no watched stack has changed in this run yet; not judging/);
+  // Once quiet-minutes passed without any change, one warning about the stack names.
+  assert.equal(r.stdout.match(/::warning::no watched stack \(AppStack\)/g)?.length, 1);
+  assert.match(r.output, /^result=finished$/m);
 });
 
 test('cancel-update: false only stops the command', async (t) => {
