@@ -72,7 +72,9 @@ function probabilities(where: string, value: Record<string, unknown>, allowed: s
   if (Object.keys(out).length === 0) throw new CaseError(`${where}: give at least one probability`);
   // Every option the case left out is 0, as in an answer the engine keeps:
   // a rule on an earlier decision reads a missing option as unknown.
-  return Object.fromEntries(allowed.map((k) => [k, Object.hasOwn(out, k) ? out[k]! : 0]));
+  // The given ones keep their order (a tie picks the first, as for a model's answer).
+  for (const k of allowed) if (!Object.hasOwn(out, k)) out[k] = 0;
+  return out;
 }
 
 /**

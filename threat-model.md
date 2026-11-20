@@ -385,7 +385,8 @@
   Amended 2026-11-20 a third time, before the code is released (still
   bound to `v0.18.0`), for pointsman#256, #255 and #272 (from the review of
   2026-11), in pointsman#313: a `choice` or `score` answer must give a
-  probability for every option or level, adding up to 1 within 0.02; a
+  probability for every option or level, adding up to 1 within a margin
+  for rounding (0.02 to 0.1, by the number of options); a
   probability option an earlier decision's answer does not have is
   unknown, not 0; a name or option value cannot be an `Object.prototype`
   member, and the rules read their maps with `Object.hasOwn`. Changed: a
@@ -1402,7 +1403,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 
 | Component | Dimension | Status | Conditions / boundary | Routes to | Provenance |
 | --- | --- | --- | --- | --- | --- |
-| engine-api | numeric domain | claimed | `version` 1–999999999, `days` 1–90, probabilities 0–1 (since pointsman#313, not yet released, one for every option or level, adding up to 1 within 0.02), score within the level range; anything else is 400 or `model_error` | §1.11 `P-ANSWER-SHAPE` | *(documented, openapi.yaml; docs/profile-format.md "Engine answer format")* |
+| engine-api | numeric domain | claimed | `version` 1–999999999, `days` 1–90, probabilities 0–1 (since pointsman#313, not yet released, one for every option or level, adding up to 1 within a margin for rounding (0.02, or half a hundredth per option when that is more, at most 0.1)), score within the level range; anything else is 400 or `model_error` | §1.11 `P-ANSWER-SHAPE` | *(documented, openapi.yaml; docs/profile-format.md "Engine answer format")* |
 | engine-api | failure atomicity | claimed | a decision is logged before it is returned; a failed log is a 500 and no decision; a review resolves (or, since pointsman#221 (`v0.16.0`), is closed) once or not at all | §1.11 `P-DECISION-LOGGED-FIRST`, `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/decision-log.md; docs/reviews.md)* |
 | engine-api | recursive/cyclic topology | disclaimed | `state` may be arbitrarily nested; the engine neither limits depth nor promises a bound; JSON has no cycles | §1.12 `D-STATE-SIZE` | *(documented, openapi.yaml `DecideRequest.state`)* |
 | engine-api | callback execution | claimed | policy conditions are parsed and evaluated by the engine's own parser; nothing from a profile or a state runs as code | §1.11 `P-POLICY-NOT-CODE` | *(documented, docs/profile-format.md "The engine evaluates conditions with its own parser; nothing is run as code")* |
@@ -1696,7 +1697,7 @@ what voids it.
   of the profile is answered with the right type, every option or level is
   one the profile lists, every probability is in 0–1, since pointsman#313
   (not yet released) a `choice` or `score` answer gives a probability for
-  every option or level, adding up to 1 within 0.02, and a score is within
+  every option or level, adding up to 1 within a margin for rounding (0.02, or half a hundredth per option when that is more, at most 0.1), and a score is within
   the level range; anything else is a `model_error` and the next fallback
   model is tried; a decision's `answers[*].value` is therefore always a
   boolean, a listed option or a listed level. Symptom: `bad-data-accepted`.

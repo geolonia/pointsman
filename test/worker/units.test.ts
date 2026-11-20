@@ -157,6 +157,10 @@ describe('normalizeAnswers', () => {
     expect(phase({ waiting: 0.26, creating: 0.25, rolling_back: 0.25, cleaning_up: 0.25 }).phase).toMatchObject({ value: 'waiting' });
     // Eight score levels would allow 0.04: the triage effort has four, so 1.04 is refused there too.
     expect(() => effort({ '0': 0.26, '1': 0.26, '2': 0.26, '3': 0.26 })).toThrow(ModelError);
+    // Eight levels of 0.125 written as 0.13 add up to 1.04 (plus a floating-point rest): accepted.
+    const eight = { ...triage, questions: [{ ...triage.questions[2]!, criteria: Array.from({ length: 8 }, (_, i) => `level ${i}`) }] } as typeof triage;
+    const probabilities = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [String(i), 0.13]));
+    expect(normalizeAnswers(eight, { model: 'm', answers: { effort: { type: 'score', score: 3.5, legend: {}, probabilities, confidence: 1 } } }).effort).toMatchObject({ value: 0 });
   });
 
   it('accepts a sum within 0.02 of 1 (rounding)', () => {

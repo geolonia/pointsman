@@ -53,7 +53,8 @@ function checkProbabilities(name: string, probabilities: unknown, allowed: strin
     if (!isProbability(v)) throw new ModelError(`question "${name}": invalid probability`);
     sum += v;
   }
-  if (Math.abs(sum - 1) > sumMargin(allowed.length)) throw new ModelError(`question "${name}": probabilities do not add up to 1`);
+  // 1e-9: only the error of adding floating-point numbers, so 8 × 0.13 passes a margin of 0.04.
+  if (Math.abs(sum - 1) > sumMargin(allowed.length) + 1e-9) throw new ModelError(`question "${name}": probabilities do not add up to 1`);
   return map as Record<string, number>;
 }
 

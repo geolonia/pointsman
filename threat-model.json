@@ -1480,7 +1480,7 @@
       "property": "P-ANSWER-SHAPE",
       "violation_symptom": "bad-data-accepted",
       "severity_tier": "security",
-      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (not yet released) a choice or score answer must give every option or level, adding up to 1 within 0.02, and names and option values cannot be Object.prototype members",
+      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (not yet released) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Engine answer format\": \"Answers that do not fit the profile ... are rejected with a model_error\""
     },
