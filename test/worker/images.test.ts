@@ -133,11 +133,10 @@ describe('more about images', () => {
     expect((err as Error).message).toMatch(/not kept/);
   });
 
-  it('a Workers AI error without images is cut short', async () => {
+  it('a Workers AI error without images keeps only the kind of error (#274)', async () => {
     const ai: AiRunner = { run: async () => { throw new Error(`invalid input: ${'A'.repeat(5000)}`); } };
     const err = await new WorkersAiAdapter(ai).decide(toModelRequest(profile, {}, 'clef-flash')).catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/invalid input/);
-    expect((err as Error).message.length).toBeLessThan(260);
+    expect((err as Error).message).toBe('@cf/cloudflare/clef-flash: the model call failed (Error)');
   });
 
   it('explain names the images, in English and Japanese', () => {

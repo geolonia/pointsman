@@ -73,8 +73,11 @@ switching a deployed profile to it.
 
 With `MODEL_MODE=workers-ai` the Worker needs the `AI` binding. When
 `AI_GATEWAY_ID` is set, calls go through that [AI Gateway][aig] (logs,
-caching, rate limits, 10-second timeout). Without it, calls go to Workers AI
-directly.
+caching, rate limits). Without it, calls go to Workers AI directly. Either
+way a call that takes longer than 10 seconds is a model error, and the
+next fallback model is tried. An error from the binding is logged by its
+kind only (for example `TypeError`), because its message can quote the
+request.
 
 The gateway settings are in [`ai-gateway.json`](../ai-gateway.json). Wrangler
 has no command for gateways, so `scripts/ai-gateway.mjs` creates or updates

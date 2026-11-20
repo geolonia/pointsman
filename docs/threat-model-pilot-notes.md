@@ -751,6 +751,23 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for error handling (pointsman#247, #257, #258, #274, #324, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that MCP tool errors reached the
+  caller as text and were not logged (#247), two login errors ended as JSON
+  in the browser (#257), fact lookups started before the adapter check and
+  the 502 waited for them (#258), and the Workers AI call had no time limit
+  without AI Gateway and kept the binding's message (#274).
+- **Changed**: the matrix rows for the engine API's resource complexity and
+  MCP's failure atomicity (prose, YAML), `P-STATE-NOT-STORED`, §1.1 and
+  §1.16. The citations into `src/decide.ts`, `src/oauth.ts` and
+  `src/models/workers-ai.ts` were mapped line by line by a short script;
+  seven into `src/decide.ts` that pointed at the wrong line already on
+  main were set to the line their sentence describes.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

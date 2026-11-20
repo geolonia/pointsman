@@ -69,7 +69,21 @@ function describe(p: Profile, seen: Set<string>) {
 
 function server(deps: McpDeps, caller: Caller): McpServer {
   const client = clientOf(caller);
-  const mcp = new McpServer({ name: 'pointsman', version: ENGINE_VERSION });
+  const server = new McpServer({ name: 'pointsman', version: ENGINE_VERSION });
+  // Every tool's unexpected error is logged, and the caller gets "internal
+  // error" without its details, as the REST API answers internal_error (#247).
+  // Without this the SDK sends the error's message to the caller, unlogged.
+  const mcp = {
+    registerTool: ((name: string, config: unknown, handler: (...args: unknown[]) => Promise<unknown>) =>
+      server.registerTool(name, config as never, (async (...args: unknown[]) => {
+        try {
+          return await handler(...args);
+        } catch (err) {
+          console.error(`mcp tool ${name}:`, err);
+          return failure('internal error');
+        }
+      }) as never)) as McpServer['registerTool'],
+  };
 
   /** The profiles of these ids the caller may see through MCP. */
   const seenProfiles = async (ids: string[]) => {
@@ -178,7 +192,7 @@ function server(deps: McpDeps, caller: Caller): McpServer {
     );
   }
 
-  return mcp;
+  return server;
 }
 
 /** Serve one MCP request for an authenticated caller. */

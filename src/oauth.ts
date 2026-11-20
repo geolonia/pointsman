@@ -179,8 +179,14 @@ export async function showConsent(request: Request, env: OAuthEnv, config: OAuth
 /** POST /authorize: the person allowed or denied; on allow, go to GitHub. */
 export async function answerConsent(request: Request, env: OAuthEnv, config: OAuthConfig): Promise<Response> {
   const oauth = authorizationServer(config).getOAuthApi(env);
+  let form: FormData;
   try {
-    const form = await request.formData();
+    form = await request.formData();
+  } catch {
+    // Not a form (the consent page always sends one): a page, not a 500 (#257).
+    return failurePage('the login form could not be read');
+  }
+  try {
     const handle = String(form.get('handle') ?? '');
     if (form.get('decision') !== 'approve') {
       const denied = await oauth.denyConsent(request, handle);
@@ -272,11 +278,23 @@ export async function finishLogin(request: Request, env: OAuthEnv, config: OAuth
   const code = new URL(request.url).searchParams.get('code');
   // The person declined at GitHub, or GitHub failed.
   if (!code) return deny('GitHub login was not completed');
-  const person = await githubLogin(code, data.verifier, config);
-  if (!person) return deny('GitHub did not accept the login');
-  if (!(await isMember(person.token, config))) {
-    return deny(`only members of ${config.github.orgs.join(', ')} can use Pointsman`);
+  let person: Awaited<ReturnType<typeof githubLogin>>;
+  let member: boolean;
+  try {
+    person = await githubLogin(code, data.verifier, config);
+    member = person ? await isMember(person.token, config) : false;
+  } catch (err) {
+    // GitHub down or an answer without what we need: back to the client
+    // with access_denied, not JSON in the browser (#257). The messages name
+    // only a status or a missing field, never the token.
+    // Our own errors name a status or a missing field. Anything else (a body
+    // that is not JSON, a network error) by its kind only: a parser's message
+    // can quote the body of the token exchange.
+    console.error(`login: ${err instanceof Error && err.message.startsWith('GitHub ') ? err.message : err instanceof Error ? err.name : typeof err}`);
+    return deny('GitHub could not be reached or gave an unusable answer; try again');
   }
+  if (!person) return deny('GitHub did not accept the login');
+  if (!member) return deny(`only members of ${config.github.orgs.join(', ')} can use Pointsman`);
   const { redirectTo } = await oauth.completeAuthorization({
     request: original,
     // By the account id, not the login: a login can pass to another account.
