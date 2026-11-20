@@ -785,6 +785,21 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for profile loading and size limits (pointsman#249, #259, #326, 2026-11-20)
+
+- **Why**: the review of 2026-11 found six ways of reading a set of
+  profiles, with `build-profiles` skipping subfolders and duplicate ids
+  (#249), and inputs that broke at platform limits: D1's 100 bound
+  parameters in `GET /v1/reviews`, the argument size for the KV index in
+  `publish-profiles`, the 1024 bytes of KV metadata in `tokens.mjs`, and a
+  revoke that reported success for a hash no token had (#259).
+- **Changed**: the §1.6 rows for `GET /v1/reviews` and `scripts/tokens.mjs`,
+  §1.1 and §1.16; the citations into `src/log-d1.ts` and
+  `scripts/tokens.mjs` moved to their lines.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

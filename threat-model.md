@@ -449,6 +449,18 @@
   matrix rows for both Actions' failure atomicity; the code citations
   into both Actions, moved to their lines after this change (the
   validator was not run for this amendment). No new question.
+  Amended 2026-11-20 an eighth time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#249 and #259 (from the review of
+  2026-11), in pointsman#326: the profile scripts read a set of profiles
+  one way (subfolders, distinct ids), `GET /v1/reviews` and the decision
+  log for facts bind the token's profile ids as one JSON array (a token
+  with 100 or more profiles no longer gets a 500), `publish-profiles`
+  writes the KV index from a file, and `tokens.mjs` refuses a record over
+  the KV metadata limit and a revoke of a hash no token has. Changed: the
+  §1.6 rows for `GET /v1/reviews` and `scripts/tokens.mjs`; the code
+  citations into `src/log-d1.ts` and `scripts/tokens.mjs`, moved to their
+  lines after this change (the validator was not run for this
+  amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -533,8 +545,8 @@
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
-  of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324 and #325
-  were done the same way.
+  of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325 and
+  #326 were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -550,8 +562,8 @@
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
-  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324 and
-  #325, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
+  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325
+  and #326, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1305,7 +1317,7 @@ they are security-relevant.
 | `POST /v1/decisions/{id}/feedback` | `correct` | yes (token holder) | data, type-class | none — checked against the decision's profile version | *(documented, docs/decision-log.md "Feedback")* |
 | `POST /v1/decisions/{id}/feedback` | `by`, `note` | yes (token holder) | data | `by` 1–100 characters, `note` ≤ 1000; `by` is recorded as given, not verified | *(documented, openapi.yaml `Feedback` schema; migrations/0001 comment "who corrected it, as given by the client")* |
 | `GET /v1/stats/{profile}` | `{profile}`, `?days` | yes (token holder) | resource-name, data | none — scope checked; `days` 1–90 | *(documented, openapi.yaml `/v1/stats/{profile}`)* |
-| `GET /v1/reviews` | `?profile` | yes (token holder) | resource-name | none — scope checked; at most 100 rows returned | *(documented, docs/reviews.md "Review queue")* |
+| `GET /v1/reviews` | `?profile` | yes (token holder) | resource-name | none — scope checked; at most 100 rows returned; since pointsman#326 (not yet released) the token's profile ids are bound as one JSON array, so a token with 100 or more listed profiles is answered too (D1 binds at most 100 parameters) | *(documented, docs/reviews.md "Review queue")* |
 | `POST /v1/reviews/{id}/resolve` | `action` | yes (token holder) | data | one of the profile's `people_answers`, else 400; it is the final action the client will act on; any token whose scope has the profile may resolve, also a decision another client made, and since pointsman#221 (`v0.16.0`) a question of the GitHub connector, which then carries out the action mapped to the answer (`D-RESOLVE-BY-SCOPE`): list `people_answers` | *(documented, docs/reviews.md "`action` is the final answer"; docs/github-connector.md "Asking a person", Who can answer)* |
 | `POST /v1/reviews/{id}/resolve` | `correct`, `by`, `note` | yes (token holder) | data, type-class | as for feedback; `by` is recorded as given; since pointsman#222 (`v0.16.0`) the GitHub connector sends `github:<login> (<account id>)` after its own check of the person, and no `correct` | *(documented, docs/reviews.md "Review queue")* |
 | `POST /v1/reviews/{id}/close` (since pointsman#221, `v0.16.0`) | `{id}` | yes (token holder) | resource-name | none — a UUID of a decision that the token's own client made, of a profile in its scope, else 404 as if it did not exist; a test token gets 403; only a pending review, else 409; it becomes `superseded`, sends no callback, and a later resolve gets 409 (`P-TOKEN-SCOPE`, `P-REVIEW-RESOLVED-ONCE`) | *(documented, docs/reviews.md "Closing a review")* |
@@ -1375,7 +1387,7 @@ they are security-relevant.
 | `config-repo` workflows | `engine.json` `modules` | no — the config repository's own contributors; `main` is protected | resource-name | none — names outside this repository's module catalog, a module listed twice or a pinned version that differs fail the config check and the build | *(documented, docs/modules.md "Choosing modules"; docs/deployment.md "Set up")* |
 | `config-repo` workflows | `engine.json` `ref` | no — the repository is fixed to `geolonia/pointsman` in the workflow; `ref` must be a 40-character SHA | resource-name | change `ENGINE_REPOSITORY` only on purpose | *(documented, docs/deployment.md "Updating the engine")* |
 | `config-repo` workflows | `wrangler.jsonc`, `ai-gateway.json`, the `production` environment secrets | no — operator | serialized-state | placeholders refused (`check-config.mjs`); secrets only in the three Cloudflare steps | *(documented, docs/deployment.md "What the workflows do")* |
-| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client | *(documented, README "API tokens")* |
+| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client; since pointsman#326 (not yet released) a record over 1024 bytes (the KV metadata limit) is refused before anything is written, and `revoke` refuses a hash no token has, so a mistyped hash never reports a revoke | *(documented, README "API tokens")* |
 
 ### Size, shape and rate
 
@@ -2624,9 +2636,9 @@ Revise the model when any of these happens:
   (`github_pr` per field, rate limits), #309 (GSI outside Japan, PNG
   tiles), #313 (complete probability maps, older options, names), #319
   (connector reads), #323 (bridge writes, time limits, inputs, routes),
-  #324 (MCP and login errors, fact lookups, Workers AI time limit) and
-  #325 (triage outputs, deploy-watch before any stack, cancels in a row)
-  before their release. The re-binding to
+  #324 (MCP and login errors, fact lookups, Workers AI time limit), #325
+  (triage outputs, deploy-watch before any stack, cancels in a row) and
+  #326 (profile loading, size limits) before their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to
