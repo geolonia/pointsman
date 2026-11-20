@@ -51,8 +51,9 @@ The steps: [Deploy Pointsman](../deployment.md).
   decision log there, and calls Workers AI there.
 - **A private GitHub repository**, made from
   [`template/config-repo`](../../template/config-repo/).
-- **Two secrets in that repository:** a Cloudflare API token that may edit
-  Workers, KV and D1, and the Cloudflare account id.
+- **Two secrets in that repository:** a Cloudflare API token with
+  Workers Admin, Workers KV Storage Write and D1 Write, and the Cloudflare
+  account id.
 - **Optional: an AI Gateway** for logs and limits on the AI calls. Create it
   as [Models](../models.md) says, or remove `AI_GATEWAY_ID` from the config.
 

@@ -268,8 +268,8 @@ A real AI model answered your profile, from text and from a photo. When the
 answers showed a gap, you changed the rules and proved the change with
 tests, without asking the AI again. Next:
 
-- [Choose a setup](../how-to/choose-a-setup.md): run Pointsman online, so
-  other systems can use it.
+- [Put it online](put-it-online.md): the next tutorial. Deploy your own
+  Pointsman to Cloudflare, so other systems can use it.
 - [Write a profile with an AI assistant](../authoring.md): draft your own
   profile.
 
