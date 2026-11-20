@@ -38,11 +38,11 @@ cp ../pointsman/examples/cases/lost-and-found.yaml cases/
 
 プロファイルはバージョン 1 でなければなりません。前のチュートリアルの最後で元に戻していないときは、`git -C ../pointsman checkout examples` を実行し、2 つのファイルをもう一度コピーします。
 
-デプロイはいつも決まったバージョンのエンジンを使い、自分のコンピューターのスクリプトも同じバージョンを使うべきです。そのため、設定リポジトリはフォルダー `engine/` にエンジンの写しを持ちます(Git はこのフォルダーを無視します)。バージョン 0.22.0 を取ってきます(ダウンロードに 1 分ほどかかります)。
+デプロイはいつも決まったバージョンのエンジンを使い、自分のコンピューターのスクリプトも同じバージョンを使うべきです。そのため、設定リポジトリはフォルダー `engine/` にエンジンの写しを持ちます(Git はこのフォルダーを無視します)。最新のリリースを取ってきます(ダウンロードに 1 分ほどかかります)。
 
 ```sh
 git clone https://github.com/geolonia/pointsman engine
-git -C engine checkout 42fb81afa0a2e66193f9883115452af4fd022826
+git -C engine checkout "$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)"
 pnpm --dir engine install --frozen-lockfile
 ```
 
@@ -92,17 +92,19 @@ engine/node_modules/.bin/wrangler d1 create my-pointsman
 
 ファイルを壊してしまっても、次の確認で行が示されます。
 
-`engine.json` は、全体を次の内容に置き換えます。
+そのリリースのコミットで `engine.json` を書きます。
 
-```json
+```sh
+cat > engine.json <<EOF
 {
   "repository": "geolonia/pointsman",
-  "ref": "42fb81afa0a2e66193f9883115452af4fd022826",
+  "ref": "$(git -C engine rev-parse HEAD)",
   "modules": { "facts": [] }
 }
+EOF
 ```
 
-`ref` は、どのデプロイでも使うエンジンのバージョン(0.22.0)です。忘れ物のプロファイルはデータからファクトを読まないので、`facts` は空にします。設定とプロファイルを確かめます。
+`ref` は、変えるまでどのデプロイでも使うエンジンのコミットです。忘れ物のプロファイルはデータからファクトを読まないので、`facts` は空にします。設定とプロファイルを確かめます。
 
 ```sh
 node engine/scripts/check-config.mjs
@@ -120,7 +122,7 @@ ok    profiles/lost-and-found.yaml
 
 - ファクト(たとえば浸水想定区域)を読むプロファイルには、そのモジュールを `modules.facts` に書きます。[ファクトモジュール](../../modules.md)(英語)を見てください。
 - AI Gateway は、モデルの呼び出しのログを残します。[モデル](../../models.md)(英語)を見てください。
-- 新しいエンジンを使うときは、新しい[リリース](https://github.com/geolonia/pointsman/releases)のコミットを `ref` に書き、`engine/` でもそのコミットをチェックアウトします。
+- あとで新しいエンジンを使うときは、その[リリース](https://github.com/geolonia/pointsman/releases)を `engine/` でチェックアウトし(`git -C engine fetch --tags` のあと `git -C engine checkout <tag>`)、上と同じように新しいコミットを `ref` に書きます。
 
 </details>
 

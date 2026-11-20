@@ -54,12 +54,12 @@ again.
 
 Every deploy uses one fixed version of the engine, and the scripts on your
 computer should use the same one. So the config repository keeps a copy in
-the folder `engine/`, which Git ignores. Get version 0.22.0 (the download
-takes a minute):
+the folder `engine/`, which Git ignores. Get the latest release (the
+download takes a minute):
 
 ```sh
 git clone https://github.com/geolonia/pointsman engine
-git -C engine checkout 42fb81afa0a2e66193f9883115452af4fd022826
+git -C engine checkout "$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)"
 pnpm --dir engine install --frozen-lockfile
 ```
 
@@ -117,18 +117,21 @@ line before it now ends the list, so delete its comma too. The start of
 
 If you break the file, the check below names the line.
 
-Replace the whole of `engine.json` with:
+Write `engine.json` with the commit of that release:
 
-```json
+```sh
+cat > engine.json <<EOF
 {
   "repository": "geolonia/pointsman",
-  "ref": "42fb81afa0a2e66193f9883115452af4fd022826",
+  "ref": "$(git -C engine rev-parse HEAD)",
   "modules": { "facts": [] }
 }
+EOF
 ```
 
-`ref` is the engine version (0.22.0) that every deploy uses. `facts` is
-empty, because the lost-and-found profile reads no facts from data. Check
+`ref` is the engine commit that every deploy uses, until you change it.
+`facts` is empty, because the lost-and-found profile reads no facts from
+data. Check
 the config and the profile:
 
 ```sh
@@ -148,9 +151,10 @@ ok    profiles/lost-and-found.yaml
 - A profile that reads facts (for example flood zones) needs their module in
   `modules.facts`: see [Fact modules](../modules.md).
 - An AI Gateway keeps logs of the model calls: see [Models](../models.md).
-- To use a newer engine, put the commit of a newer
-  [release](https://github.com/geolonia/pointsman/releases) into `ref`, and
-  check it out in `engine/` too.
+- To use a newer engine later, check out its
+  [release](https://github.com/geolonia/pointsman/releases) in `engine/`
+  (`git -C engine fetch --tags`, then `git -C engine checkout <tag>`), and
+  write the new commit into `ref` as above.
 
 </details>
 
