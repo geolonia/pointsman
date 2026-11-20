@@ -13,6 +13,10 @@ instead of deciding on their own.
 
 Feedback is a person's judgement, so API tokens do not get `submit_feedback`.
 
+A tool that fails for a reason the caller cannot fix (for example the
+decision log cannot be read) answers `internal error`, as the REST API
+answers `internal_error`; the details are only in the Worker's logs.
+
 Only profiles that set `mcp.visible: true` are listed or callable through MCP,
 and only those in the caller's scope; any other profile looks unknown.
 
@@ -54,6 +58,11 @@ so no vendor identity service is needed. GitHub is only the login step: its
 token is used to read the person's login and organization membership, and is
 not stored. MCP clients register themselves (dynamic client registration, or a
 client ID metadata document).
+
+When GitHub cannot be reached during the login, or answers without the
+person's login or account id, the client gets `access_denied` and the
+person can try again; the Worker's log names the cause (an HTTP status or
+the missing field, never the token).
 
 Membership is checked at login. Pointsman access tokens last one hour, and a
 login lasts at most 7 days; someone removed from the organization keeps access

@@ -422,6 +422,22 @@
   try left pending, the completed Task, the superseded retry) set to the
   line their sentence describes (the validator was not run for this
   amendment). No new question.
+  Amended 2026-11-20 a sixth time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#247, #257, #258 and #274 (from the
+  review of 2026-11), in pointsman#324: an MCP tool's unexpected error is
+  logged and answered `internal error` without its details; an OAuth
+  login that GitHub cannot complete goes back to the client as
+  `access_denied`, and a consent that is not a form gets the 400 page; no
+  fact lookup starts before the adapter check, and the 502 for failed
+  models does not wait for the facts; the Workers AI call has its time
+  limit also without AI Gateway and keeps only the kind of a binding
+  error. Changed: the matrix rows for the engine API's resource complexity
+  and MCP's failure atomicity, `P-STATE-NOT-STORED`; the code citations
+  into `src/decide.ts`, `src/oauth.ts` and `src/models/workers-ai.ts`,
+  moved to their lines after this change, and seven into `src/decide.ts`
+  that pointed at the wrong line before it set to the line their sentence
+  describes (the validator was not run for this amendment). No new
+  question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -506,8 +522,8 @@
   pointsman#243 and #271, every citation into the changed files
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
-  of 2026-11-20 for pointsman#307, #309, #313, #319 and #323 were done the
-  same way.
+  of 2026-11-20 for pointsman#307, #309, #313, #319, #323 and #324 were
+  done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -523,8 +539,8 @@
   `v0.17.2` on 2026-10-26 for pointsman#232, with no new question;
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
-  and of 2026-11-20 for pointsman#307, #309, #313, #319 and #323, before
-  their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
+  and of 2026-11-20 for pointsman#307, #309, #313, #319, #323 and #324,
+  before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1439,7 +1455,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-api | serialization/reconstruction | claimed | profiles, tokens and decisions are plain JSON read with `JSON.parse`; no class reconstruction; the `model` field from an HTTP model server is not stored | §1.11 `P-ANSWER-SHAPE` | *(maintainer, 2026-10)* |
 | engine-api | reference lifecycle | N/A — stateless per request; the module-level caches hold profiles and adapters, not request data | — | — | *(maintainer, 2026-10)* |
 | engine-api | concurrency/reentrancy | claimed | concurrent resolves of one review (since pointsman#221 (`v0.16.0`) also closes): exactly one succeeds | §1.11 `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/reviews.md "A second resolve, also at the same moment, answers 409")* |
-| engine-api | resource complexity | disclaimed | no engine-side limit on the size of `state`; policy evaluation is linear in rules × answers; model and fact calls are time-limited; the maintainer chose to disclaim the bound | §1.12 `D-STATE-SIZE` | *(maintainer, 2026-10)* |
+| engine-api | resource complexity | disclaimed | no engine-side limit on the size of `state`; policy evaluation is linear in rules × answers; model and fact calls are time-limited (since pointsman#324, not yet released, the Workers AI call also without AI Gateway); no fact lookup starts before the adapter check, and when every model fails the 502 does not wait for the fact lookups; the maintainer chose to disclaim the bound | §1.12 `D-STATE-SIZE` | *(maintainer, 2026-10)* |
 | engine-api | x-prompt-injection | disclaimed | a state author can steer the answers (since pointsman#289 also with text in images); they cannot make the engine return an answer outside the profile's types and options, or an action the policy does not produce for those answers | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-ANSWER-SHAPE`, `P-ACTION-FROM-POLICY` | *(maintainer, 2026-10)* |
 | engine-api | x-probabilistic-result | disclaimed | `p` is the model's probability of `value`, not a calibrated accuracy; answers move between model versions | §1.12 `D-MODEL-ACCURACY` | *(documented, docs/fiware-demo.md "Checked again (2026-10-15)")* |
 | engine-facts | numeric domain | claimed | positions within WGS 84 ranges; a third coordinate is dropped; non-finite numbers are refused; a pull request `number` is a whole number from 1 and `head` 40 hexadecimal characters, else `no_pr` | §1.11 `P-FACT-LOOKUP-BOUNDED`, `P-GITHUB-FACTS-FOR-HEAD` | *(documented, docs/profile-format.md "Missing GitHub facts"; maintainer, 2026-10)* |
@@ -1463,7 +1479,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-callbacks | x-prompt-injection | N/A — no model involved | — | — | *(documented, docs/reviews.md "Callbacks")* |
 | engine-callbacks | x-probabilistic-result | N/A — the payload carries final answers, not probabilities | — | — | *(documented, docs/reviews.md callback example)* |
 | engine-mcp | numeric domain | claimed | access tokens live 1 h, grants 7 days | §1.11 `P-OAUTH-ORG-MEMBERSHIP` | *(documented, docs/mcp.md "Pointsman access tokens last one hour, and a login lasts at most 7 days")* |
-| engine-mcp | failure atomicity | claimed | MCP decisions go through the same checks and log as REST | §1.11 `P-DECISION-LOGGED-FIRST` | *(documented, docs/mcp.md "Decisions through MCP")* |
+| engine-mcp | failure atomicity | claimed | MCP decisions go through the same checks and log as REST; since pointsman#324 (not yet released) a tool's unexpected error is logged and answered `internal error` without its details (`src/mcp.ts:82`), and a login GitHub cannot complete goes back to the client as `access_denied` (`src/oauth.ts:291`) | §1.11 `P-DECISION-LOGGED-FIRST` | *(documented, docs/mcp.md "Decisions through MCP")* |
 | engine-mcp | recursive/cyclic topology | N/A — stateless Streamable HTTP; no sessions | — | — | *(documented, docs/mcp.md "Streamable HTTP, stateless")* |
 | engine-mcp | callback execution | disclaimed | the OAuth library fetches a client-ID metadata document from the URL the client names; dynamic client registration is open | §1.12 `D-OPEN-CLIENT-REGISTRATION` | *(documented, docs/mcp.md "MCP clients register themselves (dynamic client registration, or a client ID metadata document)")* |
 | engine-mcp | serialization/reconstruction | claimed | tool inputs are validated with zod schemas; grant props are stored encrypted by the library | §1.11 `P-MCP-VISIBILITY` | *(maintainer, 2026-10)* |
@@ -1945,7 +1961,9 @@ what voids it.
   a SHA-256 of each image (`src/decide.ts:308`), and a call with images
   goes through the AI Gateway with its log off (`collectLog: false`,
   `src/models/workers-ai.ts:51`), so `collect_logs` does not void the
-  property for images.
+  property for images. Since pointsman#324 (not yet released), a Workers
+  AI binding error keeps only the kind of error, not its message, which
+  could quote the state (`src/models/workers-ai.ts:60`).
 - **`P-SECRETS-NOT-LOGGED`** — API keys for the model server and the routing
   server, the callback secret, the GitHub client secret, and the GitHub fact
   token, GitHub App key and installation tokens never appear in logs, error
@@ -2590,7 +2608,8 @@ Revise the model when any of these happens:
   release, and the amendments of 2026-11-20 cover pointsman#307
   (`github_pr` per field, rate limits), #309 (GSI outside Japan, PNG
   tiles), #313 (complete probability maps, older options, names), #319
-  (connector reads) and #323 (bridge writes, time limits, inputs, routes)
+  (connector reads), #323 (bridge writes, time limits, inputs, routes)
+  and #324 (MCP and login errors, fact lookups, Workers AI time limit)
   before their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to

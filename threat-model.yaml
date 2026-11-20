@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:333a0e409de5fe98645e5ad2083e5af30feccdf5c921c495b64c1f88114634c4"
+prose_version: "threat-model.md@sha256:1e078b83c17403b24850a4ce054d3a9873a5cbecbb7fb72575443433401cffc2"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -800,7 +800,7 @@ contract_dimensions:
   - {component: engine-api, dimension: serialization-reconstruction, status: claimed, conditions: "plain JSON only; the HTTP model server's model field is not stored", property_id: P-ANSWER-SHAPE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: reference-lifecycle, status: not-applicable, conditions: "stateless per request; module-level caches hold profiles and adapters, not request data", provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: concurrency-reentrancy, status: claimed, conditions: "concurrent resolves of one review (since pointsman#221 (v0.16.0) also closes): exactly one succeeds", property_id: P-REVIEW-RESOLVED-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A second resolve, also at the same moment, answers 409\""}}
-  - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited; the maintainer chose to disclaim the bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited (since pointsman#324, not yet released, the Workers AI call also without AI Gateway; no fact lookup before the adapter check; the 502 for failed models does not wait for facts); the maintainer chose to disclaim the bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
   # engine-facts
@@ -827,7 +827,7 @@ contract_dimensions:
   - {component: engine-callbacks, dimension: x-probabilistic-result, status: not-applicable, conditions: "the payload carries final answers, not probabilities", provenance: {kind: documented, source: "docs/reviews.md callback example"}}
   # engine-mcp
   - {component: engine-mcp, dimension: numeric-domain, status: claimed, conditions: "access tokens 1 h, grants 7 days", property_id: P-OAUTH-ORG-MEMBERSHIP, provenance: {kind: documented, source: "docs/mcp.md \"Pointsman access tokens last one hour\""}}
-  - {component: engine-mcp, dimension: failure-atomicity, status: claimed, conditions: "MCP decisions go through the same checks and log as REST", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/mcp.md \"Decisions through MCP\""}}
+  - {component: engine-mcp, dimension: failure-atomicity, status: claimed, conditions: "MCP decisions go through the same checks and log as REST; since pointsman#324 (not yet released) a tool's unexpected error is logged and answered internal error without details, and a login GitHub cannot complete goes back as access_denied", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/mcp.md \"Decisions through MCP\""}}
   - {component: engine-mcp, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "stateless Streamable HTTP; no sessions", provenance: {kind: documented, source: "docs/mcp.md \"Streamable HTTP, stateless\""}}
   - {component: engine-mcp, dimension: callback-execution, status: disclaimed, conditions: "the OAuth library fetches a client-ID metadata document from a client-named URL; dynamic client registration is open", property_id: D-OPEN-CLIENT-REGISTRATION, provenance: {kind: documented, source: "docs/mcp.md \"MCP clients register themselves\""}}
   - {component: engine-mcp, dimension: serialization-reconstruction, status: claimed, conditions: "tool inputs validated with zod; grant props stored encrypted by the library", property_id: P-MCP-VISIBILITY, provenance: {kind: maintainer, date: "2026-10"}}
