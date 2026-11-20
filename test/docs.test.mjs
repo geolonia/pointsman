@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const run = (script, env = {}) => spawnSync(process.execPath, [join(root, script)], { cwd: root, encoding: 'utf8', env: { ...process.env, ...env } });
@@ -260,4 +261,27 @@ test('a table row that starts with inline HTML is still a row', (t) => {
   });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /3 table rows, docs\/authoring\.md has 4/);
+});
+
+test('openapi.yaml has no value cut by a comma and no unknown schema keyword (#246)', async () => {
+  const { openapiProblems } = await import('../scripts/lib/openapi-check.mjs');
+  const text = readFileSync(join(root, 'openapi.yaml'), 'utf8');
+  assert.deepEqual(openapiProblems(parseYaml(text)), []);
+  const cut = text.replace('description: "The most likely level, 0 = lowest."', 'description: The most likely level, 0 = lowest.');
+  assert.notEqual(cut, text);
+  assert.match(openapiProblems(parseYaml(cut)).join('\n'), /ScoreAnswer\.properties\.value\.0 = lowest\.: no value/);
+  const typo = text.replace('replaces: { type: string, format: uuid,', 'replaces: { type: string, fromat: uuid,');
+  assert.notEqual(typo, text);
+  assert.match(openapiProblems(parseYaml(typo)).join('\n'), /unknown keyword: "fromat"/);
+});
+
+test('openapi.yaml describes every /v1 route of the Worker, and only those (#264)', () => {
+  const api = parseYaml(readFileSync(join(root, 'openapi.yaml'), 'utf8'));
+  const inSpec = Object.entries(api.paths).flatMap(([path, item]) =>
+    ['get', 'post', 'put', 'patch', 'delete'].filter((m) => item[m]).map((m) => `${m.toUpperCase()} ${path}`)).sort();
+  const app = readFileSync(join(root, 'src', 'app.ts'), 'utf8');
+  const routes = [...app.matchAll(/app\.(get|post|put|patch|delete)\('(\/v1\/[^']*)'/g)]
+    .map(([, m, path]) => `${m.toUpperCase()} ${path.replace(/:(\w+)/g, '{$1}')}`).sort();
+  assert.ok(routes.length > 5, 'routes found in src/app.ts');
+  assert.deepEqual(routes, inSpec);
 });

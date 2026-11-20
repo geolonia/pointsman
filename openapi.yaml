@@ -525,7 +525,7 @@ components:
         lang: { type: string, enum: [en, ja] }
         title: { type: string }
         description: { type: string }
-        model: { type: string, description: Which model answers, or that no model is asked. }
+        model: { type: string, description: "Which model answers, or that no model is asked." }
         input: { type: string, description: What the model sees of the request. }
         questions: { type: array, items: { type: string } }
         facts: { type: array, items: { type: string } }
@@ -543,8 +543,8 @@ components:
               action: { type: string }
               text: { type: string, description: The rule as a sentence. }
         order: { type: string, description: How the rules are checked. }
-        default: { type: string, description: The action when no rule matches, as a sentence. }
-        people: { type: array, items: { type: string }, description: Which actions a person checks, and the answers they can give. }
+        default: { type: string, description: "The action when no rule matches, as a sentence." }
+        people: { type: array, items: { type: string }, description: "Which actions a person checks, and the answers they can give." }
         notes: { type: array, items: { type: string } }
     ReplayResult:
       description: A changed policy replayed on logged decisions (docs/profile-format.md#replay).
@@ -655,7 +655,7 @@ components:
         profile: { type: string }
         profile_version: { type: integer, minimum: 1 }
         action: { type: string }
-        outcome: { type: string, description: The person's answer when a review was resolved, otherwise the action. }
+        outcome: { type: string, description: "The person's answer when a review was resolved, otherwise the action." }
         reviewed: { type: boolean }
         read:
           type: object
@@ -718,7 +718,7 @@ components:
           required: [status]
           properties:
             status: { type: string, enum: [pending, resolved, superseded] }
-            final_action: { type: string, description: The person's action, once resolved. }
+            final_action: { type: string, description: "The person's action, once resolved." }
             resolved_at: { type: string, format: date-time }
         versions: { $ref: '#/components/schemas/Versions' }
     Versions:
@@ -754,7 +754,7 @@ components:
           properties:
             pending: { type: integer, minimum: 0 }
             resolved: { type: integer, minimum: 0 }
-            superseded: { type: integer, minimum: 0, description: Reviews closed because a newer decision replaced theirs, or closed by the client that made them. }
+            superseded: { type: integer, minimum: 0, description: "Reviews closed because a newer decision replaced theirs, or closed by the client that made them." }
             final_actions:
               type: object
               description: Resolved reviews per final action.
@@ -805,7 +805,7 @@ components:
               - { $ref: '#/components/schemas/RequiredSnapshot' }
               - { $ref: '#/components/schemas/HiddenRequired' }
         idempotency_key: { type: string, description: The Idempotency-Key the decision was made with. }
-        replaces: { type: string, format: uuid, description: The earlier decision of the same profile, ref and client that this one replaced. }
+        replaces: { type: string, format: uuid, description: "The earlier decision of the same profile, ref and client that this one replaced." }
         versions: { $ref: '#/components/schemas/Versions' }
         discarded_at:
           type: string
@@ -999,7 +999,7 @@ components:
       required: [type, value, p, score, probabilities]
       properties:
         type: { const: score }
-        value: { type: integer, minimum: 0, description: The most likely level, 0 = lowest. }
+        value: { type: integer, minimum: 0, description: "The most likely level, 0 = lowest." }
         p: { $ref: '#/components/schemas/Probability' }
         score: { type: number, minimum: 0, description: Probability-weighted level; can fall between levels. }
         probabilities:
