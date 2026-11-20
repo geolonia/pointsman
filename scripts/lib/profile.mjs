@@ -63,6 +63,10 @@ function schemaErrors() {
       if (e.keyword === 'enum' && e.propertyName !== undefined) {
         return `${where}: "${e.propertyName}" is not a setting of this fact type (${e.params.allowedValues.join(', ')})`;
       }
+      // The name pattern refuses Object.prototype members (schema $defs/name).
+      if (e.keyword === 'pattern' && String(e.params.pattern).startsWith('^(?!(?:__proto__')) {
+        return `${where}: letters, digits, "_", ".", "-" (at most 100), and not a name every object already has (__proto__, constructor, prototype, toString, valueOf, hasOwnProperty and the like)`;
+      }
       const extra = e.keyword === 'additionalProperties'
         ? ` "${e.params.additionalProperty}"`
         : e.keyword === 'enum' ? ` (${e.params.allowedValues.join(', ')})` : '';

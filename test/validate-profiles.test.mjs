@@ -299,6 +299,10 @@ test('names that plain objects already have are refused: they would break the an
     assert.ok(validateProfile(asOption).some((e) => e.includes('/questions/1/criteria/0/value')), `option ${bad}`);
     const asInput = { ...base, input: [{ name: bad, path: '$.x' }] };
     assert.ok(validateProfile(asInput).some((e) => e.includes('/input/0/name')), `input ${bad}`);
+    const asRequires = { ...base, requires: [{ name: bad, profile: 'other' }] };
+    assert.ok(validateProfile(asRequires).some((e) => e.includes('/requires/0/name')), `requires ${bad}`);
+    // The message says why, not the pattern.
+    assert.ok(validateProfile(asQuestion).some((e) => e.includes('not a name every object already has')), `message ${bad}`);
   }
   // Only the exact names: longer names that contain them are fine.
   assert.deepEqual(validateProfile({ ...base, questions: [{ ...base.questions[0], name: 'constructor_risk' }, base.questions[1]] }), []);

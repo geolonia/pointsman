@@ -9,14 +9,18 @@
 // Answers are checked against the profile, so a backend that returns an
 // unknown option or misses a question fails loudly instead of driving an
 // action. A probability map must name every option (or level) and add up to
-// 1 within SUM_MARGIN: rules read probabilities.<option>, and a map such as
+// 1 within sumMargin: rules read probabilities.<option>, and a map such as
 // {low: 1} or {low: 1, high: 1} is not an answer.
 
 import type { Answer, Profile } from '../types';
 import { ModelError, type ModelAnswer, type ModelResponse } from './adapter';
 
-/** How far the probabilities of one answer may add up from 1 (rounding by the backend). */
-const SUM_MARGIN = 0.02;
+/**
+ * How far the probabilities of one answer may add up from 1: rounding by
+ * the backend, up to half a hundredth per option (eight options of 0.125
+ * rounded to 0.13 add up to 1.04), at least 0.02 and at most 0.1.
+ */
+const sumMargin = (options: number) => Math.min(0.1, Math.max(0.02, options * 0.005));
 
 function isProbability(x: unknown): x is number {
   return typeof x === 'number' && x >= 0 && x <= 1;
@@ -43,14 +47,13 @@ function checkProbabilities(name: string, probabilities: unknown, allowed: strin
   for (const k of Object.keys(map)) {
     if (!allowed.includes(k)) throw new ModelError(`question "${name}": unknown option in the answer`);
   }
-  if (Object.keys(map).length === 0) throw new ModelError('empty probabilities');
   if (!allowed.every((k) => Object.hasOwn(map, k))) throw new ModelError(`question "${name}": an option is missing from the answer`);
   let sum = 0;
   for (const v of Object.values(map)) {
-    if (!isProbability(v)) throw new ModelError('invalid probability');
+    if (!isProbability(v)) throw new ModelError(`question "${name}": invalid probability`);
     sum += v;
   }
-  if (Math.abs(sum - 1) > SUM_MARGIN) throw new ModelError(`question "${name}": probabilities do not add up to 1`);
+  if (Math.abs(sum - 1) > sumMargin(allowed.length)) throw new ModelError(`question "${name}": probabilities do not add up to 1`);
   return map as Record<string, number>;
 }
 

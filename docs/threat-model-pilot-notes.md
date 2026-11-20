@@ -712,8 +712,8 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   were not checked for completeness or their sum (#272), that a probability
   option an older decision lacks read as 0 (#256), and that names such as
   `__proto__` or `constructor` broke the answer and fact maps (#255).
-- **Changed**: `P-ANSWER-SHAPE` (prose, YAML and JSON) and
-  `P-CHAIN-INPUTS-FROM-LOG`, each with one new documented claim, so the
+- **Changed**: `P-ANSWER-SHAPE` and `P-CHAIN-INPUTS-FROM-LOG` (prose, YAML
+  and JSON), each with one new documented claim, so the
   counts are 466 documented in §1.1 and 549 in the JSON; the matrix row for
   the API's numeric domain; §1.1 and §1.16. The citation into
   `src/policy.ts` was mapped by a short script and checked by hand.

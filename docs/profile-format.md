@@ -217,7 +217,7 @@ Policy conditions use these fields, for example `team.p >= 0.85` or
 `stuck.yes >= 0.9` (see below). Answers that do not fit the profile (missing question,
 unknown option, probability outside 0–1) are rejected with a `model_error`,
 and so is a `choice` or `score` answer whose `probabilities` are not a map
-with every option (or level), or do not add up to 1 within 0.02: a rule
+with every option (or level), or do not add up to 1 (within 0.02, or half a hundredth per option when that is more, at most 0.1): a rule
 reads `probabilities.<option>`, and `{ "low": 1 }` is not an answer.
 
 ## Policy conditions
@@ -310,9 +310,9 @@ A case gives either **answers** or a **state**:
   a model, so these cases are free and always give the same result.
   - yes/no: `true`, `false`, or the probability of yes (`0.45`)
   - choice: an option (`closedWeather`), or probabilities by option
-    (`{ closedWeather: 0.7, other: 0.3 }`)
+    (`{ closedWeather: 0.7, other: 0.3 }`); the options left out are 0
   - score: a level (`2`), or probabilities by level (`{ "1": 0.2, "2": 0.8 }`);
-    the weighted level is computed from them
+    the weighted level is computed from them, and the levels left out are 0
   - facts: the fact's fields, or `missing`, or `{ missing: <reason> }`. A
     fact left out is missing. The fields follow what the engine gives: the
     first one says whether something was found (`inside`, `found`,

@@ -1496,7 +1496,7 @@
       "property": "P-CHAIN-INPUTS-FROM-LOG",
       "violation_symptom": "x-authorization-bypass, x-unauthorized-action, info-leak",
       "severity_tier": "security",
-      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions",
+      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (not yet released) also a probability option its answer lacks",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""
     },

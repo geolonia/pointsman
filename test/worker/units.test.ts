@@ -151,6 +151,14 @@ describe('normalizeAnswers', () => {
     expect(() => effort(probabilities)).toThrow(ModelError);
   });
 
+  it('allows half a hundredth per option for rounding, at most 0.1', () => {
+    // Four options: the margin is 0.02 (4 × 0.005); 1.04 is refused, 1.01 is fine.
+    expect(() => phase({ waiting: 0.26, creating: 0.26, rolling_back: 0.26, cleaning_up: 0.26 })).toThrow(ModelError);
+    expect(phase({ waiting: 0.26, creating: 0.25, rolling_back: 0.25, cleaning_up: 0.25 }).phase).toMatchObject({ value: 'waiting' });
+    // Eight score levels would allow 0.04: the triage effort has four, so 1.04 is refused there too.
+    expect(() => effort({ '0': 0.26, '1': 0.26, '2': 0.26, '3': 0.26 })).toThrow(ModelError);
+  });
+
   it('accepts a sum within 0.02 of 1 (rounding)', () => {
     expect(phase({ waiting: 0.335, creating: 0.335, rolling_back: 0.335, cleaning_up: 0.005 }).phase).toMatchObject({ value: 'waiting' });
     expect(effort({ '0': 0.25, '1': 0.26, '2': 0.25, '3': 0.255 }).effort).toMatchObject({ value: 1 });

@@ -202,7 +202,8 @@ export function parseRoutes(json: string): Route[] {
   return routes;
 }
 
-const REQUIREMENT_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+// As profile names of required decisions (schema $defs/name): not an Object.prototype member.
+const REQUIREMENT_NAME = /^(?!(?:__proto__|constructor|prototype|toString|toLocaleString|valueOf|hasOwnProperty|isPrototypeOf|propertyIsEnumerable|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__)$)[A-Za-z0-9_.-]{1,100}$/;
 
 function parseRequires(requires: unknown, inputs: string[], where: string): Record<string, Requirement> {
   if (!requires || typeof requires !== 'object' || Array.isArray(requires) || Object.keys(requires).length === 0) {

@@ -178,9 +178,13 @@ action it leaves a report at needs a way out (see the example above).
 - A decision of an older version that lacks a field gives *unknown* at run
   time. So does a probability option its answer does not have
   (`answers.<question>.probabilities.<option>`), while in the current
-  answers a probability is never left out. When a person corrected an
-  answer, every option the model's answer had stays, at 0 except the
-  person's value.
+  answers a probability is never left out. This also holds for decisions
+  logged before model answers had to name every option: a rule on an
+  option they left out does not match, and the decision falls through to a
+  later rule or the default. When a person corrected an answer, every
+  option the model's answer had stays, at 0 except the person's value. In
+  a test case, an earlier decision's answer written short (`category:
+  weather`) has every other option at 0, as the engine keeps it.
 
 ## In the request: decisions by id, read from the log
 

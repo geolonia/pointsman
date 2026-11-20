@@ -3,6 +3,7 @@ import { compileCondition, compilePolicy, peopleAnswers, policyErrors, PolicyErr
 import type { Answer, Fact, FactSpec, Profile, Question, RequiredDecisionInput } from '../../src/types';
 import bundledProfiles from '../../generated/profiles.json';
 import { inputOf } from '../../src/chains';
+import { caseInputs } from '../../src/cases';
 import type { DecisionRecord } from '../../src/log';
 
 const questions: Question[] = [
@@ -322,6 +323,14 @@ describe('decisions', () => {
     // So a rule on the option the person did not choose still reads 0, not unknown.
     const policy = compilePolicy(final([{ when: 'decisions.check.answers.category.probabilities.weather < 0.5', action: 'hit' }]), required);
     expect(policy.decide({}, {}, { check: { ...checkInput, answers: { ...checkInput.answers, ...input.answers } } }).action).toBe('hit');
+  });
+
+  it('a test case that writes an earlier answer short has every other option at 0, as the engine keeps it', () => {
+    const final1 = { id: 'final', ...final([{ when: 'decisions.check.answers.category.probabilities.works < 0.5', action: 'hit' }]) } as unknown as Profile;
+    const req = { 'road-check': { id: 'road-check', ...check } as unknown as Profile };
+    const { decisions } = caseInputs({ name: 'c', expect: 'hit', answers: {}, decisions: { check: { action: 'publish', outcome: 'publish', answers: { category: 'weather' } } } } as never, final1, req);
+    expect(decisions.check!.answers.category).toMatchObject({ probabilities: { weather: 1, works: 0 } });
+    expect(compilePolicy(final1, req as unknown as RequiredProfiles).decide({}, {}, decisions).action).toBe('hit');
   });
 
   it('reads a fact of an older decision named like an object member as never looked up', () => {

@@ -1,4 +1,4 @@
-# expect: /questions/0/name: must match pattern
+# expect: /questions/0/name: letters, digits
 id: bad-question-name
 version: 1
 title: { en: Test, ja: テスト }

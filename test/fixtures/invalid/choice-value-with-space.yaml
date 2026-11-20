@@ -1,4 +1,4 @@
-# expect: /questions/0/criteria/1/value: must match pattern
+# expect: /questions/0/criteria/1/value: letters, digits
 id: choice-value-with-space
 version: 1
 title: { en: Test, ja: テスト }
