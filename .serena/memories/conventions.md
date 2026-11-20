@@ -5,6 +5,6 @@ Authoritative: CONTRIBUTING.md and AGENTS.md. Easy to miss:
 - New fact source = fact module in `packages/`; new shared fact type = change to `packages/module-api/src/capabilities.ts`. Connectors call the engine only through the public API (docs/connectors.md).
 - Only example profiles here; real config lives in a private repo. `check:public` catches 32-hex ids, real resource ids or routes in wrangler configs, and profiles outside the example and test folders. It does not catch internal URLs or real profile content put into `examples/profiles/`: check those by hand.
 - CHANGELOG.md: only the release PR writes it (AGENTS.md "Changelog").
-- Version appears in package.json, `openapi.yaml`, `src/version.ts` and each `packages/*` (released together, docs/modules.md). `test/modules.test.mjs` checks fixed package lists that leave out `packages/coderabbit`: bump that one by hand.
+- Version appears in package.json, `openapi.yaml`, `src/version.ts` and each `packages/*` (released together, docs/modules.md). `test/modules.test.mjs` checks every folder in `packages/`.
 - Docs: English page in `docs/<group>/` plus Japanese in `docs/ja/<group>/` with the same headings and code; terms in `docs-site/terms-ja.md`. Moved page → add old URL to `site/_redirects`. New example profile → link it from one `examples/<topic>/README.md` (a test checks).
 - Plain English in docs, PRs and commits (issue intake has its own language rule in AGENTS.md); DCO sign-off (`git commit -s`); small PRs with tests.
