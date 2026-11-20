@@ -720,6 +720,20 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
 - **Not run**: the plugin's validator and the backtest (Q49 still waits).
 - **Questions**: none.
 
+## Amendment for connector reads (pointsman#251, #252, #319, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that the GitHub connector read a
+  list answer that is not a list as empty and stopped at 1,000 comments
+  without saying so, which could post a second comment (#251), and read a
+  pull request without a `state` as closed (#252).
+- **Changed**: the matrix row for the connector's serialization (prose,
+  YAML), §1.1 and §1.16. The citations into
+  `packages/github/src/connector/github.ts` and `pull-request.ts` were
+  mapped line by line by a short script; none of the cited lines changed.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
