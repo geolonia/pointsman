@@ -206,7 +206,7 @@ function httpApi(lang) {
   const inlineFields = (s) => {
     if (!s || s.$ref || !s.properties) return [];
     return [table([w.field, w.type, w.required, w.description], Object.entries(s.properties).map(([k, p]) => [
-      code(k), schemaName(p) || 'object', (s.required ?? []).includes(k) ? w.yes : w.no, resolve(p)?.description ?? p.description,
+      code(k), (p.$ref ? schemaName(p) : paramType(p)) || 'object', (s.required ?? []).includes(k) ? w.yes : w.no, resolve(p)?.description ?? p.description,
     ])), ''];
   };
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
@@ -258,9 +258,9 @@ function httpApi(lang) {
   }
   return page(lang, lang === 'en'
     ? { order: 50, title: 'HTTP API', description: 'Every endpoint of the Pointsman HTTP API, with parameters, responses and schemas.',
-        intro: `The Pointsman HTTP API under \`/v1\`. Every request needs an API token in the header \`Authorization: Bearer <token>\`. The full description, for tools that read OpenAPI, is [openapi.yaml](${rel(lang, '../openapi.yaml')}). The Worker also serves routes that are not part of this API and not in openapi.yaml: \`/mcp\` and the GitHub login for it (\`/authorize\`, \`/callback\`, \`/oauth/*\`, \`/.well-known/*\`; see [MCP server](${rel(lang, 'mcp.md')})), and the connectors' webhooks (\`/connectors/*\`; see [Connectors](${rel(lang, 'connectors.md')})). They have their own authentication.` }
+        intro: `The Pointsman HTTP API under \`/v1\`. Every request needs an API token in the header \`Authorization: Bearer <token>\`. The full description, for tools that read OpenAPI, is [openapi.yaml](${rel(lang, '../openapi.yaml')}). The Worker also serves these routes, which are not part of this API and not in openapi.yaml. They have their own authentication.\n\n- \`/mcp\` and the GitHub login for it (\`/authorize\`, \`/callback\`, \`/oauth/*\`, \`/.well-known/*\`): [MCP server](${rel(lang, 'mcp.md')})\n- the connectors' webhooks (\`/connectors/*\`): [Connectors](${rel(lang, 'connectors.md')})` }
     : { order: 50, title: 'HTTP API', description: 'Pointsman の HTTP API のすべてのエンドポイントと、パラメーター、レスポンス、スキーマです。',
-        intro: `\`/v1\` の下にある Pointsman の HTTP API です。どのリクエストにも、ヘッダー \`Authorization: Bearer <token>\` で API トークンを付けます。OpenAPI を読むツール向けの完全な定義は [openapi.yaml](${rel(lang, '../openapi.yaml')}) にあります。Worker はこの API に含まれず openapi.yaml にもないルートも提供します。\`/mcp\` とそのための GitHub サインイン(\`/authorize\`、\`/callback\`、\`/oauth/*\`、\`/.well-known/*\`。[MCP サーバー](${rel(lang, 'mcp.md')})を参照)と、コネクターの Webhook(\`/connectors/*\`。[コネクター](${rel(lang, 'connectors.md')})を参照)です。これらは別の方法で認証します。` },
+        intro: `\`/v1\` の下にある Pointsman の HTTP API です。どのリクエストにも、ヘッダー \`Authorization: Bearer <token>\` で API トークンを付けます。OpenAPI を読むツール向けの完全な定義は [openapi.yaml](${rel(lang, '../openapi.yaml')}) にあります。Worker は、この API に含まれず openapi.yaml にもない次のルートも提供します。これらは別の方法で認証します(説明は英語のページです)。\n\n- \`/mcp\` と、そのための GitHub サインイン(\`/authorize\`、\`/callback\`、\`/oauth/*\`、\`/.well-known/*\`): [MCP サーバー](${rel(lang, 'mcp.md')})\n- コネクターの Webhook(\`/connectors/*\`): [コネクター](${rel(lang, 'connectors.md')})` },
     sections);
 }
 

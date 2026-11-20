@@ -280,8 +280,14 @@ test('openapi.yaml describes every /v1 route of the Worker, and only those (#264
   const inSpec = Object.entries(api.paths).flatMap(([path, item]) =>
     ['get', 'post', 'put', 'patch', 'delete'].filter((m) => item[m]).map((m) => `${m.toUpperCase()} ${path}`)).sort();
   const app = readFileSync(join(root, 'src', 'app.ts'), 'utf8');
-  const routes = [...app.matchAll(/app\.(get|post|put|patch|delete)\('(\/v1\/[^']*)'/g)]
+  const routes = [...app.matchAll(/app\.(get|post|put|patch|delete)\(\s*['"`](\/v1\/[^'"`]*)['"`]/g)]
     .map(([, m, path]) => `${m.toUpperCase()} ${path.replace(/:(\w+)/g, '{$1}')}`).sort();
   assert.ok(routes.length > 5, 'routes found in src/app.ts');
+  // Every /v1 path passed to a call is one of those routes (or the /v1/*
+  // middleware), so a route written another way (app.all, app.on, app.route)
+  // fails here instead of being missed.
+  const literals = [...app.matchAll(/\(\s*['"`](\/v1\/[^'"`]*)['"`]/g)].map(([, p]) => p).filter((p) => p !== '/v1/*');
+  assert.equal(literals.length, routes.length, `every /v1 path passed to a call in src/app.ts is an app.<method>('/v1/…') route: ${literals.join(', ')}`);
+  assert.doesNotMatch(app, /:\w+[?{]/, 'optional or pattern parameters are not mapped to openapi.yaml here');
   assert.deepEqual(routes, inSpec);
 });

@@ -463,6 +463,7 @@ components:
       description: Missing, malformed, unknown or revoked token.
       headers:
         WWW-Authenticate:
+          description: Always Bearer, the scheme the API takes.
           schema: { type: string, const: Bearer }
       content:
         application/json:
