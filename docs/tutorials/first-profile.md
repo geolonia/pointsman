@@ -219,6 +219,8 @@ profile was right.
 You wrote a profile, read it as sentences, tested it with examples, made a
 decision, and checked it as a person. Next:
 
+- [Real answers, with photos](real-answers.md): the next tutorial. A real AI
+  model answers, also from photos.
 - [Profile format](../profile-format.md): every field, also facts and
   chains.
 - [Write a profile with an AI assistant](../authoring.md): the same steps,

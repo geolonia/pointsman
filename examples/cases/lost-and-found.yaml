@@ -1,0 +1,21 @@
+profile: lost-and-found
+cases:
+  - name: a goldfish is looked after at once
+    expect: care-now
+    answers: { kind: alive, perishable: 0.95 }
+
+  - name: a wallet goes to the police
+    expect: police
+    answers: { kind: id-or-money, perishable: 0.05 }
+
+  - name: a half-eaten bento is thrown away
+    expect: discard
+    answers: { kind: food, perishable: 0.9 }
+
+  - name: a clear umbrella goes on the shelf
+    expect: shelf
+    answers: { kind: umbrella, perishable: 0.02 }
+
+  - name: an unclear item goes to a person
+    expect: review
+    answers: { kind: other, perishable: 0.5 }

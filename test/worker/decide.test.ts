@@ -122,7 +122,7 @@ describe('GET /v1/profiles', () => {
     const res = await exports.default.fetch(`${BASE}/v1/profiles`, { headers: auth });
     expect(res.status).toBe(200);
     const { profiles } = await json(res, contract.profileList);
-    expect(profiles.map((p: any) => p.id)).toEqual(['deploy-progress', 'evacuation-access-check', 'issue-triage', 'pr-docs-check', 'road-closure-final', 'road-restriction-check', 'workflow-check']);
+    expect(profiles.map((p: any) => p.id)).toEqual(['deploy-progress', 'evacuation-access-check', 'issue-triage', 'lost-and-found', 'pr-docs-check', 'road-closure-final', 'road-restriction-check', 'workflow-check']);
     expect(profiles[2]).toMatchObject({ version: 1, versions: [1], title: { en: 'Issue triage' } });
   });
 });

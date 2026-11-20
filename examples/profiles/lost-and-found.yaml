@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../schema/profile-v1.schema.json
+# Example profile for the tutorial "Real answers, with photos"
+# (docs/tutorials/real-answers.md): a station's lost and found desk decides
+# what happens to an item that someone handed in, from a short description
+# and up to two photos.
+id: lost-and-found
+version: 1
+title:
+  en: Lost and found
+  ja: 忘れ物の受付
+description:
+  en: Decide what a station does with a found item, from its description and photos.
+  ja: 駅に届いた忘れ物をどう扱うかを、説明と写真から判定する。
+model: clef-flash
+fallback_models: [clef]
+input:
+  - { name: description, path: $.item.description }
+  - { name: found_at, path: $.item.found_at }
+images: { path: $.item.photos, max: 2 }
+questions:
+  - name: kind
+    type: choice
+    instructions: What kind of item is it?
+    criteria:
+      - { value: id-or-money, description: "A wallet, a purse, a passport, an ID card, a bank card or cash" }
+      - { value: electronics, description: "A phone, a laptop, headphones or another device" }
+      - { value: umbrella, description: "An umbrella" }
+      - { value: clothes-or-bag, description: "Clothes, shoes, or a bag without money or papers in it" }
+      - { value: keys, description: "Keys or a key card" }
+      - { value: food, description: "Food or a drink" }
+      - { value: alive, description: "A living animal or plant" }
+      - { value: other, description: "Something else" }
+  - name: perishable
+    type: noul
+    instructions: Will the item go bad, or need care, before tomorrow?
+    criteria:
+      true: It spoils, melts, dies or suffers if it waits until tomorrow.
+      false: It can wait on a shelf for days.
+policy:
+  rules:
+    - when: "kind.probabilities.alive >= 0.5"
+      action: care-now
+    - when: "kind.probabilities.id-or-money >= 0.5"
+      action: police
+    - when: "perishable.yes >= 0.8"
+      action: discard
+    - when: "kind.p >= 0.7 and perishable.yes < 0.3"
+      action: shelf
+  default: review
