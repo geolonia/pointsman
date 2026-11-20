@@ -768,6 +768,23 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for the Actions (pointsman#253, #254, #273, #325, 2026-11-20)
+
+- **Why**: the review of 2026-11 found that the triage Action lost the
+  Pointsman error and its `action` output when the review label failed too
+  (#253), that deploy-watch asked the model before CloudFormation started
+  (a long asset build; found for a first deploy, and by the self-review
+  also for an update) and
+  waited forever on a command it could not start (#254), and that a round
+  it could not read did not start the cancel count again, so
+  `P-WATCH-FAILSAFE` ("in a row") was not true (#273).
+- **Changed**: `P-WATCH-FAILSAFE`, the matrix rows for both Actions'
+  failure atomicity (prose, YAML), §1.1 and §1.16; the citations into both
+  Actions moved to their lines.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

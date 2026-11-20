@@ -19,6 +19,12 @@ const cfg = JSON.parse(fs.readFileSync(process.env.FAKE_AWS_CONFIG, 'utf8'));
 const [, , , cmd, , stack] = process.argv;
 fs.appendFileSync(process.env.FAKE_AWS_LOG, process.argv.slice(2).join(' ') + '\\n');
 if (cfg.missing) { process.stderr.write('Stack with id ' + stack + ' does not exist'); process.exit(254); }
+// failEvery: every n-th round of describe-stack-events fails (throttled), counted in a file.
+if (cfg.failEvery && cmd === 'describe-stack-events') {
+  const n = (fs.existsSync(process.env.FAKE_AWS_CONFIG + '.n') ? Number(fs.readFileSync(process.env.FAKE_AWS_CONFIG + '.n', 'utf8')) : 0) + 1;
+  fs.writeFileSync(process.env.FAKE_AWS_CONFIG + '.n', String(n));
+  if (n % cfg.failEvery === 0) { process.stderr.write('Rate exceeded'); process.exit(255); }
+}
 if (cmd === 'describe-stack-events') {
   const t = new Date(Date.now() - cfg.ageSeconds * 1000).toISOString();
   console.log(JSON.stringify({ StackEvents: [{ Timestamp: t, LogicalResourceId: 'Fn', ResourceType: 'AWS::Lambda::Function', ResourceStatus: 'UPDATE_IN_PROGRESS', ResourceStatusReason: 'Waiting' }] }));
@@ -47,7 +53,7 @@ async function pointsman(actions) {
   return { url: `http://127.0.0.1:${server.address().port}`, asked, close: () => new Promise((r) => server.close(r)) };
 }
 
-function runWatch(t, { url, command, aws = { ageSeconds: 3600, status: 'UPDATE_IN_PROGRESS' }, inputs = {} }) {
+function runWatch(t, { url, command, aws = { ageSeconds: 3600, status: 'UPDATE_IN_PROGRESS' }, inputs = {}, path }) {
   const dir = mkdtempSync(join(tmpdir(), 'pointsman-watch-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, 'aws'), FAKE_AWS);
@@ -55,7 +61,7 @@ function runWatch(t, { url, command, aws = { ageSeconds: 3600, status: 'UPDATE_I
   writeFileSync(join(dir, 'aws.json'), JSON.stringify(aws));
   writeFileSync(join(dir, 'output'), '');
   const env = {
-    PATH: `${dir}:${process.env.PATH}`,
+    PATH: path ?? `${dir}:${process.env.PATH}`,
     FAKE_AWS_CONFIG: join(dir, 'aws.json'),
     FAKE_AWS_LOG: join(dir, 'aws.log'),
     GITHUB_OUTPUT: join(dir, 'output'),
@@ -166,20 +172,69 @@ test('a failing Pointsman never stops the deploy', async (t) => {
   assert.match(r.stdout, /Pointsman answered HTTP 500; the deploy keeps running/);
 });
 
-test('the command exit code is passed on', async (t) => {
+test('the command exit code is passed on, at once also with a long interval', async (t) => {
   const p = await pointsman(['continue']);
   t.after(p.close);
-  const r = await runWatch(t, { url: p.url, command: 'exit 3' });
+  const r = await runWatch(t, { url: p.url, command: 'exit 3', inputs: { 'INPUT_INTERVAL-SECONDS': '60' } });
   assert.equal(r.code, 3);
+  assert.ok(r.seconds < 10, `ended after ${r.seconds}s`);
 });
 
-test('a stack that does not exist yet counts as quiet since the start', async (t) => {
-  const p = await pointsman(['continue']);
+test('no question while no stack exists yet (asset builds before CloudFormation, #254)', async (t) => {
+  const p = await pointsman(['cancel']);
   t.after(p.close);
   const r = await runWatch(t, { url: p.url, command: 'sleep 1', aws: { missing: true } });
   assert.equal(r.code, 0, r.stdout);
-  assert.ok(p.asked.length >= 1);
-  assert.deepEqual(p.asked[0].state.stacks, []);
+  assert.equal(p.asked.length, 0);
+  assert.match(r.stdout, /no stack exists yet; not judging/);
+  assert.match(r.output, /^result=finished$/m);
+});
+
+test('a Pointsman error between two cancels resets the count (#273)', async (t) => {
+  const p = await pointsman(['cancel', 500, 'cancel', 500, 'cancel', 500, 'cancel', 500, 'cancel', 500, 'cancel', 500]);
+  t.after(p.close);
+  const r = await runWatch(t, { url: p.url, command: 'sleep 1.5' });
+  assert.equal(r.code, 0, r.stdout);
+  assert.ok(p.asked.length >= 3, `asked ${p.asked.length} times`);
+  assert.match(r.output, /^result=finished$/m);
+  assert.doesNotMatch(r.aws, /cancel-update-stack/);
+});
+
+test('a failed stack read between two cancels resets the count (#273)', async (t) => {
+  const p = await pointsman(['cancel']);
+  t.after(p.close);
+  // Every second round the events cannot be read.
+  const r = await runWatch(t, { url: p.url, command: 'sleep 1.5', aws: { ageSeconds: 3600, status: 'UPDATE_IN_PROGRESS', failEvery: 2 } });
+  assert.equal(r.code, 0, r.stdout);
+  assert.ok(p.asked.length >= 3, `asked ${p.asked.length} times`);
+  assert.match(r.stdout, /cannot read stack events/);
+  assert.doesNotMatch(r.aws, /cancel-update-stack/);
+});
+
+test('a command that cannot be started ends the step with an error (#254)', async (t) => {
+  const p = await pointsman(['continue']);
+  t.after(p.close);
+  // No bash on PATH: spawn fails.
+  // A long interval: the step still ends at once (the interval timer is cleared).
+  const r = await runWatch(t, { url: p.url, command: 'true', path: '/nonexistent', inputs: { 'INPUT_INTERVAL-SECONDS': '60' } });
+  assert.equal(r.code, 1, r.stdout);
+  assert.ok(r.seconds < 10, `ended after ${r.seconds}s`);
+  assert.match(r.stdout, /could not start the command/);
+  assert.match(r.output, /^result=not-started$/m);
+  assert.equal(p.asked.length, 0);
+});
+
+test('no question while an existing stack has not changed in this run (an update with a long build first, #254)', async (t) => {
+  const p = await pointsman(['cancel']);
+  t.after(p.close);
+  // The stack's last event is an hour old and it is not in progress: CloudFormation has not started.
+  const r = await runWatch(t, { url: p.url, command: 'sleep 1', aws: { ageSeconds: 3600, status: 'UPDATE_COMPLETE' } });
+  assert.equal(r.code, 0, r.stdout);
+  assert.equal(p.asked.length, 0);
+  assert.match(r.stdout, /no watched stack has changed in this run yet; not judging/);
+  // Once quiet-minutes passed without any change, one warning about the stack names.
+  assert.equal(r.stdout.match(/::warning::no watched stack \(AppStack\)/g)?.length, 1);
+  assert.match(r.output, /^result=finished$/m);
 });
 
 test('cancel-update: false only stops the command', async (t) => {

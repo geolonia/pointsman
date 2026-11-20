@@ -12,7 +12,12 @@ and labels it:
 - The answer is for a test token (`test: true`, no person's check): only the
   review label. Use a live token here.
 - Pointsman cannot be reached or fails: the review label, and the step fails
-  so the problem is visible.
+  so the problem is visible. If the label cannot be added either (the token
+  lacks `issues: write`), both errors are in the log and the step fails with
+  the Pointsman error.
+
+The outputs are set before the labels are added, so a later step can read
+them even when adding the labels fails.
 
 Only labels you list in `labels` are ever applied. The issue text is sent to
 Pointsman as JSON data; it is never used in a shell command.

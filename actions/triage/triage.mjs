@@ -83,11 +83,21 @@ export function labelsFor(decision, map, reviewLabel) {
 }
 
 function setOutput(name, value) {
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+  // A file that cannot be written must not hide the real error or skip the labels.
+  try {
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
+  } catch (err) {
+    console.log(`::warning::could not set the output ${name}: ${err.message}`);
+  }
 }
 
 function summary(text) {
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
+  // Like the outputs: a summary that cannot be written must not stop the labels or hide the real error.
+  try {
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
+  } catch (err) {
+    console.log(`::warning::could not write the job summary: ${err.message}`);
+  }
 }
 
 async function addLabels(labels, { api, repo, number, githubToken }) {
@@ -143,23 +153,30 @@ export async function run() {
   try {
     decision = await decide({ url, token, profile, issue, ref: `github:${repo}#${issue.number}` });
   } catch (err) {
-    // The issue must not stay untriaged when Pointsman cannot answer.
-    await addLabels([reviewLabel], github);
+    // The output first, so a later step sees it even when the label fails (#253).
     setOutput('action', 'error');
-    summary(`Pointsman did not answer for #${issue.number}; added \`${reviewLabel}\`.`);
+    // The issue must not stay untriaged when Pointsman cannot answer. If the
+    // label fails too, both errors are logged; the Pointsman error fails the step.
+    try {
+      await addLabels([reviewLabel], github);
+      summary(`Pointsman did not answer for #${issue.number}; added \`${reviewLabel}\`.`);
+    } catch (labelErr) {
+      console.log(`::warning::${labelErr.message}`);
+      summary(`Pointsman did not answer for #${issue.number}, and \`${reviewLabel}\` could not be added (${labelErr.message}).`);
+    }
     throw err;
   }
 
-  const labels = labelsFor(decision, map, reviewLabel);
-  await addLabels(labels, github);
   setOutput('decision-id', decision.decision_id);
   // A test token's answer is not acted on: a later step that reads "auto" must not act on it either.
   setOutput('action', decision.test === true ? 'test' : decision.action);
-
+  const labels = labelsFor(decision, map, reviewLabel);
+  // The summary first: the decision stays visible when the labels fail.
   const rows = Object.entries(decision.answers ?? {})
     .map(([q, a]) => `| ${q} | ${String(a?.value)} | ${Number(a?.p).toFixed(2)} |`)
     .join('\n');
   summary(`### Pointsman: ${decision.action}\n\nDecision \`${decision.decision_id}\` (${decision.profile} v${decision.profile_version}, ${decision.model})\n\n| Question | Answer | p |\n|---|---|---|\n${rows}\n\nLabels: ${labels.map((l) => `\`${l}\``).join(', ') || '(none)'}`);
+  await addLabels(labels, github);
   console.log(`Pointsman ${decision.action} (decision ${decision.decision_id}); labels: ${labels.join(', ') || '(none)'}`);
 }
 

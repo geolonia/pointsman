@@ -11,8 +11,11 @@
 // 3. After `consecutive` cancel answers in a row, the deploy command is
 //    stopped and, for stacks in UPDATE_IN_PROGRESS, cancel-update-stack runs.
 //
-// A failing Pointsman never cancels a deploy (the count does not grow). The
-// step's exit code is the command's, or 1 after a cancel.
+// Nothing is asked before CloudFormation works on a watched stack in this run
+// (an event since the start, or a stack in progress): asset and Docker builds
+// come first. A round in which the stacks or Pointsman cannot be read never
+// cancels and starts the count again. The step's exit code is the command's,
+// or 1 after a cancel or when the command cannot be started.
 
 import { execFile, spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -113,16 +116,29 @@ export async function main() {
   const killAfterMs = number('kill-after-seconds', 30, { min: 0 }) * 1000;
 
   const started = Date.now();
+  let notStarted = false;
   // detached: the command gets its own process group, so a cancel stops it
   // and everything it started (cdk, node, ...).
   const child = spawn('bash', ['-c', command], { stdio: 'inherit', detached: true });
-  const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0))));
+  const exited = new Promise((resolve) => {
+    child.on('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
+    // The command could not be started (no bash, for example): no exit event follows.
+    child.on('error', (err) => {
+      notStarted = true;
+      console.log(`::error::could not start the command: ${err.message}`);
+      resolve(1);
+    });
+  });
   let done = false;
   exited.then(() => (done = true));
 
   let cancels = 0;
+  let warned = false;
   while (!done) {
-    await Promise.race([exited, new Promise((r) => setTimeout(r, intervalMs))]);
+    // The timer is cleared, so it does not keep the process alive after the command ended.
+    let timer;
+    await Promise.race([exited, new Promise((r) => { timer = setTimeout(r, intervalMs); })]);
+    clearTimeout(timer);
     if (done) break;
 
     let states;
@@ -130,6 +146,21 @@ export async function main() {
       states = (await Promise.all(stacks.map(stackState))).filter(Boolean);
     } catch (err) {
       log(`cannot read stack events (${String(err.message).split('\n')[0]}); not judging this round`);
+      // Cancels count only in a row (#273).
+      cancels = 0;
+      continue;
+    }
+    // Before CloudFormation works on a watched stack in this run (asset or
+    // Docker builds come first) there is nothing to judge: quiet since the
+    // start says nothing about a stack, new or from an earlier deploy (#254).
+    const working = states.some((s) => /_IN_PROGRESS$/.test(s.status) || s.events.some((e) => Date.parse(e.time) >= started));
+    if (!working) {
+      log(states.length === 0 ? 'no stack exists yet; not judging' : 'no watched stack has changed in this run yet; not judging');
+      cancels = 0;
+      if (!warned && Date.now() - started >= quietMs) {
+        warned = true;
+        console.log(`::warning::no watched stack (${stacks.join(', ')}) has changed for ${Math.round((Date.now() - started) / 60_000)} min; check the stack names. Nothing is judged until one does.`);
+      }
       continue;
     }
     const last = Math.max(started, ...states.flatMap((s) => s.events.map((e) => Date.parse(e.time))).filter(Number.isFinite));
@@ -149,6 +180,7 @@ export async function main() {
       decision = await ask(pointsman, state);
     } catch (err) {
       log(`${err.message}; the deploy keeps running`);
+      cancels = 0;
       continue;
     }
     // A cancel a person still checks (the profile's people_check) does not count yet.
@@ -190,7 +222,7 @@ export async function main() {
     console.log(`::error::Deploy stopped: no stack event for ${state.minutes_since_last_event} minutes and Pointsman judged it stuck ${needed} times in a row (decision ${decision.decision_id}).`);
     return 1;
   }
-  setOutput('result', 'finished');
+  setOutput('result', notStarted ? 'not-started' : 'finished');
   return exited;
 }
 
