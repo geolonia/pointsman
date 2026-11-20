@@ -41,7 +41,9 @@ export class WorkersAiAdapter implements ModelAdapter {
     const timedOut = Symbol('timed out');
     try {
       // The gateway has its own limit; without a gateway the binding has none,
-      // so the call is raced against the same limit here.
+      // so the call is raced against the same limit here. The binding takes
+      // no abort signal: a call that loses the race runs on, unawaited, while
+      // the next fallback model is asked.
       const call = this.ai.run(
         name,
         request,

@@ -287,7 +287,10 @@ export async function finishLogin(request: Request, env: OAuthEnv, config: OAuth
     // GitHub down or an answer without what we need: back to the client
     // with access_denied, not JSON in the browser (#257). The messages name
     // only a status or a missing field, never the token.
-    console.error(`login: ${(err as Error).message}`);
+    // Our own errors name a status or a missing field. Anything else (a body
+    // that is not JSON, a network error) by its kind only: a parser's message
+    // can quote the body of the token exchange.
+    console.error(`login: ${err instanceof Error && err.message.startsWith('GitHub ') ? err.message : err instanceof Error ? err.name : typeof err}`);
     return deny('GitHub could not be reached or gave an unusable answer; try again');
   }
   if (!person) return deny('GitHub did not accept the login');

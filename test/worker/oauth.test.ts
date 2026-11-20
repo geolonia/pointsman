@@ -26,9 +26,12 @@ function fakeGithub(members: string[]) {
   const calls: string[] = [];
   /** URLs that answer 503, as GitHub does when it is down. */
   const down = new Set<string>();
+  /** URLs that answer 200 with a body that is not JSON. */
+  const broken = new Set<string>();
   const fetch = async (url: string, init: RequestInit): Promise<Response> => {
     calls.push(url);
     if (down.has(url)) return new Response('unavailable', { status: 503 });
+    if (broken.has(url)) return new Response('access_token=gh-token-cut', { status: 200 });
     const auth = new Headers(init.headers).get('authorization') ?? '';
     if (url === 'https://github.com/login/oauth/access_token') {
       const form = new URLSearchParams(String(init.body));
@@ -45,7 +48,7 @@ function fakeGithub(members: string[]) {
     }
     return new Response('unexpected', { status: 500 });
   };
-  return { fetch, calls, down, issue: (code: string, login: string, challenge: string, id = 1000) => codes.set(code, { login, challenge, id }) };
+  return { fetch, calls, down, broken, issue: (code: string, login: string, challenge: string, id = 1000) => codes.set(code, { login, challenge, id }) };
 }
 
 function setup(members = ['octo']) {
@@ -238,6 +241,19 @@ describe('GitHub login for /mcp', () => {
     expect(to.searchParams.get('state')).toBe('client-state');
     expect(lines).toContain('HTTP 503');
     // The GitHub token is never logged.
+    expect(lines).not.toContain('gh-token');
+  });
+
+  it('logs only the kind of error when the token exchange is not JSON (#257)', async () => {
+    const t = setup();
+    const github = await allow(t, (await startLogin(t)).handle);
+    t.github.broken.add('https://github.com/login/oauth/access_token');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const back = await t.send(`/callback?code=gh-code&state=${github.searchParams.get('state')}`);
+    const lines = logged.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    logged.mockRestore();
+    expect(new URL(back.headers.get('location')!).searchParams.get('error')).toBe('access_denied');
+    expect(lines).toContain('login: SyntaxError');
     expect(lines).not.toContain('gh-token');
   });
 

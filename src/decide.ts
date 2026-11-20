@@ -244,7 +244,11 @@ export async function makeDecision(
   // The profile's model first, then its fallback models in order. Checked
   // before the fact lookups start, so a broken deployment calls no fact
   // source either (#258).
-  const served = profile.questions.length === 0 ? [] : [profile.model, ...(profile.fallback_models ?? [])].filter((m) => adapterFor(m) !== null);
+  const served = (profile.questions.length === 0 ? [] : [profile.model, ...(profile.fallback_models ?? [])])
+    .flatMap((m) => {
+      const adapter = adapterFor(m);
+      return adapter ? [{ model: m, adapter }] : [];
+    });
   if (profile.questions.length > 0 && served.length === 0) throw new ConfigError(`no adapter for any model of profile ${profile.id}`);
 
   // Facts read the client's data (the `at` paths), not the mapped state.
@@ -262,9 +266,9 @@ export async function makeDecision(
   } else {
     // A model error (failed call, or an answer that does not fit the profile)
     // moves on to the next model; the decision records the model that answered.
-    for (const m of served) {
+    for (const { model: m, adapter } of served) {
       try {
-        const response = await adapterFor(m)!.decide(toModelRequest(profile, state, m, images));
+        const response = await adapter.decide(toModelRequest(profile, state, m, images));
         answers = normalizeAnswers(profile, response);
         model = response.model;
         break;
