@@ -9,9 +9,17 @@ import { dirname } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import standaloneCode from 'ajv/dist/standalone/index.js';
 import { parse as parseYaml } from 'yaml';
+import { openapiProblems } from './lib/openapi-check.mjs';
 
 const out = process.argv[2] ?? 'generated/openapi-validators.mjs';
 const api = parseYaml(readFileSync('openapi.yaml', 'utf8'), { uniqueKeys: true });
+// The validators below are compiled leniently (strict: false), so check here
+// what that would hide: a cut description, an unknown keyword (#246).
+const problems = openapiProblems(api);
+if (problems.length > 0) {
+  console.error(`openapi.yaml:\n  ${problems.join('\n  ')}`);
+  process.exit(1);
+}
 
 const ajv = new Ajv2020({
   code: { source: true, esm: true },
