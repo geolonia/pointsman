@@ -207,6 +207,11 @@ The new token has the same profiles as the old one. It is shown only once:
 copy it now. Pointsman stores only a hash of it. (In the output above, the
 hashes and the token are shortened.)
 
+A token's record (client, profiles, expiry) is kept as KV metadata too, which
+takes at most 1024 bytes: `create` and `rotate` refuse a longer list of
+profiles before anything is written. Use fewer or shorter profile ids, or
+`*`.
+
 `--expires` takes a duration from now (`12h`, `90d`, `2w`) or a date
 (`2027-01-31`, the end of that day in UTC), at least one hour away. When the old token had an expiry,
 the new one needs `--expires` too, or `--no-expiry`, so that a token never
@@ -238,6 +243,10 @@ node scripts/tokens.mjs revoke --hash <old hash> --remote --config=<your wrangle
 ```text
 revoked 3138a1cc…
 ```
+
+`revoke` first checks that a token with that hash exists, so a mistyped
+hash fails (`no token with the hash …`) instead of printing `revoked` while
+the real token stays valid.
 
 It can take up to about 60 seconds until the old token stops working
 everywhere.

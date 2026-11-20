@@ -16,13 +16,13 @@
 // still be checked against them. The index is written last; readers tolerate
 // a new index that arrives before the new profile (see KvProfileStore).
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../src/log.ts';
-import { collectProfileFiles, duplicateIdErrors, parseProfile, validateProfile } from './lib/profile.mjs';
+import { loadProfileSet, validateProfile } from './lib/profile.mjs';
 import { wrangler } from './lib/wrangler.mjs';
 
 function fail(message, code = 1) {
@@ -64,32 +64,24 @@ function d1(sql) {
 const profiles = [];
 const paths = [];
 const errors = [];
-let files;
+// Read every file first: a profile is validated with the ones it requires,
+// so a new version of a required profile that breaks one stops the publish.
+let set;
 try {
-  files = collectProfileFiles(values.dir);
+  set = loadProfileSet([values.dir]);
 } catch (err) {
   fail(err.message, 2);
 }
-// Read every file first: a profile is validated with the ones it requires,
-// so a new version of a required profile that breaks one stops the publish.
-const read = [];
-for (const path of files) {
-  try {
-    read.push({ path, profile: parseProfile(readFileSync(path, 'utf8'), path) });
-  } catch (err) {
-    errors.push(`${path}\n  (parse): ${err.message.split('\n')[0]}`);
-  }
-}
-const byId = new Map(read.filter((r) => typeof r.profile?.id === 'string').map((r) => [r.profile.id, r.profile]));
-for (const { path, profile } of read) {
-  const problems = validateProfile(profile, { fileName: path, profiles: byId });
+const byId = set.byId;
+for (const { path, profile, error } of set.entries) {
+  const problems = error ? [error] : validateProfile(profile, { fileName: path, profiles: byId });
   if (problems.length > 0) errors.push(`${path}\n  ${problems.join('\n  ')}`);
   else {
     profiles.push(profile);
     paths.push(path);
   }
 }
-errors.push(...duplicateIdErrors(paths.map((p, i) => [p, profiles[i]])));
+errors.push(...set.duplicates);
 if (errors.length > 0) fail(`Invalid profiles; nothing was published.\n${errors.join('\n')}`);
 if (profiles.length === 0) fail(`No profiles in ${values.dir}; nothing was published.`);
 
@@ -173,7 +165,10 @@ try {
   const file = join(dir, 'profiles.json');
   writeFileSync(file, JSON.stringify(profiles.map((p) => ({ key: key(p), value: JSON.stringify(p) }))));
   kv(['bulk', 'put', file]);
-  kv(['key', 'put', 'index', JSON.stringify(index)]);
+  // From a file too: a large index passed as one argument fails with E2BIG (#259).
+  const indexFile = join(dir, 'index.json');
+  writeFileSync(indexFile, JSON.stringify(index));
+  kv(['key', 'put', 'index', '--path', indexFile]);
 } catch (err) {
   fail(err.message);
 } finally {

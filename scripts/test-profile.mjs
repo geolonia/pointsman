@@ -18,7 +18,7 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { parse as parseYaml } from 'yaml';
-import { collectProfileFiles, parseProfile, validateProfile } from './lib/profile.mjs';
+import { collectProfileFiles, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { answersFit, caseFileErrors, factsFit, judge, runCases } from '../src/cases.ts';
 import { explainProfile } from '../src/explain.ts';
 import { compilePolicy } from '../src/policy.ts';
@@ -71,12 +71,13 @@ let profiles;
 let caseFiles;
 try {
   profiles = new Map();
-  for (const f of values.profiles.flatMap(collectProfileFiles)) {
-    const p = parseProfile(read(f), f);
+  const set = loadProfileSet(values.profiles);
+  for (const { path: f, profile: p, error } of set.entries) {
+    if (error) throw new Error(`${f}: ${error}`);
     if (!p || typeof p.id !== 'string') throw new Error(`${f}: not a profile (no id)`);
-    if (profiles.has(p.id)) throw new Error(`${f}: the id "${p.id}" is also used by ${profiles.get(p.id).file}`);
-    profiles.set(p.id, { profile: p, file: f });
   }
+  if (set.duplicates.length > 0) throw new Error(set.duplicates[0]);
+  for (const { path: f, profile: p } of set.entries) profiles.set(p.id, { profile: p, file: f });
   caseFiles = positionals.flatMap(collectProfileFiles);
 } catch (err) {
   console.error(err.message.split('\n')[0]);

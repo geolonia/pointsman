@@ -10,10 +10,10 @@
 // are bundled (engine.json "modules", docs/modules.md), with the profiles
 // they require.
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { allModules, loadDefinitions } from './lib/modules.mjs';
-import { PROFILE_EXTENSIONS, parseProfile, useModules, validateProfile } from './lib/profile.mjs';
+import { loadProfileSet, useModules, validateProfile } from './lib/profile.mjs';
 import { FactRegistry } from '../src/modules/registry.ts';
 
 const chosen = new FactRegistry(await loadDefinitions());
@@ -23,21 +23,23 @@ const [out = 'generated/profiles.json', ...dirs] = process.argv.slice(2);
 const sources = dirs.length > 0 ? dirs : ['examples/profiles'];
 
 // Read everything first: a profile is validated with the ones it requires.
-const read = [];
-for (const dir of sources) {
-  for (const entry of readdirSync(dir).sort()) {
-    if (!PROFILE_EXTENSIONS.includes(extname(entry))) continue;
-    const path = join(dir, entry);
-    try {
-      read.push({ path, profile: parseProfile(readFileSync(path, 'utf8'), path) });
-    } catch (err) {
-      read.push({ path, error: `(parse): ${err.message.split('\n')[0]}` });
-    }
-  }
+// Folders are read with their subfolders, and ids must be distinct, as
+// validate-profiles and publish-profiles read them (#249).
+let read;
+let byId;
+let duplicates;
+try {
+  ({ entries: read, byId, duplicates } = loadProfileSet(sources));
+} catch (err) {
+  console.error(err.message);
+  process.exit(2);
 }
-const byId = new Map(read.filter((r) => r.profile && typeof r.profile.id === 'string').map((r) => [r.profile.id, r.profile]));
 const profiles = [];
 let failed = false;
+for (const d of duplicates) {
+  failed = true;
+  console.error(`FAIL  ${d}`);
+}
 for (const { path, profile, error } of read) {
   const errors = error ? [error] : validateProfile(profile, { fileName: path, profiles: byId });
   if (errors.length > 0) {

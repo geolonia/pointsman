@@ -138,10 +138,11 @@ export class D1DecisionLog implements DecisionLog {
     // Only the columns facts use: a decision's state can be large, and facts never see it.
     const { results } = await this.db
       .prepare(
-        `SELECT id, created_at, ref, profile_id, action, facts FROM decisions WHERE client = ? AND profile_id IN (${profiles.map(() => '?').join(', ')}) AND created_at >= ? AND discarded_at IS NULL
+        // The profile ids as one JSON array: D1 binds at most 100 parameters (#259).
+        `SELECT id, created_at, ref, profile_id, action, facts FROM decisions WHERE client = ? AND profile_id IN (SELECT value FROM json_each(?)) AND created_at >= ? AND discarded_at IS NULL
          ORDER BY created_at DESC, rowid DESC LIMIT ?`,
       )
-      .bind(client, ...profiles, since, limit)
+      .bind(client, JSON.stringify(profiles), since, limit)
       .all<Pick<DecisionRow, 'id' | 'created_at' | 'ref' | 'profile_id' | 'action' | 'facts'>>();
     return results.map((row) => ({
       decision_id: row.id,
@@ -256,10 +257,12 @@ export class D1DecisionLog implements DecisionLog {
   async pendingReviews(profiles: string[], limit: number): Promise<DecisionRecord[]> {
     const all = profiles.includes('*');
     if (!all && profiles.length === 0) return [];
-    const where = all ? '' : ` AND profile_id IN (${profiles.map(() => '?').join(', ')})`;
+    // The profile ids as one JSON array: D1 binds at most 100 parameters, and
+    // a token may list more profiles than that (#259).
+    const where = all ? '' : ' AND profile_id IN (SELECT value FROM json_each(?))';
     const { results } = await this.db
       .prepare(`SELECT * FROM decisions WHERE review_status = 'pending'${where} ORDER BY created_at, id LIMIT ?`)
-      .bind(...(all ? [] : profiles), limit)
+      .bind(...(all ? [] : [JSON.stringify(profiles)]), limit)
       .all<DecisionRow>();
     return results.map(fromRow);
   }

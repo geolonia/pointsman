@@ -251,3 +251,28 @@ export function collectProfileFiles(path) {
     .filter((entry) => entry.isDirectory() || PROFILE_EXTENSIONS.includes(extname(entry.name)))
     .flatMap((entry) => collectProfileFiles(join(path, entry.name)));
 }
+
+/**
+ * Read a set of profiles from files and folders (folders recursively, as
+ * collectProfileFiles), the one way every script reads them (#249). Every
+ * file is parsed; nothing is validated. Throws when a path does not exist.
+ *
+ * - entries: `{ path, profile }` or `{ path, error }` (a parse error), in order;
+ * - byId: the parsed profiles by id (the first file of an id);
+ * - duplicates: a message for each id used by more than one file.
+ */
+export function loadProfileSet(paths) {
+  const files = [...new Set(paths.flatMap(collectProfileFiles))];
+  const entries = files.map((path) => {
+    try {
+      return { path, profile: parseProfile(readFileSync(path, 'utf8'), path) };
+    } catch (err) {
+      return { path, error: `(parse): ${err.message.split('\n')[0]}` };
+    }
+  });
+  const byId = new Map();
+  for (const { profile } of entries) {
+    if (profile && typeof profile.id === 'string' && !byId.has(profile.id)) byId.set(profile.id, profile);
+  }
+  return { entries, byId, duplicates: duplicateIdErrors(entries.map((e) => [e.path, e.profile])) };
+}

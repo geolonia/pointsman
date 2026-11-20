@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
-import { collectProfileFiles, parseProfile, validateProfile } from './lib/profile.mjs';
+import { loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile, explanationText } from '../src/explain.ts';
 
 let args;
@@ -37,14 +37,11 @@ let others;
 try {
   profile = parseProfile(readFileSync(file, 'utf8'), file);
   others = new Map();
-  for (const f of [dirname(file), ...values.with].flatMap(collectProfileFiles)) {
-    try {
-      const p = parseProfile(readFileSync(f, 'utf8'), f);
-      if (p && typeof p.id === 'string' && p.id !== profile.id) others.set(p.id, p);
-    } catch {
-      // Another file that does not parse is not this profile's problem; a
-      // profile that requires it is reported by the validation below.
-    }
+  // The folder of the profile and --with, read as every script reads profiles
+  // (#249). Another file that does not parse is not this profile's problem; a
+  // profile that requires it is reported by the validation below.
+  for (const [id, p] of loadProfileSet([dirname(file), ...values.with]).byId) {
+    if (id !== profile.id) others.set(id, p);
   }
 } catch (err) {
   console.error(`${file}: ${err.message.split('\n')[0]}`);
