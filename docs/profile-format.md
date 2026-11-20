@@ -313,6 +313,9 @@ A case gives either **answers** or a **state**:
     (`{ closedWeather: 0.7, other: 0.3 }`); the options left out are 0
   - score: a level (`2`), or probabilities by level (`{ "1": 0.2, "2": 0.8 }`);
     the weighted level is computed from them, and the levels left out are 0
+  - probabilities add up to 1, within the margin a model's answer has
+    ([above](#engine-answer-format)), so a case never passes with an answer
+    the engine would refuse
   - facts: the fact's fields, or `missing`, or `{ missing: <reason> }`. A
     fact left out is missing. The fields follow what the engine gives: the
     first one says whether something was found (`inside`, `found`,

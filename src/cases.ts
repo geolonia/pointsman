@@ -13,6 +13,7 @@
 import { compilePolicy, peopleAnswers, profileActions } from './policy.ts';
 import type { RequiredProfiles } from './policy.ts';
 import { factRegistry } from './modules/registry.ts';
+import { addsUpToOne } from './probability.ts';
 import type { FactTypeDef } from '@pointsman/module-api';
 import type { Answer, Fact, Profile, Question, RequiredDecisionInput } from './types.ts';
 
@@ -74,6 +75,10 @@ function probabilities(where: string, value: Record<string, unknown>, allowed: s
   // a rule on an earlier decision reads a missing option as unknown.
   // The given ones keep their order (a tie picks the first, as for a model's answer).
   for (const k of allowed) if (!Object.hasOwn(out, k)) out[k] = 0;
+  // As for a model's answer: a case cannot pass with one the engine refuses.
+  if (Object.values(out).some((x) => x > 0) && !addsUpToOne(Object.values(out), allowed.length)) {
+    throw new CaseError(`${where}: the probabilities must add up to 1`);
+  }
   return out;
 }
 
