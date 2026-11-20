@@ -42,9 +42,13 @@ cp ../pointsman/examples/cases/lost-and-found.yaml cases/
 
 ```sh
 git clone https://github.com/geolonia/pointsman engine
-git -C engine checkout "$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)"
+tag=$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)
+echo "$tag"
+git -C engine checkout "$tag"
 pnpm --dir engine install --frozen-lockfile
 ```
+
+`echo` の行は、最新のリリースを表示します(たとえば `v1.2.3`)。何も表示されないかエラーになったときは、`gh` にサインインしていません。`gh auth login` を実行し、最後の 3 行をもう一度実行します。
 
 ## 2. Cloudflare に保存先を作る
 
@@ -92,7 +96,7 @@ engine/node_modules/.bin/wrangler d1 create my-pointsman
 
 ファイルを壊してしまっても、次の確認で行が示されます。
 
-そのリリースのコミットで `engine.json` を書きます。
+`engine/` でいまチェックアウトしているコミットを `ref` にして、`engine.json` を書きます。
 
 ```sh
 cat > engine.json <<EOF
@@ -122,7 +126,7 @@ ok    profiles/lost-and-found.yaml
 
 - ファクト(たとえば浸水想定区域)を読むプロファイルには、そのモジュールを `modules.facts` に書きます。[ファクトモジュール](../../modules.md)(英語)を見てください。
 - AI Gateway は、モデルの呼び出しのログを残します。[モデル](../../models.md)(英語)を見てください。
-- あとで新しいエンジンを使うときは、その[リリース](https://github.com/geolonia/pointsman/releases)を `engine/` でチェックアウトし(`git -C engine fetch --tags` のあと `git -C engine checkout <tag>`)、上と同じように新しいコミットを `ref` に書きます。
+- あとで新しいエンジンを使うときは、`git -C engine fetch --tags` を実行し、新しい[リリース](https://github.com/geolonia/pointsman/releases)を `git -C engine checkout <tag>` でチェックアウトして、`pnpm --dir engine install --frozen-lockfile` をもう一度実行します。次に、`git -C engine rev-parse HEAD` の出力を `engine.json` の `ref` に書きます(モジュールが残るよう、その行だけを変えます)。最後に `check-config` をもう一度実行します。
 
 </details>
 

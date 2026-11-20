@@ -59,9 +59,15 @@ download takes a minute):
 
 ```sh
 git clone https://github.com/geolonia/pointsman engine
-git -C engine checkout "$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)"
+tag=$(gh release view --repo geolonia/pointsman --json tagName --jq .tagName)
+echo "$tag"
+git -C engine checkout "$tag"
 pnpm --dir engine install --frozen-lockfile
 ```
+
+The `echo` line prints the latest release, for example `v1.2.3`. If it
+prints nothing or an error, `gh` is not signed in: run `gh auth login`, and
+the last three lines again.
 
 ## 2. Create the storage on Cloudflare
 
@@ -117,7 +123,7 @@ line before it now ends the list, so delete its comma too. The start of
 
 If you break the file, the check below names the line.
 
-Write `engine.json` with the commit of that release:
+Write `engine.json` with the commit now checked out in `engine/`:
 
 ```sh
 cat > engine.json <<EOF
@@ -131,8 +137,7 @@ EOF
 
 `ref` is the engine commit that every deploy uses, until you change it.
 `facts` is empty, because the lost-and-found profile reads no facts from
-data. Check
-the config and the profile:
+data. Check the config and the profile:
 
 ```sh
 node engine/scripts/check-config.mjs
@@ -151,10 +156,12 @@ ok    profiles/lost-and-found.yaml
 - A profile that reads facts (for example flood zones) needs their module in
   `modules.facts`: see [Fact modules](../modules.md).
 - An AI Gateway keeps logs of the model calls: see [Models](../models.md).
-- To use a newer engine later, check out its
-  [release](https://github.com/geolonia/pointsman/releases) in `engine/`
-  (`git -C engine fetch --tags`, then `git -C engine checkout <tag>`), and
-  write the new commit into `ref` as above.
+- To use a newer engine later: `git -C engine fetch --tags`, check out
+  the new [release](https://github.com/geolonia/pointsman/releases) with
+  `git -C engine checkout <tag>`, and run
+  `pnpm --dir engine install --frozen-lockfile` again. Then put the output
+  of `git -C engine rev-parse HEAD` into `ref` in `engine.json` (change only
+  that line, so your modules stay), and run `check-config` again.
 
 </details>
 
