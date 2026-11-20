@@ -92,7 +92,12 @@ function setOutput(name, value) {
 }
 
 function summary(text) {
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
+  // Like the outputs: a summary that cannot be written must not stop the labels or hide the real error.
+  try {
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
+  } catch (err) {
+    console.log(`::warning::could not write the job summary: ${err.message}`);
+  }
 }
 
 async function addLabels(labels, { api, repo, number, githubToken }) {

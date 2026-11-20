@@ -172,11 +172,12 @@ test('a failing Pointsman never stops the deploy', async (t) => {
   assert.match(r.stdout, /Pointsman answered HTTP 500; the deploy keeps running/);
 });
 
-test('the command exit code is passed on', async (t) => {
+test('the command exit code is passed on, at once also with a long interval', async (t) => {
   const p = await pointsman(['continue']);
   t.after(p.close);
-  const r = await runWatch(t, { url: p.url, command: 'exit 3' });
+  const r = await runWatch(t, { url: p.url, command: 'exit 3', inputs: { 'INPUT_INTERVAL-SECONDS': '60' } });
   assert.equal(r.code, 3);
+  assert.ok(r.seconds < 10, `ended after ${r.seconds}s`);
 });
 
 test('no question while no stack exists yet (asset builds before CloudFormation, #254)', async (t) => {
@@ -214,8 +215,10 @@ test('a command that cannot be started ends the step with an error (#254)', asyn
   const p = await pointsman(['continue']);
   t.after(p.close);
   // No bash on PATH: spawn fails.
-  const r = await runWatch(t, { url: p.url, command: 'true', path: '/nonexistent' });
+  // A long interval: the step still ends at once (the interval timer is cleared).
+  const r = await runWatch(t, { url: p.url, command: 'true', path: '/nonexistent', inputs: { 'INPUT_INTERVAL-SECONDS': '60' } });
   assert.equal(r.code, 1, r.stdout);
+  assert.ok(r.seconds < 10, `ended after ${r.seconds}s`);
   assert.match(r.stdout, /could not start the command/);
   assert.match(r.output, /^result=not-started$/m);
   assert.equal(p.asked.length, 0);

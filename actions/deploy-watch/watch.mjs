@@ -135,7 +135,10 @@ export async function main() {
   let cancels = 0;
   let warned = false;
   while (!done) {
-    await Promise.race([exited, new Promise((r) => setTimeout(r, intervalMs))]);
+    // The timer is cleared, so it does not keep the process alive after the command ended.
+    let timer;
+    await Promise.race([exited, new Promise((r) => { timer = setTimeout(r, intervalMs); })]);
+    clearTimeout(timer);
     if (done) break;
 
     let states;
