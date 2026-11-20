@@ -1,7 +1,7 @@
 # Commands
 
 - `pnpm install`, `pnpm db:migrate:local`, `pnpm dev` (mock model, example profiles, :8787). Full list: README "Development".
-- `pnpm check` = everything CI runs (typecheck, tests, profiles + cases, `check:public`, `docs:check`, dry-run deploy). Run before a PR.
+- `pnpm check` = CI's main job (typecheck, tests, profiles + cases, `check:public`, `docs:check`, dry-run deploy). CI's `docs` job also runs `pnpm site:build` and `pnpm exec wrangler deploy --dry-run --config docs-site/wrangler.jsonc`. Run all of them before a PR that touches docs.
 - `pnpm test` = `test:scripts` + `test:worker`; `test:worker` builds first, because `generated/` is git-ignored and Worker tests need it.
 - `pnpm validate:profiles`, `pnpm test:cases` = example profiles and their cases.
 - `pnpm docs:reference` after changing a fact module, `openapi.yaml` or MCP tools; commit the output. `pnpm docs:dev` = local site, `pnpm site:build` = full site in `_site/`.
