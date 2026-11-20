@@ -116,7 +116,14 @@ export async function main() {
   // detached: the command gets its own process group, so a cancel stops it
   // and everything it started (cdk, node, ...).
   const child = spawn('bash', ['-c', command], { stdio: 'inherit', detached: true });
-  const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0))));
+  const exited = new Promise((resolve) => {
+    child.on('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
+    // The command could not be started (no bash, for example): no exit event follows.
+    child.on('error', (err) => {
+      console.log(`::error::could not start the command: ${err.message}`);
+      resolve(1);
+    });
+  });
   let done = false;
   exited.then(() => (done = true));
 
@@ -130,6 +137,15 @@ export async function main() {
       states = (await Promise.all(stacks.map(stackState))).filter(Boolean);
     } catch (err) {
       log(`cannot read stack events (${String(err.message).split('\n')[0]}); not judging this round`);
+      // Cancels count only in a row (#273).
+      cancels = 0;
+      continue;
+    }
+    // Before CloudFormation starts (asset or Docker builds) there is nothing
+    // to judge: quiet since the start says nothing about a stack (#254).
+    if (states.length === 0) {
+      log('no stack exists yet; not judging');
+      cancels = 0;
       continue;
     }
     const last = Math.max(started, ...states.flatMap((s) => s.events.map((e) => Date.parse(e.time))).filter(Number.isFinite));
@@ -149,6 +165,7 @@ export async function main() {
       decision = await ask(pointsman, state);
     } catch (err) {
       log(`${err.message}; the deploy keeps running`);
+      cancels = 0;
       continue;
     }
     // A cancel a person still checks (the profile's people_check) does not count yet.

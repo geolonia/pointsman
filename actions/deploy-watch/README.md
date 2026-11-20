@@ -15,7 +15,8 @@ How it decides:
    policy returns `cancel` when the deploy is stuck.
 3. **Cancel only when sure.** The deploy is stopped after `consecutive`
    (default 2) `cancel` answers in a row; any other answer starts the count
-   again, and so does a `cancel` that a person still checks (`cancel` listed
+   again, so does a round in which the stack events or Pointsman could not
+   be read, and so does a `cancel` that a person still checks (`cancel` listed
    in the profile's `people_check`: the answer has
    `review: {status: pending}`). A `cancel` for a test token
    (`test: true`) never counts: use a live token here. Then the command's
@@ -85,7 +86,13 @@ Output `result`: `finished` or `cancelled`.
 
 - Events from before the command started are ignored, so an old stack does
   not count as quiet.
-- A stack that does not exist yet (first deploy) counts as quiet since the
-  start until its first event.
+- While none of the watched stacks exists yet (a first deploy, or a long
+  asset or Docker build before CloudFormation starts), nothing is asked:
+  there is no stack to judge. Once one exists, the quiet time counts from
+  its last event, or from the start when it has none from this run. Set a
+  `timeout-minutes` on the job for a command that hangs before any stack
+  exists.
+- A command that cannot be started fails the step (`::error::could not
+  start the command`).
 - Pointsman calls are logged with `ref: github:<repo>/actions/runs/<run id>`,
   so the decisions can be found and corrected with feedback.

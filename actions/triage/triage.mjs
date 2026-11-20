@@ -143,18 +143,25 @@ export async function run() {
   try {
     decision = await decide({ url, token, profile, issue, ref: `github:${repo}#${issue.number}` });
   } catch (err) {
-    // The issue must not stay untriaged when Pointsman cannot answer.
-    await addLabels([reviewLabel], github);
+    // The output first, so a later step sees it even when the label fails (#253).
     setOutput('action', 'error');
-    summary(`Pointsman did not answer for #${issue.number}; added \`${reviewLabel}\`.`);
+    // The issue must not stay untriaged when Pointsman cannot answer. If the
+    // label fails too, both errors are logged; the Pointsman error fails the step.
+    try {
+      await addLabels([reviewLabel], github);
+      summary(`Pointsman did not answer for #${issue.number}; added \`${reviewLabel}\`.`);
+    } catch (labelErr) {
+      console.log(`::warning::${labelErr.message}`);
+      summary(`Pointsman did not answer for #${issue.number}, and \`${reviewLabel}\` could not be added (${labelErr.message}).`);
+    }
     throw err;
   }
 
-  const labels = labelsFor(decision, map, reviewLabel);
-  await addLabels(labels, github);
   setOutput('decision-id', decision.decision_id);
   // A test token's answer is not acted on: a later step that reads "auto" must not act on it either.
   setOutput('action', decision.test === true ? 'test' : decision.action);
+  const labels = labelsFor(decision, map, reviewLabel);
+  await addLabels(labels, github);
 
   const rows = Object.entries(decision.answers ?? {})
     .map(([q, a]) => `| ${q} | ${String(a?.value)} | ${Number(a?.p).toFixed(2)} |`)

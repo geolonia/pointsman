@@ -2124,7 +2124,7 @@ what voids it.
   pending}`, from the profile's `people_check`;
   `actions/triage/triage.mjs:75`), and since pointsman#235 (`v0.18.0`) also
   for an answer for a test token (`test: true`), and the `action` output
-  is then `test` (`actions/triage/triage.mjs:157`); the issue text is sent to Pointsman as
+  is then `test` (`actions/triage/triage.mjs:162`); the issue text is sent to Pointsman as
   JSON and never reaches a shell command or the job summary. Symptom:
   `x-command-injection`, `x-unlisted-label`. Tier: security-critical.
   *(documented, actions/triage/README.md "Only labels you list in `labels` are
@@ -2138,9 +2138,9 @@ what voids it.
   arrived for `quiet-minutes`; since pointsman#229 (`v0.17.1`) a `cancel`
   that a person still checks (`review: {status: pending}`, from the
   profile's `people_check`) does not count and starts the count again
-  (`actions/deploy-watch/watch.mjs:156`); since pointsman#235 (`v0.18.0`)
+  (`actions/deploy-watch/watch.mjs:173`); since pointsman#235 (`v0.18.0`)
   neither does a `cancel` for a test token (`test: true`,
-  `actions/deploy-watch/watch.mjs:158`); an unreachable or failing Pointsman, or an
+  `actions/deploy-watch/watch.mjs:175`); an unreachable or failing Pointsman, or an
   unreadable stack, never cancels. Symptom: `x-unwarranted-cancel`. Tier:
   correctness-only (stopping a deploy is an availability effect on the
   integrator's own pipeline). *(documented, actions/deploy-watch/README.md
@@ -2321,7 +2321,7 @@ the receivers must do for §1.5–§1.11 to hold.
   `packages/github/src/connector/pull-request.ts:963`); since
   pointsman#229 (`v0.17.1`) the triage Action
   (`actions/triage/triage.mjs:75`) and the deploy-watch Action
-  (`actions/deploy-watch/watch.mjs:156`); since pointsman#232
+  (`actions/deploy-watch/watch.mjs:173`); since pointsman#232
   (`v0.17.2`) the FIWARE bridge on every route: an answer with
   `review: {status: pending}` counts as checked by a person whatever the
   route's `reviewActions` (`packages/fiware/src/bridge.ts:984`), which

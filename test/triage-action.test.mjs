@@ -30,7 +30,7 @@ const AUTO = decision('auto', {
 });
 
 /** Start fake Pointsman + GitHub; returns their URL, received requests, close(). */
-async function servers(pointsman) {
+async function servers(pointsman, labelsStatus = 200) {
   const seen = { decide: [], labels: [] };
   const server = createServer((req, res) => {
     let body = '';
@@ -42,7 +42,7 @@ async function servers(pointsman) {
         res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(payload));
       } else if (req.url.endsWith('/labels')) {
         seen.labels.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
-        res.writeHead(200, { 'content-type': 'application/json' }).end('[]');
+        res.writeHead(labelsStatus, { 'content-type': 'application/json' }).end(labelsStatus === 200 ? '[]' : '{}');
       } else {
         res.writeHead(404).end();
       }
@@ -175,6 +175,27 @@ test('Pointsman failing: review label, and the step fails', async (t) => {
   assert.match(r.stdout, /::error::Pointsman answered HTTP 502 \(model_error\)/);
   assert.deepEqual(s.seen.labels.map((l) => l.body.labels), [['needs-triage']]);
   assert.match(r.output, /^action=error$/m);
+});
+
+test('Pointsman failing and the labels refused: both errors, and the action output (#253)', async (t) => {
+  const s = await servers([502, { error: { code: 'model_error', message: 'x' } }], 403);
+  t.after(s.close);
+  const r = await runAction(t, { url: s.url, event: issueEvent() });
+  assert.equal(r.code, 1);
+  // The Pointsman error is what fails the step; the label error is logged too.
+  assert.match(r.stdout, /::error::Pointsman answered HTTP 502 \(model_error\)/);
+  assert.match(r.stdout, /adding labels failed: HTTP 403/);
+  assert.match(r.output, /^action=error$/m);
+});
+
+test('labels refused after a decision: the outputs are still set, and the step fails (#253)', async (t) => {
+  const s = await servers([200, AUTO], 403);
+  t.after(s.close);
+  const r = await runAction(t, { url: s.url, event: issueEvent() });
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /::error::adding labels failed: HTTP 403/);
+  assert.match(r.output, /^action=auto$/m);
+  assert.match(r.output, /^decision-id=00000000-0000-4000-8000-000000000001$/m);
 });
 
 test('Pointsman unreachable: review label, and the step fails', async (t) => {
