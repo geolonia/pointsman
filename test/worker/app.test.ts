@@ -245,3 +245,16 @@ describe('test tokens', () => {
     expect(insert).toHaveBeenCalledOnce();
   });
 });
+
+describe('deps: built once per request (#263)', () => {
+  it('builds the deps once for a request, and again for the next request', async () => {
+    const factory = vi.fn((): Deps => ({ callbacks: noCallbacks, store, tokens, log, adapterFor: () => new MockAdapter() }));
+    const app = createApp(factory);
+    // Stats reads the store and the log after the /v1 middleware: three uses.
+    const stats = await app.request('/v1/stats/deploy-progress', { headers }, env);
+    expect(stats.status).toBe(200);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect((await decide(app)).status).toBe(200);
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+});

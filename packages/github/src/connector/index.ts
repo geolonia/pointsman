@@ -99,9 +99,32 @@ export function githubConnector(settings: ConnectorSettings, objects: PullReques
   };
 }
 
+/**
+ * One per isolate and app (id, key and token scope), so the installation
+ * tokens are reused between runs and pull requests' objects instead of a new
+ * one for every run, as the facts keep theirs (../index.ts). Each token stays
+ * only for its one repository and is used only until shortly before it
+ * expires, or until GitHub refuses it (AppGitHub). Keyed by the key: the map
+ * never leaves this file.
+ */
+const githubs = new Map<string, AppGitHub>();
+
+/** The GitHub client of the connector's app for these settings, shared by every run in this isolate. */
+export function connectorGitHub(settings: ConnectorSettings): ConnectorGitHub {
+  const acting = actsOnGitHub(settings);
+  const diff = readsContents(settings);
+  const id = JSON.stringify([settings.appId, settings.privateKey, acting, diff]);
+  let github = githubs.get(id);
+  if (!github) {
+    github = new AppGitHub(settings.appId, settings.privateKey, undefined, acting, diff);
+    githubs.set(id, github);
+  }
+  return github;
+}
+
 /** The work of one pull request's object, from the same settings. */
 export function pullRequestWork(settings: ConnectorSettings, storage: ObjectStorage, engine: EngineClient, github?: ConnectorGitHub): PullRequestWork {
-  return new PullRequestWork(storage, settings, github ?? new AppGitHub(settings.appId, settings.privateKey, undefined, actsOnGitHub(settings), readsContents(settings)), engine);
+  return new PullRequestWork(storage, settings, github ?? connectorGitHub(settings), engine);
 }
 
 /** Reads the settings, with the objects binding; undefined when the connector is off. */

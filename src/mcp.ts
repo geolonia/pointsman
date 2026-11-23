@@ -105,12 +105,17 @@ function server(deps: McpDeps, caller: Caller): McpServer {
     'list_profiles',
     TOOLS.list_profiles,
     async () => {
+      // The index once, then each profile in scope at the version it names,
+      // as the graph route does: KV allows a limited number of reads per
+      // request. The latest readable version only when that one is not
+      // readable yet (KV is eventually consistent, src/profiles/store-kv.ts).
       const summaries = (await deps.store.list()).filter((s) => canUse(client, s.id));
-      const profiles = [];
-      for (const s of summaries) {
-        const p = await deps.store.get(s.id);
-        if (visible(p, client)) profiles.push(describe(p!, await seenProfiles(p!.requires?.map((r) => r.profile) ?? [])));
-      }
+      const latest = await Promise.all(summaries.map(async (s) => (await deps.store.get(s.id, s.version)) ?? deps.store.get(s.id)));
+      // A required profile is shown when the caller may see it through MCP: it
+      // is then in scope, so among the profiles read here.
+      const shown = latest.filter((p): p is Profile => visible(p, client));
+      const seen = new Set(shown.map((p) => p.id));
+      const profiles = shown.map((p) => describe(p, seen));
       return json({ profiles });
     },
   );

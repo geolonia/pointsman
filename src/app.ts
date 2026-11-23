@@ -51,12 +51,22 @@ function error(status: ContentfulStatusCode, code: string, message: string) {
 
 
 export function createApp(deps: (env: Env) => Deps) {
-  type AppEnv = { Bindings: Env; Variables: { client: TokenRecord } };
+  type AppEnv = { Bindings: Env; Variables: { client: TokenRecord; deps: Deps } };
   const app = new Hono<AppEnv>();
+  // Built once per request, on first use, and kept on that request's context
+  // only: never shared between requests.
+  const depsOf = (c: Context<AppEnv>): Deps => {
+    let d = c.get('deps');
+    if (!d) {
+      d = deps(c.env);
+      c.set('deps', d);
+    }
+    return d;
+  };
 
   // Every API route needs a valid token. The token itself is never logged.
   app.use('/v1/*', async (c, next) => {
-    const record = await authenticate(c.req.header('authorization'), deps(c.env).tokens);
+    const record = await authenticate(c.req.header('authorization'), depsOf(c).tokens);
     if (!record) {
       const res = error(401, 'unauthorized', 'a valid API token is required');
       res.headers.set('www-authenticate', 'Bearer');
@@ -73,7 +83,7 @@ export function createApp(deps: (env: Env) => Deps) {
   });
 
   app.get('/v1/profiles', async (c) => {
-    const { store } = deps(c.env);
+    const { store } = depsOf(c);
     const client = c.get('client');
     // requires names only profiles this token may use, too (P-TOKEN-SCOPE).
     const profiles = (await store.list()).filter((p) => canUse(client, p.id))
@@ -85,7 +95,7 @@ export function createApp(deps: (env: Env) => Deps) {
   // with ?format=dmn, or an SVG diagram with ?format=svg (docs/decision-chains.md).
   // Only profiles in scope.
   app.get('/v1/profiles/:id/graph', async (c) => {
-    const { store } = deps(c.env);
+    const { store } = depsOf(c);
     const client = c.get('client');
     const id = c.req.param('id');
     const format = c.req.query('format') ?? 'json';
@@ -121,7 +131,7 @@ export function createApp(deps: (env: Env) => Deps) {
   // Only profiles in scope; a rule on a required profile out of scope is
   // shown as written.
   app.get('/v1/profiles/:id/explain', async (c) => {
-    const { store } = deps(c.env);
+    const { store } = depsOf(c);
     const client = c.get('client');
     const id = c.req.param('id');
     const format = c.req.query('format') ?? 'json';
@@ -154,7 +164,7 @@ export function createApp(deps: (env: Env) => Deps) {
     } catch {
       return error(400, 'invalid_request', 'body must be valid JSON');
     }
-    const result = await makeReplay(deps(c.env), c.req.param('id'), raw, (id) => canUse(c.get('client'), id));
+    const result = await makeReplay(depsOf(c), c.req.param('id'), raw, (id) => canUse(c.get('client'), id));
     if (!result.ok) return error(result.status, result.code, result.message);
     return c.json(result.replay);
   });
@@ -168,16 +178,16 @@ export function createApp(deps: (env: Env) => Deps) {
     // ones are refused before they are read.
     if (Number(c.req.header('content-length') ?? 0) > MAX_DECIDE_BODY) return error(413, 'invalid_request', 'the request is larger than 14 MiB');
     // Content-Length can be missing (a chunked body): the limit holds while reading too.
-    return json(await decideAnswer(deps(c.env), c.get('client'), c.req.param('profile'), () => readJsonUpTo(c.req.raw, MAX_DECIDE_BODY),
+    return json(await decideAnswer(depsOf(c), c.get('client'), c.req.param('profile'), () => readJsonUpTo(c.req.raw, MAX_DECIDE_BODY),
     c.req.query('version'), c.req.header('Idempotency-Key'), c.req.raw.signal));
   });
 
   // A decision is visible only to tokens that may use its profile; for others
   // it does not exist (404), as for unknown ids.
-  app.get('/v1/decisions/:id', async (c) => json(await getAnswer(deps(c.env), c.get('client'), c.req.param('id'))));
+  app.get('/v1/decisions/:id', async (c) => json(await getAnswer(depsOf(c), c.get('client'), c.req.param('id'))));
 
   app.post('/v1/decisions/:id/feedback', async (c) => {
-    const { store, log } = deps(c.env);
+    const { store, log } = depsOf(c);
     const id = c.req.param('id');
     const record = await findDecision(c.get('client'), log, id);
     if (!record) return error(404, 'decision_not_found', 'unknown decision');
@@ -215,9 +225,9 @@ export function createApp(deps: (env: Env) => Deps) {
     }
     const days = Number(daysParam);
     // Zeros for a typo would look like a quiet week.
-    if (!(await deps(c.env).store.get(profile))) return error(404, 'profile_not_found', 'unknown profile');
+    if (!(await depsOf(c).store.get(profile))) return error(404, 'profile_not_found', 'unknown profile');
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
-    const stats = await deps(c.env).log.stats(profile, since);
+    const stats = await depsOf(c).log.stats(profile, since);
     return c.json({ profile, days, since, ...stats });
   });
 
@@ -229,7 +239,7 @@ export function createApp(deps: (env: Env) => Deps) {
       if (!canUse(client, profile)) return error(403, 'forbidden', 'this token may not use this profile');
       profiles = [profile];
     }
-    const pending = await deps(c.env).log.pendingReviews(profiles, 100);
+    const pending = await depsOf(c).log.pendingReviews(profiles, 100);
     return c.json({
       reviews: pending.map((r) => {
         const { callback: _, ...visible } = publicRecord(r, client);
@@ -238,7 +248,7 @@ export function createApp(deps: (env: Env) => Deps) {
     });
   });
 
-  app.post('/v1/reviews/:id/resolve', async (c) => json(await resolveAnswer(deps(c.env), c.get('client'), c.req.param('id'), () => c.req.json(),
+  app.post('/v1/reviews/:id/resolve', async (c) => json(await resolveAnswer(depsOf(c), c.get('client'), c.req.param('id'), () => c.req.json(),
     async (delivery) => {
       try {
         c.executionCtx.waitUntil(delivery);
@@ -248,7 +258,7 @@ export function createApp(deps: (env: Env) => Deps) {
     })));
 
   // Only the client that made the decision may close its pending review (docs/reviews.md#closing-a-review).
-  app.post('/v1/reviews/:id/close', async (c) => json(await closeAnswer(deps(c.env), c.get('client'), c.req.param('id'))));
+  app.post('/v1/reviews/:id/close', async (c) => json(await closeAnswer(depsOf(c), c.get('client'), c.req.param('id'))));
 
   // Hono's ExecutionContext type lacks newer Workers fields; it is the same object.
   const ctxOf = (c: Context<AppEnv>) => c.executionCtx as unknown as ExecutionContext;
@@ -262,7 +272,7 @@ export function createApp(deps: (env: Env) => Deps) {
     ? Promise.resolve(error(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile over the REST API'))
     : serveMcp(req, d, caller));
   app.all('/mcp', async (c) => {
-    const d = deps(c.env);
+    const d = depsOf(c);
     if (d.oauth) {
       return serveProtectedMcp(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d.tokens, mcpFor(d));
     }
@@ -278,7 +288,7 @@ export function createApp(deps: (env: Env) => Deps) {
   // OAuth (src/oauth.ts). Without an OAuth config these routes are not found.
   type OAuthRoute = (req: Request, env: OAuthEnv, ctx: ExecutionContext, config: OAuthConfig, d: Deps) => Promise<Response>;
   const withOAuth = (serve: OAuthRoute) => async (c: Context<AppEnv>) => {
-    const d = deps(c.env);
+    const d = depsOf(c);
     if (!d.oauth) return error(404, 'not_found', 'not found');
     return serve(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d);
   };

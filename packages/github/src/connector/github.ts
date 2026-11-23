@@ -260,9 +260,12 @@ export class AppGitHub implements ConnectorGitHub {
       throw new GitHubError(`GitHub ${what}: ${err instanceof Error ? err.name : 'error'}`, true);
     }
     if (res.status >= 200 && res.status < 300) return res;
-    // Busy, down or rate limited: later. Anything else (no permission, not found) needs a person.
+    // The token was refused (revoked, or the installation changed): dropped,
+    // so the next try asks for a new one.
+    if (res.status === 401) await this.#auth.forget({ owner, repo: name, number: 0, head: '' }, token);
+    // Busy, down, rate limited or a refused token: later. Anything else (no permission, not found) needs a person.
     // rateLimited uses up the body (of a 403, at most its first bytes, for GitHub's message).
-    const retry = (await rateLimited(res)) || res.status >= 500;
+    const retry = (await rateLimited(res)) || res.status >= 500 || res.status === 401;
     throw new GitHubError(`GitHub ${what}: ${res.status}`, retry, res.status);
   }
 
