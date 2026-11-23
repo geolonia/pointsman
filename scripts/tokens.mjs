@@ -30,13 +30,14 @@
 // calls are logged under that name, so such a token would share the internal
 // client's decisions and could close its reviews. `create` and `rotate` read
 // INTERNAL_CLIENT from the Wrangler config (--config, else the one wrangler
-// finds in this folder; top-level vars and every environment's; a TOML config
-// gets a warning) and refuse that name; `list` marks
+// finds from this folder up; top-level vars and every environment's; a TOML
+// config gets a warning; a secret or .dev.vars is not read) and refuse that
+// name; `list` marks
 // a token that has it, such as the connector's old token while a deployment
 // moves to internal calls (docs/github-connector.md).
 
 import { existsSync, readFileSync } from 'node:fs';
-import { relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { parse as parseJsonc } from 'jsonc-parser';
 // Same token format and hashing as the Worker (Node.js strips the types).
@@ -125,14 +126,27 @@ function listTokens() {
 }
 
 /**
+ * The config wrangler takes without --config: wrangler.json, wrangler.jsonc
+ * or wrangler.toml in this folder, else in the nearest parent folder that has
+ * one (as wrangler's findWranglerConfig; its redirect to a generated config
+ * is not followed). wrangler.jsonc when there is none, so the error names it.
+ */
+function findConfig() {
+  for (let dir = resolve('.'); ; dir = dirname(dir)) {
+    const found = ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml'].map((f) => join(dir, f)).find((f) => existsSync(f));
+    if (found) return relative(process.cwd(), found) || found;
+    if (dirname(dir) === dir) return 'wrangler.jsonc';
+  }
+}
+
+/**
  * The Wrangler config's file and the client names INTERNAL_CLIENT gives, at
  * the top level and in every environment. A config that cannot be read is an
  * error, so a name is never left unchecked; a value that is not valid JSON is
  * skipped (the Worker refuses it).
  */
 function internalClients() {
-  // Without --config, the file wrangler itself takes from this folder.
-  const file = values.config ?? ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].find((f) => existsSync(f)) ?? 'wrangler.jsonc';
+  const file = values.config ?? findConfig();
   if (file.endsWith('.toml')) {
     console.error(`${file}: tokens.mjs reads only JSON or JSONC configs, so it cannot check that no token gets the client name of INTERNAL_CLIENT; make sure yourself`);
     return { file, names: new Set() };

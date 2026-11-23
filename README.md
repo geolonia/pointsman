@@ -188,7 +188,7 @@ client over first. `list` marks names that older setups gave to several
 tokens: rotate or rename those. No token gets the client name of
 `INTERNAL_CLIENT` ([internal calls](docs/adapters.md#internal-calls)), whose
 decisions it would share: `create` and `rotate` read that setting from the
-Wrangler config (`--config`, else the one in the current folder) and refuse its name, and
+Wrangler config (`--config`, else the one wrangler finds from the current folder up; not a secret or `.dev.vars`) and refuse its name, and
 `list` marks a token that has it, such as the GitHub connector's old token
 after it moved to internal calls: revoke it then.
 

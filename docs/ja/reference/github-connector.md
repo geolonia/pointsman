@@ -82,7 +82,9 @@ Pointsman に送るのは、自分のトークンを付けた `POST /v1/decide/<
    wrangler secret delete POINTSMAN_TOKEN --config github-connector.jsonc
    ```
 
-   これは設定用リポジトリでのパスです(`engine/` はエンジンのチェックアウト、`github-connector.jsonc` はコネクターの設定)。このリポジトリでは `node scripts/tokens.mjs` と `--config connectors/github/wrangler.jsonc` を使います。
+   これは設定用リポジトリでのパスです(`engine/` はエンジンのチェックアウト、`github-connector.jsonc` はコネクターの設定)。このリポジトリでは `node scripts/tokens.mjs` にはエンジンの `--config wrangler.jsonc` を、シークレットには `--config connectors/github/wrangler.jsonc` を使います。
+
+   取り消すまでの間、`tokens.mjs list` は古いトークンに印を付けます(「same name as INTERNAL_CLIENT」)。また、`create` と `rotate` はその名前を受け付けません。内部クライアントと同じ名前のトークンは、そのクライアントの判定を共有してしまうからです。古いトークンはローテーションせずに取り消してください。
 
 元に戻すには、`POINTSMAN_URL` と新しいトークンを設定し、バインディングを削除します。
 

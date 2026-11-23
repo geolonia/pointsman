@@ -269,3 +269,38 @@ test('a TOML config gets a warning, not a refusal (#275)', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /cannot check that no token gets the client name of INTERNAL_CLIENT/);
 });
+
+test('without --config, the config is found as wrangler finds it: this folder, then parent folders (#275)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  const client = JSON.stringify({ client: 'github-connector', profiles: ['p'] });
+  // wrangler.json comes before wrangler.jsonc, as in wrangler.
+  writeFileSync(join(dir, 'wrangler.json'), JSON.stringify({ vars: { INTERNAL_CLIENT: client } }));
+  writeFileSync(join(dir, 'wrangler.jsonc'), '{}');
+  mkdirSync(join(dir, 'sub'));
+  for (const cwd of [dir, join(dir, 'sub')]) {
+    const r = spawnSync(process.execPath, [script, 'create', '--client', 'github-connector', '--profiles', '*', '--local', '--dry-run'], { cwd, encoding: 'utf8' });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /is the client of INTERNAL_CLIENT in .*wrangler\.json:/);
+  }
+});
+
+test('an INTERNAL_CLIENT that is not JSON, or has no client, names no client (#275)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  const file = join(dir, 'wrangler.jsonc');
+  writeFileSync(file, JSON.stringify({ vars: { INTERNAL_CLIENT: 'not json' }, env: { a: { vars: { INTERNAL_CLIENT: '{"profiles":["p"]}' } }, b: null } }));
+  const r = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', file, '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test('rotate refuses a name INTERNAL_CLIENT gives in an environment (#275)', () => {
+  const r = runWith(stored(['a'.repeat(64), { client: 'staging-connector', profiles: ['*'] }]),
+    'rotate', '--client', 'staging-connector', '--local', '--config', internalConfig(), '--dry-run');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /"staging-connector" is the client of INTERNAL_CLIENT/);
+});
+
+test('revoke does not read the config (#275)', () => {
+  const hash = 'a'.repeat(64);
+  const r = runWith(stored([hash, { client: 'demo', profiles: ['*'] }]), 'revoke', '--hash', hash, '--local', '--config', join(tmpdir(), 'no-such-config.jsonc'), '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+});
