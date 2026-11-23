@@ -461,6 +461,15 @@
   citations into `src/log-d1.ts` and `scripts/tokens.mjs`, moved to their
   lines after this change (the validator was not run for this
   amendment). No new question.
+  Amended 2026-11-23 a ninth time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#276 and #266 (from the review of
+  2026-11), in pointsman#328: the config check refuses a Worker config
+  without `global_fetch_strictly_public`, and a linter runs in
+  `pnpm check`, which moved the version-step helpers of the GitHub facts
+  from `bump.ts` to `steps.ts`. Changed: `P-OUTBOUND-PUBLIC-ONLY` and
+  `R-PRIVATE-CONFIG` name the check; the code citations into
+  `packages/github/src/bump.ts`, moved to their lines after this change
+  (the validator was not run for this amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -546,7 +555,7 @@
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
   of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325 and
-  #326 were done the same way.
+  #326, and of 2026-11-23 for pointsman#328, were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -563,7 +572,7 @@
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
   and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325
-  and #326, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
+  and #326, and of 2026-11-23 for pointsman#328, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1848,8 +1857,8 @@ what voids it.
   `registry_changed` true, `dev_only` false, `release_age_days` 0), and
   since pointsman#229 (`v0.17.1`) a changed lockfile line with a backslash
   (a JSON or YAML escape that can spell a field or URL) gives
-  `registry_changed` true (`packages/github/src/bump.ts:294`,
-  `packages/github/src/bump.ts:322`); since pointsman#229 (`v0.17.1`) a
+  `registry_changed` true (`packages/github/src/bump.ts:249`,
+  `packages/github/src/bump.ts:277`); since pointsman#229 (`v0.17.1`) a
   GSI shelters geometry whose box leaves the tile grid (at or near a pole,
   at or across the 180° meridian) is `error` and reads no tile
   (`packages/facts-gsi/src/provider.ts:160`); since pointsman#309 (not yet
@@ -1917,7 +1926,7 @@ what voids it.
   in the tree (at most 51 more GitHub requests, in the same 5 s), at most
   30 bumped versions with one registry read each, pnpm peers in
   parentheses taken off in one linear pass however deep they nest (since
-  pointsman#229, `v0.17.1`; `packages/github/src/bump.ts:243`), each registry document
+  pointsman#229, `v0.17.1`; `packages/github/src/steps.ts:41`), each registry document
   as a stream up to 64 MB and only its `time` object kept, 8 s for all
   registry reads; `github_workflows` parses at most 50 files of 256 KB,
   with at most 100 aliases and 50,000 values each; reviews and comments
@@ -1939,7 +1948,7 @@ what voids it.
   `packages/facts-gsi/src/provider.ts:117`, `packages/facts-gsi/src/provider.ts:160`, `packages/facts-gsi/src/provider.ts:161`, `packages/facts-valhalla/src/router.ts:27`,
   `packages/github/src/provider.ts:48`, `packages/github/src/provider.ts:50`, `packages/github/src/provider.ts:58` and, for
   `CODEOWNERS`, `packages/github/src/codeowners.ts:24` to `packages/github/src/codeowners.ts:28`; for `github_bump`,
-  `packages/github/src/provider.ts:67`, `packages/github/src/provider.ts:69`, `packages/github/src/bump.ts:59`,
+  `packages/github/src/provider.ts:67`, `packages/github/src/provider.ts:69`, `packages/github/src/bump.ts:62`,
   `packages/github/src/npm.ts:18` and `packages/github/src/npm.ts:20`, with the size check in `publishTimes`
   (`packages/github/src/npm.ts:147`); for `github_workflows`
   `packages/github/src/workflows.ts:20`, `packages/github/src/workflows.ts:22`, `packages/github/src/workflows.ts:106` and
@@ -2066,7 +2075,12 @@ what voids it.
   template/config-repo/wrangler.jsonc comment: "Outgoing fetches (review
   callbacks, OAuth client metadata) reach only public addresses")*. Voided
   by: removing `global_fetch_strictly_public` from the deployment's
-  `compatibility_flags` (§1.6).
+  `compatibility_flags` (§1.6). Since pointsman#328 (not yet released)
+  `scripts/check-config.mjs`, which the config repository's workflows run
+  before validating or deploying, refuses a `wrangler.jsonc` whose flags,
+  at the top level or in an environment that sets its own, lack it or turn
+  it off with `global_fetch_private_origin`; a test checks the engine's own Worker
+  configs (`scripts/lib/strictly-public.mjs`).
 - **`P-MCP-VISIBILITY`** — through MCP, only profiles with `mcp.visible: true`
   that are in the caller's scope are listed or callable; every other profile,
   and every decision of such a profile, looks unknown; `get_decision` never
@@ -2316,8 +2330,9 @@ the receivers must do for §1.5–§1.11 to hold.
 
 - **`R-PRIVATE-CONFIG`** — keep the config repository private, protect `main`,
   require the Validate check, and keep `global_fetch_strictly_public` in
-  `wrangler.jsonc` *(documented, template/config-repo/README.md "Protect
-  `main`"; maintainer, 2026-10)*.
+  `wrangler.jsonc` (since pointsman#328, not yet released, the config check
+  in that Validate check refuses a config without it) *(documented,
+  template/config-repo/README.md "Protect `main`"; maintainer, 2026-10)*.
 - **`R-SCOPED-TOKENS`** — give every client its own token limited to the
   profiles it needs; use `--profiles '*'` only for administration; store the
   token as a secret and revoke it on a leak *(documented, README "API
@@ -2638,7 +2653,9 @@ Revise the model when any of these happens:
   (connector reads), #323 (bridge writes, time limits, inputs, routes),
   #324 (MCP and login errors, fact lookups, Workers AI time limit), #325
   (triage outputs, deploy-watch before any stack, cancels in a row) and
-  #326 (profile loading, size limits) before their release. The re-binding to
+  #326 (profile loading, size limits), and the amendment of 2026-11-23
+  covers pointsman#328 (the config check for the strictly-public flag, the
+  linter), before their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to

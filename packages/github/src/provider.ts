@@ -1004,7 +1004,7 @@ export class Snapshot {
           return await this.json(`${this.repoPath}/contents/${path}?ref=${ref}`, 'CODEOWNERS');
         } catch (err) {
           // 404: not at this place. Anything else (403, 5xx): CODEOWNERS cannot be read.
-          if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return null;
+          if (err instanceof FactUnavailableError && err.message.endsWith(': 404')) return null;
           throw err;
         }
       }));
@@ -1032,7 +1032,7 @@ export class Snapshot {
       try {
         v = await this.json(`/orgs/${org}/teams/${slug}/members?per_page=${PER_PAGE}`, 'team members');
       } catch (err) {
-        if (err instanceof FactUnavailableError && /: 404$/.test(err.message)) return [];
+        if (err instanceof FactUnavailableError && err.message.endsWith(': 404')) return [];
         throw err;
       }
       if (!Array.isArray(v)) throw new FactError('GitHub team members: unexpected answer');

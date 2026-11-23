@@ -37,8 +37,9 @@ profiles. `scripts/check-public.mjs` checks that in CI.
    repository. List the [fact modules](modules.md) your profiles need in
    `modules.facts` (`[]` for none); the build bundles only those. Without
    `modules`, every module is chosen. The workflows refuse to run while a
-   `<placeholder>` is left, or a module is unknown
-   (`engine/scripts/check-config.mjs`).
+   `<placeholder>` is left, a module is unknown, or `compatibility_flags`
+   lacks `global_fetch_strictly_public`, which keeps outgoing requests away
+   from private addresses (`engine/scripts/check-config.mjs`).
 
 4. **Add your profiles** to `profiles/` (`<id>.yaml`, see
    [profile-format.md](profile-format.md)).

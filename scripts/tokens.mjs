@@ -110,7 +110,7 @@ function listTokens() {
   // A dry run reads nothing; tests give the stored tokens in TOKENS_DRY_RUN_LIST
   // (wrangler's `kv key list` output).
   const out = values['dry-run'] ? process.env.TOKENS_DRY_RUN_LIST ?? '[]' : wrangler(['list', '--prefix', 'token:']);
-  return JSON.parse(out).map((key) => ({ hash: key.name.slice('token:'.length), ...(key.metadata ?? {}) }));
+  return JSON.parse(out).map((key) => ({ hash: key.name.slice('token:'.length), ...key.metadata }));
 }
 
 function clientArg() {

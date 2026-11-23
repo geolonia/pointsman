@@ -15,7 +15,7 @@ Thank you for helping with Pointsman. Issues and pull requests are welcome.
 2. Set up as in the [README](README.md#development): Node.js 24 or newer and pnpm 10.23 or newer,
    then `pnpm install`.
 3. Make your change with tests. Keep pull requests small: one topic each.
-4. Run `pnpm check` (typecheck, tests, profile validation, public-data check
+4. Run `pnpm check` (typecheck, lint, tests, profile validation, public-data check
    and a dry-run deploy). It must pass.
 5. Sign off every commit with `git commit -s` (see below), and open a pull
    request.

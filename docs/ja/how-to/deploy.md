@@ -31,7 +31,7 @@ translatedFrom: 7d961e6
 
 2. テンプレートから**非公開のリポジトリを作ります**。`template/config-repo/` の中身を、`.github/` と `.gitignore` も含めて、そのリポジトリにコピーします。
 
-3. `wrangler.jsonc` の**プレースホルダーを埋めます**(手順 1 の ID と Worker の名前)。`engine.json` では、エンジンをエンジンのリポジトリのコミット SHA に固定します。プロファイルが使う[ファクトモジュール](../../modules.md)(英語)を `modules.facts` に並べます(使わない場合は `[]`)。ビルドには、並べたモジュールだけが入ります。`modules` がない場合は、すべてのモジュールが選ばれます。`<placeholder>` が 1 つでも残っているとき、または不明なモジュールがあるときは、ワークフローは実行を拒みます(`engine/scripts/check-config.mjs`)。
+3. `wrangler.jsonc` の**プレースホルダーを埋めます**(手順 1 の ID と Worker の名前)。`engine.json` では、エンジンをエンジンのリポジトリのコミット SHA に固定します。プロファイルが使う[ファクトモジュール](../../modules.md)(英語)を `modules.facts` に並べます(使わない場合は `[]`)。ビルドには、並べたモジュールだけが入ります。`modules` がない場合は、すべてのモジュールが選ばれます。`<placeholder>` が 1 つでも残っているとき、不明なモジュールがあるとき、または `compatibility_flags` に `global_fetch_strictly_public` がないときは、ワークフローは実行を拒みます(`engine/scripts/check-config.mjs`)。このフラグは、外向きのリクエストがプライベートアドレスに届かないようにします。
 
 4. `profiles/` に**プロファイルを追加します**(`<id>.yaml`。[profile-format.md](../../profile-format.md) を参照)。
 

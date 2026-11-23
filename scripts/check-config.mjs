@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // For a config repository: fail while wrangler.jsonc or engine.json still has
-// a <placeholder> from the template, or engine.json does not pin a commit.
+// a <placeholder> from the template, engine.json does not pin a commit, or
+// wrangler.jsonc drops the global_fetch_strictly_public flag.
 //
 // Usage (from the config repository root): node engine/scripts/check-config.mjs
 
 import { readFileSync } from 'node:fs';
 import { parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { chosenConnectors, chosenModules, loadDefinitions } from './lib/modules.mjs';
+import { strictlyPublicProblems } from './lib/strictly-public.mjs';
 
 const problems = [];
 for (const file of ['wrangler.jsonc', 'engine.json']) {
@@ -36,8 +38,9 @@ try {
 }
 try {
   const errors = [];
-  parseJsonc(readFileSync('wrangler.jsonc', 'utf8'), errors, { allowTrailingComma: true });
+  const config = parseJsonc(readFileSync('wrangler.jsonc', 'utf8'), errors, { allowTrailingComma: true });
   for (const e of errors) problems.push(`wrangler.jsonc: ${printParseErrorCode(e.error)} at offset ${e.offset}`);
+  if (errors.length === 0) problems.push(...strictlyPublicProblems(config, 'wrangler.jsonc'));
 } catch (err) {
   if (err.code !== 'ENOENT') problems.push(`wrangler.jsonc: ${err.message}`);
 }

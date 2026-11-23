@@ -72,6 +72,7 @@ export function matchParts(gs: readonly string[], ps: readonly string[], budget?
   // next[j]: the glob parts after the current one match the path parts from j. Filled from the end.
   let next: boolean[] = Array.from({ length: ps.length + 1 }, (_, j) => j === ps.length);
   for (let i = gs.length - 1; i >= 0; i--) {
+    // oxlint-disable-next-line unicorn/no-new-array -- several times faster than Array.from here, and this loop has a time bound
     const cur: boolean[] = new Array<boolean>(ps.length + 1).fill(false);
     const g = gs[i]!;
     for (let j = ps.length; j >= 0; j--) {

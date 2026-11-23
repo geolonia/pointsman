@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { parse as parseJsonc } from 'jsonc-parser';
+import { strictlyPublicProblems } from '../scripts/lib/strictly-public.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -54,6 +56,35 @@ test('a malformed engine.json or wrangler.jsonc is refused', (t) => {
   r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
   assert.equal(r.status, 1, r.stdout);
   assert.match(r.stderr, /wrangler.jsonc: ValueExpected/);
+});
+
+test('a config without global_fetch_strictly_public is refused (#276)', (t) => {
+  const dir = makeRepo(t);
+  fill(dir);
+  const wrangler = join(dir, 'wrangler.jsonc');
+  const filled = readFileSync(wrangler, 'utf8');
+  writeFileSync(wrangler, filled.replace('"compatibility_flags": ["global_fetch_strictly_public"],', ''));
+  let r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /wrangler.jsonc: "compatibility_flags" must include "global_fetch_strictly_public"/);
+
+  writeFileSync(wrangler, filled.replace('["global_fetch_strictly_public"]', '["global_fetch_strictly_public", "global_fetch_private_origin"]'));
+  r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /must not include "global_fetch_private_origin"/);
+});
+
+test('an environment that sets its own flags needs global_fetch_strictly_public too', () => {
+  const config = { compatibility_flags: ['global_fetch_strictly_public'], env: { live: { compatibility_flags: ['nodejs_compat'] }, dev: { vars: {} } } };
+  assert.deepEqual(strictlyPublicProblems(config, 'w.jsonc'), ['w.jsonc: env.live: "compatibility_flags" must include "global_fetch_strictly_public"']);
+});
+
+test('every Worker config in this repository sets global_fetch_strictly_public', () => {
+  // docs-site is static assets with no code, so it never calls fetch().
+  for (const file of ['wrangler.jsonc', 'connectors/github/wrangler.jsonc', 'bridge/wrangler.jsonc', 'template/config-repo/wrangler.jsonc']) {
+    const config = parseJsonc(readFileSync(join(root, file), 'utf8'), [], { allowTrailingComma: true });
+    assert.deepEqual(strictlyPublicProblems(config, file), []);
+  }
 });
 
 test('a filled-in config repository validates and builds', (t) => {
