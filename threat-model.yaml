@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:d12a2615cab4797445e63ca060b4d12c7d2c6c2f70f98e4333fabb79094fe497"
+prose_version: "threat-model.md@sha256:185389eb46fcb1778d8c4a4b28c30c8ab7dc498950ff97cc3618cb9c45631bbd"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -2357,7 +2357,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/profile-format.md github_bump row: \"pair it with github_pr\""}
   - id: R-INTERNAL-CALL
     component: engine-api
-    statement: "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; revoke the old token; remove the setting to switch off; no reliance on edge rules"
+    statement: "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; revoke the old token (tokens.mjs list marks it; create and rotate refuse the INTERNAL_CLIENT name); remove the setting to switch off; no reliance on edge rules"
     enforces: [internal-account-deploy, internal-client-profiles, P-INTERNAL-CLIENT-FROM-ENGINE]
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; docs/github-connector.md \"Internal call\""}
   - id: R-CONNECTOR-APPS
@@ -2529,8 +2529,8 @@ known_misuses:
     provenance: {kind: documented, source: "docs/github-connector.md \"The two GitHub apps\""}
   - id: internal-client-too-wide
     components: [engine-api]
-    pattern: "INTERNAL_CLIENT with more profiles than the connector uses, or another client's name"
-    safer_alternative: "only the connector's profiles, under the client name of its token"
+    pattern: "INTERNAL_CLIENT with more profiles than the connector uses, or another client's name, or a token kept with its name"
+    safer_alternative: "only the connector's profiles, under the client name of its token; revoke that token once internal calls work"
     provenance: {kind: documented, source: "docs/github-connector.md \"Internal call\""}
   - id: edge-rules-for-internal-calls
     components: [engine-api, connector-github]

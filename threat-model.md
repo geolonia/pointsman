@@ -470,6 +470,14 @@
   `R-PRIVATE-CONFIG` name the check; the code citations into
   `packages/github/src/bump.ts`, moved to their lines after this change
   (the validator was not run for this amendment). No new question.
+  Amended 2026-11-23 a tenth time, before the code is released (still
+  bound to `v0.18.0`), for pointsman#275 (from the security review of
+  2026-11): `tokens.mjs` reads `INTERNAL_CLIENT` from the Wrangler config
+  and refuses a new or rotated token with its client name, and `list`
+  marks an existing one. Changed: the §1.6 row for `scripts/tokens.mjs`,
+  `R-INTERNAL-CALL`, the misuse pattern on `INTERNAL_CLIENT`; the code
+  citation into `scripts/tokens.mjs`, moved to its line after this change
+  (the validator was not run for this amendment). No new question.
   Each re-binding also updated the code citations that had moved; the rest
   still stands as of the bound commit.
 - **Generation metadata**: produced with AI assistance. Model/agent: Claude
@@ -555,7 +563,7 @@
   re-checked; recon, interview and backtest were not run again; no
   question was picked, because the findings left none open. The amendments
   of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325 and
-  #326, and of 2026-11-23 for pointsman#328, were done the same way.
+  #326, and of 2026-11-23 for pointsman#328 and #275, were done the same way.
 - **Reporting cross-reference**: a finding that violates a §1.11 claimed
   property is reported privately, through GitHub's private vulnerability
   reporting for this repository or by email to `security@pointsman.net`,
@@ -572,7 +580,7 @@
   re-bound to `v0.18.0` on 2026-10-26 for pointsman#235 and #236, with no
   new question; the amendments of 2026-11-19 for pointsman#243 and #271
   and of 2026-11-20 for pointsman#307, #309, #313, #319, #323, #324, #325
-  and #326, and of 2026-11-23 for pointsman#328, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
+  and #326, and of 2026-11-23 for pointsman#328 and #275, before their code is released, so they re-bind at the next release). The maintainer answered all 24 questions
   of the first draft in one wave on 2026-10-16, the three questions of
   the amendment for GitHub pull-request facts (Q25 to Q27) on 2026-10-21,
   the four of the amendment of 2026-10-23 (Q28 to Q31) on 2026-10-23, and
@@ -1396,7 +1404,7 @@ they are security-relevant.
 | `config-repo` workflows | `engine.json` `modules` | no — the config repository's own contributors; `main` is protected | resource-name | none — names outside this repository's module catalog, a module listed twice or a pinned version that differs fail the config check and the build | *(documented, docs/modules.md "Choosing modules"; docs/deployment.md "Set up")* |
 | `config-repo` workflows | `engine.json` `ref` | no — the repository is fixed to `geolonia/pointsman` in the workflow; `ref` must be a 40-character SHA | resource-name | change `ENGINE_REPOSITORY` only on purpose | *(documented, docs/deployment.md "Updating the engine")* |
 | `config-repo` workflows | `wrangler.jsonc`, `ai-gateway.json`, the `production` environment secrets | no — operator | serialized-state | placeholders refused (`check-config.mjs`); secrets only in the three Cloudflare steps | *(documented, docs/deployment.md "What the workflows do")* |
-| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client; since pointsman#326 (not yet released) a record over 1024 bytes (the KV metadata limit) is refused before anything is written, and `revoke` refuses a hash no token has, so a mistyped hash never reports a revoke | *(documented, README "API tokens")* |
+| `scripts/tokens.mjs` | `create`, `rotate`, `revoke`, `list`; `--client`, `--profiles`, `--test`, `--keep-old`, `--hash`, `--local`/`--remote`, `--config` | no — operator at a terminal | data | `--profiles '*'` only on purpose; store the printed token as a secret; a client name is unique (`create` refuses a name in use), because chained decisions must come from the same client; since pointsman#326 (not yet released) a record over 1024 bytes (the KV metadata limit) is refused before anything is written, and `revoke` refuses a hash no token has, so a mistyped hash never reports a revoke; since pointsman#275 (not yet released) `create` and `rotate` refuse the client name that `INTERNAL_CLIENT` gives in the Wrangler config (top level and every environment; a config it cannot read is an error), and `list` marks a token with that name | *(documented, README "API tokens"; `scripts/tokens.mjs` header comment)* |
 
 ### Size, shape and rate
 
@@ -1755,7 +1763,7 @@ what voids it.
   of each token is stored"; `src/auth.ts` header: "Tokens are 32 random bytes,
   so a plain hash is enough")*. Voided by: nothing. Search:
   `grep -rn "TOKENS\|tokenKey" src scripts/tokens.mjs` — the only write is
-  `scripts/tokens.mjs:168` with `tokenKey(hash)`.
+  `scripts/tokens.mjs:217` with `tokenKey(hash)`.
 - **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide` and
   `GET /v1/profiles`; its decisions are marked `test: true`, are not logged,
   never reach the review queue or the stats, get no callback, and `/mcp`
@@ -2464,7 +2472,7 @@ the receivers must do for §1.5–§1.11 to hold.
   a known, positive value instead of counting on an earlier blocking rule
   *(documented, docs/profile-format.md "GitHub pull requests", "Safety")*.
 - **`R-GITHUB-BUMP-PAIR`** — in a profile that allows a dependency bump on `github_bump`, pair it with `github_pr` (`author_dependabot`, `all_commits_verified`, `pushed_by_author`), check `missing` first, and require `registry_changed` false and a `release_age_days` margin you chose; do not treat an old-enough release as a reviewed one (`D-NPM-REGISTRY-TRUSTED`, `D-BUMP-PNPM9-DEV-ONLY`) *(documented, docs/profile-format.md `github_bump` row: "pair it with `github_pr`"; maintainer, 2026-10)*.
-- **`R-INTERNAL-CALL`** — for internal calls: keep the permission to deploy Workers in the engine's Cloudflare account (and Cloudflare API tokens with Workers Scripts: Edit) to the people who deploy the engine; list in `INTERNAL_CLIENT` only the connector's profiles, under the client name of its current token; once internal calls work, revoke the connector's token and delete its secret; to switch internal calls off, remove `INTERNAL_CLIENT` and deploy; do not count on edge rules for this path; since pointsman#221 (`v0.16.0`) a bound Worker can also read the client's decisions, resolve the pending reviews of its profiles and close its own, so the same deploy permission guards those *(documented, docs/adapters.md "Internal calls": "Keep that permission to the people who deploy the engine"; docs/github-connector.md "Internal call")*.
+- **`R-INTERNAL-CALL`** — for internal calls: keep the permission to deploy Workers in the engine's Cloudflare account (and Cloudflare API tokens with Workers Scripts: Edit) to the people who deploy the engine; list in `INTERNAL_CLIENT` only the connector's profiles, under the client name of its current token; once internal calls work, revoke the connector's token and delete its secret (since pointsman#275, not yet released, `tokens.mjs list` marks a token with the `INTERNAL_CLIENT` name, and `create` and `rotate` refuse that name, so no later token shares the internal client's decisions; this reads the config given with `--config`, so an `INTERNAL_CLIENT` set only as a secret is not seen); to switch internal calls off, remove `INTERNAL_CLIENT` and deploy; do not count on edge rules for this path; since pointsman#221 (`v0.16.0`) a bound Worker can also read the client's decisions, resolve the pending reviews of its profiles and close its own, so the same deploy permission guards those *(documented, docs/adapters.md "Internal calls": "Keep that permission to the people who deploy the engine"; docs/github-connector.md "Internal call")*.
 - **`R-CONNECTOR-APPS`** — for the GitHub connector: two GitHub Apps, the read-only facts app for the engine and the connector app for the connector Worker only; install both only on the repositories the connector handles; give the connector app only the permissions its settings need; put the key and the webhook secret (made with `openssl rand -hex 32`) only into wrangler; give the connector its own token limited to its profiles, never a test token; since pointsman#222 (`v0.16.0`), for answers in the pull request, also Contents: read and the event Check run, and only for the command Issues: read and the event Issue comment *(documented, docs/github-connector.md "The two GitHub apps": "Install both apps only on the repositories the connector handles"; "Setting it up"; "Switching it on"; maintainer, 2026-10)*.
 - **`R-CONNECTOR-APPROVE`** — before mapping a decision to `approve`: turn on "Dismiss stale pull request approvals when new commits are pushed" in the branch's ruleset or protection; keep a person's review where `CODEOWNERS` and the ruleset require one (an app cannot be a code owner); map `approve` only from profiles whose allowing rules follow `R-GITHUB-POSITIVE-RULES` and require the facts; AI answers about text the author wrote may add conditions, never be the basis (`D-APPROVAL-ON-FACTS`); map `keep_approval` only to an action of its own that the profile gives by a rule placed after every blocking rule and requiring everything the approving rule requires except what the approval itself changes; (since pointsman#216, `v0.15.0`, the settings refuse `approve` and `keep_approval` in a profile with `once_per_head`); since pointsman#221 (`v0.16.0`) an answer that maps to `approve` is a person's yes about one commit and needs the same ruleset (`R-CONNECTOR-ANSWERS`) *(documented, docs/github-connector.md "Actions": "Required"; "Code owners"; "When the approval stays": "It must require everything the approving rule requires"; maintainer, 2026-10)*.
 - **`R-CONNECTOR-ANSWERS`** — since pointsman#221 and #222 (`v0.16.0`), before asking a person through the GitHub connector or switching on answers in the pull request (`GITHUB_CONNECTOR` `answers`): list `people_answers` in every profile asked this way, so only the answers you mean can be given, also in Pointsman's queue; offer in the pull request only answers that map to an action that profile may take on a person's yes; switch answers on only in repositories where everyone with write access may approve the pull requests in question; in the ruleset keep "Dismiss stale pull request approvals when new commits are pushed" and "Require approval of the most recent reviewable push", and a code owner's own review where `CODEOWNERS` requires one; give the connector app Contents: read and the event Check run for the buttons, and Issues: read and the event Issue comment only for the command; give another client's token, or a Worker bound to `InternalEngine`, a profile the connector asks about only if it may answer its questions (`D-RESOLVE-BY-SCOPE`); deploy the engine before the connector that needs its close and read-back calls *(documented, docs/github-connector.md "Asking a person", "Switching it on": "Switch answers on only where everyone with write access may approve the pull requests in question"; maintainer, 2026-10)*.
@@ -2536,8 +2544,11 @@ One line each in this draft; expand before publication.
   sends pull-request text to a model also holds a key that can write
   (`R-CONNECTOR-APPS`).
 - Giving `INTERNAL_CLIENT` more profiles than the connector uses, or the
-  name of another client, so bound Workers decide in that client's history
-  (`R-INTERNAL-CALL`).
+  name of another client, so bound Workers decide in that client's history,
+  or keeping a token with the `INTERNAL_CLIENT` name after the move, so its
+  holder can close the internal client's reviews and chain on its
+  decisions (`R-INTERNAL-CALL`; since pointsman#275 `tokens.mjs` refuses a
+  new one and `list` marks an old one).
 - Counting on a firewall or rate-limit rule on `/v1/` to limit the
   connector after switching to internal calls (`D-INTERNAL-ACCOUNT-TRUST`).
 - Mapping `keep_approval` to an action that the profile also gives where
@@ -2653,9 +2664,10 @@ Revise the model when any of these happens:
   (connector reads), #323 (bridge writes, time limits, inputs, routes),
   #324 (MCP and login errors, fact lookups, Workers AI time limit), #325
   (triage outputs, deploy-watch before any stack, cancels in a row) and
-  #326 (profile loading, size limits), and the amendment of 2026-11-23
-  covers pointsman#328 (the config check for the strictly-public flag, the
-  linter), before their release. The re-binding to
+  #326 (profile loading, size limits), and the amendments of 2026-11-23
+  cover pointsman#328 (the config check for the strictly-public flag, the
+  linter) and #275 (no token with the `INTERNAL_CLIENT` name), before
+  their release. The re-binding to
   `v0.18.0` covered pointsman#235 and #236. The re-binding to
   `v0.17.2` covered pointsman#232. The re-binding to
   `v0.17.1` covered pointsman#229. The re-binding to

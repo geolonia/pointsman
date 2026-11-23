@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const script = join(fileURLToPath(new URL('..', import.meta.url)), 'scripts', 'tokens.mjs');
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
@@ -91,12 +93,17 @@ test('rotate --keep-old keeps the old token and --profiles changes the scope', (
 
 test('rotate --keep-old prints the revoke command with the same --config', () => {
   const list = stored(['a'.repeat(64), { client: 'demo', profiles: ['x'] }]);
+  // rotate reads the config for INTERNAL_CLIENT (#275), so the files exist, in a folder of their own.
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-config-'));
+  mkdirSync(join(dir, 'deploy'));
+  for (const config of ['deploy/wrangler.jsonc', "my config's.jsonc", '-x.jsonc']) writeFileSync(join(dir, config), '{}');
   for (const [config, shown] of [
     ['deploy/wrangler.jsonc', 'deploy/wrangler.jsonc'],
     ["my config's.jsonc", `'my config'\\''s.jsonc'`],
     ['-x.jsonc', '-x.jsonc'],
   ]) {
-    const r = runWith(list, 'rotate', '--client', 'demo', '--keep-old', '--remote', `--config=${config}`, '--dry-run');
+    const r = spawnSync(process.execPath, [script, 'rotate', '--client', 'demo', '--keep-old', '--remote', `--config=${config}`, '--dry-run'],
+      { cwd: dir, encoding: 'utf8', env: { ...process.env, TOKENS_DRY_RUN_LIST: list } });
     assert.equal(r.status, 0, r.stderr);
     assert.ok(r.stdout.includes(`revoke --hash ${'a'.repeat(64)} --remote --config=${shown}\n`), r.stdout);
     // The script's path as started, so the command also works from a configuration repository (engine/scripts/...).
@@ -197,4 +204,68 @@ test('list shows the expiry, and marks an expired token', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /later .*expires 2099-01-01T00:00:00.000Z$/m);
   assert.match(r.stdout, /gone .*expires 2020-01-01T00:00:00.000Z \(expired\)$/m);
+});
+
+// #275: a token must not share its client name with INTERNAL_CLIENT, at the
+// top level or in an environment of the Wrangler config.
+const internalConfig = () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  const file = join(dir, 'wrangler.jsonc');
+  const client = (name) => JSON.stringify({ client: name, profiles: ['pr-docs-check'] });
+  writeFileSync(file, `{
+  // a comment, as in a real config
+  "name": "engine",
+  "vars": { "INTERNAL_CLIENT": ${JSON.stringify(client('github-connector'))} },
+  "env": { "staging": { "vars": { "INTERNAL_CLIENT": ${JSON.stringify(client('staging-connector'))} } } },
+}`);
+  return file;
+};
+
+test('create refuses the client name of INTERNAL_CLIENT (#275)', () => {
+  const config = internalConfig();
+  for (const name of ['github-connector', 'staging-connector']) {
+    const r = run('create', '--client', name, '--profiles', '*', '--local', '--config', config, '--dry-run');
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, new RegExp(`"${name}" is the client of INTERNAL_CLIENT`));
+    assert.deepEqual(writes(r.stdout), []);
+  }
+  const other = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', config, '--dry-run');
+  assert.equal(other.status, 0, other.stderr);
+});
+
+test('rotate refuses the client name of INTERNAL_CLIENT (#275)', () => {
+  const r = runWith(stored(['a'.repeat(64), { client: 'github-connector', profiles: ['*'] }]),
+    'rotate', '--client', 'github-connector', '--local', '--config', internalConfig(), '--dry-run');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /is the client of INTERNAL_CLIENT/);
+  assert.deepEqual(writes(r.stdout), []);
+});
+
+test('list marks a token with the client name of INTERNAL_CLIENT (#275)', () => {
+  const r = runWith(stored(['a'.repeat(64), { client: 'github-connector', profiles: ['*'] }], ['b'.repeat(64), { client: 'demo', profiles: ['*'] }]),
+    'list', '--local', '--config', internalConfig(), '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /a{64} {2}github-connector .*same name as INTERNAL_CLIENT/);
+  assert.doesNotMatch(r.stdout.split('\n').find((l) => l.startsWith('b'.repeat(64))), /INTERNAL_CLIENT/);
+});
+
+test('a config that cannot be read is an error, not an unchecked name (#275)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  const broken = join(dir, 'wrangler.jsonc');
+  writeFileSync(broken, '{ "vars": ');
+  const r = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', broken, '--dry-run');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /cannot check INTERNAL_CLIENT/);
+  const missing = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', join(dir, 'none.jsonc'), '--dry-run');
+  assert.equal(missing.status, 2, missing.stdout + missing.stderr);
+  assert.match(missing.stderr, /cannot check INTERNAL_CLIENT/);
+});
+
+test('a TOML config gets a warning, not a refusal (#275)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  const toml = join(dir, 'wrangler.toml');
+  writeFileSync(toml, 'name = "engine"\n');
+  const r = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', toml, '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /cannot check that no token gets the client name of INTERNAL_CLIENT/);
 });
