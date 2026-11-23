@@ -77,7 +77,7 @@ A fact type (`FactTypeDef`) declares:
 | `timeoutMs` | How long a lookup may take. |
 | `mock` | The values of the mock provider (`FACTS_MODE: mock`, `FACTS_GITHUB: mock`). |
 | `words` | Sentences in English and Japanese for [explanations](profile-format.md#explain). |
-| `cases` | What a [test case](profile-format.md#test-cases) may give for the fact. |
+| `cases` | What a [test case](profile-format.md#test-cases) may give for the fact. Either `key` (a boolean field that says whether something was found), `absent` (a value for every other field) and `optional`, or `nullable` and `defaults`, not both; every name must be one of the type's fields, and every value in `absent` or `defaults` one the engine would take for that field (its kind, a finite number, within `maxLength` and the probability range; or null, in `absent` and for a `nullable` field), or the engine refuses the module when it is chosen. |
 
 The provider has one function, `lookup(query, signal, scope)`. It returns field values and a source, or throws. A value that could not be read makes the whole fact missing, never a guess: throw `FactUnavailableError`, or `FactMissingError` with a reason the module declares (for example `stale`); any other error is recorded as `error`.
 

@@ -674,6 +674,26 @@ describe('required checks (github_checks)', () => {
     expect(server.count(`${REPO}/actions/runs`)).toBe(0);
   });
 
+  it('reads required workflows: a commit before a ref, other rules ignored, a broken rule fails the fact', async () => {
+    const security = { path: '.github/workflows/security.yml', ref: 'refs/tags/v1', repository_id: 42 };
+    const run = { path: security.path, status: 'completed', conclusion: 'success', created_at: '2026-10-21T00:00:00Z', workflow_url: `https://api.github.com${REPO}/actions/required_workflows/5` };
+    const withRules = (rules: unknown) => routes({
+      [`${REPO}/rules/branches/main`]: () => rules,
+      [`${REPO}/actions/runs`]: () => ({ total_count: 1, workflow_runs: [run] }),
+    });
+    const rule = (...workflows: unknown[]) => ({ type: 'workflows', parameters: { workflows } });
+    // Rules of other types do not count as workflows.
+    expect(await values('ci', withRules([{ type: 'pull_request', parameters: {} }, rule(security)]))).toEqual({ required: 1, green: true, pending: false, failed: false });
+    // With a commit, the commit is what runs: the same path at the same ref but another commit is a second workflow.
+    expect(await reasonOf('ci', withRules([rule(security), rule({ ...security, sha: 'c'.repeat(40) })]))).toEqual({ missing: true, reason: 'error' });
+    expect(await values('ci', withRules([rule({ ...security, sha: 'c'.repeat(40) }), rule({ ...security, ref: 'refs/heads/x', sha: 'c'.repeat(40) })]))).toMatchObject({ required: 1, green: true });
+    // A workflows rule GitHub sent in another shape fails the fact.
+    expect(await reasonOf('ci', withRules([{ type: 'workflows', parameters: {} }]))).toEqual({ missing: true, reason: 'error' });
+    expect(await reasonOf('ci', withRules([{ type: 'workflows' }]))).toEqual({ missing: true, reason: 'error' });
+    expect(await reasonOf('ci', withRules([rule({ ref: 'refs/tags/v1' })]))).toEqual({ missing: true, reason: 'error' });
+    expect(await reasonOf('ci', withRules({ rules: [] }))).toEqual({ missing: true, reason: 'error' });
+  });
+
   it('protection that cannot be seen: unavailable; any app (-1) counts', async () => {
     expect(await reasonOf('ci', routes({ [`${REPO}/branches/main`]: () => ({ protected: true }) }))).toEqual({ missing: true, reason: 'unavailable' });
     const anyApp = routes({

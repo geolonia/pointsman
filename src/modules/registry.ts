@@ -114,6 +114,66 @@ function checkType(module: string, t: FactTypeDef): void {
   for (const f of Object.keys(t.mock)) {
     if (!Object.hasOwn(t.fields, f)) throw new ModuleError(`${module}: ${t.type} mock has an unknown field "${f}"`);
   }
+  checkCases(module, t);
+}
+
+/**
+ * The `cases` rules (packages/module-api/src/api.ts CaseRules) name the
+ * type's own fields: src/cases.ts relies on it, so a test case cannot pass on
+ * values the engine would refuse.
+ */
+function checkCases(module: string, t: FactTypeDef): void {
+  const where = `${module}: ${t.type} cases`;
+  const known = (list: string, f: unknown) => {
+    if (typeof f !== 'string' || !Object.hasOwn(t.fields, f)) throw new ModuleError(`${where}: ${list} names "${String(f)}", which is not one of its fields`);
+  };
+  // A value the engine's result check would take for the field (src/facts.ts
+  // resultError): its kind, a finite number, at most maxLength characters, a
+  // probability from 0 to 1.
+  const fits = (list: string, f: string, v: unknown, nullOk: boolean) => {
+    const { kind, maxLength, probability } = t.fields[f]!;
+    const bad = (why: string) => new ModuleError(`${where}: ${list} gives "${f}" ${JSON.stringify(v)}, ${why}`);
+    if (v === null) {
+      if (!nullOk) throw bad(`not a ${kind}`);
+      return;
+    }
+    if (typeof v !== kind) throw bad(`not a ${kind}${nullOk ? ' or null' : ''}`);
+    if (typeof v === 'number' && !Number.isFinite(v)) throw bad('not a finite number');
+    if (typeof v === 'string' && maxLength !== undefined && v.length > maxLength) throw bad(`longer than ${maxLength} characters`);
+    if (probability && typeof v === 'number' && (v < 0 || v > 1)) throw bad('not from 0 to 1');
+  };
+  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  const shape = t.cases as unknown;
+  if (typeof shape !== 'object' || shape === null) throw new ModuleError(`${where}: give key, absent and optional, or nullable and defaults`);
+  if ('key' in shape) {
+    if ('nullable' in shape || 'defaults' in shape) throw new ModuleError(`${where}: give key, absent and optional, or nullable and defaults, not both`);
+    const { key, absent, optional } = t.cases as Extract<FactTypeDef['cases'], { key: string }>;
+    if (typeof key !== 'string' || !Object.hasOwn(t.fields, key) || t.fields[key]!.kind !== 'boolean') {
+      throw new ModuleError(`${where}: key "${String(key)}" must be one of its boolean fields`);
+    }
+    if (!isRecord(absent) || !Array.isArray(optional)) throw new ModuleError(`${where}: give absent (an object) and optional (a list)`);
+    for (const [f, v] of Object.entries(absent)) {
+      known('absent', f);
+      if (f === key) throw new ModuleError(`${where}: absent must not give the key "${key}"`);
+      fits('absent', f, v, true);
+    }
+    // When the key is false, the engine gives every other field its absent value.
+    for (const f of Object.keys(t.fields)) {
+      if (f !== key && !Object.hasOwn(absent, f)) throw new ModuleError(`${where}: absent has no value for "${f}"`);
+    }
+    for (const f of optional) {
+      known('optional', f);
+      if (f === key) throw new ModuleError(`${where}: the key "${key}" cannot be optional`);
+    }
+    return;
+  }
+  const { nullable, defaults } = t.cases as Extract<FactTypeDef['cases'], { nullable: string[] }>;
+  if (!Array.isArray(nullable) || !isRecord(defaults)) throw new ModuleError(`${where}: give nullable (a list) and defaults (an object)`);
+  for (const f of nullable) known('nullable', f);
+  for (const [f, v] of Object.entries(defaults)) {
+    known('defaults', f);
+    fits('defaults', f, v, nullable.includes(f));
+  }
 }
 
 /** Every setting of the given types, by name. A name two types share must have the same schema. */

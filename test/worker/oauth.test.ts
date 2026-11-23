@@ -339,6 +339,19 @@ describe('GitHub login for /mcp', () => {
     // A revoked or unknown API token is not tried as an OAuth token.
     expect((await rpc(t, newToken(), 'tools/list')).status).toBe(401);
   });
+
+  it('refuses a test token at /mcp, as without OAuth', async () => {
+    const t = setup();
+    const token = newToken();
+    await env.TOKENS.put(tokenKey(await hashToken(token)), JSON.stringify({ client: 'checks', profiles: ['*'], created_at: '', test: true }));
+    const res = await t.send('/mcp', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'tools/list', params: {} }),
+    }, false);
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain('a test token may only decide, list profiles and explain a profile over the REST API');
+  });
 });
 
 describe('OAuth configuration', () => {

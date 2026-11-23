@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { lookupFacts, resultError } from '../../src/facts';
 import { coderabbitModule, CodeRabbitFactProvider, ignoredBy, billableIn, headSince } from '@pointsman/coderabbit';
 import { ConfigError } from '@pointsman/module-api';
-import { GitHubFactProvider, movedStart, TokenAuth } from '@pointsman/github';
+import { changeSignature, GitHubFactProvider, hunkRanges, movedStart, TokenAuth } from '@pointsman/github';
 import { ModuleRouter, type FactProvider } from '../../src/facts';
 import type { FactSpec } from '../../src/types';
 
@@ -382,5 +382,45 @@ describe('the module', () => {
   it('mock values fit the type', async () => {
     const f = await create({ FACTS_CODERABBIT: 'mock' })!.lookup({ type: 'coderabbit' }, new AbortController().signal);
     expect(resultError('coderabbit', f)).toBeNull();
+  });
+});
+
+describe('changeSignature and hunkRanges (rebase_only)', () => {
+  const file = (filename: string, patch: string | undefined, extra: Record<string, unknown> = {}) => ({ filename, status: 'modified', ...(patch !== undefined && { patch }), ...extra });
+
+  it('hunkRanges reads each hunk\'s old start and length, 1 when the length is left out', () => {
+    expect(hunkRanges('@@ -12,3 +14,4 @@ function name\n a\n-b\n+c\n@@ -40 +42 @@\n-x\n+y')).toEqual([{ start: 12, length: 3 }, { start: 40, length: 1 }]);
+    expect(hunkRanges('@@ -0,0 +1,2 @@\n+a\n+b')).toEqual([{ start: 0, length: 0 }]);
+    // Only at the start of a line: an added line that looks like a hunk header is text.
+    expect(hunkRanges('@@ -1 +1 @@\n+ @@ -9,9 +9,9 @@')).toEqual([{ start: 1, length: 1 }]);
+    expect(hunkRanges('')).toEqual([]);
+  });
+
+  it('changeSignature is the same for the same change, whatever the order of the files', () => {
+    const a = file('a.md', '@@ -1 +1 @@\n-x\n+y');
+    const b = file('b.md', '@@ -5,2 +5,2 @@\n-p\n+q\n r');
+    expect(changeSignature([a, b])).toBe(changeSignature([b, a]));
+    // Another line, path, status or earlier name is another change.
+    expect(changeSignature([a])).not.toBe(changeSignature([file('a.md', '@@ -1 +1 @@\n-x\n+z')]));
+    expect(changeSignature([a])).not.toBe(changeSignature([{ ...a, filename: 'c.md' }]));
+    expect(changeSignature([a])).not.toBe(changeSignature([{ ...a, status: 'added' }]));
+    expect(changeSignature([a])).not.toBe(changeSignature([{ ...a, previous_filename: 'old.md' }]));
+  });
+
+  it('changeSignature keeps hunk line numbers, except in the loose files', () => {
+    const at1 = file('a.md', '@@ -1 +1 @@ intro\n-x\n+y');
+    const at9 = file('a.md', '@@ -9 +9 @@ intro\n-x\n+y');
+    expect(changeSignature([at1])).not.toBe(changeSignature([at9]));
+    expect(changeSignature([at1], new Set(['a.md']))).toBe(changeSignature([at9], new Set(['a.md'])));
+    // The text after the mark stays: another function is another change.
+    expect(changeSignature([at1], new Set(['a.md']))).not.toBe(changeSignature([file('a.md', '@@ -9 +9 @@ other\n-x\n+y')], new Set(['a.md'])));
+    // Only the named files are loose.
+    expect(changeSignature([at1], new Set(['b.md']))).not.toBe(changeSignature([at9], new Set(['b.md'])));
+  });
+
+  it('changeSignature is null when a file has no patch, and fails on a file without a name', () => {
+    expect(changeSignature([file('a.md', '@@ -1 +1 @@\n-x\n+y'), file('logo.png', undefined)])).toBeNull();
+    expect(() => changeSignature([{ patch: '@@ -1 +1 @@' }])).toThrow('GitHub compare: unexpected answer');
+    expect(() => changeSignature([null])).toThrow('GitHub compare: unexpected answer');
   });
 });

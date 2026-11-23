@@ -1644,6 +1644,30 @@ describe('decision chains', () => {
     expect(without).toEqual(['retry']);
   });
 
+  it('retries a dead letter, never acknowledges it, when the dead-letter queue refuses it', async () => {
+    const s = setup({
+      route: final,
+      pointsman: () => Response.json({ error: { code: 'idempotency_conflict', message: 'x' } }, { status: 409 }),
+      handler: (c) => (c.method === 'GET' && c.url === ENTITY_URL ? Response.json(entity({ check: result('c-1') })) : undefined),
+    });
+    const settled: string[] = [];
+    const delays: unknown[] = [];
+    const message = {
+      body: { path: '/notify', route: 'final', entity: entity() } as BridgeMessage, attempts: 3,
+      ack: () => settled.push('ack'), retry: (o?: unknown) => { settled.push('retry'); delays.push(o); },
+    };
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await handleQueueBatch({ messages: [message] }, { ...s.config, deadLetter: { sendBatch: async () => { throw new Error('dead-letter queue down'); } } });
+      expect(logged.mock.calls.map((c) => c.join(' ')).join('\n')).toContain('dead-letter queue down');
+    } finally {
+      logged.mockRestore();
+    }
+    // Lost if acknowledged: retried, so it ends in the dead-letter queue by max_retries.
+    expect(settled).toEqual(['retry']);
+    expect(delays).toEqual([{ delaySeconds: retryDelay(3) }]);
+  });
+
   it('links the earlier decisions and the replaced one on the Decision entity', () => {
     const out = toDecisionEntity({ ...finalDecision, replaces: 'f-1', review: { status: 'pending' } } as never, 'urn:x:1', final);
     expect(out.wasInformedBy).toEqual([

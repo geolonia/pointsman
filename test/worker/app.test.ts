@@ -223,10 +223,13 @@ describe('test tokens', () => {
   it('may list their profiles, and do nothing else', async () => {
     const { app } = await setup();
     expect((await app.request('/v1/profiles', { headers: auth }, env)).status).toBe(200);
+    expect((await app.request('/v1/profiles/deploy-progress/explain', { headers: auth }, env)).status).toBe(200);
     const id = crypto.randomUUID();
     for (const [method, path] of [
       ['GET', '/v1/reviews'], ['GET', `/v1/decisions/${id}`], ['POST', `/v1/decisions/${id}/feedback`], ['POST', `/v1/reviews/${id}/resolve`],
       ['GET', '/v1/decide/deploy-progress'], ['POST', '/v1/decide/deploy-progress/x'], ['GET', '/v1/stats/deploy-progress'],
+      // They read logged decisions or close a review.
+      ['POST', `/v1/reviews/${id}/close`], ['GET', '/v1/profiles/deploy-progress/graph'], ['POST', '/v1/profiles/deploy-progress/replay'],
     ] as const) {
       const data = await expectError(await app.request(path, { method, headers: auth, ...(method === 'POST' && { body: '{}' }) }, env), 403, 'forbidden');
       // The answer says what a test token may do.
