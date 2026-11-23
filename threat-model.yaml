@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:def76e33d9203534b997944d040a8b7fda7b1091d2739bd5c52e676398623457"
+prose_version: "threat-model.md@sha256:99727cfa88f03ea800897123775def616ea5aa22ec52579d8ebc5a6170eab74e"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -2357,7 +2357,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/profile-format.md github_bump row: \"pair it with github_pr\""}
   - id: R-INTERNAL-CALL
     component: engine-api
-    statement: "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; once internal calls work, revoke the old token (tokens.mjs list marks it; create and rotate refuse the INTERNAL_CLIENT name, read from a JSON or JSONC Wrangler config only, not a TOML config, a secret or .dev.vars); remove the setting to switch off; no reliance on edge rules"
+    statement: "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; once internal calls work, revoke the old token (after setting or changing INTERNAL_CLIENT, run tokens.mjs list with that config: it marks such a token; create and rotate refuse the INTERNAL_CLIENT name, read from a JSON or JSONC Wrangler config only, not a TOML config, a secret or .dev.vars); remove the setting to switch off; no reliance on edge rules"
     enforces: [internal-account-deploy, internal-client-profiles, P-INTERNAL-CLIENT-FROM-ENGINE]
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; docs/github-connector.md \"Internal call\""}
   - id: R-CONNECTOR-APPS

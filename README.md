@@ -190,7 +190,9 @@ tokens: rotate or rename those. No token gets the client name of
 decisions it would share: `create` and `rotate` read that setting from the
 Wrangler config (`--config`, else the one wrangler finds from the current folder up; where wrangler would redirect to a generated config, they ask for `--config`) and refuse its name, and
 `list` marks a token that has it, such as the GitHub connector's old token
-after it moved to internal calls: revoke it then. This works only with a
+after it moved to internal calls: revoke it then. After you set or change
+`INTERNAL_CLIENT`, run `list` with that config, and revoke a token it marks
+once internal calls work. This works only with a
 JSON or JSONC config that sets `INTERNAL_CLIENT` in `vars`: with a TOML
 config (a warning), or with `INTERNAL_CLIENT` only as a secret or in
 `.dev.vars`, nothing is checked.
