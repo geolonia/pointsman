@@ -215,6 +215,15 @@ export class GitHubAppAuth implements GitHubAuth {
     return entry.token;
   }
 
+  /** Drops the cached token for this pull request's repository (or owner) when it is still `used`: GitHub refused it. */
+  async forget(pr: PullRequestRef, used: string): Promise<void> {
+    const id = this.key_(pr);
+    const entry = this.tokens.get(id);
+    if (!entry) return;
+    const value = await entry.token.catch(() => undefined);
+    if (value === used && this.tokens.get(id) === entry) this.tokens.delete(id);
+  }
+
   /**
    * The app's slug, from the installation's answer (its bot is
    * "<slug>[bot]"). Gets a token first when none was made yet; a FactError

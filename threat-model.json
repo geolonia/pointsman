@@ -110,7 +110,8 @@
         "connector-github run"
       ],
       "touches": [
-        "network"
+        "network",
+        "global_state"
       ],
       "in_scope": true,
       "provenance": "documented",

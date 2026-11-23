@@ -1,9 +1,9 @@
 // The GitHub connector (docs/github-connector.md) with a fake GitHub, a fake
 // Pointsman and an in-memory store for the pull requests' objects.
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import githubModule, {
-  AppGitHub, GitHubError, GitHubHistoryLimit, actingScope, actionOf, botReviewOf, checkDecision, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
+  AppGitHub, GitHubError, GitHubHistoryLimit, actingScope, actionOf, botReviewOf, checkDecision, httpEngine, actsOnGitHub, authorText, readsDiff, scopeFor, checkOutput, connectorGitHub, connectorScope, connectorSettings, githubConnector, pullRequestWork, RetryError, targetsOf,
   type CheckRunOutput, type ConnectorGitHub, type ConnectorSettings, type Decision, type ObjectStorage, type OwnApproval, type PullRequestInfo, type ReviewSummary, UNCLEAR_MS,
 } from '@pointsman/github';
 import { ConfigError, type EngineApi } from '@pointsman/module-api';
@@ -501,6 +501,97 @@ describe('settings and tokens', () => {
       expect(thousand.cut).toBeUndefined();
       const more = await server({ reviews: Array.from({ length: 1001 }, (_, i) => review(i)) }).gh.ownApprovals(REPO, 7);
       expect(more.cut).toBe(true);
+    });
+  });
+
+  describe('the app token is kept between runs (#263)', () => {
+    /** A fake GitHub on the global fetch (connectorGitHub uses it): counts token requests; `pr` answers the pull request. */
+    const github = (o: { expiresIn?: number; pr?: () => Response } = {}) => {
+      const tokens: string[] = [];
+      const used: string[] = [];
+      vi.stubGlobal('fetch', (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/installation')) return Response.json({ id: url.includes('/other/') ? 10 : 9, permissions: { metadata: 'read', pull_requests: 'write', checks: 'write' } });
+        if (url.endsWith('/access_tokens')) {
+          const token = `ghs_${tokens.length + 1}`;
+          tokens.push(`${url.split('/')[5]}:${JSON.parse(String(init!.body)).repositories.join(',')}`);
+          return Response.json({ token, expires_at: new Date(Date.now() + (o.expiresIn ?? 3600_000)).toISOString() }, { status: 201 });
+        }
+        used.push(`${new URL(url).pathname.split('/').slice(2, 4).join('/')} ${new Headers(init?.headers).get('authorization')}`);
+        if (url.endsWith('/pulls/7')) return o.pr?.() ?? Response.json(OPEN_PR);
+        throw new Error(`unexpected ${url}`);
+      }) as typeof fetch);
+      return { tokens, used };
+    };
+    const OPEN_PR = { number: 7, state: 'open', draft: false, head: { sha: HEAD, repo: { id: 1 } }, base: { ref: 'main', repo: { id: 1 } }, user: { login: 'someone' } };
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('two runs with the same settings ask for one token; another repository, app or key gets its own', async () => {
+      const key = await pemKey();
+      const gh = github();
+      const s = settings({ privateKey: key, repos: new Set([REPO, 'other/repo']) });
+      await connectorGitHub(s).pullRequest(REPO, 7);
+      await connectorGitHub(settings({ privateKey: key, repos: new Set([REPO, 'other/repo']) })).pullRequest(REPO, 7);
+      expect(gh.tokens).toEqual(['9:repo']);
+      // A token is only for its one repository (and installation).
+      await connectorGitHub(s).pullRequest('other/repo', 7);
+      expect(gh.tokens).toEqual(['9:repo', '10:repo']);
+      expect(gh.used).toEqual(['example/repo Bearer ghs_1', 'example/repo Bearer ghs_1', 'other/repo Bearer ghs_2']);
+      // Other credentials or another scope: never the cached token.
+      await connectorGitHub(settings({ privateKey: await pemKey() })).pullRequest(REPO, 7);
+      await connectorGitHub(settings({ privateKey: key, appId: APP_ID + 1 })).pullRequest(REPO, 7);
+      await connectorGitHub(settings({ privateKey: key, actions: { 'pr-docs-check': { light: { do: 'approve' } } } })).pullRequest(REPO, 7);
+      expect(gh.tokens).toHaveLength(5);
+    });
+
+    it('a token that expires within the safety margin is asked for again', async () => {
+      const gh = github({ expiresIn: 4 * 60_000 });
+      const s = settings({ privateKey: await pemKey() });
+      await connectorGitHub(s).pullRequest(REPO, 7);
+      await connectorGitHub(s).pullRequest(REPO, 7);
+      expect(gh.tokens).toHaveLength(2);
+    });
+
+    it('a token GitHub refuses (401) is dropped: tried again later with a new one', async () => {
+      let refuse = true;
+      const gh = github({ pr: () => (refuse ? new Response('{}', { status: 401 }) : Response.json(OPEN_PR)) });
+      const s = settings({ privateKey: await pemKey() });
+      await expect(connectorGitHub(s).pullRequest(REPO, 7)).rejects.toMatchObject({ status: 401, retry: true });
+      refuse = false;
+      await connectorGitHub(s).pullRequest(REPO, 7);
+      expect(gh.tokens).toHaveLength(2);
+      expect(gh.used.at(-1)).toBe('example/repo Bearer ghs_2');
+    });
+
+    it('after a 403 that is not a rate limit, or a 404, the next run gets a new token (a setting may have changed); neither is tried again', async () => {
+      for (const refused of [() => Response.json({ message: 'Resource not accessible by integration' }, { status: 403 }), () => new Response('{}', { status: 404 })]) {
+        let refuse = true;
+        const gh = github({ pr: () => (refuse ? refused() : Response.json(OPEN_PR)) });
+        const s = settings({ privateKey: await pemKey() });
+        await expect(connectorGitHub(s).pullRequest(REPO, 7)).rejects.toMatchObject({ retry: false });
+        refuse = false;
+        await connectorGitHub(s).pullRequest(REPO, 7);
+        expect(gh.tokens).toHaveLength(2);
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('a rate-limited 403 keeps the token and is tried again', async () => {
+      let limited = true;
+      const gh = github({ pr: () => (limited ? Response.json({ message: 'API rate limit exceeded' }, { status: 403, headers: { 'x-ratelimit-remaining': '0' } }) : Response.json(OPEN_PR)) });
+      const s = settings({ privateKey: await pemKey() });
+      await expect(connectorGitHub(s).pullRequest(REPO, 7)).rejects.toMatchObject({ retry: true });
+      limited = false;
+      await connectorGitHub(s).pullRequest(REPO, 7);
+      expect(gh.tokens).toHaveLength(1);
+    });
+
+    it('runs at the same time share one token request', async () => {
+      const gh = github();
+      const s = settings({ privateKey: await pemKey() });
+      await Promise.all([connectorGitHub(s).pullRequest(REPO, 7), connectorGitHub(settings({ privateKey: s.privateKey })).pullRequest(REPO, 7), connectorGitHub(s).pullRequest(REPO, 7)]);
+      expect(gh.tokens).toEqual(['9:repo']);
+      expect(gh.used).toHaveLength(3);
     });
   });
 
