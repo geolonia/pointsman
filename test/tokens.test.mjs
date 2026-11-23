@@ -304,3 +304,13 @@ test('revoke does not read the config (#275)', () => {
   const r = runWith(stored([hash, { client: 'demo', profiles: ['*'] }]), 'revoke', '--hash', hash, '--local', '--config', join(tmpdir(), 'no-such-config.jsonc'), '--dry-run');
   assert.equal(r.status, 0, r.stderr);
 });
+
+test('a wrangler.json in a parent folder wins over a wrangler.jsonc here, as in wrangler (#275)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  writeFileSync(join(dir, 'wrangler.json'), JSON.stringify({ vars: { INTERNAL_CLIENT: JSON.stringify({ client: 'github-connector', profiles: ['p'] }) } }));
+  mkdirSync(join(dir, 'sub'));
+  writeFileSync(join(dir, 'sub', 'wrangler.jsonc'), '{}');
+  const r = spawnSync(process.execPath, [script, 'create', '--client', 'github-connector', '--profiles', '*', '--local', '--dry-run'], { cwd: join(dir, 'sub'), encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /is the client of INTERNAL_CLIENT in \.\.\/wrangler\.json:/);
+});

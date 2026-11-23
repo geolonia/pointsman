@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:6043e371f647769c72b9f4e71aa23817a3d204eec800c67ee9d9942f9615b5e7"
+prose_version: "threat-model.md@sha256:4f9982dd939e55a8a79e698324a04286c3e15aef6c1f80d88f9dd74df65e3e53"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -2357,7 +2357,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/profile-format.md github_bump row: \"pair it with github_pr\""}
   - id: R-INTERNAL-CALL
     component: engine-api
-    statement: "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; revoke the old token (tokens.mjs list marks it; create and rotate refuse the INTERNAL_CLIENT name); remove the setting to switch off; no reliance on edge rules"
+    statement: "keep Workers deploy permission to the people who deploy the engine; INTERNAL_CLIENT lists only the connector's profiles under its token's client name; revoke the old token (tokens.mjs list marks it; create and rotate refuse the INTERNAL_CLIENT name, read from a JSON or JSONC Wrangler config only, not a TOML config, a secret or .dev.vars); remove the setting to switch off; no reliance on edge rules"
     enforces: [internal-account-deploy, internal-client-profiles, P-INTERNAL-CLIENT-FROM-ENGINE]
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; docs/github-connector.md \"Internal call\""}
   - id: R-CONNECTOR-APPS

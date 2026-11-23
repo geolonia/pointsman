@@ -126,17 +126,21 @@ function listTokens() {
 }
 
 /**
- * The config wrangler takes without --config: wrangler.json, wrangler.jsonc
- * or wrangler.toml in this folder, else in the nearest parent folder that has
- * one (as wrangler's findWranglerConfig; its redirect to a generated config
- * is not followed). wrangler.jsonc when there is none, so the error names it.
+ * The config wrangler takes without --config, in wrangler's order
+ * (findWranglerConfig): wrangler.json in this folder or the nearest parent
+ * folder, else wrangler.jsonc the same way, else wrangler.toml. Its redirect
+ * to a generated config is not followed. wrangler.jsonc when there is none,
+ * so the error names it.
  */
 function findConfig() {
-  for (let dir = resolve('.'); ; dir = dirname(dir)) {
-    const found = ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml'].map((f) => join(dir, f)).find((f) => existsSync(f));
-    if (found) return relative(process.cwd(), found) || found;
-    if (dirname(dir) === dir) return 'wrangler.jsonc';
+  for (const name of ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml']) {
+    for (let dir = resolve('.'); ; dir = dirname(dir)) {
+      const f = join(dir, name);
+      if (existsSync(f)) return relative(process.cwd(), f) || f;
+      if (dirname(dir) === dir) break;
+    }
   }
+  return 'wrangler.jsonc';
 }
 
 /**
