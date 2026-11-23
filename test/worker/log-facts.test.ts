@@ -3,7 +3,7 @@
 // never discarded ones; no log for a test token. And the D1 query behind it.
 
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fakeLog } from './helpers';
 import { D1DecisionLog } from '../../src/log-d1';
 import { factContext, factLogFor } from '../../src/log-facts';
@@ -12,7 +12,7 @@ import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { DecisionRecord } from '../../src/log';
 import type { TokenRecord } from '../../src/auth';
-import type { DecisionContext, FactProvider } from '@pointsman/module-api';
+import { MAX_LOG_READ, type DecisionContext, type FactProvider } from '@pointsman/module-api';
 import type { Profile } from '../../src/types';
 
 const DB = (env as unknown as { DB: D1Database }).DB;
@@ -60,6 +60,19 @@ describe('the log for facts', () => {
 
   it('refuses a since that is not a time', async () => {
     await expect(factLogFor(fakeLog(), token()).recent({ profiles: ['next-step'], since: 'yesterday', limit: 1 })).rejects.toThrow();
+  });
+
+  it('refuses a limit that is not a whole number, and never reads more than MAX_LOG_READ', async () => {
+    const recentFor = vi.fn(async () => []);
+    const log = fakeLog({ recentFor });
+    const since = '2026-10-01T00:00:00.000Z';
+    for (const limit of [Number.NaN, 1.5, Infinity, -Infinity]) {
+      await expect(factLogFor(log, token()).recent({ profiles: ['next-step'], since, limit }), String(limit)).rejects.toThrow(/limit/);
+    }
+    expect(recentFor).not.toHaveBeenCalled();
+    await factLogFor(log, token()).recent({ profiles: ['next-step'], since, limit: MAX_LOG_READ + 1 });
+    await factLogFor(log, token()).recent({ profiles: ['next-step'], since, limit: -1 });
+    expect(recentFor.mock.calls.map((c: unknown[]) => c[3])).toEqual([MAX_LOG_READ, 0]);
   });
 
   it('no log for a test token', () => {

@@ -175,9 +175,9 @@ export async function closeAnswer(deps: Deps, client: TokenRecord, id: string): 
 /** The setting that names the client of internal calls. */
 export const INTERNAL_CLIENT = 'INTERNAL_CLIENT';
 
-// As scripts/tokens.mjs: client names and profile ids.
+// As scripts/tokens.mjs (client names and profile ids) and the profile schema's id.
 const CLIENT = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const PROFILE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /**
  * The client of internal calls, from INTERNAL_CLIENT

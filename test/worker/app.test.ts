@@ -228,7 +228,9 @@ describe('test tokens', () => {
       ['GET', '/v1/reviews'], ['GET', `/v1/decisions/${id}`], ['POST', `/v1/decisions/${id}/feedback`], ['POST', `/v1/reviews/${id}/resolve`],
       ['GET', '/v1/decide/deploy-progress'], ['POST', '/v1/decide/deploy-progress/x'], ['GET', '/v1/stats/deploy-progress'],
     ] as const) {
-      await expectError(await app.request(path, { method, headers: auth, ...(method === 'POST' && { body: '{}' }) }, env), 403, 'forbidden');
+      const data = await expectError(await app.request(path, { method, headers: auth, ...(method === 'POST' && { body: '{}' }) }, env), 403, 'forbidden');
+      // The answer says what a test token may do.
+      expect(data.error.message).toBe('a test token may only decide, list profiles and explain a profile');
     }
     // HEAD answers without a body.
     expect((await app.request('/v1/profiles', { method: 'HEAD', headers: auth }, env)).status).toBe(403);

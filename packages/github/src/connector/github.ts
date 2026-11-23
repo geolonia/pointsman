@@ -286,7 +286,9 @@ export class AppGitHub implements ConnectorGitHub {
       base: pr.base.ref,
       title: typeof pr.title === 'string' ? pr.title : '',
       body: typeof pr.body === 'string' ? pr.body : '',
-      fork: !isObject(pr.head.repo) || !isObject(pr.base.repo) || pr.head.repo.full_name !== pr.base.repo.full_name,
+      // By repository id, as the GitHub facts do; unlike them, a missing id also counts
+      // as a fork (GitHub always sends one). A deleted fork has no head repository.
+      fork: !isObject(pr.head.repo) || !isObject(pr.base.repo) || !isId(pr.head.repo.id) || pr.head.repo.id !== pr.base.repo.id,
       labels: Array.isArray(pr.labels) ? pr.labels.filter(isObject).map((l) => l.name).filter((n): n is string => typeof n === 'string') : [],
       requestedReviewers: Array.isArray(pr.requested_reviewers)
         ? pr.requested_reviewers.filter(isObject).map((u) => u.login).filter((n): n is string => typeof n === 'string') : [],

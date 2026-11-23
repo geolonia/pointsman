@@ -163,7 +163,7 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
-          description: The token may not use this profile.
+          description: The token may not use this profile, or it is a test token (it may only decide, list profiles and explain a profile).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -200,7 +200,7 @@ paths:
                       unevaluatedProperties: false
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
-          description: The token may not use this profile, or it is a test token (it may only decide).
+          description: The token may not use this profile, or it is a test token (it may only decide, list profiles and explain a profile).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -455,7 +455,7 @@ components:
       description: Per-client API token (`pm_` + 43 characters).
   responses:
     TestToken:
-      description: A test token, which may only decide.
+      description: A test token, which may only decide, list profiles and explain a profile.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

@@ -54,7 +54,7 @@ Get a logged decision with its feedback.
 | --- | --- | --- |
 | 200 | The decision as logged | `DecisionRecord` (application/json) |
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
-| 403 | A test token, which may only decide. | `Error` (application/json) |
+| 403 | A test token, which may only decide, list profiles and explain a profile. | `Error` (application/json) |
 | 404 | Unknown decision, or one whose profile this token may not use. | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 
@@ -82,7 +82,7 @@ Request body: `FeedbackRequest` (JSON).
 | 204 | Feedback stored |   |
 | 400 | Error | `Error` (application/json) |
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
-| 403 | A test token, which may only decide. | `Error` (application/json) |
+| 403 | A test token, which may only decide, list profiles and explain a profile. | `Error` (application/json) |
 | 404 | Unknown decision, or one whose profile this token may not use. | `Error` (application/json) |
 | 409 | The profile version of the decision is no longer available. | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
@@ -113,7 +113,7 @@ of such a decision counts with it.
 | 200 | The counts | `ProfileStats` (application/json) |
 | 400 | Error | `Error` (application/json) |
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
-| 403 | The token may not use this profile. | `Error` (application/json) |
+| 403 | The token may not use this profile, or it is a test token (it may only decide, list profiles and explain a profile). | `Error` (application/json) |
 | 404 | Unknown profile. | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 
@@ -137,7 +137,7 @@ Decisions with action `review` that are not resolved yet, oldest first (at most 
 | --- | --- | --- |
 | 200 | Pending reviews | object (application/json) |
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
-| 403 | The token may not use this profile, or it is a test token (it may only decide). | `Error` (application/json) |
+| 403 | The token may not use this profile, or it is a test token (it may only decide, list profiles and explain a profile). | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 
 The 200 body:
@@ -173,7 +173,7 @@ Request body: `ResolveRequest` (JSON).
 | 200 | Resolved | `Resolution` (application/json) |
 | 400 | Error | `Error` (application/json) |
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
-| 403 | A test token, which may only decide. | `Error` (application/json) |
+| 403 | A test token, which may only decide, list profiles and explain a profile. | `Error` (application/json) |
 | 404 | Unknown decision, or one whose profile this token may not use. | `Error` (application/json) |
 | 409 | The decision has no pending review (not a review, already resolved, or closed as superseded), or its profile version is gone. | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
@@ -203,7 +203,7 @@ exist (404). No body. No callback is sent, and a later resolve gets
 | --- | --- | --- |
 | 200 | Closed | `ClosedReview` (application/json) |
 | 401 | Missing, malformed, unknown or revoked token. | `Error` (application/json) |
-| 403 | A test token, which may only decide. | `Error` (application/json) |
+| 403 | A test token, which may only decide, list profiles and explain a profile. | `Error` (application/json) |
 | 404 | Unknown decision, one whose profile this token may not use, or one another client made. | `Error` (application/json) |
 | 409 | The decision has no pending review (not a review, already resolved, or closed). | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |

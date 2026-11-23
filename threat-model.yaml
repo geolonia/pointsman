@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:99727cfa88f03ea800897123775def616ea5aa22ec52579d8ebc5a6170eab74e"
+prose_version: "threat-model.md@sha256:7d39701c99d0cfaa0d0d5f97bb9b4ce410d905e8a5220c04bca1a035cf207367"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -1729,7 +1729,7 @@ properties_claimed:
     tier: security-critical
     conditions: "a token record with test: true; it cannot send decisions or decide a profile with requires"
     violation_symptoms: [x-unlogged-decision-acted-on, info-leak]
-    provenance: {kind: documented, source: "README \"API tokens\": \"A test token may only decide (and list its profiles) over the REST API, not over MCP, and gets no callbacks\""}
+    provenance: {kind: documented, source: "README \"API tokens\": \"A test token may only decide, list its profiles and explain them over the REST API, not over MCP, and gets no callbacks\""}
   - id: P-ANSWER-SHAPE
     kind: output-sanitization
     components: [engine-api, engine-mcp, bridge]

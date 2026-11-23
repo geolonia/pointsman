@@ -130,6 +130,8 @@ describe('/mcp', () => {
       version: 1,
       state: { fields: ['title', 'body'] },
       actions: ['auto', 'review'],
+      // A person checks review, and answers one of these (the default: the actions without review, plus reject).
+      people_answers: ['auto', 'reject'],
     });
     expect(all.profiles[0].questions[0]).toMatchObject({ name: 'team', type: 'choice', options: ['backend', 'frontend', 'docs'] });
     expect(JSON.parse((await call('list_profiles', {}, DEPLOY_ONLY)).text).profiles).toEqual([]);
@@ -234,6 +236,6 @@ describe('test tokens', () => {
   it('are refused: over MCP they could read logged decisions', async () => {
     const r = await rpc('tools/list', {}, TEST_ONLY);
     expect(r.status).toBe(403);
-    expect(r.text).toContain('a test token may only decide');
+    expect(r.text).toContain('a test token may only decide, list profiles and explain a profile over the REST API');
   });
 });

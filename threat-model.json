@@ -1474,7 +1474,7 @@
       "severity_tier": "security",
       "conditions": "a token record with test: true; it cannot send decisions or decide a profile with requires",
       "provenance": "documented",
-      "source": "README \"API tokens\": \"A test token may only decide (and list its profiles) over the REST API, not over MCP, and gets no callbacks\""
+      "source": "README \"API tokens\": \"A test token may only decide, list its profiles and explain them over the REST API, not over MCP, and gets no callbacks\""
     },
     {
       "property": "P-ANSWER-SHAPE",

@@ -67,7 +67,7 @@ const WEB_FLOW = 'web-flow';
 export const MAX_MANIFEST_BYTES = 512 * 1024;
 /** The package.json files of a repository github_bump reads for dev_only; a repository with more fails the fact. */
 export const MAX_REPOSITORY_MANIFESTS = 50;
-const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 /** A GitHub App's slug: lower case letters, digits and hyphens. */
 const APP_SLUG = new RegExp(APP_SLUG_PATTERN);
 const PASSED = new Set(['success', 'neutral', 'skipped']);
@@ -898,7 +898,8 @@ export class Snapshot {
 
   /** The required checks of the base branch and the latest result of each on the head. */
   checks(ignore: string | undefined): Promise<{ required: number; green: boolean; pending: boolean; failed: boolean }> {
-    return this.part('checks', async () => {
+    // Keyed by the ignored check too: providers with other settings can share the snapshot.
+    return this.part(`checks:${ignore ?? ''}`, async () => {
       const { pr } = await this.base;
       const branch = encodeURIComponent(pr.base);
       const sha = this.ref.head;

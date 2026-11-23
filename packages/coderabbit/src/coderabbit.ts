@@ -57,7 +57,11 @@ export function billableIn(body: string): number | null {
  * counts for the head.
  */
 export function headSince(pushedAt: string | null, head: Status[]): number | null {
-  if (pushedAt) return Date.parse(pushedAt);
+  // A push time that cannot be read is null (nothing counts), never NaN.
+  if (pushedAt) {
+    const at = Date.parse(pushedAt);
+    return Number.isFinite(at) ? at : null;
+  }
   const first = head.filter(statusByCodeRabbit).map((s) => Date.parse(s.at)).filter(Number.isFinite).sort((a, b) => a - b)[0];
   return first ?? null;
 }

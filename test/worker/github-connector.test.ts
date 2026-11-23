@@ -437,7 +437,17 @@ describe('settings and tokens', () => {
     };
     const other = (i: number) => ({ id: 1000 + i, body: 'hello', user: { login: 'someone', type: 'User' } });
     const mine = (id: number) => ({ id, body: `${MARK}\nDecision`, user: { login: 'pointsman[bot]', type: 'Bot' }, performed_via_github_app: { id: APP_ID } });
-    const pr = { state: 'open', draft: false, head: { sha: HEAD, ref: 'f', repo: { full_name: REPO } }, base: { ref: 'main', repo: { full_name: REPO } }, user: { login: 'a', id: 1 } };
+    const pr = { state: 'open', draft: false, head: { sha: HEAD, ref: 'f', repo: { id: 5, full_name: REPO } }, base: { ref: 'main', repo: { id: 5, full_name: REPO } }, user: { login: 'a', id: 1 } };
+
+    it('a fork is told by the repository id, as the GitHub facts do', async () => {
+      const head = (repo: unknown) => ({ ...pr, head: { ...pr.head, repo } });
+      expect(await server({ pr }).gh.pullRequest(REPO, 7)).toMatchObject({ fork: false });
+      expect(await server({ pr: head({ id: 6, full_name: 'carol/repo' }) }).gh.pullRequest(REPO, 7)).toMatchObject({ fork: true });
+      // Without ids (or names) the two cannot be told apart: a fork.
+      const bare = { ...pr, head: { ...pr.head, repo: {} }, base: { ...pr.base, repo: {} } };
+      expect(await server({ pr: bare }).gh.pullRequest(REPO, 7)).toMatchObject({ fork: true });
+      expect(await server({ pr: head(null) }).gh.pullRequest(REPO, 7)).toMatchObject({ fork: true });
+    });
 
     it('a pull request without a text state or a yes/no draft is an error, never closed', async () => {
       expect(await server({ pr }).gh.pullRequest(REPO, 7)).toMatchObject({ open: true, draft: false });

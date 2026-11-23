@@ -158,6 +158,13 @@ describe('the pull request (github_pr)', () => {
     expect(await values('pr', userRepo('bob'))).toMatchObject({ author_member: false });
   });
 
+  it('a login GitHub would not give (a trailing hyphen) is not looked up: not known', async () => {
+    const r = routes({ [PR]: () => pullRequest({ user: { login: 'alice-', type: 'User' } }), '/orgs/octo-org/members/alice-': () => new Response(null, { status: 204 }) });
+    const { facts: f, server } = await facts(r, spec('pr'));
+    expect(f.pr).toMatchObject({ values: { author_member: null } });
+    expect(server.count('/orgs/octo-org/members/alice-')).toBe(0);
+  });
+
   it('a member read that fails leaves only author_member without a value', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     for (const res of [() => new Response('{}', { status: 500 }), () => new Response('{}', { status: 429 }), () => new Response('{"message":"You have exceeded a secondary rate limit."}', { status: 403 })]) {
@@ -615,6 +622,18 @@ describe('required checks (github_checks)', () => {
     const server = fakeGitHub(r);
     const f = await lookupFacts(spec('ci'), state, provider(server, 'pointsman'));
     expect(f.ci).toMatchObject({ values: { required: 1, green: true } });
+  });
+
+  it('facts that ignore another check in one snapshot each get their own answer', async () => {
+    const r = routes({ ...runs(run('test')), [`${REPO}/rules/branches/main`]: () => requiredRule({ context: 'test' }, { context: 'pointsman' }) });
+    const server = fakeGitHub(r);
+    const scope = new Map<string, unknown>();
+    const ref = { owner: 'octo-org', repo: 'demo', number: 7, head: HEAD };
+    const signal = new AbortController().signal;
+    const one = await provider(server, 'pointsman').lookup({ type: 'github_checks', pr: ref }, signal, scope);
+    const two = await provider(server).lookup({ type: 'github_checks', pr: ref }, signal, scope);
+    expect(one.values).toMatchObject({ required: 1, green: true });
+    expect(two.values).toMatchObject({ required: 2, pending: true });
   });
 
   it('a check that must come from one app ignores other apps', async () => {

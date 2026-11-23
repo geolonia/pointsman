@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { lookupFacts, resultError } from '../../src/facts';
-import { coderabbitModule, CodeRabbitFactProvider, ignoredBy, billableIn } from '@pointsman/coderabbit';
+import { coderabbitModule, CodeRabbitFactProvider, ignoredBy, billableIn, headSince } from '@pointsman/coderabbit';
 import { ConfigError } from '@pointsman/module-api';
 import { GitHubFactProvider, movedStart, TokenAuth } from '@pointsman/github';
 import { ModuleRouter, type FactProvider } from '../../src/facts';
@@ -258,6 +258,12 @@ describe('CodeRabbit (coderabbit)', () => {
     // Without not_reviewed every changed file counts.
     expect(await values(routes(), [{ name: 'cr', type: 'coderabbit', at: '$.pull_request' }])).toMatchObject({ billable_files: 3, price_stated: false });
     expect(billableIn('This review includes **12** billable files')).toBe(12);
+  });
+
+  it('since when text counts: a push time that cannot be read is null, never NaN', () => {
+    expect(headSince('2026-10-21T00:00:00Z', [])).toBe(Date.parse('2026-10-21T00:00:00Z'));
+    expect(headSince('not a time', [])).toBeNull();
+    expect(headSince(null, [])).toBeNull();
   });
 
   it('missing when someone other than CodeRabbit edited its comment or review', async () => {

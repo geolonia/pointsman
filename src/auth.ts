@@ -21,7 +21,8 @@ export interface TokenRecord {
   /**
    * A test token (scripts/tokens.mjs --test): its decisions are made like
    * any other (model, facts, rules) but not logged, so they never reach the
-   * review queue or the accuracy numbers. It may only decide.
+   * review queue or the accuracy numbers. It may only decide, list profiles
+   * and explain a profile.
    */
   test?: boolean;
   /**

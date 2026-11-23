@@ -19,6 +19,8 @@ export function factLogFor(log: DecisionLog, client: TokenRecord): FactLog {
     async recent({ profiles, since, limit }) {
       const allowed = [...new Set(profiles)].filter((p) => canUse(client, p));
       if (!Number.isFinite(Date.parse(since))) throw new Error('since must be a time');
+      // A module's limit reaches SQL LIMIT: a whole number only (NaN or 1.5 are refused).
+      if (!Number.isInteger(limit)) throw new Error('limit must be a whole number');
       // As the log stores times (UTC, ISO 8601), so that text comparison works.
       const records = await log.recentFor(client.client, allowed, new Date(since).toISOString(), Math.max(0, Math.min(limit, MAX_LOG_READ)));
       return records.map(logged);

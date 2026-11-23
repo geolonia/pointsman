@@ -11,6 +11,7 @@ import { makeDecision, makeReplay, type Deps } from './decide';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
 import { explainProfile, explanationText } from './explain';
+import { peopleAnswers, peopleCheck, profileActions } from './policy';
 import type { RequiredSnapshot } from './log';
 import { parseFeedback } from './feedback';
 import type { Caller } from './auth';
@@ -58,7 +59,10 @@ function describe(p: Profile, seen: Set<string>) {
       ...(q.type === 'choice' && { options: q.criteria.map((c) => c.value) }),
       ...(q.type === 'score' && { levels: q.criteria }),
     })),
-    actions: [...new Set([...(p.policy.rules ?? []).map((r) => r.action), p.policy.default])],
+    actions: profileActions(p),
+    // When a person checks an action: the answers they may give, which become
+    // the decision's outcome (get_decision), as in the graph's allowed answers.
+    ...(peopleCheck(p).some((a) => profileActions(p).includes(a)) && { people_answers: peopleAnswers(p) }),
     // Earlier decisions to send in `decisions`, by name (docs/decision-chains.md).
     // The required profile's id only when the caller may see it through MCP.
     ...(p.requires?.length && {

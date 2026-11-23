@@ -66,7 +66,7 @@ function fakeApi() {
     if (path === `/repos/${REPO}/pulls/7` && method === 'GET') {
       return Response.json({
         state: pr.state, merged: pr.merged, draft: pr.draft, title: pr.title, body: pr.body, labels: [], requested_reviewers: [], user: { login: pr.author, type: 'User' },
-        head: { sha: pr.head, repo: { full_name: REPO } }, base: { ref: 'main', repo: { full_name: REPO } },
+        head: { sha: pr.head, repo: { id: 1, full_name: REPO } }, base: { ref: 'main', repo: { id: 1, full_name: REPO } },
       });
     }
     if (path === '/graphql' && method === 'POST') {
