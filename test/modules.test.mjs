@@ -239,11 +239,36 @@ test('the scripts stop with one line on a broken engine.json', (t) => {
   ]) {
     const { dir, file } = engineJson(t);
     writeFileSync(file, text);
-    const r = run(dir, 'validate-profiles.mjs', [join(root, 'examples/profiles')]);
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, message);
-    assert.doesNotMatch(r.stderr, /    at /, 'no stack trace');
+    const profiles = join(root, 'examples/profiles');
+    const triage = join(profiles, 'issue-triage.yaml');
+    for (const [script, args] of [
+      ['validate-profiles.mjs', [profiles]],
+      ['test-profile.mjs', [join(root, 'examples/cases'), '--profiles', profiles]],
+      ['explain-profile.mjs', [triage]],
+      ['replay-profile.mjs', [triage, '--url', 'http://localhost:1']],
+      ['publish-profiles.mjs', ['--dir', profiles, '--local', '--dry-run']],
+      ['build-profiles.mjs', [join(dir, 'out.json'), profiles]],
+    ]) {
+      const r = run(dir, script, args);
+      assert.equal(r.status, 2, `${script}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, message, script);
+      assert.doesNotMatch(r.stderr, /    at /, `${script}: no stack trace`);
+    }
   }
+});
+
+test('the profile library does not exit on a broken engine.json: it reports, and validating throws (#268)', (t) => {
+  const { dir, file } = engineJson(t);
+  writeFileSync(file, '{ bad');
+  const lib = join(root, 'scripts/lib/profile.mjs');
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    const { factModulesError, validateProfile } = await import(${JSON.stringify(lib)});
+    console.log('loaded:', factModulesError());
+    try { validateProfile({}); } catch (err) { console.log('thrown:', err.message); }
+  `], { cwd: dir, encoding: 'utf8', env: { ...process.env, INIT_CWD: '' } });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /^loaded: fact modules: .*engine\.json: .*JSON/m);
+  assert.match(r.stdout, /^thrown: fact modules: .*engine\.json: .*JSON/m);
 });
 
 test('with no module chosen, a profile with facts says so', (t) => {

@@ -4,13 +4,14 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse as parseJsonc } from 'jsonc-parser';
 import { strictlyPublicProblems } from '../scripts/lib/strictly-public.mjs';
+import { chosenConnectors, chosenModules, modulesSource } from '../scripts/lib/modules.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -20,6 +21,28 @@ function makeRepo(t) {
   cpSync(join(root, 'template', 'config-repo'), dir, { recursive: true });
   symlinkSync(root, join(dir, 'engine'), 'dir');
   return dir;
+}
+
+/**
+ * Replace the repository's engine link with an engine of its own, so the
+ * build writes engine/generated/ there and not into this checkout. Only
+ * src/ and generated/ are real folders; everything else links to this
+ * checkout. src/ is copied because the bundler follows links to their real
+ * path, and from there it would read the checkout's generated/.
+ */
+async function ownEngine(dir) {
+  const engine = join(dir, 'engine');
+  rmSync(engine);
+  mkdirSync(engine);
+  for (const name of readdirSync(root)) {
+    if (name === 'src' || name === 'generated') continue;
+    symlinkSync(join(root, name), join(engine, name));
+  }
+  cpSync(join(root, 'src'), join(engine, 'src'), { recursive: true });
+  mkdirSync(join(engine, 'generated'));
+  // What `pnpm --dir engine build` writes first (scripts/build-modules.mjs).
+  const config = join(dir, 'engine.json');
+  writeFileSync(join(engine, 'generated', 'modules.ts'), await modulesSource(chosenModules(config), chosenConnectors(config)));
 }
 
 function fill(dir) {
@@ -87,9 +110,10 @@ test('every Worker config in this repository sets global_fetch_strictly_public',
   }
 });
 
-test('a filled-in config repository validates and builds', (t) => {
+test('a filled-in config repository validates and builds', async (t) => {
   const dir = makeRepo(t);
   fill(dir);
+  await ownEngine(dir);
   let r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
   assert.equal(r.status, 0, r.stderr);
   r = run(dir, process.execPath, ['engine/scripts/validate-profiles.mjs', 'profiles']);

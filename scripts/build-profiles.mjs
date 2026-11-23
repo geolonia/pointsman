@@ -16,8 +16,15 @@ import { allModules, loadDefinitions } from './lib/modules.mjs';
 import { loadProfileSet, useModules, validateProfile } from './lib/profile.mjs';
 import { FactRegistry } from '../src/modules/registry.ts';
 
-const chosen = new FactRegistry(await loadDefinitions());
-await useModules(allModules());
+// A broken engine.json stops the script with one line, not a stack trace.
+let chosen;
+try {
+  chosen = new FactRegistry(await loadDefinitions());
+  await useModules(allModules());
+} catch (err) {
+  console.error(`fact modules: ${err.message}`);
+  process.exit(2);
+}
 
 const [out = 'generated/profiles.json', ...dirs] = process.argv.slice(2);
 const sources = dirs.length > 0 ? dirs : ['examples/profiles'];

@@ -12,8 +12,14 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
-import { loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
+import { factModulesError, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile, explanationText } from '../src/explain.ts';
+
+// A broken engine.json stops the script with one line, not a stack trace.
+if (factModulesError()) {
+  console.error(factModulesError());
+  process.exit(2);
+}
 
 let args;
 try {

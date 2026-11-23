@@ -85,6 +85,23 @@ test('sends the policy, with questions, facts and requires to check, and prints 
   assert.deepEqual(JSON.parse(json.stdout), result);
 });
 
+test('an answer with only one of inexact and skipped counts the other as 0, not "undefined" (#268)', async (t) => {
+  const onlySkipped = { ...result };
+  delete onlySkipped.inexact;
+  for (const [answer, line] of [
+    [onlySkipped, /\n {2}Not replayed: 0 \(a value of an earlier decision was not kept\), 2 \(an answer is not in the log\)\.\n/],
+    [{ ...result, inexact: 3, skipped: undefined }, /\n {2}Not replayed: 3 \(a value of an earlier decision was not kept\), 0 \(an answer is not in the log\)\.\n/],
+  ]) {
+    const { url } = await fakeDeployment(t, () => [200, answer]);
+    const r = await runAsync([triage, '--url', url]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, line);
+    assert.doesNotMatch(r.stdout, /undefined/);
+    const ja = await runAsync([triage, '--url', url, '--lang', 'ja']);
+    assert.doesNotMatch(ja.stdout, /undefined/);
+  }
+});
+
 test('shows the deployment\'s error, and exits 1', async (t) => {
   const { url } = await fakeDeployment(t, () => [409, { error: { code: 'not_policy_only', message: "the draft's questions differ from version 1" } }]);
   const r = await runAsync([triage, '--url', url]);

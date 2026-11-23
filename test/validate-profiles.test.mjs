@@ -97,6 +97,22 @@ test('CLI rejects two files with the same profile id', (t) => {
   assert.match(r.stdout, /duplicate profile id "issue-triage": .*issue-triage.json, .*issue-triage.yaml/);
 });
 
+test('CLI marks each file with a duplicate id, so the lines and the counts agree (#268)', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pointsman-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const yaml = readFileSync(join(examples, 'issue-triage.yaml'), 'utf8');
+  writeFileSync(join(dir, 'issue-triage.yaml'), yaml);
+  writeFileSync(join(dir, 'issue-triage.json'), JSON.stringify(parseYaml(yaml)));
+  writeFileSync(join(dir, 'deploy-progress.yaml'), readFileSync(join(examples, 'deploy-progress.yaml'), 'utf8'));
+  const r = spawnSync(process.execPath, [cli, dir], { encoding: 'utf8' });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /^ok {4}.*deploy-progress\.yaml$/m);
+  assert.match(r.stdout, /^FAIL {2}.*issue-triage\.json\n {6}duplicate profile id "issue-triage"/m);
+  assert.match(r.stdout, /^FAIL {2}.*issue-triage\.yaml\n {6}duplicate profile id "issue-triage"/m);
+  assert.doesNotMatch(r.stdout, /^ok .*issue-triage/m);
+  assert.match(r.stdout, /\n1 valid, 2 invalid\n/);
+});
+
 test('CLI skips symbolic links inside a folder (no endless loop)', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'pointsman-'));
   t.after(() => rmSync(dir, { recursive: true }));
