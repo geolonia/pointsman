@@ -12,6 +12,38 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.23.0 (2026-11-23)
+
+Fixes from a review of the engine, the connectors and the Actions: signed callbacks name the client and the URL (#281), stricter model answers and profile names (#313), the FIWARE bridge gets time limits (#323), GitHub and GSI facts say "not known" instead of guessing (#307, #309), and more errors are caught and logged (#319, #324, #325, #326). New checks: oxlint, and `check-config` requires `global_fetch_strictly_public` (#328).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.23.0`, and change modules pinned with a version in `modules` to `@0.23.0` (for example `@pointsman/github@0.22.0` → `@pointsman/github@0.23.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
+- `scripts/check-config.mjs` refuses a `wrangler.jsonc` whose `compatibility_flags` lack `global_fetch_strictly_public` or turn it off with `global_fetch_private_origin`, also in an environment that sets its own flags. The template has the flag already.
+- Callback receivers: the signed body has two more fields, `client` and `callback_url`. The signature is made as before, so a receiver that checks only the signature keeps working. To be safe against other clients of the same deployment, check that both are your own; a receiver that refuses unknown fields must accept them (docs/reviews.md "Callbacks").
+- A model server (`MODEL_SERVER_URL`) must send a complete probability map for every `choice` and `score` answer; an incomplete one is now `model_error`. Workers AI models and the mock already do.
+- A profile that uses `__proto__`, `constructor`, `prototype` or another `Object.prototype` name as a question, fact, input or required-decision name, or as an option value, no longer validates. No bundled or example profile does.
+- `build-profiles` now reads subfolders and refuses duplicate ids, as `validate-profiles` and `publish-profiles` already did.
+- FIWARE bridge: new optional setting `POINTSMAN_TIMEOUT_SECONDS` (10 to 600, default 60). A subscription that names a route not in `BRIDGE_ROUTES` now gets `404`. Entities whose inputs have several instances decide once more after the upgrade.
+- Deploy token: the first deploy needs **Workers Admin**, not Workers Editor (docs only; the template's comment says so).
+
+What changed:
+
+- **Callbacks** (#281): the body names the `client` that decided and the `callback_url` it was sent to, inside the signed body; `openapi.yaml` has a `CallbackPayload` schema. The cron retry takes the time per item: each item's lease, signing time and next retry time are its own, and an error in one item no longer stops the batch.
+- **Model answers** (#313): a `choice` or `score` answer needs a probability for every option, adding up to 1 within a margin for rounding (0.02, or half a hundredth per option when that is more, at most 0.1). An option that an older logged decision lacks reads as unknown in a later profile's rules (fail safe), not 0. A person's correction keeps the model's options, at 0 except the person's value.
+- **Profile names** (#313): `Object.prototype` names are refused by the schema and by the FIWARE bridge for required decisions; the policy reads answers and facts with `Object.hasOwn`.
+- **GitHub facts** (#307): a failed read inside `github_pr` gives only its own field "not known" (`author_member` and `author_sole_code_owner` no value, `pushed_by_author` `unavailable`) instead of making the whole fact missing. At most 20 `CODEOWNERS` teams are read. A rate-limited 403 is `error`, not `unavailable`.
+- **GitHub connector** (#319): an answer that is not a list is an error, not an empty list; more than 1,000 comments without the connector's own is "not known", so it never posts a second decision comment. A pull request answer without `state` and `draft` is an error, never "closed".
+- **GSI facts** (#309): a place outside Japan's box is `unavailable` instead of "not in a zone"; a tile that is not 256 × 256 is an error; a PNG colour key reads as transparent.
+- **FIWARE bridge** (#323): a 207 on the first result write is a failure; every call has a time limit (10 s to the broker, `POINTSMAN_TIMEOUT_SECONDS` to Pointsman); a decision whose request was aborted is not logged; inputs with several instances are hashed by every value; keyValues inputs are refused with a clear error; unknown routes answer 404.
+- **Errors** (#324): an unexpected MCP tool error is logged and answered as `internal error` without details. OAuth login errors (GitHub down, or no login or account id) go back to the client as `access_denied`. A deployment with no adapter for any model calls no fact source, and a 502 no longer waits for fact lookups. Workers AI calls have a 10 s limit also without AI Gateway, and their errors keep only the kind of error.
+- **Actions** (#325): triage sets its outputs before it adds labels and keeps both errors. deploy-watch asks nothing until CloudFormation works on a watched stack, fails with `result=not-started` when the command cannot start, and counts only cancels in a row.
+- **Scripts** (#326): one profile loader for all six profile scripts. `GET /v1/reviews` and the facts log lookup work for tokens with 100 or more profiles. `publish-profiles` writes the KV index from a file. `tokens.mjs` refuses a record over 1024 bytes and checks that a token exists before it revokes it.
+- **OpenAPI** (#327): descriptions with a comma are quoted, and the build fails on such mistakes; the HTTP API reference shows inline schemas, parameter types and response headers; a test checks the `/v1` routes against openapi.yaml.
+- **Checks** (#328, #316, #322): oxlint runs in `pnpm check` and CI; the version test covers every package; the test-profile test shows why it failed.
+- **Docs and site**: tutorials *Real answers, with photos* and *Put it online*, a *Choose a setup* page (#310, #311, #315, #318), and a sitemap for the landing pages (#301).
+- **Threat model**: amended for #281, #307, #309, #313, #319, #323, #324, #325, #326 and #328. It is still bound to `v0.18.0`; it is not yet bound to 0.19.0 to 0.23.0.
+
 ## 0.22.0 (2026-11-13)
 
 MCP tools tell clients which calls only read and which change things, and every MCP result is also structured content (#298). The FIWARE bridge queue keeps only each entity's id and type (#292).
