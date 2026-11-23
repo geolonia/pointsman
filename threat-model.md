@@ -2079,7 +2079,7 @@ what voids it.
   `scripts/check-config.mjs`, which the config repository's workflows run
   before validating or deploying, refuses a `wrangler.jsonc` whose flags,
   at the top level or in an environment that sets its own, lack it or turn
-  it off with `global_fetch_public`; a test checks the engine's own Worker
+  it off with `global_fetch_private_origin`; a test checks the engine's own Worker
   configs (`scripts/lib/strictly-public.mjs`).
 - **`P-MCP-VISIBILITY`** — through MCP, only profiles with `mcp.visible: true`
   that are in the caller's scope are listed or callable; every other profile,

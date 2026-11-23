@@ -3,8 +3,8 @@
 // Callbacks and fact lookups rely on it, so a Worker config without it is refused.
 
 export const FLAG = 'global_fetch_strictly_public';
-/** The flag that turns it off again. */
-const OFF = 'global_fetch_public';
+/** The flag that turns it off again (Cloudflare's compatibility flags page). */
+const OFF = 'global_fetch_private_origin';
 
 /** Problems with the flag in a parsed wrangler.jsonc, as messages; empty when it is set everywhere. */
 export function strictlyPublicProblems(config, file) {
