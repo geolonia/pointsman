@@ -177,8 +177,6 @@ type Words = (typeof W)['en'];
 
 // ---- conditions ----
 
-const PROBABILITY_FIELDS = new Set(['p', 'yes', 'probabilities']);
-
 function num(v: number): string {
   return String(Math.round(v * 1000) / 1000);
 }

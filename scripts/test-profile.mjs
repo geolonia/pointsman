@@ -18,7 +18,7 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { parse as parseYaml } from 'yaml';
-import { collectProfileFiles, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
+import { collectProfileFiles, loadProfileSet, validateProfile } from './lib/profile.mjs';
 import { answersFit, caseFileErrors, factsFit, judge, runCases } from '../src/cases.ts';
 import { explainProfile } from '../src/explain.ts';
 import { compilePolicy } from '../src/policy.ts';

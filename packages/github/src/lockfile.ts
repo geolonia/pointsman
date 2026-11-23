@@ -15,7 +15,7 @@
 // place the patch does not show. A dependency of an importer or a package
 // added or removed is no step (the package itself is a key or an entry).
 
-import { larger as largerStep, stepOf, stripPeers } from './bump';
+import { larger as largerStep, stepOf, stripPeers } from './steps';
 
 export interface LockfileSteps {
   /** The largest step: "major", "minor", "patch" or "none"; null when no version changes. */

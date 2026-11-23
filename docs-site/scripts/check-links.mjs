@@ -5,7 +5,7 @@
 // External links are not fetched.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, posix } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BASE } from '../pages.mjs';
 

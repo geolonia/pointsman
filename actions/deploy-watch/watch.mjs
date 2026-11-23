@@ -153,7 +153,7 @@ export async function main() {
     // Before CloudFormation works on a watched stack in this run (asset or
     // Docker builds come first) there is nothing to judge: quiet since the
     // start says nothing about a stack, new or from an earlier deploy (#254).
-    const working = states.some((s) => /_IN_PROGRESS$/.test(s.status) || s.events.some((e) => Date.parse(e.time) >= started));
+    const working = states.some((s) => s.status.endsWith('_IN_PROGRESS') || s.events.some((e) => Date.parse(e.time) >= started));
     if (!working) {
       log(states.length === 0 ? 'no stack exists yet; not judging' : 'no watched stack has changed in this run yet; not judging');
       cancels = 0;

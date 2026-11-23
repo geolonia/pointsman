@@ -220,7 +220,7 @@ pnpm install
 pnpm db:migrate:local     # create the local decision log (D1)
 pnpm dev                  # local Worker on :8787, example profiles, mock model
 pnpm test                 # script tests and Worker tests (in workerd)
-pnpm check                # typecheck, tests, profiles and their cases, docs, dry-run deploy
+pnpm check                # typecheck, lint, tests, profiles and their cases, docs, dry-run deploy
 node scripts/validate-profiles.mjs path/to/profiles  # validate your own
 ```
 

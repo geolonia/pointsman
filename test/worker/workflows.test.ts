@@ -373,7 +373,7 @@ describe('parser limits (unparsed)', () => {
     bad(`on: pull_request\njobs: { a: { steps: [{ ? [run]: x }] } }\n`);
   });
   it('a limit on aliases and on their expansion', () => {
-    const many = Array.from({ length: 101 }, (_, i) => `  - *s`).join('\n');
+    const many = Array.from({ length: 101 }, () => '  - *s').join('\n');
     bad(`on: pull_request\nx: &s y\nz:\n${many}\njobs: { a: { steps: [{ run: x }] } }\n`);
     let laughs = 'a0: &a0 [x, x, x, x, x, x, x, x, x, x]\n';
     for (let i = 1; i < 6; i++) laughs += `a${i}: &a${i} [${Array(10).fill(`*a${i - 1}`).join(', ')}]\n`;

@@ -45,6 +45,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # oxlint with the rules in .oxlintrc.json (#266).
+      - name: Lint
+        run: pnpm lint
+
       # Script tests (each invalid fixture must fail for the reason it names)
       # and Worker tests in workerd (responses checked against openapi.yaml).
       - name: Test
