@@ -293,3 +293,125 @@ describe('list_profiles KV reads (#263)', () => {
     expect(early.profiles.map((p: any) => [p.id, p.version, p.title.en])).toEqual([['a', 1, 'A old'], ['b', 1, expect.anything()]]);
   });
 });
+
+// Pins the answers of get_decision and submit_feedback, and that tokens do
+// not get the people-only tools, so the code they share with the REST API
+// (src/internal.ts) keeps them as they are (#265).
+describe('pinned answers (#265)', () => {
+  const PERSON = { kind: 'person', login: 'octo', id: 1000 } as const;
+
+  async function callAs(caller: import('../../src/auth').Caller, name: string, args: Record<string, unknown>) {
+    const { serveMcp } = await import('../../src/mcp');
+    const { depsFor } = await import('../../src/index');
+    const res = await serveMcp(new Request('http://pointsman.test/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'tools/call', params: { name, arguments: args } }),
+    }), depsFor(env as never), caller);
+    const text = await res.text();
+    return text.split('\n').filter((l) => l.startsWith('data:')).map((l) => JSON.parse(l.slice(5))).at(-1);
+  }
+  const asPerson = async (name: string, args: Record<string, unknown>) => {
+    const { result } = await callAs(PERSON, name, args);
+    return { isError: result.isError === true, text: result.content[0].text as string, structured: result.structuredContent };
+  };
+  const feedbackOf = async (id: string) => (await DB.prepare('SELECT client, by, correct, note FROM feedback WHERE decision_id = ?').bind(id).all()).results;
+
+  /** A decision written directly, with every field get_decision may hide. */
+  async function logged(profile = 'issue-triage', extra: Record<string, unknown> = {}) {
+    const id = crypto.randomUUID();
+    await new D1DecisionLog(DB).insert({
+      decision_id: id, created_at: '2026-11-01T00:00:00.000Z', client: 'agent', ref: 'pin:1', profile, profile_version: 1,
+      model: 'mock', action: 'review', rule: null, answers: { team: { value: 'docs', p: 0.5 } } as never, state_hash: '0'.repeat(64),
+      state: { title: 'secret state' }, callback_url: 'https://callback.test/hook', review: { status: 'pending' },
+      idempotency_key: `pin-${id}`, request_digest: '1'.repeat(64), versions: { engine: '1.0.0', modules: {} },
+      ...extra,
+    } as never);
+    return id;
+  }
+
+  it('get_decision answers these fields, without state, callback_url and the request digest', async () => {
+    const id = await logged();
+    const got = await call('get_decision', { decision_id: id });
+    expect(got.isError).toBe(false);
+    const rest = await (await exports.default.fetch(`http://pointsman.test/v1/decisions/${id}`, { headers: { authorization: `Bearer ${ALL}` } })).json<any>();
+    const { state: _, ...restWithoutState } = rest;
+    // The same as GET /v1/decisions/{id} without state, in the same order.
+    expect(got.text).toBe(JSON.stringify(restWithoutState, null, 2));
+    expect(Object.keys(got.structured)).toEqual(Object.keys(JSON.parse(got.text)));
+    expect(rest.state).toEqual({ title: 'secret state' });
+    expect(Object.keys(JSON.parse(got.text)).sort()).toEqual([
+      'action', 'answers', 'client', 'created_at', 'decision_id', 'feedback', 'idempotency_key', 'model', 'profile', 'profile_version',
+      'ref', 'review', 'rule', 'state_hash', 'versions',
+    ]);
+  });
+
+  it('get_decision refuses with the same text for every decision it does not show', async () => {
+    const hidden = await logged('deploy-progress');
+    const visible = await logged();
+    for (const [id, token] of [['not-a-uuid', ALL], [crypto.randomUUID(), ALL], [hidden, ALL], [visible, DEPLOY_ONLY]] as const) {
+      expect(await call('get_decision', { decision_id: id }, token)).toEqual({ isError: true, text: `unknown decision "${id}"`, structured: undefined });
+    }
+    expect(await asPerson('get_decision', { decision_id: hidden })).toEqual({ isError: true, text: `unknown decision "${hidden}"`, structured: undefined });
+  });
+
+  it('submit_feedback records feedback under the login and the account id', async () => {
+    const id = await logged();
+    const r = await asPerson('submit_feedback', { decision_id: id, correct: { team: 'frontend' }, note: 'UI' });
+    expect(r).toEqual({ isError: false, text: JSON.stringify({ recorded: true }, null, 2), structured: { recorded: true } });
+    expect(await feedbackOf(id)).toEqual([{ client: 'github:1000', by: 'octo', correct: '{"team":"frontend"}', note: 'UI' }]);
+    await asPerson('submit_feedback', { decision_id: id, correct: { team: 'docs' } });
+    expect((await feedbackOf(id))[1]).toEqual({ client: 'github:1000', by: 'octo', correct: '{"team":"docs"}', note: null });
+  });
+
+  it('submit_feedback refuses decisions it does not show, a gone profile version and invalid feedback', async () => {
+    const hidden = await logged('deploy-progress');
+    for (const id of ['not-a-uuid', crypto.randomUUID(), hidden]) {
+      expect(await asPerson('submit_feedback', { decision_id: id, correct: { team: 'docs' } })).toEqual({ isError: true, text: `unknown decision "${id}"`, structured: undefined });
+    }
+    const gone = await logged('issue-triage', { profile_version: 99 });
+    expect(await asPerson('submit_feedback', { decision_id: gone, correct: { team: 'docs' } }))
+      .toEqual({ isError: true, text: 'the profile version of this decision is no longer available', structured: undefined });
+    const id = await logged();
+    for (const [args, text] of [
+      [{ correct: { team: 'marketing' } }, '"correct.team" must be one of: backend, frontend, docs'],
+      [{ correct: {} }, '"correct" must be an object with at least one question'],
+      [{ correct: { teem: 'docs' } }, '"correct": "teem" is not a question of profile issue-triage version 1'],
+      [{ correct: { team: 'docs' }, note: 'n'.repeat(1001) }, '"note" must be a string of at most 1000 characters'],
+    ] as const) {
+      expect(await asPerson('submit_feedback', { decision_id: id, ...args })).toEqual({ isError: true, text, structured: undefined });
+    }
+    for (const d of [hidden, gone, id]) expect(await feedbackOf(d)).toEqual([]);
+  });
+
+  it('registers every tool of TOOLS, under its name, and no other; people-only ones only for people', async () => {
+    const { PEOPLE_ONLY } = await import('../../src/mcp-tools');
+    const list = async (caller: import('../../src/auth').Caller) => {
+      const { serveMcp } = await import('../../src/mcp');
+      const { depsFor } = await import('../../src/index');
+      const res = await serveMcp(new Request('http://pointsman.test/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'tools/list', params: {} }),
+      }), depsFor(env as never), caller);
+      const text = await res.text();
+      const tools = text.split('\n').filter((l) => l.startsWith('data:')).map((l) => JSON.parse(l.slice(5))).at(-1).result.tools as any[];
+      for (const t of tools) expect(t.description, t.name).toBe(TOOLS[t.name as keyof typeof TOOLS].description);
+      return tools.map((t) => t.name).sort();
+    };
+    expect(PEOPLE_ONLY.size).toBeGreaterThan(0);
+    expect(await list(PERSON)).toEqual(Object.keys(TOOLS).sort());
+    expect(await list({ kind: 'token', record: { client: 'agent', profiles: ['*'], created_at: '' } }))
+      .toEqual(Object.keys(TOOLS).filter((n) => !PEOPLE_ONLY.has(n)).sort());
+  });
+
+  it('a token gets no people-only tool, and calling one changes nothing', async () => {
+    const { PEOPLE_ONLY } = await import('../../src/mcp-tools');
+    const tools = (await rpc('tools/list')).message.result.tools.map((t: any) => t.name);
+    for (const name of PEOPLE_ONLY) expect(tools).not.toContain(name);
+    const id = await logged();
+    const r = await callAs({ kind: 'token', record: { client: 'agent', profiles: ['*'], created_at: '' } }, 'submit_feedback', { decision_id: id, correct: { team: 'docs' } });
+    expect(r.error).toEqual({ code: -32602, message: 'Tool submit_feedback not found' });
+    expect(await feedbackOf(id)).toEqual([]);
+  });
+});

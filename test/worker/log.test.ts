@@ -213,8 +213,25 @@ describe('feedback', () => {
     expect((await getRecord(id)).data.feedback).toEqual([]);
   });
 
-  it('answers 404 for an unknown decision', async () => {
-    const res = await call('POST', '/v1/decisions/00000000-0000-4000-8000-000000000000/feedback', { correct: { team: 'docs' }, by: 'x' });
+  it('answers 204 without a body, also for a profile that is not MCP-visible', async () => {
+    const id = await decide('deploy-progress', { state: 'text' });
+    const res = await call('POST', `/v1/decisions/${id}/feedback`, { correct: { stuck: true }, by: 'x' });
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe('');
+    expect((await getRecord(id)).data.feedback).toEqual([expect.objectContaining({ client: 'all', by: 'x', correct: { stuck: true } })]);
+  });
+
+  it.each([
+    ['an unknown decision', '00000000-0000-4000-8000-000000000000'],
+    ['a malformed id', 'not-a-uuid'],
+  ])('answers 404 for %s', async (_, id) => {
+    const res = await call('POST', `/v1/decisions/${id}/feedback`, { correct: { team: 'docs' }, by: 'x' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: { code: 'decision_not_found', message: 'unknown decision' } });
+  });
+
+  it('answers 404 before reading the body', async () => {
+    const res = await exports.default.fetch(`${BASE}/v1/decisions/not-a-uuid/feedback`, { method: 'POST', headers: { authorization: `Bearer ${ALL}` }, body: '{' });
     expect(res.status).toBe(404);
   });
 
@@ -223,7 +240,10 @@ describe('feedback', () => {
     await DB.prepare('UPDATE decisions SET profile_version = 99 WHERE id = ?').bind(id).run();
     const res = await call('POST', `/v1/decisions/${id}/feedback`, { correct: { team: 'docs' }, by: 'x' });
     expect(res.status).toBe(409);
-    expect((await res.json<any>()).error.code).toBe('profile_version_gone');
+    expect(await res.json()).toEqual({ error: { code: 'profile_version_gone', message: 'the profile version of this decision is no longer available' } });
+    // An invalid body is refused before the profile version is looked up.
+    const bad = await exports.default.fetch(`${BASE}/v1/decisions/${id}/feedback`, { method: 'POST', headers: { authorization: `Bearer ${ALL}` }, body: '{' });
+    expect(bad.status).toBe(400);
   });
 
   it('requires a token', async () => {

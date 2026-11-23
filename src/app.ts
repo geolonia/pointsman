@@ -4,8 +4,7 @@ import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord } from './auth';
 import { connected, makeReplay, publicRecord, type Deps } from './decide';
-import { BodyTooLargeError, closeAnswer, decideAnswer, findDecision, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
-import { parseFeedback } from './feedback';
+import { BodyTooLargeError, closeAnswer, decideAnswer, feedbackAnswer, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
 import { decisionGraph, toDmn, toSvg } from './graph';
@@ -170,7 +169,7 @@ export function createApp(deps: (env: Env) => Deps) {
   });
 
   // The work after the token check of decide, get, resolve and close is
-  // shared with internal calls (src/internal.ts).
+  // shared with internal calls, and that of feedback with MCP (src/internal.ts).
   const json = (answer: ApiAnswer) => Response.json(answer.body, { status: answer.status });
 
   app.post('/v1/decide/:profile', async (c) => {
@@ -187,31 +186,8 @@ export function createApp(deps: (env: Env) => Deps) {
   app.get('/v1/decisions/:id', async (c) => json(await getAnswer(depsOf(c), c.get('client'), c.req.param('id'))));
 
   app.post('/v1/decisions/:id/feedback', async (c) => {
-    const { store, log } = depsOf(c);
-    const id = c.req.param('id');
-    const record = await findDecision(c.get('client'), log, id);
-    if (!record) return error(404, 'decision_not_found', 'unknown decision');
-
-    let raw: unknown;
-    try {
-      raw = await c.req.json();
-    } catch {
-      return error(400, 'invalid_request', 'body must be valid JSON');
-    }
-    // Feedback is checked against the profile version the decision used.
-    const profile = await store.get(record.profile, record.profile_version);
-    if (!profile) {
-      return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
-    }
-    const feedback = parseFeedback(raw, profile);
-    if (typeof feedback === 'string') return error(400, 'invalid_request', feedback);
-
-    await log.addFeedback(id, {
-      ...feedback,
-      created_at: new Date().toISOString(),
-      client: c.get('client').client,
-    });
-    return c.body(null, 204);
+    const answer = await feedbackAnswer(depsOf(c), c.get('client'), c.req.param('id'), () => c.req.json());
+    return answer.status === 204 ? c.body(null, 204) : json(answer);
   });
 
   // What happened to a profile's decisions in the last days: actions, the

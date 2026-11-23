@@ -6,19 +6,17 @@
 // any other profile looks unknown. People may use every MCP-visible profile.
 
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
-import { TOOLS } from './mcp-tools';
-import { makeDecision, makeReplay, type Deps } from './decide';
+import { PEOPLE_ONLY, TOOLS } from './mcp-tools';
+import { makeDecision, makeReplay, publicRecord, type Deps } from './decide';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
 import { explainProfile, explanationText } from './explain';
 import { peopleAnswers, peopleCheck, profileActions } from './policy';
-import type { RequiredSnapshot } from './log';
-import { parseFeedback } from './feedback';
+import type { DecisionRecord, RequiredSnapshot } from './log';
+import { errorMessage, feedbackAnswer, findDecision } from './internal';
 import type { Caller } from './auth';
 import type { Profile } from './types';
 import { ENGINE_VERSION } from './version';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 type McpDeps = Pick<Deps, 'store' | 'adapterFor' | 'log'>;
 
@@ -77,9 +75,11 @@ function server(deps: McpDeps, caller: Caller): McpServer {
   // Every tool's unexpected error is logged, and the caller gets "internal
   // error" without its details, as the REST API answers internal_error (#247).
   // Without this the SDK sends the error's message to the caller, unlogged.
+  // Tools in PEOPLE_ONLY are registered only for people logged in through
+  // OAuth, not for API tokens.
   const mcp = {
     registerTool: ((name: string, config: unknown, handler: (...args: unknown[]) => Promise<unknown>) =>
-      server.registerTool(name, config as never, (async (...args: unknown[]) => {
+      (PEOPLE_ONLY.has(name) && caller.kind !== 'person') ? undefined : server.registerTool(name, config as never, (async (...args: unknown[]) => {
         try {
           return await handler(...args);
         } catch (err) {
@@ -89,6 +89,8 @@ function server(deps: McpDeps, caller: Caller): McpServer {
       }) as never)) as McpServer['registerTool'],
   };
 
+  /** Whether the caller may see a decision of this profile through MCP (as for decide, on its latest version). */
+  const shownDecision = async (record: DecisionRecord) => visible(await deps.store.get(record.profile), client);
   /** The profiles of these ids the caller may see through MCP. */
   const seenProfiles = async (ids: string[]) => {
     const seen = new Set<string>();
@@ -170,36 +172,31 @@ function server(deps: McpDeps, caller: Caller): McpServer {
     'get_decision',
     TOOLS.get_decision,
     async ({ decision_id }) => {
-      const record = UUID.test(decision_id) ? await deps.log.get(decision_id) : null;
       // Decisions of profiles that are not MCP-visible look unknown too.
-      const profile = record ? await deps.store.get(record.profile) : null;
-      if (!record || !visible(profile, client)) return failure(`unknown decision "${decision_id}"`);
-      const { callback_url: _, state: __, request_digest: ___, requires, ...shown } = record;
-      // A required decision of a profile the caller may not see through MCP is hidden.
-      const hidden = await shownRequires(requires);
-      return json(hidden ? { ...shown, requires: hidden } : shown);
+      const record = await findDecision(client, deps.log, decision_id);
+      if (!record || !(await shownDecision(record))) return failure(`unknown decision "${decision_id}"`);
+      // As GET /v1/decisions/{id}, without state, and a required decision of
+      // a profile the caller may not see through MCP is hidden.
+      const seen = await seenProfiles(Object.values(record.requires ?? {}).map((r) => r.profile));
+      const { state: _, ...shown } = publicRecord(record, client, (p) => seen.has(p));
+      return json(shown);
     },
   );
 
   // Feedback is a person's judgement, so only people logged in through OAuth
-  // get this tool; it is recorded under their GitHub login.
-  if (caller.kind === 'person') {
-    mcp.registerTool(
-      'submit_feedback',
-      TOOLS.submit_feedback,
-      async ({ decision_id, correct, note }) => {
-        const record = UUID.test(decision_id) ? await deps.log.get(decision_id) : null;
-        if (!record || !visible(await deps.store.get(record.profile), client)) return failure(`unknown decision "${decision_id}"`);
-        // Checked against the profile version the decision used.
-        const profile = await deps.store.get(record.profile, record.profile_version);
-        if (!profile) return failure('the profile version of this decision is no longer available');
-        const feedback = parseFeedback({ correct, by: caller.login, ...(note !== undefined && { note }) }, profile);
-        if (typeof feedback === 'string') return failure(feedback);
-        await deps.log.addFeedback(decision_id, { ...feedback, created_at: new Date().toISOString(), client: client.client });
-        return json({ recorded: true });
-      },
-    );
-  }
+  // get this tool (PEOPLE_ONLY); it is recorded under their GitHub login.
+  mcp.registerTool(
+    'submit_feedback',
+    TOOLS.submit_feedback,
+    async ({ decision_id, correct, note }) => {
+      if (caller.kind !== 'person') throw new Error('submit_feedback is only for people');
+      const body = { correct, by: caller.login, ...(note !== undefined && { note }) };
+      const answer = await feedbackAnswer(deps, client, decision_id, async () => body, shownDecision);
+      if (answer.status === 404) return failure(`unknown decision "${decision_id}"`);
+      if (answer.status !== 204) return failure(errorMessage(answer));
+      return json({ recorded: true });
+    },
+  );
 
   return server;
 }
