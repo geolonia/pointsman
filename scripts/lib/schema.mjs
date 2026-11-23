@@ -26,7 +26,7 @@ export function schemaWithFacts(text, definitions) {
   return text.slice(0, node.offset) + json + text.slice(node.offset + node.length);
 }
 
-/** JSON with values that fit on one line (up to 100 characters with the indent) kept on one line. */
+/** JSON with values that fit on one line (up to 120 characters with the indent) kept on one line. */
 function compact(value, indent) {
   const flat = oneLine(value);
   const scalars = Array.isArray(value) && value.every((v) => v === null || typeof v !== 'object');

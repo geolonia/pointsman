@@ -5,18 +5,13 @@
 // handleRequest from ../../packages/fiware/src/bridge.ts and mount it instead.
 
 import { type BridgeConfig, type BridgeMessage, handleQueueBatch, handleRequest } from '../../packages/fiware/src/bridge.ts';
-import { configFrom as fiwareConfig, type Env as FiwareEnv } from '../../packages/fiware/src/config.ts';
+import { configFrom, type Env as FiwareEnv } from '../../packages/fiware/src/config.ts';
 
 export interface Env extends Omit<FiwareEnv, 'BRIDGE_QUEUE' | 'BRIDGE_DEAD_LETTER'> {
   /** Optional queue (producer and consumer), see bridge/README.md "Reliable delivery". */
   BRIDGE_QUEUE?: Queue<BridgeMessage>;
   /** Optional producer for the dead-letter queue, see bridge/README.md "Reliable delivery". */
   BRIDGE_DEAD_LETTER?: Queue<BridgeMessage>;
-}
-
-/** Reads the configuration; throws naming the first missing or invalid setting. */
-export function configFrom(env: Env): BridgeConfig {
-  return fiwareConfig(env);
 }
 
 export default {

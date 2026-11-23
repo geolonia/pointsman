@@ -16,8 +16,14 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
-import { loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
+import { factModulesError, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile } from '../src/explain.ts';
+
+// A broken engine.json stops the script with one line, not a stack trace.
+if (factModulesError()) {
+  console.error(factModulesError());
+  process.exit(2);
+}
 
 const USAGE = 'Usage: replay-profile <file> --url <url> [--limit N] [--version N] [--with <file-or-directory>]... [--lang en|ja] [--json]';
 
@@ -136,9 +142,12 @@ out.push(ja
   ? `${profile.id}：下書きのルールを、バージョン ${result.version} の判定 ${result.replayed} 件（${day(result.from) ?? '-'} 〜 ${day(result.to) ?? '-'} UTC）で試しました。`
   : `${profile.id}: the draft's rules on ${result.replayed} decisions of version ${result.version} (${day(result.from) ?? '-'} to ${day(result.to) ?? '-'} UTC).`);
 if (result.inexact || result.skipped) {
+  // A count that is missing from the answer is 0, not "undefined".
+  const inexact = result.inexact ?? 0;
+  const skipped = result.skipped ?? 0;
   out.push(ja
-    ? `  試せなかった判定：前の判定の値が残っていないもの ${result.inexact} 件、記録に答えがないもの ${result.skipped} 件。`
-    : `  Not replayed: ${result.inexact} (a value of an earlier decision was not kept), ${result.skipped} (an answer is not in the log).`);
+    ? `  試せなかった判定：前の判定の値が残っていないもの ${inexact} 件、記録に答えがないもの ${skipped} 件。`
+    : `  Not replayed: ${inexact} (a value of an earlier decision was not kept), ${skipped} (an answer is not in the log).`);
 }
 out.push(ja ? `  アクションが変わる判定：${result.changed} 件。` : `  ${result.changed} would get another action.`);
 for (const t of result.transitions) out.push(`    ${shown(t.from)} → ${shown(t.to)}: ${t.count}`);

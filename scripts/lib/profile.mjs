@@ -30,15 +30,23 @@ let validateSchema;
 export async function useModules(modules = chosenModules()) {
   registry = await useChosenModules(modules);
   validateSchema = new Ajv2020({ allErrors: true, strict: true }).compile(profileSchemaFor(baseSchema, registry.modules));
+  modulesError = undefined;
   return registry;
 }
 
-// A broken engine.json stops every script with one line, not a stack trace.
+// The chosen modules are loaded on import. A library does not exit: when
+// engine.json is broken, the error is kept, the scripts report it with one
+// line and their exit code (factModulesError), and validateProfile throws it.
+let modulesError;
 try {
   await useModules();
 } catch (err) {
-  console.error(`fact modules: ${err.message}`);
-  process.exit(2);
+  modulesError = new Error(`fact modules: ${err.message}`);
+}
+
+/** Why the chosen fact modules could not be loaded (a broken engine.json), or undefined. */
+export function factModulesError() {
+  return modulesError?.message;
 }
 
 export const PROFILE_EXTENSIONS = ['.yaml', '.yml', '.json'];
@@ -88,6 +96,7 @@ function duplicates(values) {
  * be in it (docs/decision-chains.md "Checked both ways").
  */
 export function validateProfile(profile, { fileName, profiles = new Map() } = {}) {
+  if (modulesError) throw modulesError;
   if (Array.isArray(profile?.facts) && profile.facts.length > 0 && registry.types.size === 0) {
     return ['/facts: no fact module is chosen (engine.json "modules"), so a profile cannot have facts'];
   }

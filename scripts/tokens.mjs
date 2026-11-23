@@ -35,6 +35,11 @@
 // gets a warning; a secret or .dev.vars is not read) and refuse that name; `list` marks
 // a token that has it, such as the connector's old token while a deployment
 // moves to internal calls (docs/github-connector.md).
+//
+// Exits 2 on bad or missing options (what the command line alone shows), 1
+// on any other failure: a name in use or the stored tokens not allowing it,
+// a config that cannot be read, the name of INTERNAL_CLIENT, a record too
+// large, or wrangler failing.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -47,10 +52,13 @@ import { wrangler as runWrangler } from './lib/wrangler.mjs';
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const HASH = /^[0-9a-f]{64}$/;
 
-function fail(message) {
+function fail(message, code = 1) {
   console.error(message);
-  process.exit(2);
+  process.exit(code);
 }
+
+/** A usage error: bad or missing options. */
+const usage = (message) => fail(message, 2);
 
 const { values, positionals } = (() => {
   try {
@@ -71,16 +79,16 @@ const { values, positionals } = (() => {
       },
     });
   } catch (err) {
-    return fail(err.message);
+    return usage(err.message);
   }
 })();
 
 const [command] = positionals;
 if (positionals.length !== 1 || !['create', 'rotate', 'revoke', 'list'].includes(command)) {
-  fail('Usage: tokens.mjs create|rotate|revoke|list ... (see the comment at the top of this file)');
+  usage('Usage: tokens.mjs create|rotate|revoke|list ... (see the comment at the top of this file)');
 }
 // No default target: writing to the wrong namespace should not be one typo away.
-if (values.local === values.remote) fail('Give exactly one of --local or --remote.');
+if (values.local === values.remote) usage('Give exactly one of --local or --remote.');
 
 /** A value as a shell word, quoted when needed. */
 const shellWord = (v) => (/^[\w./@:-]+$/.test(v) ? v : `'${v.replaceAll("'", "'\\''")}'`);
@@ -196,7 +204,7 @@ function notInternal(client) {
 
 function clientArg() {
   if (!values.client || !NAME.test(values.client)) {
-    fail('--client must be lower case letters, digits and "-" (max 63)');
+    usage('--client must be lower case letters, digits and "-" (max 63)');
   }
   return values.client;
 }
@@ -204,16 +212,16 @@ function clientArg() {
 function profilesArg() {
   const profiles = (values.profiles ?? '').split(',').map((p) => p.trim()).filter(Boolean);
   if (profiles.length === 0 || !profiles.every((p) => p === '*' || NAME.test(p))) {
-    fail('--profiles must be a comma-separated list of profile ids, or *');
+    usage('--profiles must be a comma-separated list of profile ids, or *');
   }
-  if (profiles.includes('*') && profiles.length > 1) fail('--profiles: * cannot be combined with ids');
+  if (profiles.includes('*') && profiles.length > 1) usage('--profiles: * cannot be combined with ids');
   return profiles;
 }
 
 /** When the token expires (ISO string), from --expires, or undefined without it. */
 function expiresArg(now = Date.now()) {
   if (values.expires === undefined) return undefined;
-  if (values['no-expiry']) fail('give --expires or --no-expiry, not both');
+  if (values['no-expiry']) usage('give --expires or --no-expiry, not both');
   const v = values.expires.trim();
   const d = /^(\d{1,4})([hdw])$/.exec(v);
   let at;
@@ -223,12 +231,12 @@ function expiresArg(now = Date.now()) {
   } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
     at = Date.parse(`${v}T23:59:59Z`);
     // Date.parse moves 2027-02-30 to March: refuse a day that does not exist.
-    if (!Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== v) fail(`--expires: ${v} is not a date`);
+    if (!Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== v) usage(`--expires: ${v} is not a date`);
   } else {
-    fail('--expires must be a duration (12h, 90d, 2w) or a date (YYYY-MM-DD)');
+    usage('--expires must be a duration (12h, 90d, 2w) or a date (YYYY-MM-DD)');
   }
   // KV refuses an expiration less than 60 seconds ahead; an hour is the shortest useful token anyway.
-  if (!Number.isFinite(at) || at < now + 3600_000) fail('--expires must be at least an hour from now');
+  if (!Number.isFinite(at) || at < now + 3600_000) usage('--expires must be at least an hour from now');
   return new Date(at).toISOString();
 }
 
@@ -253,19 +261,24 @@ async function putToken(client, profiles, test, expiresAt) {
 
 switch (command) {
   case 'create': {
+    // The options first (exit 2), before anything is read.
     const client = clientArg();
     const profiles = profilesArg();
+    if (values['no-expiry']) usage('--no-expiry is for rotate; a new token has no expiry without --expires');
+    const expiresAt = expiresArg();
     notInternal(client);
     if (listTokens().some((t) => t.client === client)) {
       fail(`client "${client}" already has a token: use \`rotate --client ${client}\` for a new one, or another name`);
     }
-    if (values['no-expiry']) fail('--no-expiry is for rotate; a new token has no expiry without --expires');
-    await putToken(client, profiles, values.test, expiresArg());
+    await putToken(client, profiles, values.test, expiresAt);
     break;
   }
   case 'rotate': {
+    // The options first (exit 2), before anything is read.
     const client = clientArg();
-    if (values.test) fail('rotate keeps the old token\'s --test setting; leave out --test');
+    if (values.test) usage('rotate keeps the old token\'s --test setting; leave out --test');
+    const givenProfiles = values.profiles !== undefined ? profilesArg() : undefined;
+    const expiresAt = expiresArg();
     notInternal(client);
     const old = listTokens().filter((t) => t.client === client);
     if (old.length === 0) fail(`client "${client}" has no token; use create`);
@@ -273,9 +286,8 @@ switch (command) {
     if (values.profiles === undefined && old.some((t) => (t.profiles ?? []).join(',') !== (old[0].profiles ?? []).join(','))) {
       fail(`client "${client}" has tokens with different profiles; give --profiles`);
     }
-    const profiles = values.profiles !== undefined ? profilesArg() : old[0]?.profiles ?? [];
+    const profiles = givenProfiles ?? old[0]?.profiles ?? [];
     if (profiles.length === 0) fail('--profiles is needed (the old token\'s profiles are unknown)');
-    const expiresAt = expiresArg();
     if (expiresAt === undefined && !values['no-expiry'] && old.some((t) => t.expires_at)) {
       fail(`the old token of "${client}" has an expiry: give --expires <when> for the new one, or --no-expiry`);
     }
@@ -291,7 +303,7 @@ switch (command) {
     break;
   }
   case 'revoke': {
-    if (!values.hash || !HASH.test(values.hash)) fail('--hash must be a SHA-256 hex hash (see `list`)');
+    if (!values.hash || !HASH.test(values.hash)) usage('--hash must be a SHA-256 hex hash (see `list`)');
     // Deleting a key that does not exist succeeds: a mistyped hash would print
     // "revoked" while the real token stays valid (#259).
     // KV lists a new key up to about a minute late: right after create or

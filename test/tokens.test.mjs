@@ -49,7 +49,7 @@ test('revoke deletes the key for a hash', () => {
 
 test('revoke refuses a hash that no token has (#259)', () => {
   const r = runWith(stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }]), 'revoke', '--hash', 'b'.repeat(64), '--local', '--dry-run');
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /no token with the hash b{64}/);
   assert.deepEqual(writes(r.stdout), []);
 });
@@ -57,7 +57,7 @@ test('revoke refuses a hash that no token has (#259)', () => {
 test('create refuses a token record larger than KV metadata takes (#259)', () => {
   const profiles = Array.from({ length: 40 }, (_, i) => `a-rather-long-profile-id-${i}`).join(',');
   const r = run('create', '--client', 'demo', '--profiles', profiles, '--local', '--dry-run');
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /KV metadata takes at most 1024/);
   assert.deepEqual(writes(r.stdout), []);
   assert.doesNotMatch(r.stdout, /pm_/);
@@ -65,7 +65,7 @@ test('create refuses a token record larger than KV metadata takes (#259)', () =>
 
 test('create refuses a client name that already has a token', () => {
   const r = runWith(stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }]), 'create', '--client', 'demo', '--profiles', '*', '--local', '--dry-run');
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /already has a token: use `rotate --client demo`/);
   assert.deepEqual(writes(r.stdout), []);
 });
@@ -115,15 +115,16 @@ test('rotate --keep-old prints the revoke command with the same --config', () =>
   assert.ok(local.stdout.includes(`revoke --hash ${'a'.repeat(64)} --local\n`), local.stdout);
 });
 
-for (const [name, list, args, message] of [
-  ['a client without a token', stored(), ['--client', 'demo'], /has no token; use create/],
-  ['--test', stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }]), ['--client', 'demo', '--test'], /leave out --test/],
-  ['mixed test and normal tokens', stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }], ['b'.repeat(64), { client: 'demo', profiles: ['*'], test: true }]), ['--client', 'demo'], /both test and normal/],
-  ['tokens with different profiles', stored(['a'.repeat(64), { client: 'demo', profiles: ['x'] }], ['b'.repeat(64), { client: 'demo', profiles: ['y'] }]), ['--client', 'demo'], /give --profiles/],
+// Exit 2 for a bad option, 1 for what the stored tokens do not allow.
+for (const [name, list, args, message, status] of [
+  ['a client without a token', stored(), ['--client', 'demo'], /has no token; use create/, 1],
+  ['--test', stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }]), ['--client', 'demo', '--test'], /leave out --test/, 2],
+  ['mixed test and normal tokens', stored(['a'.repeat(64), { client: 'demo', profiles: ['*'] }], ['b'.repeat(64), { client: 'demo', profiles: ['*'], test: true }]), ['--client', 'demo'], /both test and normal/, 1],
+  ['tokens with different profiles', stored(['a'.repeat(64), { client: 'demo', profiles: ['x'] }], ['b'.repeat(64), { client: 'demo', profiles: ['y'] }]), ['--client', 'demo'], /give --profiles/, 1],
 ]) {
   test(`rotate refuses ${name}`, () => {
     const r = runWith(list, 'rotate', ...args, '--local', '--dry-run');
-    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.equal(r.status, status, r.stdout + r.stderr);
     assert.match(r.stderr, message);
     assert.deepEqual(writes(r.stdout), []);
   });
@@ -182,7 +183,7 @@ for (const [name, value] of [['a word', 'soon'], ['a past date', '2020-01-01'], 
 test('rotate asks for --expires or --no-expiry when the old token had an expiry', () => {
   const old = stored(['a'.repeat(64), { client: 'demo', profiles: ['*'], created_at: '2026-10-01T00:00:00Z', expires_at: '2026-12-01T00:00:00.000Z' }]);
   const refused = runWith(old, 'rotate', '--client', 'demo', '--local', '--dry-run');
-  assert.equal(refused.status, 2);
+  assert.equal(refused.status, 1);
   assert.match(refused.stderr, /--expires <when> for the new one, or --no-expiry/);
   assert.equal(writes(refused.stdout).length, 0);
   const renewed = runWith(old, 'rotate', '--client', 'demo', '--expires', '30d', '--local', '--dry-run');
@@ -225,7 +226,7 @@ test('create refuses the client name of INTERNAL_CLIENT (#275)', () => {
   const config = internalConfig();
   for (const name of ['github-connector', 'staging-connector']) {
     const r = run('create', '--client', name, '--profiles', '*', '--local', '--config', config, '--dry-run');
-    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stderr, new RegExp(`"${name}" is the client of INTERNAL_CLIENT`));
     assert.deepEqual(writes(r.stdout), []);
   }
@@ -236,7 +237,7 @@ test('create refuses the client name of INTERNAL_CLIENT (#275)', () => {
 test('rotate refuses the client name of INTERNAL_CLIENT (#275)', () => {
   const r = runWith(stored(['a'.repeat(64), { client: 'github-connector', profiles: ['*'] }]),
     'rotate', '--client', 'github-connector', '--local', '--config', internalConfig(), '--dry-run');
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /is the client of INTERNAL_CLIENT/);
   assert.deepEqual(writes(r.stdout), []);
 });
@@ -254,10 +255,10 @@ test('a config that cannot be read is an error, not an unchecked name (#275)', (
   const broken = join(dir, 'wrangler.jsonc');
   writeFileSync(broken, '{ "vars": ');
   const r = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', broken, '--dry-run');
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /cannot check INTERNAL_CLIENT/);
   const missing = run('create', '--client', 'demo', '--profiles', '*', '--local', '--config', join(dir, 'none.jsonc'), '--dry-run');
-  assert.equal(missing.status, 2, missing.stdout + missing.stderr);
+  assert.equal(missing.status, 1, missing.stdout + missing.stderr);
   assert.match(missing.stderr, /cannot check INTERNAL_CLIENT/);
 });
 
@@ -279,7 +280,7 @@ test('without --config, the config is found as wrangler finds it: this folder, t
   mkdirSync(join(dir, 'sub'));
   for (const cwd of [dir, join(dir, 'sub')]) {
     const r = spawnSync(process.execPath, [script, 'create', '--client', 'github-connector', '--profiles', '*', '--local', '--dry-run'], { cwd, encoding: 'utf8' });
-    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stderr, /is the client of INTERNAL_CLIENT in .*wrangler\.json:/);
   }
 });
@@ -295,7 +296,7 @@ test('an INTERNAL_CLIENT that is not JSON, or has no client, names no client (#2
 test('rotate refuses a name INTERNAL_CLIENT gives in an environment (#275)', () => {
   const r = runWith(stored(['a'.repeat(64), { client: 'staging-connector', profiles: ['*'] }]),
     'rotate', '--client', 'staging-connector', '--local', '--config', internalConfig(), '--dry-run');
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /"staging-connector" is the client of INTERNAL_CLIENT/);
 });
 
@@ -311,7 +312,7 @@ test('a wrangler.json in a parent folder wins over a wrangler.jsonc here, as in 
   mkdirSync(join(dir, 'sub'));
   writeFileSync(join(dir, 'sub', 'wrangler.jsonc'), '{}');
   const r = spawnSync(process.execPath, [script, 'create', '--client', 'github-connector', '--profiles', '*', '--local', '--dry-run'], { cwd: join(dir, 'sub'), encoding: 'utf8' });
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /is the client of INTERNAL_CLIENT in \.\.\/wrangler\.json:/);
 });
 
@@ -322,7 +323,7 @@ test('without --config, a wrangler redirect to a generated config is refused, no
   writeFileSync(join(dir, '.wrangler', 'deploy', 'config.json'), '{"configPath":"../../dist/wrangler.json"}');
   mkdirSync(join(dir, 'sub'));
   const r = spawnSync(process.execPath, [script, 'create', '--client', 'demo', '--profiles', '*', '--local', '--dry-run'], { cwd: join(dir, 'sub'), encoding: 'utf8' });
-  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /generated config .* give the config with --config/);
   // With --config, the given file is used.
   const given = spawnSync(process.execPath, [script, 'create', '--client', 'demo', '--profiles', '*', '--local', '--config', join(dir, 'wrangler.jsonc'), '--dry-run'], { cwd: join(dir, 'sub'), encoding: 'utf8' });

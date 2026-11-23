@@ -41,7 +41,11 @@ if (typeof settings.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(settin
   fail(`${values.file}: "id" must be a gateway name (lower case, digits, "-", "_"; max 64)`, 2);
 }
 
+// Read once per run: every API call uses the same token and account, so
+// wrangler is not asked again for each one.
+let cached;
 function credentials() {
+  if (cached) return cached;
   let token = process.env.CLOUDFLARE_API_TOKEN;
   let account = process.env.CLOUDFLARE_ACCOUNT_ID;
   try {
@@ -61,16 +65,23 @@ function credentials() {
     fail(`No Cloudflare credentials: run \`wrangler login\` or set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.\n(${String(err.message).split('\n')[0]})`);
   }
   if (!token) fail('No token from `wrangler auth token`; run `wrangler login`.');
-  return { token, account };
+  cached = { token, account };
+  return cached;
 }
 
 async function api(method, path, body) {
   const { token, account } = credentials();
-  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/ai-gateway/gateways${path}`, {
-    method,
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    ...(body && { body: JSON.stringify(body) }),
-  });
+  let res;
+  try {
+    res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/ai-gateway/gateways${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      ...(body && { body: JSON.stringify(body) }),
+    });
+  } catch (err) {
+    // A network error ends with one line, not an unhandled rejection.
+    fail(`The Cloudflare API could not be reached: ${err.message}${err.cause?.code ? ` (${err.cause.code})` : ''}`);
+  }
   const data = await res.json().catch(() => ({}));
   return { status: res.status, data };
 }

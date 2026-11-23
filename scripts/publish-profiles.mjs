@@ -22,8 +22,14 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../src/log.ts';
-import { loadProfileSet, validateProfile } from './lib/profile.mjs';
+import { factModulesError, loadProfileSet, validateProfile } from './lib/profile.mjs';
 import { wrangler } from './lib/wrangler.mjs';
+
+// A broken engine.json stops the script with one line, not a stack trace.
+if (factModulesError()) {
+  console.error(factModulesError());
+  process.exit(2);
+}
 
 function fail(message, code = 1) {
   console.error(message);

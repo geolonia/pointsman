@@ -3,7 +3,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, clashingAnswer, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity, toProperty } from '../../packages/fiware/src/bridge.ts';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
-import { configFrom, type Env } from '../../bridge/src/index';
+import { configFrom } from '../../packages/fiware/src/config.ts';
+import type { Env } from '../../bridge/src/index';
 
 // Made at run time, so no secret-looking literal sits in the code.
 const SECRET = crypto.randomUUID();

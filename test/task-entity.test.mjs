@@ -1,11 +1,11 @@
-// The bridge's Task entities (bridge/src/bridge.ts) against the Task model's
+// The bridge's Task entities (packages/fiware/src/bridge.ts) against the Task model's
 // JSON Schema and context (datamodels.jp, pinned copy in test/fixtures).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
-import { toTaskEntity } from '../bridge/src/bridge.ts';
+import { toTaskEntity } from '../packages/fiware/src/bridge.ts';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/datamodels/task/${name}`, import.meta.url), 'utf8'));
 const ajv = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });

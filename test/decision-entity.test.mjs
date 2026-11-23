@@ -1,4 +1,4 @@
-// The bridge's Decision entities (bridge/src/bridge.ts) against the data
+// The bridge's Decision entities (packages/fiware/src/bridge.ts) against the data
 // model's JSON Schema (datamodels.jp, pinned copy in test/fixtures). Node runs the bridge's
 // TypeScript directly (type stripping); Ajv cannot run in the Workers tests.
 
@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
-import { toDecisionEntity } from '../bridge/src/bridge.ts';
+import { toDecisionEntity } from '../packages/fiware/src/bridge.ts';
 
 const schema = JSON.parse(readFileSync(new URL('./fixtures/datamodels/decision/schema.json', import.meta.url), 'utf8'));
 // Formats are not checked here (no ajv-formats); the bridge test checks the dates.

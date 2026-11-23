@@ -384,6 +384,11 @@ describe('settings and tokens', () => {
     expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":["a/b"],"profiles":["p"],"extra":{}}' })).toThrow(/unknown key extra/);
     expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":[],"profiles":["p"]}' })).toThrow(/repos/);
     expect(() => connectorSettings({ ...env, GITHUB_CONNECTOR: '{"repos":["a/b"],"profiles":["../x"]}' })).toThrow(/profiles/);
+    // Profile ids as the profile schema has them (#268): no "_", at most 63 characters.
+    const withProfile = (id: string) => connectorSettings({ ...env, GITHUB_CONNECTOR: JSON.stringify({ repos: ['a/b'], profiles: [id] }) });
+    expect(() => withProfile('pr_check')).toThrow(/profiles/);
+    expect(() => withProfile('a'.repeat(64))).toThrow(/profiles/);
+    expect(withProfile('a'.repeat(63))!.profiles).toEqual(['a'.repeat(63)]);
   });
 
   it('runs only in its own Worker, with its objects', () => {

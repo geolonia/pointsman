@@ -289,7 +289,8 @@ function answersOf(v: unknown, profiles: string[]): AnswerSettings | undefined {
 }
 
 const REPO = /^[a-z0-9-]{1,39}\/[a-z0-9._-]{1,100}$/;
-const PROFILE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+// A profile id as the profile schema's id (and src/internal.ts) has it.
+const PROFILE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const text = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
 /** The settings, or undefined when none is set (the connector is off). Throws ConfigError on missing or wrong ones. */
