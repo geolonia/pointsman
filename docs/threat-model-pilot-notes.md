@@ -800,6 +800,21 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for the config check and the linter (pointsman#266, #276, #328, 2026-11-23)
+
+- **Why**: the review of 2026-11 found that nothing checked the
+  `global_fetch_strictly_public` flag that `P-OUTBOUND-PUBLIC-ONLY` rests
+  on, so a config without it lost the property silently (#276), and that
+  the repository had no linter (#266).
+- **Changed**: `P-OUTBOUND-PUBLIC-ONLY` and `R-PRIVATE-CONFIG` name the new
+  check in `scripts/check-config.mjs`; §1.1 and §1.16; the citations into
+  `packages/github/src/bump.ts` moved to their lines, and the one for the
+  peers pass now points to `steps.ts`, where the linter's fix for an import
+  cycle moved it.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
