@@ -261,12 +261,12 @@ describe('list_profiles KV reads (#263)', () => {
     const data = new Map<string, unknown>([['index', await memory.list()], ...all.map((p) => [`profile:${p.id}:${p.version}`, p] as [string, unknown])]);
     const reads: string[] = [];
     const kv = { get: async (key: string) => { reads.push(key); return data.get(key) ?? null; } } as unknown as KVNamespace;
-    const list = async (store: import('../../src/profiles/store').ProfileStore) => {
+    const list = async (store: import('../../src/profiles/store').ProfileStore, profiles = ['*']) => {
       const res = await serveMcp(new Request('http://pointsman.test/mcp', {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_profiles', arguments: {} } }),
-      }), { store, adapterFor: () => new MockAdapter(), log: {} as never }, { kind: 'token', record: { client: 'agent', profiles: ['*'], created_at: '' } });
+      }), { store, adapterFor: () => new MockAdapter(), log: {} as never }, { kind: 'token', record: { client: 'agent', profiles, created_at: '' } });
       const text = await res.text();
       return JSON.parse(text.split('\n').filter((l) => l.startsWith('data:')).map((l) => JSON.parse(l.slice(5))).at(-1).result.content[0].text);
     };
@@ -277,5 +277,19 @@ describe('list_profiles KV reads (#263)', () => {
     // The index once, then each profile in scope once (3 profiles): N + 1.
     expect(reads.filter((k) => k === 'index')).toHaveLength(1);
     expect(reads).toHaveLength(4);
+
+    // A token for some profiles: only those are read and listed; a required
+    // profile outside its scope is shown by name only, as from memory.
+    reads.length = 0;
+    const scoped = await list(new KvProfileStore(kv), ['b']);
+    expect(scoped).toEqual(await list(memory, ['b']));
+    expect(scoped.profiles.map((p: any) => p.id)).toEqual(['b']);
+    expect(reads).toEqual(['index', 'profile:b:1']);
+
+    // Right after a deploy, the index can name a version KV does not serve
+    // yet: the newest readable version is listed instead, as before.
+    data.delete('profile:a:2');
+    const early = await list(new KvProfileStore(kv));
+    expect(early.profiles.map((p: any) => [p.id, p.version, p.title.en])).toEqual([['a', 1, 'A old'], ['b', 1, expect.anything()]]);
   });
 });

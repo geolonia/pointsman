@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:90599a5f6467900df1cfb4742dc745de2f83a808a36951d5ea86a8cd01ae3122"
+prose_version: "threat-model.md@sha256:d259752984959181ce6e7ea933abac93ebc52368106f6e087c98cce7af5687f8"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -130,8 +130,8 @@ host_side_effects:
     provenance: {kind: documented, source: "packages/github/src/connector/github.ts and packages/github/src/connector/engine.ts, redirect manual"}
   - effect: global-state
     stance: conditional
-    components: [engine-api, engine-facts, engine-mcp]
-    conditions: "module-level caches (profile store, adapters, OAuth server map, and the providers each fact module keeps: GSI provider and tile memory cache, Valhalla routers, GitHub fact providers with a GitHub App's installation tokens, CodeRabbit providers) shared within one isolate only; the pull-request snapshot is per decision"
+    components: [engine-api, engine-facts, engine-mcp, connector-github]
+    conditions: "module-level caches (profile store, adapters, OAuth server map, and the providers each fact module keeps: GSI provider and tile memory cache, Valhalla routers, GitHub fact providers with a GitHub App's installation tokens, CodeRabbit providers; since pointsman#263 the GitHub connector's client per app with its installation tokens) shared within one isolate only; the pull-request snapshot is per decision"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: logging
     stance: present

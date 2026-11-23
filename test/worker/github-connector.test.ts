@@ -562,6 +562,37 @@ describe('settings and tokens', () => {
       expect(gh.tokens).toHaveLength(2);
       expect(gh.used.at(-1)).toBe('example/repo Bearer ghs_2');
     });
+
+    it('after a 403 that is not a rate limit, or a 404, the next run gets a new token (a setting may have changed); neither is tried again', async () => {
+      for (const refused of [() => Response.json({ message: 'Resource not accessible by integration' }, { status: 403 }), () => new Response('{}', { status: 404 })]) {
+        let refuse = true;
+        const gh = github({ pr: () => (refuse ? refused() : Response.json(OPEN_PR)) });
+        const s = settings({ privateKey: await pemKey() });
+        await expect(connectorGitHub(s).pullRequest(REPO, 7)).rejects.toMatchObject({ retry: false });
+        refuse = false;
+        await connectorGitHub(s).pullRequest(REPO, 7);
+        expect(gh.tokens).toHaveLength(2);
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('a rate-limited 403 keeps the token and is tried again', async () => {
+      let limited = true;
+      const gh = github({ pr: () => (limited ? Response.json({ message: 'API rate limit exceeded' }, { status: 403, headers: { 'x-ratelimit-remaining': '0' } }) : Response.json(OPEN_PR)) });
+      const s = settings({ privateKey: await pemKey() });
+      await expect(connectorGitHub(s).pullRequest(REPO, 7)).rejects.toMatchObject({ retry: true });
+      limited = false;
+      await connectorGitHub(s).pullRequest(REPO, 7);
+      expect(gh.tokens).toHaveLength(1);
+    });
+
+    it('runs at the same time share one token request', async () => {
+      const gh = github();
+      const s = settings({ privateKey: await pemKey() });
+      await Promise.all([connectorGitHub(s).pullRequest(REPO, 7), connectorGitHub(settings({ privateKey: s.privateKey })).pullRequest(REPO, 7), connectorGitHub(s).pullRequest(REPO, 7)]);
+      expect(gh.tokens).toEqual(['9:repo']);
+      expect(gh.used).toHaveLength(3);
+    });
   });
 
   it('classifies failures: not installed needs a person, a network error is tried again', async () => {

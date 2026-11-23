@@ -855,7 +855,9 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   (#263). One changes the model: the GitHub connector now keeps its
   installation tokens in memory between runs, as the facts already did.
 - **Changed**: the runtime assumption in §1.5, the state outside the engine
-  (tokens held in memory, dropped on a 401), `P-CONNECTOR-TOKEN-SCOPED`;
+  (tokens held in memory, dropped on a 401), `P-CONNECTOR-TOKEN-SCOPED`,
+  the connector's concurrency row, the `global-state` effect (YAML) and the
+  connector's `touches` (JSON);
   §1.1 and §1.16; the citations into `packages/github/src/provider.ts` and
   `packages/github/src/connector/github.ts`, moved by a script from the
   diff and checked line by line against the old text.
