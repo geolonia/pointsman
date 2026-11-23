@@ -483,7 +483,7 @@
   (from the review of 2026-11): among them, the GitHub connector tells a
   fork by repository id, `INTERNAL_CLIENT` profile ids follow the profile
   schema, the test-token messages name what such a token may do, and
-  deploy-watch reads `cancel-update` in any spelling of `true`. Changed:
+  deploy-watch reads `cancel-update` as on for `true`, `True` or `TRUE`. Changed:
   the §1.6 rows for test tokens and `cancel-update`, the §1.7 rows for
   `INTERNAL_CLIENT` and the connector's GitHub reads, the quote of the
   README in `P-TEST-TOKEN-ISOLATED`'s provenance (prose, YAML, JSON); the
@@ -1211,7 +1211,7 @@ modeled tree.
   "Nothing is run")*. The engine reads its configuration from Worker bindings and
   vars only *(maintainer, 2026-10)*. `action-deploy-watch` spawns `bash -c <run>`
   in its own process group and runs the `aws` CLI
-  (`actions/deploy-watch/watch.mjs:20,123`); both Actions read `INPUT_*` and
+  (`actions/deploy-watch/watch.mjs:20,124`); both Actions read `INPUT_*` and
   `GITHUB_*` environment variables and append to `GITHUB_OUTPUT` and
   `GITHUB_STEP_SUMMARY` *(documented, the Actions' header comments and
   `action.yml` inputs)*.
@@ -1293,7 +1293,7 @@ configuration is in-model even when the configuration is not the default.
 | Connector `GITHUB_CONNECTOR` `runs` (`requires`, `skip_drafts`, `once_per_head`, `diff`, `recheck`) | connector wrangler vars | unset (every profile asked on every run, title and description only) | chains profiles; `diff` adds the pull request's diff (1,000 to 100,000 characters) to the state the model sees; `once_per_head` reuses a decision until the commit, title, description or settings change; since pointsman#216 (`v0.15.0`) a profile with `once_per_head` that maps an action to `approve` or `keep_approval` is a config error (`packages/github/src/connector/settings.ts:325`) | supported | *(documented, docs/github-connector.md "Chains")* |
 | Connector `GITHUB_CONNECTOR` `answers` (`profiles`, `command`), since pointsman#222 (`v0.16.0`) | connector wrangler vars | unset (a person answers only in Pointsman's review queue) | `profiles`: the profiles whose questions may be answered in the pull request, each with 1 to 10 offered answers (action names, not `review`); a profile with at most 3 answers of at most 20 characters gets buttons on its check run; `command`: the comment `/pointsman <answer> <commit> <question>` (since pointsman#236, `v0.18.0`; up to `v0.17.2` `/pointsman <answer> <commit>`), off unless `true`; a profile with more or longer answers needs the command, else the setting is refused; since pointsman#236 (`v0.18.0`) an answer counts only while the current `profiles` still offer it, also for a question asked before the settings changed; with answers on, the tokens ask for Contents: read and the `closed` event is taken | supported; switch on only where everyone with write access may approve (`R-CONNECTOR-ANSWERS`) | *(documented, docs/github-connector.md "Answering in the pull request"; `packages/github/src/connector/settings.ts` `answersOf`)* |
 | Connector app permissions | the connector's GitHub App | Checks: write, Pull requests and Metadata: read | Pull requests: write for actions and for the decision comment; Contents: read for `diff` on a private repository; Contents: write for an approval that counts toward a ruleset's required approvals; since pointsman#222 (`v0.16.0`) Contents: read and the event Check run for answers, and Issues: read and the event Issue comment for the command. The connector's tokens ask only for what its settings use, never Contents: write | supported; the key itself carries every permission the app has (`D-CONNECTOR-KEY-REACH`) | *(documented, docs/github-connector.md "The two GitHub apps", "Actions", "Switching it on")* |
-| Action `cancel-update` | `action.yml` | `true` | also runs `aws cloudformation cancel-update-stack` when a deploy is stopped; on for `true`, `True` or `TRUE` (since pointsman#268, not yet released), off for anything else | supported | *(documented, actions/deploy-watch/README.md "Inputs")* |
+| Action `cancel-update` | `action.yml` | `true` | also runs `aws cloudformation cancel-update-stack` when a deploy is stopped; on for `true`, `True` or `TRUE` and when empty (since pointsman#268, not yet released), off for anything else | supported | *(documented, actions/deploy-watch/README.md "Inputs")* |
 
 ## 1.7 Assumptions about inputs
 
@@ -2194,14 +2194,14 @@ what voids it.
   arrived for `quiet-minutes`; since pointsman#229 (`v0.17.1`) a `cancel`
   that a person still checks (`review: {status: pending}`, from the
   profile's `people_check`) does not count and starts the count again
-  (`actions/deploy-watch/watch.mjs:189`); since pointsman#235 (`v0.18.0`)
+  (`actions/deploy-watch/watch.mjs:190`); since pointsman#235 (`v0.18.0`)
   neither does a `cancel` for a test token (`test: true`,
-  `actions/deploy-watch/watch.mjs:191`); an unreachable or failing Pointsman, or an
+  `actions/deploy-watch/watch.mjs:192`); an unreachable or failing Pointsman, or an
   unreadable stack, never cancels, and since pointsman#325 (not yet
   released) also starts the count again, so the cancels are really in a
   row; until CloudFormation works on a watched stack in this run (a stack
   in progress, or an event since the start), nothing is asked
-  (`actions/deploy-watch/watch.mjs:158`). Symptom: `x-unwarranted-cancel`. Tier:
+  (`actions/deploy-watch/watch.mjs:159`). Symptom: `x-unwarranted-cancel`. Tier:
   correctness-only (stopping a deploy is an availability effect on the
   integrator's own pipeline). *(documented, actions/deploy-watch/README.md
   "Cancel only when sure"; "If Pointsman cannot be reached, nothing is
@@ -2382,7 +2382,7 @@ the receivers must do for §1.5–§1.11 to hold.
   `packages/github/src/connector/pull-request.ts:963`); since
   pointsman#229 (`v0.17.1`) the triage Action
   (`actions/triage/triage.mjs:75`) and the deploy-watch Action
-  (`actions/deploy-watch/watch.mjs:189`); since pointsman#232
+  (`actions/deploy-watch/watch.mjs:190`); since pointsman#232
   (`v0.17.2`) the FIWARE bridge on every route: an answer with
   `review: {status: pending}` counts as checked by a person whatever the
   route's `reviewActions` (`packages/fiware/src/bridge.ts:984`), which

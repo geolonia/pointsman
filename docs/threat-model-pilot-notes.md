@@ -838,7 +838,7 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   module half changed what some rows say: the connector tells a fork by
   repository id, `INTERNAL_CLIENT` profile ids follow the profile schema,
   the test-token messages name everything such a token may do, and
-  `cancel-update` takes any spelling of `true`.
+  `cancel-update` is on for `true`, `True` or `TRUE`.
 - **Changed**: the §1.6 rows for test tokens and `cancel-update`, the §1.7
   rows for `INTERNAL_CLIENT` and the connector's GitHub reads, the README
   quote in `P-TEST-TOKEN-ISOLATED` (it now says test tokens may also
