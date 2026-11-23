@@ -8,5 +8,5 @@
     "no-control-regex": "off",
     "unicorn/no-thenable": "off"
   },
-  "ignorePatterns": ["generated/**", "_site/**", "docs-site/dist/**", "worker-configuration.d.ts"]
+  "ignorePatterns": [".claude/**", "generated/**", "_site/**", "docs-site/dist/**", "worker-configuration.d.ts"]
 }
