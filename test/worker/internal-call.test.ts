@@ -47,6 +47,10 @@ describe('INTERNAL_CLIENT', () => {
     expect(() => internalClient(JSON.stringify({ client: 'Bad Name', profiles: ['a'] }))).toThrow(/"client"/);
     expect(() => internalClient(JSON.stringify({ client: 'c', profiles: ['*'] }))).toThrow(/"\*" is not allowed/);
     expect(() => internalClient(JSON.stringify({ client: 'c', profiles: [] }))).toThrow(/"profiles"/);
+    // Profile ids as the profile schema and scripts/tokens.mjs: no "_", at most 63 characters.
+    expect(() => internalClient(JSON.stringify({ client: 'c', profiles: ['pr_docs'] }))).toThrow(/"profiles"/);
+    expect(() => internalClient(JSON.stringify({ client: 'c', profiles: ['a'.repeat(64)] }))).toThrow(/"profiles"/);
+    expect(internalClient(JSON.stringify({ client: 'c', profiles: ['a'.repeat(63)] })).profiles).toEqual(['a'.repeat(63)]);
     expect(() => internalClient(JSON.stringify({ client: 'c', profiles: ['a'], test: true }))).toThrow(/unknown key test/);
     expect(() => internalClient(JSON.stringify({ client: 'c', profiles: ['a'], expires_at: '2099-01-01' }))).toThrow(/unknown key expires_at/);
   });

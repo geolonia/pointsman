@@ -65,11 +65,21 @@ export function along(g: Geometry, step: number, max: number): Position[] {
   return out;
 }
 
-/** Web map tile (x, y) at zoom z, and the pixel inside a 256 px tile. */
+/** The latitude where web map tiles end (north and south). */
+const MAX_TILE_LAT = 85.0511287798066;
+
+/**
+ * Web map tile (x, y) at zoom z, and the pixel inside a 256 px tile. A
+ * position on or past the edge of the map (lon 180, lat beyond ±85.05) gives
+ * the tile and pixel at that edge, never a tile outside the range.
+ */
 export function tileOf([lon, lat]: Position, z: number): { x: number; y: number; px: number; py: number } {
   const n = 2 ** z;
-  const x = ((lon + 180) / 360) * n;
-  const y = ((1 - Math.log(Math.tan(rad(lat)) + 1 / Math.cos(rad(lat))) / Math.PI) / 2) * n;
+  // Just below n, so that the edge stays in the last tile.
+  const inside = (v: number) => Math.min(Math.max(v, 0), n * (1 - Number.EPSILON));
+  const l = rad(Math.min(Math.max(lat, -MAX_TILE_LAT), MAX_TILE_LAT));
+  const x = inside(((lon + 180) / 360) * n);
+  const y = inside(((1 - Math.log(Math.tan(l) + 1 / Math.cos(l)) / Math.PI) / 2) * n);
   return { x: Math.floor(x), y: Math.floor(y), px: Math.min(255, Math.floor((x % 1) * 256)), py: Math.min(255, Math.floor((y % 1) * 256)) };
 }
 

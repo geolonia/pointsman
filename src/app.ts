@@ -67,7 +67,7 @@ export function createApp(deps: (env: Env) => Deps) {
     // decisions are not logged, and it must not read or resolve the logged ones.
     if (record.test && !(c.req.method === 'POST' && /^\/v1\/decide\/[^/]+$/.test(c.req.path))
       && !(c.req.method === 'GET' && (c.req.path === '/v1/profiles' || /^\/v1\/profiles\/[^/]+\/explain$/.test(c.req.path)))) {
-      return error(403, 'forbidden', 'a test token may only decide');
+      return error(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile');
     }
     await next();
   });
@@ -259,7 +259,7 @@ export function createApp(deps: (env: Env) => Deps) {
   // A test token only decides over the REST API: MCP would let it read
   // logged decisions (get_decision).
   const mcpFor = (d: Deps) => (req: Request, caller: Caller) => (caller.kind === 'token' && caller.record.test
-    ? Promise.resolve(error(403, 'forbidden', 'a test token may only decide (POST /v1/decide)'))
+    ? Promise.resolve(error(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile over the REST API'))
     : serveMcp(req, d, caller));
   app.all('/mcp', async (c) => {
     const d = deps(c.env);

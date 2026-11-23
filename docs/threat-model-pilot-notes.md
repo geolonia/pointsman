@@ -629,7 +629,7 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   content with the script; 5 were rewritten by #235 or #236 and placed
   by meaning: `triage.mjs:74` (now 75), `bridge.ts:656` (now 669),
   `bridge.ts:887` (now 906), `webhook.ts:140` (the command pattern, now
-  142) and `src/mcp.ts:26` (now 32, the people's line). Before the
+  142) and `src/mcp.ts:27` (now 32, the people's line). Before the
   update the validator flagged 10 of them; the others still resolved to
   other code. Of the citations written in words, the two in
   `packages/github/src/connector/github.ts` moved (181 to 189, 330 to
@@ -828,6 +828,23 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   change the client of every logged decision and pending review), because
   the documented move to internal calls keeps the token's name for the
   internal client until the token is revoked; `list` marks that token.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
+## Amendment for small fixes in the engine and modules (pointsman#268, 2026-11-23)
+
+- **Why**: the review of 2026-11 listed small fixes (#268). The engine and
+  module half changed what some rows say: the connector tells a fork by
+  repository id, `INTERNAL_CLIENT` profile ids follow the profile schema,
+  the test-token messages name everything such a token may do, and
+  `cancel-update` takes any spelling of `true`.
+- **Changed**: the §1.6 rows for test tokens and `cancel-update`, the §1.7
+  rows for `INTERNAL_CLIENT` and the connector's GitHub reads, the README
+  quote in `P-TEST-TOKEN-ISOLATED` (it now says test tokens may also
+  explain a profile, as the README already did); §1.1 and §1.16; every
+  citation into the changed files, moved by a script from the diff and
+  checked line by line against the old text.
 - **Not run**: the plugin's validator and the backtest (Q49 still waits);
   the confidence counts do not change.
 - **Questions**: none.

@@ -245,6 +245,16 @@ test('cancel-update: false only stops the command', async (t) => {
   assert.doesNotMatch(r.aws, /cancel-update-stack/);
 });
 
+test('cancel-update: true in any YAML spelling cancels the update; anything else does not', async (t) => {
+  for (const [value, on] of [['TRUE', true], ['True', true], ['true', true], ['FALSE', false], ['yes', false], ['1', false]]) {
+    const p = await pointsman(['cancel']);
+    t.after(p.close);
+    const r = await runWatch(t, { url: p.url, command: 'sleep 30', inputs: { 'INPUT_CANCEL-UPDATE': value } });
+    assert.equal(r.code, 1, value);
+    (on ? assert.match : assert.doesNotMatch)(r.aws, /cancel-update-stack/, value);
+  }
+});
+
 test('a command that ignores SIGTERM is killed after the grace time', async (t) => {
   const p = await pointsman(['cancel']);
   t.after(p.close);

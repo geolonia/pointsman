@@ -34,7 +34,8 @@ the REST API instead takes the raw payload that the mapping reads from.
 
 **Machines** (agents, CI, scripts) use the same API tokens as the REST API
 (`scripts/tokens.mjs`), as a bearer token. Token scopes apply. Test tokens
-(`--test`) are refused here (403): they may only decide over the REST API.
+(`--test`) are refused here (403): they may only decide, list profiles
+and explain a profile over the REST API.
 
 ```bash
 claude mcp add --transport http pointsman https://pointsman.example.workers.dev/mcp --header "Authorization: Bearer $POINTSMAN_TOKEN"

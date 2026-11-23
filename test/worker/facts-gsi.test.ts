@@ -5,6 +5,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { FactError, FactUnavailableError, lookupFacts, type Geometry } from '../../src/facts';
 import { decodePng, GsiFactProvider } from '@pointsman/facts-gsi';
+import { tileOf } from '@pointsman/module-api';
 import { depsFor } from '../../src/index';
 
 /** The spatial provider behind the deployment's fact router. */
@@ -103,6 +104,17 @@ function fakeServer(flood: (url: string) => Promise<Uint8Array | null>, shelters
   }) as typeof fetch;
   return { calls, fetchFn };
 }
+
+describe('tiles of a position (tileOf)', () => {
+  it('gives the tile and pixel, and stays inside the tiles at the edges of the map', () => {
+    expect(tileOf([0, 0], 1)).toEqual({ x: 1, y: 1, px: 0, py: 0 });
+    expect(tileOf([180, 0], 1)).toEqual({ x: 1, y: 1, px: 255, py: 0 });
+    expect(tileOf([-180, 0], 1)).toEqual({ x: 0, y: 1, px: 0, py: 0 });
+    expect(tileOf([0, 90], 2)).toEqual({ x: 2, y: 0, px: 0, py: 0 });
+    expect(tileOf([0, -90], 2)).toEqual({ x: 2, y: 3, px: 0, py: 255 });
+    expect(tileOf([180, -90], 16)).toMatchObject({ x: 2 ** 16 - 1, y: 2 ** 16 - 1 });
+  });
+});
 
 describe('PNG tiles', () => {
   it('decode RGBA and palette images, and the sub filter', async () => {

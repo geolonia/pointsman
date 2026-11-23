@@ -112,7 +112,8 @@ export async function main() {
   const quietMs = number('quiet-minutes', 15) * 60_000;
   const intervalMs = number('interval-seconds', 60, { min: 0.05 }) * 1000;
   const needed = number('consecutive', 2, { min: 1 });
-  const cancelUpdate = (input('cancel-update') || 'true') === 'true';
+  // On for true, True or TRUE (YAML's true, as GitHub writes a boolean input); off for anything else.
+  const cancelUpdate = ['true', 'True', 'TRUE'].includes(input('cancel-update') || 'true');
   const killAfterMs = number('kill-after-seconds', 30, { min: 0 }) * 1000;
 
   const started = Date.now();

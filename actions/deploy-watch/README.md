@@ -77,7 +77,7 @@ watched stacks, besides what the deploy itself needs.
 | `quiet-minutes` | `15` | Minutes without a new stack event before Pointsman is asked |
 | `interval-seconds` | `60` | How often the stacks are checked |
 | `consecutive` | `2` | `cancel` answers in a row needed to stop the deploy |
-| `cancel-update` | `true` | Also cancel stack updates in progress |
+| `cancel-update` | `true` | Also cancel stack updates in progress (on for `true`, `True` or `TRUE`, off for anything else) |
 | `kill-after-seconds` | `30` | SIGKILL the command if it is still running this long after SIGTERM |
 
 Output `result`: `finished`, `cancelled`, or `not-started` (the command

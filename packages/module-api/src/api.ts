@@ -186,8 +186,9 @@ export interface LoggedDecision {
 export interface FactLog {
   /**
    * Decisions of these profiles made since `since` (ISO 8601), newest
-   * first, at most `limit` (up to MAX_LOG_READ). A full page means there may
-   * be more: a fact that needs all of them must then be missing.
+   * first, at most `limit` (a whole number, up to MAX_LOG_READ; anything else
+   * is refused). A full page means there may be more: a fact that needs all
+   * of them must then be missing.
    */
   recent(query: { profiles: string[]; since: string; limit: number }): Promise<LoggedDecision[]>;
 }
