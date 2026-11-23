@@ -629,7 +629,7 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   content with the script; 5 were rewritten by #235 or #236 and placed
   by meaning: `triage.mjs:74` (now 75), `bridge.ts:656` (now 669),
   `bridge.ts:887` (now 906), `webhook.ts:140` (the command pattern, now
-  142) and `src/mcp.ts:27` (now 32, the people's line). Before the
+  142) and `src/mcp.ts:26` (now 32, the people's line). Before the
   update the validator flagged 10 of them; the others still resolved to
   other code. Of the citations written in words, the two in
   `packages/github/src/connector/github.ts` moved (181 to 189, 330 to
