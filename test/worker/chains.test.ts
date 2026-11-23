@@ -355,6 +355,57 @@ describe('decision chains', () => {
     expect(last.status).toBe(200);
   });
 
+  describe('two requests with the same idempotency key at once', () => {
+    // The other request is logged after this one found no decision for the
+    // key and before it logs its own: its insert fails on the real unique
+    // index (client, idempotency_key), and the logged decision answers.
+    async function race(otherBody: unknown, body: unknown) {
+      const key = { 'idempotency-key': `same-${crypto.randomUUID()}` };
+      const log = new D1DecisionLog(DB);
+      const byKey = log.byIdempotencyKey.bind(log);
+      const insert = log.insert.bind(log);
+      let other: { status: number; data: any } | undefined;
+      const refused: unknown[] = [];
+      const racing = setupWith({
+        byIdempotencyKey: async (client, k) => {
+          if (!other) {
+            other = await s.call('POST', '/v1/decide/issue-triage', otherBody, ALL, key);
+            return null;
+          }
+          return byKey(client, k);
+        },
+        insert: async (r) => {
+          try {
+            await insert(r);
+          } catch (err) {
+            refused.push(err);
+            throw err;
+          }
+        },
+      });
+      const res = await racing.call('POST', '/v1/decide/issue-triage', body, ALL, key);
+      expect(other?.status).toBe(200);
+      // The insert really failed: the branch under test ran.
+      expect(refused).toHaveLength(1);
+      return { res, other: other! };
+    }
+
+    it('the same request gets the decision the other one logged', async () => {
+      const body = { state: issue, ref };
+      const { res, other } = await race(body, body);
+      expect(res.status).toBe(200);
+      expect(res.data.decision_id).toBe(other.data.decision_id);
+      expect(contract.decision(res.data), JSON.stringify(contract.decision.errors)).toBe(true);
+    });
+
+    it('a different request gets 409 idempotency_conflict, and the other decision stays', async () => {
+      const { res, other } = await race({ state: issue, ref }, { state: issue, ref: `${ref}-other` });
+      expect(res.status).toBe(409);
+      expect(res.data.error.code).toBe('idempotency_conflict');
+      expect((await s.call('GET', `/v1/decisions/${other.data.decision_id}`)).data.ref).toBe(ref);
+    });
+  });
+
   it('lists reviews without the request digest and with out-of-scope decisions hidden', async () => {
     const id = await decideFirst();
     const made = await decideFinal({ triage: id }, {}, ALL, { 'idempotency-key': `q-${crypto.randomUUID()}` });

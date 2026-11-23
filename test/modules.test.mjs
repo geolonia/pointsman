@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
 import { FactRegistry, ModuleError } from '../src/modules/registry.ts';
-import { inside } from '@pointsman/module-api';
+import { CAPABILITIES, inside } from '@pointsman/module-api';
 import { definition as github } from '@pointsman/github/definition';
 import { definition as field } from '@pointsman/facts-field/definition';
 import { definition as gsi } from '@pointsman/facts-gsi/definition';
@@ -77,8 +77,36 @@ test('the registry refuses modules that do not fit', () => {
   assert.throws(() => new FactRegistry([mod('@x/a', { types: [own('x/a', { settings: { at: { type: 'string' } }, required: [] })] })]), /must not have a setting "at"/);
   assert.throws(() => new FactRegistry([mod('@x/a', { types: [own('x/a', { settings: { layer: { type: 'number' } }, required: [] })] }), gsi]), /setting "layer" differs/);
   assert.throws(() => new FactRegistry([mod('@x/a', { types: [own('x/a', { settings: {}, required: ['q'] })] })]), /requires "q"/);
-  assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/conf', { fields: { p: { kind: 'number', probability: true } }, mock: { p: 0.5 }, settings: {}, required: [] })] })]));
+  assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/conf', { fields: { p: { kind: 'number', probability: true } }, mock: { p: 0.5 }, settings: {}, required: [], cases: { nullable: [], defaults: {} } })] })]));
   assert.ok(ModuleError);
+});
+
+test('the registry refuses case rules that do not name the type\'s fields (src/cases.ts relies on them)', () => {
+  // inside: fields inside (boolean), rank, class; cases { key: 'inside', absent: { rank, class }, optional: [] }.
+  const refuses = (cases, pattern) => assert.throws(() => new FactRegistry([mod('@x/a', { types: [own('x/a', { cases })] })]), pattern);
+  refuses({ key: 'found', absent: { rank: 0, class: '' }, optional: [] }, /x\/a cases: key "found" must be one of its boolean fields/);
+  refuses({ key: 'rank', absent: { inside: false, class: '' }, optional: [] }, /key "rank" must be one of its boolean fields/);
+  refuses({ key: 'inside', absent: { rank: 0 }, optional: [] }, /absent has no value for "class"/);
+  refuses({ key: 'inside', absent: { rank: 0, class: '', colour: '' }, optional: [] }, /absent names "colour", which is not one of its fields/);
+  refuses({ key: 'inside', absent: { inside: false, rank: 0, class: '' }, optional: [] }, /absent must not give the key "inside"/);
+  refuses({ key: 'inside', absent: { rank: 0, class: '' }, optional: ['colour'] }, /optional names "colour"/);
+  refuses({ key: 'inside', absent: { rank: 0, class: '' }, optional: ['inside'] }, /the key "inside" cannot be optional/);
+  refuses({ key: 'inside', absent: { rank: 0, class: '' } }, /give absent \(an object\) and optional \(a list\)/);
+  refuses({ nullable: ['colour'], defaults: {} }, /nullable names "colour", which is not one of its fields/);
+  refuses({ nullable: [], defaults: { colour: 'red' } }, /defaults names "colour"/);
+  refuses({ nullable: [] }, /give nullable \(a list\) and defaults \(an object\)/);
+  refuses(undefined, /give key, absent and optional, or nullable and defaults/);
+  // The same rules, on the type's real fields, pass.
+  assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { key: 'inside', absent: { rank: 0, class: '' }, optional: ['class'] } })] })]));
+  assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { nullable: ['rank'], defaults: { class: '' } } })] })]));
+});
+
+test('every module of this repository, and every capability, has case rules that pass', () => {
+  for (const m of [field, gsi, jshis, valhalla, github, fiware, coderabbit]) assert.ok(new FactRegistry([m]), m.name);
+  // Capabilities are not defined by a module, so checked here under an own name.
+  for (const [name, def] of Object.entries(CAPABILITIES)) {
+    assert.ok(new FactRegistry([mod('@x/a', { types: [{ ...def, type: `x/${name}` }] })]), name);
+  }
 });
 
 // ---- versions and the schema file ----

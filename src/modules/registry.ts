@@ -114,6 +114,45 @@ function checkType(module: string, t: FactTypeDef): void {
   for (const f of Object.keys(t.mock)) {
     if (!Object.hasOwn(t.fields, f)) throw new ModuleError(`${module}: ${t.type} mock has an unknown field "${f}"`);
   }
+  checkCases(module, t);
+}
+
+/**
+ * The `cases` rules (packages/module-api/src/api.ts CaseRules) name the
+ * type's own fields: src/cases.ts relies on it, so a test case cannot pass on
+ * values the engine would refuse.
+ */
+function checkCases(module: string, t: FactTypeDef): void {
+  const where = `${module}: ${t.type} cases`;
+  const known = (list: string, f: string) => {
+    if (!Object.hasOwn(t.fields, f)) throw new ModuleError(`${where}: ${list} names "${f}", which is not one of its fields`);
+  };
+  const shape = t.cases as unknown;
+  if (typeof shape !== 'object' || shape === null) throw new ModuleError(`${where}: give key, absent and optional, or nullable and defaults`);
+  if ('key' in shape) {
+    const { key, absent, optional } = t.cases as Extract<FactTypeDef['cases'], { key: string }>;
+    if (typeof key !== 'string' || !Object.hasOwn(t.fields, key) || t.fields[key]!.kind !== 'boolean') {
+      throw new ModuleError(`${where}: key "${String(key)}" must be one of its boolean fields`);
+    }
+    if (typeof absent !== 'object' || absent === null || !Array.isArray(optional)) throw new ModuleError(`${where}: give absent (an object) and optional (a list)`);
+    for (const f of Object.keys(absent)) {
+      known('absent', f);
+      if (f === key) throw new ModuleError(`${where}: absent must not give the key "${key}"`);
+    }
+    // When the key is false, the engine gives every other field its absent value.
+    for (const f of Object.keys(t.fields)) {
+      if (f !== key && !Object.hasOwn(absent, f)) throw new ModuleError(`${where}: absent has no value for "${f}"`);
+    }
+    for (const f of optional) {
+      known('optional', f);
+      if (f === key) throw new ModuleError(`${where}: the key "${key}" cannot be optional`);
+    }
+    return;
+  }
+  const { nullable, defaults } = t.cases as Extract<FactTypeDef['cases'], { nullable: string[] }>;
+  if (!Array.isArray(nullable) || typeof defaults !== 'object' || defaults === null) throw new ModuleError(`${where}: give nullable (a list) and defaults (an object)`);
+  for (const f of nullable) known('nullable', f);
+  for (const f of Object.keys(defaults)) known('defaults', f);
 }
 
 /** Every setting of the given types, by name. A name two types share must have the same schema. */

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
-import { toTaskEntity } from '../packages/fiware/src/bridge.ts';
+import { handleMessage, toTaskEntity } from '../packages/fiware/src/bridge.ts';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/datamodels/task/${name}`, import.meta.url), 'utf8'));
 const ajv = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });
@@ -52,4 +52,67 @@ test('the schema catches what the bridge must not write', () => {
   assert.ok(!validate({ ...kv, progress: 'pending' }));
   assert.ok(!validate({ ...kv, priority: 10 }));
   assert.ok(!validate({ ...kv, decision: 'urn:ngsi-ld:Decision:x' }), 'no attributes outside the model');
+});
+
+/**
+ * The Tasks the bridge leaves in a broker after these decisions for one
+ * entity (handleMessage, with a fake broker that keeps Task entities and
+ * applies the bridge's updates and deletes).
+ */
+async function tasksAfter(decisions, task = { actions: ['review'], name: 'roadName', priority: { review: 5 } }) {
+  const tasks = new Map();
+  let asked = 0;
+  const fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = init.method ?? 'GET';
+    const body = init.body ? JSON.parse(String(init.body)) : undefined;
+    if (url.host === 'pm.test') return Response.json(decisions[asked++]);
+    if (url.pathname === '/ngsi-ld/v1/entities' && method === 'POST') {
+      if (body.type !== 'Task') return new Response(null, { status: 201 });
+      if (tasks.has(body.id)) return new Response(null, { status: 409 });
+      tasks.set(body.id, body);
+      return new Response(null, { status: 201 });
+    }
+    const m = /^\/ngsi-ld\/v1\/entities\/([^/]+)(?:\/attrs(?:\/([^/]+))?)?$/.exec(url.pathname);
+    const found = m && tasks.get(decodeURIComponent(m[1]));
+    if (found && method === 'GET') return Response.json(found);
+    if (found && method === 'POST') {
+      Object.assign(found, body);
+      return new Response(null, { status: 204 });
+    }
+    if (found && method === 'DELETE' && m[2]) {
+      delete found[decodeURIComponent(m[2])];
+      return new Response(null, { status: 204 });
+    }
+    return new Response(null, { status: method === 'GET' || method === 'PATCH' ? 404 : 204 });
+  };
+  const route = { type: 'RoadRestriction', profile: 'road-restriction-check', inputs: ['roadName'], attribute: 'check', task };
+  const config = { routes: [route], notifySecret: 's', pointsman: { url: 'https://pm.test', token: 't' }, broker: { url: 'https://broker.test' }, fetch };
+  for (let i = 0; i < decisions.length; i++) {
+    const result = await handleMessage({ path: '/notify', entity }, config);
+    assert.ok('write' in result, JSON.stringify(result));
+  }
+  return tasks;
+}
+
+test('a completed Task from the bridge matches the data model schema', async () => {
+  // A retry after a person resolved the review: the Task is written completed, with their action.
+  const resolved = { ...decision, review: { status: 'resolved', final_action: 'reject', resolved_at: '2026-07-08T03:00:00.000Z' } };
+  const tasks = await tasksAfter([resolved]);
+  assert.equal(tasks.size, 1);
+  const kv = values([...tasks.values()][0]);
+  assert.equal(kv.progress, 'completed');
+  assert.equal(kv.statusLabel, 'reject');
+  assert.equal(kv.completedAt, '2026-07-08T03:00:00.000Z');
+  assert.ok(validate(kv), JSON.stringify(validate.errors));
+});
+
+test('a cancelled Task from the bridge matches the data model schema', async () => {
+  // A review first (an open Task), then, for the same inputs, an action that needs no person.
+  const tasks = await tasksAfter([decision, { ...decision, decision_id: '0b8f7d1e-4a52-4f63-9a1c-2f0e5d6c7b8a', action: 'publish' }]);
+  assert.equal(tasks.size, 1);
+  const kv = values([...tasks.values()][0]);
+  assert.equal(kv.progress, 'cancelled');
+  assert.equal(kv.statusLabel, 'publish');
+  assert.ok(validate(kv), JSON.stringify(validate.errors));
 });
