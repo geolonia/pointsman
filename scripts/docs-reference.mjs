@@ -191,6 +191,24 @@ function httpApi(lang) {
   const schemaName = (s) => (s?.$ref ? code(s.$ref.split('/').pop()) : schemaType(s));
   const w = T[lang];
   const sections = [];
+  // A parameter's type with its default and range (#264).
+  const paramType = (s) => {
+    if (!s) return '';
+    const parts = [schemaType(s)];
+    const range = s.minimum !== undefined && s.maximum !== undefined ? `${s.minimum}–${s.maximum}`
+      : s.minimum !== undefined ? `≥ ${s.minimum}` : s.maximum !== undefined ? `≤ ${s.maximum}` : '';
+    if (range) parts.push(range);
+    if (s.default !== undefined) parts.push(lang === 'en' ? `default ${JSON.stringify(s.default)}` : `既定 ${JSON.stringify(s.default)}`);
+    return parts.filter(Boolean).join(', ');
+  };
+  // The fields of a schema written inline (not a named one), so they are not
+  // only shown as "object" (#264).
+  const inlineFields = (s) => {
+    if (!s || s.$ref || !s.properties) return [];
+    return [table([w.field, w.type, w.required, w.description], Object.entries(s.properties).map(([k, p]) => [
+      code(k), (p.$ref ? schemaName(p) : paramType(p)) || 'object', (s.required ?? []).includes(k) ? w.yes : w.no, resolve(p)?.description ?? p.description,
+    ])), ''];
+  };
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
   for (const [path, item] of Object.entries(api.paths)) {
     for (const method of methods.filter((m) => item[m])) {
@@ -199,17 +217,30 @@ function httpApi(lang) {
       if (op.description) sections.push(op.description.trim(), '');
       const params = (op.parameters ?? []).map(resolve);
       if (params.length) {
-        sections.push(table([lang === 'en' ? 'Parameter' : 'パラメーター', lang === 'en' ? 'In' : '場所', w.required, w.description],
-          params.map((p) => [code(p.name), p.in, p.required ? w.yes : w.no, p.description])), '');
+        sections.push(table([lang === 'en' ? 'Parameter' : 'パラメーター', lang === 'en' ? 'In' : '場所', w.type, w.required, w.description],
+          params.map((p) => [code(p.name), p.in, paramType(p.schema), p.required ? w.yes : w.no, p.description])), '');
       }
       const body = op.requestBody?.content?.['application/json']?.schema;
-      if (body) sections.push(lang === 'en' ? `Request body: ${schemaName(body)} (JSON).` : `リクエストボディ: ${schemaName(body)}(JSON)`, '');
+      if (body) {
+        sections.push(lang === 'en' ? `Request body: ${schemaName(body)} (JSON).` : `リクエストボディ: ${schemaName(body)}(JSON)`, '');
+        sections.push(...inlineFields(body));
+      }
+      const responses = Object.entries(op.responses).map(([status, r]) => [status, resolve(r)]);
       sections.push(table([lang === 'en' ? 'Status' : 'ステータス', w.description, lang === 'en' ? 'Body' : 'ボディ'],
-        Object.entries(op.responses).map(([status, r]) => {
-          const res = resolve(r);
+        responses.map(([status, res]) => {
           const content = res.content && Object.entries(res.content)[0];
           return [status, res.description, content ? `${schemaName(content[1].schema)} (${content[0]})` : ''];
         })), '');
+      for (const [status, res] of responses) {
+        const content = res.content && Object.entries(res.content)[0];
+        const fields = inlineFields(content?.[1].schema);
+        if (fields.length) sections.push(lang === 'en' ? `The ${status} body:` : `${status} のボディ:`, '', ...fields);
+        const headers = Object.entries(res.headers ?? {}).map(([name, h]) => [name, resolve(h)]);
+        if (headers.length) {
+          sections.push(lang === 'en' ? `Headers of the ${status} answer:` : `${status} のレスポンスヘッダー:`, '',
+            table([lang === 'en' ? 'Header' : 'ヘッダー', w.type, w.description], headers.map(([name, h]) => [code(name), paramType(h.schema), h.description])), '');
+        }
+      }
     }
   }
   sections.push(lang === 'en' ? '## Schemas' : '## スキーマ', '');
@@ -227,9 +258,9 @@ function httpApi(lang) {
   }
   return page(lang, lang === 'en'
     ? { order: 50, title: 'HTTP API', description: 'Every endpoint of the Pointsman HTTP API, with parameters, responses and schemas.',
-        intro: `The Pointsman HTTP API. Every request needs an API token in the header \`Authorization: Bearer <token>\`. The full description, for tools that read OpenAPI, is [openapi.yaml](${rel(lang, '../openapi.yaml')}).` }
+        intro: `The Pointsman HTTP API under \`/v1\`. Every request needs an API token in the header \`Authorization: Bearer <token>\`. The full description, for tools that read OpenAPI, is [openapi.yaml](${rel(lang, '../openapi.yaml')}). The Worker also serves these routes, which are not part of this API and not in openapi.yaml. They have their own authentication.\n\n- \`/mcp\` and the GitHub login for it (\`/authorize\`, \`/callback\`, \`/oauth/*\`, \`/.well-known/*\`): [MCP server](${rel(lang, 'mcp.md')})\n- the connectors' webhooks (\`/connectors/*\`): [Connectors](${rel(lang, 'connectors.md')})` }
     : { order: 50, title: 'HTTP API', description: 'Pointsman の HTTP API のすべてのエンドポイントと、パラメーター、レスポンス、スキーマです。',
-        intro: `Pointsman の HTTP API です。どのリクエストにも、ヘッダー \`Authorization: Bearer <token>\` で API トークンを付けます。OpenAPI を読むツール向けの完全な定義は [openapi.yaml](${rel(lang, '../openapi.yaml')}) にあります。` },
+        intro: `\`/v1\` の下にある Pointsman の HTTP API です。どのリクエストにも、ヘッダー \`Authorization: Bearer <token>\` で API トークンを付けます。OpenAPI を読むツール向けの完全な定義は [openapi.yaml](${rel(lang, '../openapi.yaml')}) にあります。Worker は、この API に含まれず openapi.yaml にもない次のルートも提供します。これらは別の方法で認証します(説明は英語のページです)。\n\n- \`/mcp\` と、そのための GitHub サインイン(\`/authorize\`、\`/callback\`、\`/oauth/*\`、\`/.well-known/*\`): [MCP サーバー](${rel(lang, 'mcp.md')})\n- コネクターの Webhook(\`/connectors/*\`): [コネクター](${rel(lang, 'connectors.md')})` },
     sections);
 }
 
