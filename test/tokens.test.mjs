@@ -314,3 +314,17 @@ test('a wrangler.json in a parent folder wins over a wrangler.jsonc here, as in 
   assert.equal(r.status, 2, r.stdout + r.stderr);
   assert.match(r.stderr, /is the client of INTERNAL_CLIENT in \.\.\/wrangler\.json:/);
 });
+
+test('without --config, a wrangler redirect to a generated config is refused, not followed (#275)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tokens-internal-'));
+  writeFileSync(join(dir, 'wrangler.jsonc'), '{}');
+  mkdirSync(join(dir, '.wrangler', 'deploy'), { recursive: true });
+  writeFileSync(join(dir, '.wrangler', 'deploy', 'config.json'), '{"configPath":"../../dist/wrangler.json"}');
+  mkdirSync(join(dir, 'sub'));
+  const r = spawnSync(process.execPath, [script, 'create', '--client', 'demo', '--profiles', '*', '--local', '--dry-run'], { cwd: join(dir, 'sub'), encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /generated config .* give the config with --config/);
+  // With --config, the given file is used.
+  const given = spawnSync(process.execPath, [script, 'create', '--client', 'demo', '--profiles', '*', '--local', '--config', join(dir, 'wrangler.jsonc'), '--dry-run'], { cwd: join(dir, 'sub'), encoding: 'utf8' });
+  assert.equal(given.status, 0, given.stderr);
+});

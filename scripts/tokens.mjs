@@ -30,9 +30,9 @@
 // calls are logged under that name, so such a token would share the internal
 // client's decisions and could close its reviews. `create` and `rotate` read
 // INTERNAL_CLIENT from the Wrangler config (--config, else the one wrangler
-// finds from this folder up; top-level vars and every environment's; a TOML
-// config gets a warning; a secret or .dev.vars is not read) and refuse that
-// name; `list` marks
+// finds from this folder up, refusing when wrangler would redirect to a
+// generated config; top-level vars and every environment's; a TOML config
+// gets a warning; a secret or .dev.vars is not read) and refuse that name; `list` marks
 // a token that has it, such as the connector's old token while a deployment
 // moves to internal calls (docs/github-connector.md).
 
@@ -128,11 +128,20 @@ function listTokens() {
 /**
  * The config wrangler takes without --config, in wrangler's order
  * (findWranglerConfig): wrangler.json in this folder or the nearest parent
- * folder, else wrangler.jsonc the same way, else wrangler.toml. Its redirect
- * to a generated config is not followed. wrangler.jsonc when there is none,
- * so the error names it.
+ * folder, else wrangler.jsonc the same way, else wrangler.toml.
+ * wrangler.jsonc when there is none, so the error names it. Wrangler can
+ * redirect to a generated config (.wrangler/deploy/config.json, in this
+ * folder or a parent, written by build tools); this script does not follow
+ * it and refuses, so the name is never checked against another config than
+ * the one wrangler writes to.
  */
 function findConfig() {
+  for (let dir = resolve('.'); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.wrangler', 'deploy', 'config.json'))) {
+      fail(`${join(dir, '.wrangler', 'deploy', 'config.json')}: wrangler may use a generated config instead of yours, which tokens.mjs does not follow; give the config with --config`);
+    }
+    if (dirname(dir) === dir) break;
+  }
   for (const name of ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml']) {
     for (let dir = resolve('.'); ; dir = dirname(dir)) {
       const f = join(dir, name);
