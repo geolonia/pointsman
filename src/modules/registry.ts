@@ -124,20 +124,29 @@ function checkType(module: string, t: FactTypeDef): void {
  */
 function checkCases(module: string, t: FactTypeDef): void {
   const where = `${module}: ${t.type} cases`;
-  const known = (list: string, f: string) => {
-    if (!Object.hasOwn(t.fields, f)) throw new ModuleError(`${where}: ${list} names "${f}", which is not one of its fields`);
+  const known = (list: string, f: unknown) => {
+    if (typeof f !== 'string' || !Object.hasOwn(t.fields, f)) throw new ModuleError(`${where}: ${list} names "${String(f)}", which is not one of its fields`);
   };
+  // A value the engine's result check would take for the field (src/facts.ts).
+  const fits = (list: string, f: string, v: unknown, nullOk: boolean) => {
+    if (!(v === null ? nullOk : typeof v === t.fields[f]!.kind)) {
+      throw new ModuleError(`${where}: ${list} gives "${f}" ${JSON.stringify(v)}, not a ${t.fields[f]!.kind}${nullOk ? ' or null' : ''}`);
+    }
+  };
+  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
   const shape = t.cases as unknown;
   if (typeof shape !== 'object' || shape === null) throw new ModuleError(`${where}: give key, absent and optional, or nullable and defaults`);
   if ('key' in shape) {
+    if ('nullable' in shape || 'defaults' in shape) throw new ModuleError(`${where}: give key, absent and optional, or nullable and defaults, not both`);
     const { key, absent, optional } = t.cases as Extract<FactTypeDef['cases'], { key: string }>;
     if (typeof key !== 'string' || !Object.hasOwn(t.fields, key) || t.fields[key]!.kind !== 'boolean') {
       throw new ModuleError(`${where}: key "${String(key)}" must be one of its boolean fields`);
     }
-    if (typeof absent !== 'object' || absent === null || !Array.isArray(optional)) throw new ModuleError(`${where}: give absent (an object) and optional (a list)`);
-    for (const f of Object.keys(absent)) {
+    if (!isRecord(absent) || !Array.isArray(optional)) throw new ModuleError(`${where}: give absent (an object) and optional (a list)`);
+    for (const [f, v] of Object.entries(absent)) {
       known('absent', f);
       if (f === key) throw new ModuleError(`${where}: absent must not give the key "${key}"`);
+      fits('absent', f, v, true);
     }
     // When the key is false, the engine gives every other field its absent value.
     for (const f of Object.keys(t.fields)) {
@@ -150,9 +159,12 @@ function checkCases(module: string, t: FactTypeDef): void {
     return;
   }
   const { nullable, defaults } = t.cases as Extract<FactTypeDef['cases'], { nullable: string[] }>;
-  if (!Array.isArray(nullable) || typeof defaults !== 'object' || defaults === null) throw new ModuleError(`${where}: give nullable (a list) and defaults (an object)`);
+  if (!Array.isArray(nullable) || !isRecord(defaults)) throw new ModuleError(`${where}: give nullable (a list) and defaults (an object)`);
   for (const f of nullable) known('nullable', f);
-  for (const f of Object.keys(defaults)) known('defaults', f);
+  for (const [f, v] of Object.entries(defaults)) {
+    known('defaults', f);
+    fits('defaults', f, v, nullable.includes(f));
+  }
 }
 
 /** Every setting of the given types, by name. A name two types share must have the same schema. */

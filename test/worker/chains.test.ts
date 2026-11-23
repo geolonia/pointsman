@@ -387,6 +387,8 @@ describe('decision chains', () => {
       expect(other?.status).toBe(200);
       // The insert really failed: the branch under test ran.
       expect(refused).toHaveLength(1);
+      // The unique index on (client, idempotency_key), not another error.
+      expect(String(refused[0])).toMatch(/UNIQUE|constraint/i);
       return { res, other: other! };
     }
 

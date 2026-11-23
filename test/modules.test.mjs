@@ -96,9 +96,20 @@ test('the registry refuses case rules that do not name the type\'s fields (src/c
   refuses({ nullable: [], defaults: { colour: 'red' } }, /defaults names "colour"/);
   refuses({ nullable: [] }, /give nullable \(a list\) and defaults \(an object\)/);
   refuses(undefined, /give key, absent and optional, or nullable and defaults/);
+  // Values the engine would refuse for the field, a list where an object is
+  // needed, names that are not strings, and the two forms mixed.
+  refuses({ key: 'inside', absent: { rank: 'x', class: '' }, optional: [] }, /absent gives "rank" "x", not a number or null/);
+  refuses({ nullable: [], defaults: { class: 3 } }, /defaults gives "class" 3, not a string$/);
+  refuses({ nullable: [], defaults: { class: null } }, /defaults gives "class" null, not a string$/);
+  refuses({ key: 'inside', absent: [0, ''], optional: [] }, /give absent \(an object\) and optional \(a list\)/);
+  refuses({ key: 'inside', absent: { rank: 0, class: '' }, optional: [5] }, /optional names "5"/);
+  refuses({ nullable: [5], defaults: {} }, /nullable names "5"/);
+  refuses({ key: 'inside', absent: { rank: 0, class: '' }, optional: [], nullable: [] }, /not both/);
   // The same rules, on the type's real fields, pass.
   assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { key: 'inside', absent: { rank: 0, class: '' }, optional: ['class'] } })] })]));
   assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { nullable: ['rank'], defaults: { class: '' } } })] })]));
+  assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { key: 'inside', absent: { rank: null, class: '' }, optional: [] } })] })]));
+  assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { nullable: ['class'], defaults: { class: null } } })] })]));
 });
 
 test('every module of this repository, and every capability, has case rules that pass', () => {
