@@ -80,7 +80,7 @@ async function api(method, path, body) {
     });
   } catch (err) {
     // A network error ends with one line, not an unhandled rejection.
-    fail(`The Cloudflare API could not be reached: ${err.message}`);
+    fail(`The Cloudflare API could not be reached: ${err.message}${err.cause?.code ? ` (${err.cause.code})` : ''}`);
   }
   const data = await res.json().catch(() => ({}));
   return { status: res.status, data };

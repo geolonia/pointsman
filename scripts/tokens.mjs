@@ -261,19 +261,24 @@ async function putToken(client, profiles, test, expiresAt) {
 
 switch (command) {
   case 'create': {
+    // The options first (exit 2), before anything is read.
     const client = clientArg();
     const profiles = profilesArg();
+    if (values['no-expiry']) usage('--no-expiry is for rotate; a new token has no expiry without --expires');
+    const expiresAt = expiresArg();
     notInternal(client);
     if (listTokens().some((t) => t.client === client)) {
       fail(`client "${client}" already has a token: use \`rotate --client ${client}\` for a new one, or another name`);
     }
-    if (values['no-expiry']) usage('--no-expiry is for rotate; a new token has no expiry without --expires');
-    await putToken(client, profiles, values.test, expiresArg());
+    await putToken(client, profiles, values.test, expiresAt);
     break;
   }
   case 'rotate': {
+    // The options first (exit 2), before anything is read.
     const client = clientArg();
     if (values.test) usage('rotate keeps the old token\'s --test setting; leave out --test');
+    const givenProfiles = values.profiles !== undefined ? profilesArg() : undefined;
+    const expiresAt = expiresArg();
     notInternal(client);
     const old = listTokens().filter((t) => t.client === client);
     if (old.length === 0) fail(`client "${client}" has no token; use create`);
@@ -281,9 +286,8 @@ switch (command) {
     if (values.profiles === undefined && old.some((t) => (t.profiles ?? []).join(',') !== (old[0].profiles ?? []).join(','))) {
       fail(`client "${client}" has tokens with different profiles; give --profiles`);
     }
-    const profiles = values.profiles !== undefined ? profilesArg() : old[0]?.profiles ?? [];
+    const profiles = givenProfiles ?? old[0]?.profiles ?? [];
     if (profiles.length === 0) fail('--profiles is needed (the old token\'s profiles are unknown)');
-    const expiresAt = expiresArg();
     if (expiresAt === undefined && !values['no-expiry'] && old.some((t) => t.expires_at)) {
       fail(`the old token of "${client}" has an expiry: give --expires <when> for the new one, or --no-expiry`);
     }
