@@ -127,11 +127,20 @@ function checkCases(module: string, t: FactTypeDef): void {
   const known = (list: string, f: unknown) => {
     if (typeof f !== 'string' || !Object.hasOwn(t.fields, f)) throw new ModuleError(`${where}: ${list} names "${String(f)}", which is not one of its fields`);
   };
-  // A value the engine's result check would take for the field (src/facts.ts).
+  // A value the engine's result check would take for the field (src/facts.ts
+  // resultError): its kind, a finite number, at most maxLength characters, a
+  // probability from 0 to 1.
   const fits = (list: string, f: string, v: unknown, nullOk: boolean) => {
-    if (!(v === null ? nullOk : typeof v === t.fields[f]!.kind)) {
-      throw new ModuleError(`${where}: ${list} gives "${f}" ${JSON.stringify(v)}, not a ${t.fields[f]!.kind}${nullOk ? ' or null' : ''}`);
+    const { kind, maxLength, probability } = t.fields[f]!;
+    const bad = (why: string) => new ModuleError(`${where}: ${list} gives "${f}" ${JSON.stringify(v)}, ${why}`);
+    if (v === null) {
+      if (!nullOk) throw bad(`not a ${kind}`);
+      return;
     }
+    if (typeof v !== kind) throw bad(`not a ${kind}${nullOk ? ' or null' : ''}`);
+    if (typeof v === 'number' && !Number.isFinite(v)) throw bad('not a finite number');
+    if (typeof v === 'string' && maxLength !== undefined && v.length > maxLength) throw bad(`longer than ${maxLength} characters`);
+    if (probability && typeof v === 'number' && (v < 0 || v > 1)) throw bad('not from 0 to 1');
   };
   const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
   const shape = t.cases as unknown;

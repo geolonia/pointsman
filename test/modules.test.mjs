@@ -105,6 +105,20 @@ test('the registry refuses case rules that do not name the type\'s fields (src/c
   refuses({ key: 'inside', absent: { rank: 0, class: '' }, optional: [5] }, /optional names "5"/);
   refuses({ nullable: [5], defaults: {} }, /nullable names "5"/);
   refuses({ key: 'inside', absent: { rank: 0, class: '' }, optional: [], nullable: [] }, /not both/);
+  // And the limits of the engine's result check: a finite number, a
+  // probability from 0 to 1, at most maxLength characters.
+  const limited = (cases) => new FactRegistry([mod('@x/a', { types: [own('x/a', {
+    fields: { found: { kind: 'boolean' }, p: { kind: 'number', probability: true }, label: { kind: 'string', maxLength: 3 } },
+    mock: { found: true, p: 0.5, label: 'a' },
+    words: Object.fromEntries(Object.entries(inside.words).map(([lang, w]) => [lang, { ...w, fields: { found: ['found', 'not found'], p: 'the p of %', label: 'the label of %' } }])),
+    cases,
+  })] })]);
+  assert.throws(() => limited({ nullable: [], defaults: { p: 2 } }), /defaults gives "p" 2, not from 0 to 1/);
+  assert.throws(() => limited({ key: 'found', absent: { p: -0.5, label: '' }, optional: [] }), /absent gives "p" -0.5, not from 0 to 1/);
+  assert.throws(() => limited({ key: 'found', absent: { p: 0, label: 'long' }, optional: [] }), /absent gives "label" "long", longer than 3 characters/);
+  assert.throws(() => limited({ nullable: [], defaults: { p: Infinity } }), /not a finite number/);
+  assert.ok(limited({ key: 'found', absent: { p: 0, label: '' }, optional: [] }));
+  assert.ok(limited({ nullable: [], defaults: { p: 1, label: 'abc' } }));
   // The same rules, on the type's real fields, pass.
   assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { key: 'inside', absent: { rank: 0, class: '' }, optional: ['class'] } })] })]));
   assert.ok(new FactRegistry([mod('@x/a', { types: [own('x/a', { cases: { nullable: ['rank'], defaults: { class: '' } } })] })]));
