@@ -815,6 +815,23 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## Amendment for the INTERNAL_CLIENT name (pointsman#275, 2026-11-23)
+
+- **Why**: the security review of 2026-11 found that nothing stopped a
+  token from having the client name of `INTERNAL_CLIENT`. Its holder would
+  share the internal client's decisions: close its reviews, chain on its
+  decisions and read them through log facts.
+- **Changed**: the §1.6 row for `scripts/tokens.mjs`, `R-INTERNAL-CALL`
+  and the misuse pattern on `INTERNAL_CLIENT` (prose, YAML, JSON); §1.1
+  and §1.16; the citation into `scripts/tokens.mjs` moved to its line.
+  The name is not reserved in the engine (an `internal:` prefix would
+  change the client of every logged decision and pending review), because
+  the documented move to internal calls keeps the token's name for the
+  internal client until the token is revoked; `list` marks that token.
+- **Not run**: the plugin's validator and the backtest (Q49 still waits);
+  the confidence counts do not change.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

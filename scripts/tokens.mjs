@@ -25,9 +25,21 @@
 // `rotate` gives the client a new token (same profiles and --test unless
 // --profiles is given) and revokes its old ones, or with --keep-old leaves
 // them for you to revoke once the new token is in place.
+//
+// A token also never gets the client name of INTERNAL_CLIENT (#275): internal
+// calls are logged under that name, so such a token would share the internal
+// client's decisions and could close its reviews. `create` and `rotate` read
+// INTERNAL_CLIENT from the Wrangler config (--config, else the one wrangler
+// finds from this folder up, refusing when wrangler would redirect to a
+// generated config; top-level vars and every environment's; a TOML config
+// gets a warning; a secret or .dev.vars is not read) and refuse that name; `list` marks
+// a token that has it, such as the connector's old token while a deployment
+// moves to internal calls (docs/github-connector.md).
 
-import { relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { parse as parseJsonc } from 'jsonc-parser';
 // Same token format and hashing as the Worker (Node.js strips the types).
 import { hashToken, newToken, tokenKey } from '../src/auth.ts';
 import { wrangler as runWrangler } from './lib/wrangler.mjs';
@@ -113,6 +125,75 @@ function listTokens() {
   return JSON.parse(out).map((key) => ({ hash: key.name.slice('token:'.length), ...key.metadata }));
 }
 
+/**
+ * The config wrangler takes without --config, in wrangler's order
+ * (findWranglerConfig): wrangler.json in this folder or the nearest parent
+ * folder, else wrangler.jsonc the same way, else wrangler.toml.
+ * wrangler.jsonc when there is none, so the error names it. Wrangler can
+ * redirect to a generated config (.wrangler/deploy/config.json, in this
+ * folder or a parent, written by build tools); this script does not follow
+ * it and refuses, so the name is never checked against another config than
+ * the one wrangler writes to.
+ */
+function findConfig() {
+  for (let dir = resolve('.'); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.wrangler', 'deploy', 'config.json'))) {
+      fail(`${join(dir, '.wrangler', 'deploy', 'config.json')}: wrangler may use a generated config instead of yours, which tokens.mjs does not follow; give the config with --config`);
+    }
+    if (dirname(dir) === dir) break;
+  }
+  for (const name of ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml']) {
+    for (let dir = resolve('.'); ; dir = dirname(dir)) {
+      const f = join(dir, name);
+      if (existsSync(f)) return relative(process.cwd(), f) || f;
+      if (dirname(dir) === dir) break;
+    }
+  }
+  return 'wrangler.jsonc';
+}
+
+/**
+ * The Wrangler config's file and the client names INTERNAL_CLIENT gives, at
+ * the top level and in every environment. A config that cannot be read is an
+ * error, so a name is never left unchecked; a value that is not valid JSON is
+ * skipped (the Worker refuses it).
+ */
+function internalClients() {
+  const file = values.config ?? findConfig();
+  if (file.endsWith('.toml')) {
+    console.error(`${file}: tokens.mjs reads only JSON or JSONC configs, so it cannot check that no token gets the client name of INTERNAL_CLIENT; make sure yourself`);
+    return { file, names: new Set() };
+  }
+  let config;
+  try {
+    const errors = [];
+    config = parseJsonc(readFileSync(file, 'utf8'), errors, { allowTrailingComma: true });
+    if (errors.length > 0 || config === null || typeof config !== 'object') throw new Error('not valid JSONC');
+  } catch (err) {
+    return fail(`${file}: ${err.code === 'ENOENT' ? 'not found' : err.message}, so tokens.mjs cannot check INTERNAL_CLIENT; give the config with --config`);
+  }
+  const names = new Set();
+  for (const vars of [config.vars, ...Object.values(config.env ?? {}).map((e) => e?.vars)]) {
+    const raw = vars?.INTERNAL_CLIENT;
+    if (typeof raw !== 'string') continue;
+    try {
+      const { client } = JSON.parse(raw);
+      if (typeof client === 'string') names.add(client);
+    } catch {
+      // Not JSON: the Worker refuses it, and it names no client.
+    }
+  }
+  return { file, names };
+}
+
+/** Refuses a client name that INTERNAL_CLIENT has. */
+function notInternal(client) {
+  const { file, names } = internalClients();
+  if (names.has(client)) {
+    fail(`"${client}" is the client of INTERNAL_CLIENT in ${file}: a token with that name would share its decisions and could close its reviews. Choose another name.`);
+  }
+}
+
 function clientArg() {
   if (!values.client || !NAME.test(values.client)) {
     fail('--client must be lower case letters, digits and "-" (max 63)');
@@ -174,6 +255,7 @@ switch (command) {
   case 'create': {
     const client = clientArg();
     const profiles = profilesArg();
+    notInternal(client);
     if (listTokens().some((t) => t.client === client)) {
       fail(`client "${client}" already has a token: use \`rotate --client ${client}\` for a new one, or another name`);
     }
@@ -184,6 +266,7 @@ switch (command) {
   case 'rotate': {
     const client = clientArg();
     if (values.test) fail('rotate keeps the old token\'s --test setting; leave out --test');
+    notInternal(client);
     const old = listTokens().filter((t) => t.client === client);
     if (old.length === 0) fail(`client "${client}" has no token; use create`);
     if (old.some((t) => !!t.test !== !!old[0].test)) fail(`client "${client}" has both test and normal tokens; revoke one kind first`);
@@ -222,14 +305,16 @@ switch (command) {
   }
   case 'list': {
     const tokens = listTokens();
+    const { names: internal } = internalClients();
     const count = new Map();
     for (const t of tokens) count.set(t.client, (count.get(t.client) ?? 0) + 1);
     for (const t of tokens) {
       const shared = count.get(t.client) > 1 ? '  (name used by several tokens: rotate or rename)' : '';
+      const sameAsInternal = internal.has(t.client) ? '  (same name as INTERNAL_CLIENT: revoke this token once internal calls work)' : '';
       // The same rule as the Worker (isExpired): an expiry it cannot read is refused.
       const at = typeof t.expires_at === 'string' ? Date.parse(t.expires_at) : NaN;
       const expiry = t.expires_at === undefined ? '' : `  expires ${t.expires_at}${!Number.isFinite(at) ? ' (unreadable: refused)' : at <= Date.now() ? ' (expired)' : ''}`;
-      console.log(`${t.hash}  ${t.client ?? '?'}${t.test ? ' (test)' : ''}  ${(t.profiles ?? []).join(',')}  ${t.created_at ?? ''}${expiry}${shared}`);
+      console.log(`${t.hash}  ${t.client ?? '?'}${t.test ? ' (test)' : ''}  ${(t.profiles ?? []).join(',')}  ${t.created_at ?? ''}${expiry}${shared}${sameAsInternal}`);
     }
     break;
   }

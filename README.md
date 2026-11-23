@@ -185,7 +185,17 @@ same client's decisions. `create` refuses a name in use. `rotate` gives the
 client a new token with the same profiles and revokes the old one; with
 `--keep-old` the old one stays until you revoke it, so you can switch the
 client over first. `list` marks names that older setups gave to several
-tokens: rotate or rename those.
+tokens: rotate or rename those. No token gets the client name of
+`INTERNAL_CLIENT` ([internal calls](docs/adapters.md#internal-calls)), whose
+decisions it would share: `create` and `rotate` read that setting from the
+Wrangler config (`--config`, else the one wrangler finds from the current folder up; where wrangler would redirect to a generated config, they ask for `--config`) and refuse its name, and
+`list` marks a token that has it, such as the GitHub connector's old token
+after it moved to internal calls: revoke it then. After you set or change
+`INTERNAL_CLIENT`, run `list` with that config, and revoke a token it marks
+once internal calls work. This works only with a
+JSON or JSONC config that sets `INTERNAL_CLIENT` in `vars`: with a TOML
+config (a warning), or with `INTERNAL_CLIENT` only as a secret or in
+`.dev.vars`, nothing is checked.
 
 A token can **expire** (`--expires`): a duration from now (`12h`, `90d`,
 `2w`) or a date (`2027-01-31`, end of that day UTC, which is 08:59:59 JST

@@ -77,7 +77,9 @@ To switch an existing deployment from the token to the internal call:
    wrangler secret delete POINTSMAN_TOKEN --config github-connector.jsonc
    ```
 
-   These are the paths in a config repository (`engine/` is the engine checkout, `github-connector.jsonc` the connector's config). In this repository: `node scripts/tokens.mjs` and `--config connectors/github/wrangler.jsonc`.
+   These are the paths in a config repository (`engine/` is the engine checkout, `github-connector.jsonc` the connector's config). In this repository: `node scripts/tokens.mjs` with the engine's `--config wrangler.jsonc`, and `--config connectors/github/wrangler.jsonc` for the secret.
+
+   Until it is revoked, `tokens.mjs list` marks the old token ("same name as INTERNAL_CLIENT"), and `create` and `rotate` refuse that name: a token with the internal client's name would share its decisions. So revoke the old token; do not rotate it.
 
 To go back, set `POINTSMAN_URL` and a new token, and remove the binding.
 
