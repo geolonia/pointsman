@@ -78,15 +78,18 @@ function server(deps: McpDeps, caller: Caller): McpServer {
   // Tools in PEOPLE_ONLY are registered only for people logged in through
   // OAuth, not for API tokens.
   const mcp = {
-    registerTool: ((name: string, config: unknown, handler: (...args: unknown[]) => Promise<unknown>) =>
-      (PEOPLE_ONLY.has(name) && caller.kind !== 'person') ? undefined : server.registerTool(name, config as never, (async (...args: unknown[]) => {
+    registerTool: ((name: string, config: unknown, handler: (...args: unknown[]) => Promise<unknown>) => {
+      // People-only tools (mcp-tools.ts) are not even listed for a token.
+      if (PEOPLE_ONLY.has(name) && caller.kind !== 'person') return undefined;
+      return server.registerTool(name, config as never, (async (...args: unknown[]) => {
         try {
           return await handler(...args);
         } catch (err) {
           console.error(`mcp tool ${name}:`, err);
           return failure('internal error');
         }
-      }) as never)) as McpServer['registerTool'],
+      }) as never);
+    }) as McpServer['registerTool'],
   };
 
   /** Whether the caller may see a decision of this profile through MCP (as for decide, on its latest version). */
@@ -189,6 +192,7 @@ function server(deps: McpDeps, caller: Caller): McpServer {
     'submit_feedback',
     TOOLS.submit_feedback,
     async ({ decision_id, correct, note }) => {
+      // Only to narrow the type: registerTool never lists this tool for a token.
       if (caller.kind !== 'person') throw new Error('submit_feedback is only for people');
       const body = { correct, by: caller.login, ...(note !== undefined && { note }) };
       const answer = await feedbackAnswer(deps, client, decision_id, async () => body, shownDecision);
