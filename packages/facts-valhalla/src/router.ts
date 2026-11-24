@@ -14,7 +14,7 @@
 //   way around" from "the road edge at an end is closed too", so it is an
 //   error, like any other failure; this provider never says possible: false.
 
-import { distance, FactError, offset, type DetourMode, type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery } from '@pointsman/module-api';
+import { distance, FactError, offset, type DetourMode, type FactProvider, type FactResult, type Geometry, type Position, type SpatialFactQuery, withoutTrailingSlashes } from '@pointsman/module-api';
 
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 /** Per call; below the detour fact's 8 s, so a retry can still fit. */
@@ -88,7 +88,7 @@ export class ValhallaRouter {
 
   /** `apiKey` is sent as `x-api-key` (hosted servers such as Geolonia's); never logged. */
   constructor(url: string, fetchFn?: typeof fetch, apiKey?: string) {
-    this.url = url.replace(/\/+$/, '');
+    this.url = withoutTrailingSlashes(url);
     this.fetchFn = fetchFn ?? ((input, init) => fetch(input, init));
     this.apiKey = apiKey || undefined;
   }

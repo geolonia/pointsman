@@ -28,7 +28,8 @@ export function waitFrom(text: string): number | null {
   const m = /available in:?\s*((?:\d+\s*(?:hours?|minutes?|seconds?)[\s,]*(?:and\s+)?)+)/i.exec(text);
   if (!m) return null;
   let seconds = 0;
-  for (const [, n, unit] of m[1]!.matchAll(/(\d+)\s*(hour|minute|second)/gi)) {
+  // (?<!\d): a number starts where its digits start, never inside them (linear on a long run of digits).
+  for (const [, n, unit] of m[1]!.matchAll(/(?<!\d)(\d+)\s*(hour|minute|second)/gi)) {
     seconds += Number(n) * ({ hour: 3600, minute: 60, second: 1 } as Record<string, number>)[unit!.toLowerCase()]!;
   }
   return Math.ceil(seconds / 60);

@@ -4,7 +4,8 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp, type Deps } from '../../src/app';
 import { hashToken, MemoryTokenStore, newToken } from '../../src/auth';
-import { explainProfile, explanationText } from '../../src/explain';
+import { explainProfile, explanationText, fillName } from '../../src/explain';
+import { factRegistry } from '../../src/modules/registry';
 import { MockAdapter } from '../../src/models/mock';
 import { MemoryProfileStore } from '../../src/profiles/store';
 import type { Profile } from '../../src/types';
@@ -71,6 +72,32 @@ describe('explainProfile: conditions', () => {
       'If the reason the fact "walk" is missing is not no_location (no location in the request), the action is urgent.',
     );
     expect(say("facts.walk.reason != 'no_location'", 'ja')).toBe('事実「walk」が得られない理由が no_location（リクエストに位置がない）以外なら、アクションは urgent です。');
+  });
+
+  it('puts the name into a module\'s words as it is (CodeQL js/incomplete-sanitization)', () => {
+    expect(fillName('the rank of %', '"flood"')).toBe('the rank of "flood"');
+    expect(fillName('%の順位', '「flood」')).toBe('「flood」の順位');
+    expect(fillName('no placeholder', '"x"')).toBe('no placeholder');
+    expect(fillName('% and %', '"x"')).toBe('"x" and %');
+    // String.replace read "$&", "$`" and "$'" in the name as patterns.
+    expect(fillName('the rank of %', '"a$&b$`c$\'d$$e"')).toBe('the rank of "a$&b$`c$\'d$$e"');
+    // Every template of the modules in this repository: one "%" at most, the same words as before for a plain name.
+    const templates: string[] = [];
+    for (const t of factRegistry().types.values()) {
+      for (const lang of ['en', 'ja'] as const) {
+        for (const part of Object.values(t.words?.[lang]?.fields ?? {})) {
+          if (Array.isArray(part)) templates.push(...part);
+          else if (typeof part === 'string') templates.push(part);
+          else if (part) templates.push(part.subject);
+        }
+      }
+    }
+    expect(templates.length).toBeGreaterThan(50);
+    for (const template of templates) {
+      expect(template.split('%').length, template).toBeLessThanOrEqual(2);
+      expect(fillName(template, '"pr"')).toBe(template.replace('%', '"pr"'));
+      expect(fillName(template, '"$&"')).toBe(template.replace('%', () => '"$&"'));
+    }
   });
 
   it('puts GitHub facts into words', () => {

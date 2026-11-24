@@ -87,6 +87,16 @@ test('llms.txt lists every English page, and llms-full.txt has the text of every
   assert.doesNotMatch(full, /<svg|<!--|\]\(\/docs\//);
 });
 
+test('llms-full.txt: HTML comments removed until none is left, also one that removing another makes', async () => {
+  const { plain } = await import('../docs-site/scripts/llms.mjs');
+  assert.equal(plain('a\n<!-- note -->\nb'), 'a\nb');
+  assert.equal(plain('a <!-- one --> b <!-- two\nlines --> c'), 'a  b  c');
+  assert.equal(plain('a <!<!-- x -->-- y --> b'), 'a  b');
+  // An opening with no end after it stays, as before (the docs test above checks the real pages have none).
+  assert.equal(plain('a <!<!---- -->--> b'), 'a <!--> b');
+  assert.equal(plain('a <!-- open'), 'a <!-- open');
+});
+
 test('sitemap.xml lists every page of site/ with its other language, and robots.txt lists it', async () => {
   const { landingPaths, landingSitemap } = await import('../docs-site/scripts/landing-sitemap.mjs');
   const site = join(root, 'site');

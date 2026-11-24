@@ -6,9 +6,10 @@
 import { describe, expect, it } from 'vitest';
 import { lookupFacts } from '../../src/facts';
 import {
-  changesSource, GitHubFactProvider, lockfileChanges, lockfileSteps, NO_BUMP, stepOf, stripPeers, textBefore, TimeScanner, TokenAuth,
+  changesSource, documentUrl, GitHubFactProvider, lockfileChanges, lockfileSteps, lockVersion, NO_BUMP, stepOf, stripPeers, textBefore, TimeScanner, TokenAuth,
 } from '@pointsman/github';
 import type { FactSpec } from '../../src/types';
+import { finishesWithin } from './helpers';
 
 const HEAD = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
@@ -337,6 +338,60 @@ describe('github_bump', () => {
     expect(changesSource('        version: file:vendor/vitest.tgz')).toBe(true);
     expect(changesSource('  vitest@npm:other@4.1.12:')).toBe(true);
     expect(changesSource('    resolution: {tarball: x.tgz}')).toBe(true);
+  });
+
+  it('a URL with a scheme is a change of source, as /[A-Za-z][A-Za-z0-9+.-]*:\\/\\// found it, in linear time', () => {
+    // The answers of the regular expression this replaced (CodeQL js/polynomial-redos).
+    for (const line of ['http://x', 'git+ssh://x', 'a1+.-://x', '1a://x', '"svn://x"', 'x.y-z+w://', 'a://', '_a://x']) expect(changesSource(line), line).toBe(true);
+    for (const line of ['1://x', '+.-://x', '_1://x', 'a:/x', 'a:x//', '://x', ' version: 1.2.3', 'a'.repeat(50)]) expect(changesSource(line), line).toBe(false);
+    // The npm registry's own URL is left out first, another URL after it is not.
+    expect(changesSource('https://registry.npmjs.org/a/-/a-1.0.0.tgz')).toBe(false);
+    expect(changesSource('https://registry.npmjs.org/a/-/a-1.0.0.tgz#x+y://z')).toBe(true);
+    // A long run of scheme characters with no "://" (quadratic before: seconds).
+    expect(finishesWithin(500, () => changesSource('a'.repeat(100_000)))).toBe(false);
+    expect(finishesWithin(500, () => changesSource(`${'a'.repeat(100_000)}://`))).toBe(true);
+    expect(finishesWithin(500, () => changesSource('a://'.repeat(25_000)))).toBe(true);
+    expect(finishesWithin(500, () => lockfileChanges('pnpm-lock.yaml', `+${'a'.repeat(100_000)}`)).sourceChanged).toBe(false);
+  });
+
+  it('a version: line in a pnpm-lock.yaml: the value /^\\s+version:\\s*\'?([^\']*)\'?\\s*$/ captured, in linear time', () => {
+    // The captures of the regular expression this replaced (CodeQL js/polynomial-redos), trailing white space included.
+    const cases: [string, string | null][] = [
+      ['      version: 4.1.12', '4.1.12'],
+      ["      version: '4.1.12'", '4.1.12'],
+      ["      version: '4.1.12(vite@6.0.0)'  ", '4.1.12(vite@6.0.0)'],
+      ['      version: 4.1.12  ', '4.1.12  '],
+      ["      version: 4.1.12'  ", '4.1.12'],
+      ["      version:'4.1.12", '4.1.12'],
+      ['\tversion:\t4.1.12', '4.1.12'],
+      ['      version:', ''],
+      ["      version: ''", ''],
+      ["      version: '  '", '  '],
+      ['      version: link:../vitest', 'link:../vitest'],
+      ["      version: 4.1'.12", null],
+      ["      version: '4.1.12' x", null],
+      ["      version: x '4.1.12'", null],
+      ["      version: 'a'b'", null],
+      ['version: 4.1.12', null],
+      ['      versions: 4.1.12', null],
+      ['      resolution: 4.1.12', null],
+    ];
+    for (const [line, value] of cases) expect(lockVersion(line), line).toBe(value);
+    // Trailing white space or a stray quote is not a pinned version: a change of source.
+    expect(lockfileChanges('pnpm-lock.yaml', '+      version: 4.1.12').sourceChanged).toBe(false);
+    expect(lockfileChanges('pnpm-lock.yaml', '+      version: 4.1.12 ').sourceChanged).toBe(true);
+    // A version line that cannot be read (a quote in the middle) is not checked: a change too.
+    expect(lockfileChanges('pnpm-lock.yaml', "+      version: 4.1'.12").sourceChanged).toBe(true);
+    // White space that both parts of the old expression could take, then no match (quadratic before: seconds).
+    const long = `  version:a${' '.repeat(100_000)}x'y`;
+    expect(finishesWithin(500, () => lockVersion(long))).toBeNull();
+    expect(finishesWithin(500, () => lockVersion(`  version:${' '.repeat(100_000)}1.0.0`))).toBe('1.0.0');
+    expect(finishesWithin(500, () => lockfileChanges('pnpm-lock.yaml', `+${long}`)).sourceChanged).toBe(true);
+  });
+
+  it('the registry document of a package: the scope\'s "/" encoded', () => {
+    expect(documentUrl('vitest')).toBe('https://registry.npmjs.org/vitest');
+    expect(documentUrl('@vitest/expect')).toBe('https://registry.npmjs.org/@vitest%2Fexpect');
   });
 
   it('lockfiles: another package behind a name, aliases, links, and what they add', () => {

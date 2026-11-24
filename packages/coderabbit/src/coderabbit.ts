@@ -27,7 +27,29 @@ export const commentByCodeRabbit = (c: Comment): boolean => isService(c.by, CODE
 export const statusByCodeRabbit = (s: Status): boolean => s.context === STATUS_CONTEXT && isService(s.by, CODERABBIT);
 
 const IGNORE = /@coderabbitai\s+ignore\b/i;
-const SUMMARY = /<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->[\s\S]*?<!-- end of auto-generated comment: release notes by coderabbit\.ai -->/g;
+const SUMMARY_START = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
+const SUMMARY_END = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
+
+/**
+ * The parts of a text outside its blocks (a start, then the first end after
+ * it), as text.split(/start[\s\S]*?end/g) gives them, in linear time: a
+ * start with no end after it is not a block, and the text from there on
+ * stays one part.
+ */
+export function outsideBlocks(text: string, start: string, end: string): string[] {
+  const parts: string[] = [];
+  let from = 0;
+  for (;;) {
+    const open = text.indexOf(start, from);
+    if (open === -1) break;
+    const close = text.indexOf(end, open + start.length);
+    if (close === -1) break;
+    parts.push(text.slice(from, open));
+    from = close + end.length;
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
 
 /**
  * The ignore line in a pull request's description, outside CodeRabbit's own
@@ -38,11 +60,15 @@ const SUMMARY = /<!-- This is an auto-generated comment: release notes by codera
  */
 export function ignoredBy(body: string): boolean {
   // Each part outside the summaries on its own: joining them could make a command out of text before and after a block.
-  return body.split(SUMMARY).some((part) => IGNORE.test(part));
+  return outsideBlocks(body, SUMMARY_START, SUMMARY_END).some((part) => IGNORE.test(part));
 }
 
-/** Plain text of a comment: tags and bold marks removed. */
-export const plain = (body: string): string => body.replace(/<[^>]*>/g, ' ').replace(/\*\*/g, '');
+/**
+ * Plain text of a comment: tags and bold marks removed. A tag is "<" to the
+ * next ">", each one a space, as /<[^>]*>/g replaced them; a "<" with no ">"
+ * after it stays.
+ */
+export const plain = (body: string): string => outsideBlocks(body, '<', '>').join(' ').replaceAll('**', '');
 
 /** CodeRabbit's count of the files a review bills ("This review includes N billable files …"); null when the text has none. */
 export function billableIn(body: string): number | null {

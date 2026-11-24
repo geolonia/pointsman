@@ -12,7 +12,7 @@
 //   one process passes the engine's own decideInternal (src/internal.ts)
 //   behind the same port.
 
-import { ConfigError, type EngineApi } from '@pointsman/module-api';
+import { ConfigError, type EngineApi, withoutTrailingSlashes } from '@pointsman/module-api';
 
 /** The body of POST /v1/decide/{profile}, as the connector sends it. */
 export interface DecideBody {
@@ -176,7 +176,7 @@ export function engineSetting(env: Record<string, unknown>): EngineSetting {
   if (!u || (u.protocol !== 'https:' && !LOOPBACK.includes(u.hostname)) || u.search || u.hash || u.username) {
     throw new ConfigError('POINTSMAN_URL must be an https URL (http only for localhost)');
   }
-  return { kind: 'http', url: url!.replace(/\/+$/, ''), token };
+  return { kind: 'http', url: withoutTrailingSlashes(url!), token };
 }
 
 /** The HTTP adapter: the routes with the connector's token. */

@@ -45,3 +45,16 @@ export async function answersMock(p: FactProvider | undefined, query: FactQueryB
   if (!p) return false;
   return (await p.lookup(query, new AbortController().signal)).source === 'mock';
 }
+
+/**
+ * Runs `fn` and fails if it takes longer than `ms` (generous: a linear
+ * scan of a long input takes a few milliseconds; the quadratic regular
+ * expressions these tests replace took seconds on the same input).
+ */
+export function finishesWithin<T>(ms: number, fn: () => T): T {
+  const start = performance.now();
+  const value = fn();
+  const took = performance.now() - start;
+  if (took > ms) throw new Error(`took ${Math.round(took)} ms, more than ${ms} ms`);
+  return value;
+}

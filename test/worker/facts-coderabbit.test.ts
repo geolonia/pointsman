@@ -5,11 +5,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { lookupFacts, resultError } from '../../src/facts';
-import { coderabbitModule, CodeRabbitFactProvider, ignoredBy, billableIn, headSince } from '@pointsman/coderabbit';
+import { coderabbitModule, CodeRabbitFactProvider, ignoredBy, billableIn, headSince, outsideBlocks, plain } from '@pointsman/coderabbit';
 import { ConfigError } from '@pointsman/module-api';
 import { changeSignature, GitHubFactProvider, hunkRanges, movedStart, TokenAuth } from '@pointsman/github';
 import { ModuleRouter, type FactProvider } from '../../src/facts';
 import type { FactSpec } from '../../src/types';
+import { finishesWithin } from './helpers';
 
 const HEAD = 'a'.repeat(40);
 const OLD = 'c'.repeat(40);
@@ -146,6 +147,41 @@ describe('CodeRabbit (coderabbit)', () => {
     expect(ignoredBy(`@coderabbitai ignore\n${start}`)).toBe(true);
     expect(ignoredBy(`${summary}\n${summary}`)).toBe(false);
     expect(ignoredBy(`${summary}\n${start}\n@coderabbitai ignore`)).toBe(true);
+  });
+
+  it('the parts outside the summary blocks, as split with a lazy regular expression gave them, in linear time', () => {
+    const start = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
+    const end = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
+    const parts = (text: string) => outsideBlocks(text, start, end);
+    // The parts text.split(/start[\s\S]*?end/g) gave (CodeQL js/polynomial-redos).
+    expect(parts('')).toEqual(['']);
+    expect(parts('a')).toEqual(['a']);
+    expect(parts(`a${start}b${end}c`)).toEqual(['a', 'c']);
+    expect(parts(`${start}b${end}`)).toEqual(['', '']);
+    expect(parts(`a${start}b${end}c${start}d${end}e`)).toEqual(['a', 'c', 'e']);
+    // Nested: the first end closes the block, the second one stays.
+    expect(parts(`a${start}${start}b${end}c${end}d`)).toEqual(['a', `c${end}d`]);
+    // A start with no end after it is not a block: the text from there on is one part.
+    expect(parts(`a${start}b`)).toEqual([`a${start}b`]);
+    expect(parts(`a${start}b${end}c${start}d`)).toEqual(['a', `c${start}d`]);
+    expect(parts(`a${end}b${start}c`)).toEqual([`a${end}b${start}c`]);
+    // Many start markers and no end (quadratic before: about 2 s on 2,000,000 characters, growing with the square).
+    const starts = `${start.repeat(27_000)}\n@coderabbitai ignore`;
+    expect(finishesWithin(500, () => ignoredBy(starts))).toBe(true);
+    expect(finishesWithin(500, () => ignoredBy(`@coderabbitai ignore${start}${'x'.repeat(2_000_000)}${end}`))).toBe(true);
+  });
+
+  it('plain text of a comment: each tag one space, as /<[^>]*>/g replaced them, in linear time', () => {
+    // The output of the regular expression this replaced (CodeQL js/polynomial-redos).
+    expect(plain('This review includes <b>3</b> billable **files**')).toBe('This review includes  3  billable files');
+    expect(plain('<details><summary>x</summary>y</details>')).toBe('  x y ');
+    expect(plain('a <b <c> d')).toBe('a   d');
+    expect(plain('a > b <c')).toBe('a > b <c');
+    expect(plain('a <b> c <d')).toBe('a   c <d');
+    expect(plain('<>')).toBe(' ');
+    // Many "<" and no ">" (quadratic before: seconds).
+    expect(finishesWithin(500, () => plain('<'.repeat(100_000)))).toBe('<'.repeat(100_000));
+    expect(finishesWithin(500, () => billableIn(`${'<'.repeat(100_000)}includes 3 billable files`))).toBe(3);
   });
 
   it('reviewed, approved, changes requested, in progress', async () => {

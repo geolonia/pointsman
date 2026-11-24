@@ -8,6 +8,7 @@ import { CodeRabbitFactProvider, queueWait, statedBudget, waitFrom } from '@poin
 import { TokenAuth } from '@pointsman/github';
 import { MAX_LOG_READ, type DecisionContext, type LoggedDecision } from '@pointsman/module-api';
 import type { FactSpec } from '../../src/types';
+import { finishesWithin } from './helpers';
 
 const HEAD = 'a'.repeat(40);
 const OLD = 'c'.repeat(40);
@@ -206,6 +207,13 @@ describe('the budget (coderabbit_budget), by the pull request\'s author', () => 
   it('reads CodeRabbit\'s text', () => {
     expect(waitFrom('available in 1 hour and 5 minutes')).toBe(65);
     expect(waitFrom('available in 9 seconds')).toBe(1);
+    expect(waitFrom('available in 6 minutes and 57 seconds')).toBe(7);
+    expect(waitFrom('available in: 2 Hours, 1 minute, 30 seconds')).toBe(122);
+    expect(waitFrom('available in 1hour')).toBe(60);
+    expect(waitFrom('available in 12 minutes 120 seconds')).toBe(14);
+    expect(waitFrom('nothing')).toBeNull();
+    // A long number: read from where its digits start (Infinity as before), and fast.
+    expect(finishesWithin(500, () => waitFrom(`available in ${'1'.repeat(100_000)} seconds`))).toBe(Infinity);
     expect(statedBudget('2 reviews are currently available')).toEqual({ available: 2, waitMinutes: null, allowancePerHour: null });
     expect(statedBudget('Nothing about it')).toBeNull();
   });

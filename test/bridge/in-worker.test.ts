@@ -42,7 +42,7 @@ function fakeBroker() {
   const calls: { method: string; url: string; body: any }[] = [];
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (!url.startsWith(BROKER)) throw new Error(`unexpected request to ${url}`);
+    if (new URL(url).origin !== new URL(BROKER).origin) throw new Error(`unexpected request to ${url}`);
     const method = init?.method ?? 'GET';
     calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     // A queued message is read again from the broker first.
