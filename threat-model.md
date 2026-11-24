@@ -811,9 +811,10 @@ connector's approval rules (`P-CONNECTOR-APPROVE-HEAD`) can approve a
 pull request in a live repository; whether the approval is enough to
 merge is the repository's ruleset (`R-CONNECTOR-APPROVE`).
 As of 2026-11-24 the maintainer's deployment runs engine `v0.23.0`, newer
-than this model's binding: the amendments marked "not yet released" up to
-pointsman#328 are in that release, the later ones are not yet deployed
-*(maintainer, 2026-11)*.
+than this model's binding. The amendments marked "not yet released" for
+pointsman#263, #268, #275 and #339 (and the file moves of #265) came after
+that release and are not yet deployed; the others are in it *(maintainer,
+2026-11)*. The approval mappings above were not re-checked for this.
 
 Roles, as this model uses them *(maintainer, 2026-10)*:
 
@@ -1328,7 +1329,8 @@ modeled tree.
   enabled) through `console.error` and `console.log` in 13 places in `src/` (10 at
   `v0.18.0`), and in the fact modules only one `console.warn` since
   pointsman#307, which names a `github_pr` field that could not be read and
-  the error's message (the bridge in 11 places, 9 in
+  the error's message (the connector's own `console.warn` is counted below;
+  the bridge in 11 places, 9 in
   `packages/fiware/src/bridge.ts` and 2 in `bridge/src/index.ts`; the GitHub
   connector in 15 at `v0.14.2`, at `v0.16.0` and `v0.17.0` in 35, and at
   `v0.17.1` and `v0.17.2` in 36, at `v0.18.0` in 39, and now in 40: 22
@@ -1864,8 +1866,9 @@ what voids it.
   so a plain hash is enough")*. Voided by: nothing. Search:
   `grep -rn "TOKENS\|tokenKey" src scripts/tokens.mjs` — the only write is
   `scripts/tokens.mjs:257` with `tokenKey(hash)`.
-- **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide`,
-  `GET /v1/profiles` and `GET /v1/profiles/{id}/explain`; its decisions are marked `test: true`, are not logged,
+- **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide/{profile}`,
+  `GET /v1/profiles` and `GET /v1/profiles/{id}/explain`; its decisions are
+  marked `test: true`, are not logged,
   never reach the review queue or the stats, get no callback, and `/mcp`
   refuses the token. Symptom: `x-unlogged-decision-acted-on`, `info-leak`.
   Tier: security-critical. *(documented, README "API tokens": "A test token
@@ -2113,7 +2116,9 @@ what voids it.
   include ... the key"; docs/profile-format.md "The key is never logged and
   never sent to browsers"; "Settings": "The token and the key are never
   logged")*. Voided by: nothing found. Search:
-  `grep -rn "console\.\(log\|error\)" src packages/*/src bridge/src connectors/*/src` — 64 hits on 2026-11-24 (58 at `v0.18.0`, 34 at `v0.14.2`):
+  `grep -rn "console\.\(log\|error\)" src packages/*/src bridge/src
+  connectors/*/src` — 64 hits on 2026-11-24, on main after
+  `v0.23.0` (58 at `v0.18.0`, 34 at `v0.14.2`):
   13 in `src` (12 `console.error`, 1 `console.log`), each logging a message
   built from an error's `message`, a name, a setting's name or a count, or
   an unexpected error object as the HTTP routes do; 11 of the same kind for
@@ -2127,6 +2132,10 @@ what voids it.
   check, never its value, the app's key, an installation token or `POINTSMAN_TOKEN` *(documented,
   docs/github-connector.md "Safety", Retries: "the error is logged without the token
   or key")*.
+  The search leaves out `console.warn`: there are two, the connector's for
+  a leftover `POINTSMAN_TOKEN` (a fixed text) and, since pointsman#307,
+  `packages/github/src/provider.ts` for a `github_pr` field it could not
+  read, with the error's message (GitHub's answer, never the token).
 - **`P-REVIEW-RESOLVED-ONCE`** — a pending review resolves exactly once; a
   concurrent or repeated resolve answers 409; the correction is stored as
   feedback in the same transaction only when the resolve succeeded. Symptom:
@@ -2197,7 +2206,9 @@ what voids it.
   *(documented, docs/mcp.md "Only profiles that set `mcp.visible: true` are
   listed or callable through MCP ... any other profile looks unknown")*.
   Voided by: nothing. Search: `grep -n "visible(" src/mcp.ts` — checked in
-  all six tools: `list_profiles`, `explain_profile`, `replay_profile` and `decide` through `visible()`, `get_decision` and `submit_feedback` through `shownDecision`.
+  all six tools: `list_profiles`, `explain_profile`, `replay_profile` and
+  `decide` through `visible()`, `get_decision` and `submit_feedback` through
+  `shownDecision`.
 - **`P-OAUTH-ORG-MEMBERSHIP`** — a person gets a grant only after GitHub
   confirms their login and an active membership in one of
   `ALLOWED_GITHUB_ORGS`; since pointsman#236 (`v0.18.0`) the grant also
