@@ -1593,7 +1593,7 @@
       "property": "P-GITHUB-FACTS-FOR-HEAD",
       "violation_symptom": "x-toctou, wrong-output",
       "severity_tier": "security",
-      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 (`v0.19.0`) another base makes them stale when the request names base; a push, a new base, or a base branch moved to another commit while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
+      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 (`v0.19.0`) another base makes them stale when the request names base; a push or a new base while the file list is read, and since pointsman#339 (`v0.24.0`) a base branch moved to another commit then, makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
       "provenance": "documented",
       "source": "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""
     },
@@ -2399,9 +2399,9 @@
     },
     {
       "reported_as": "text in the state made the model answer X and the policy acted on that well-formed answer",
-      "why_safe": "Covers engine-api, engine-mcp, bridge, action-triage, action-deploy-watch; symptom 'prompt-injection-steered-answer'. Exact-match conditions (§1.15): every answer is inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set (either would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`).",
+      "why_safe": "Covers engine-api, engine-mcp, bridge, action-triage, action-deploy-watch; symptom 'prompt-injection-steered-answer'. Exact-match conditions (§1.15): every answer is inside the profile's types and options and, since pointsman#313 (`v0.23.0`), complete: a choice or score answer gives every option or level and its probabilities add up to 1 within the margin of `P-ANSWER-SHAPE`; the action is the one the policy produces for those answers; no answer outside the set, no incomplete map and no action outside the profile's set (each would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`).",
       "cites": "properties_not_provided[0]",
-      "suppression": "every answer inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set"
+      "suppression": "every answer inside the profile's types and options and, since pointsman#313 (`v0.23.0`), complete (every option or level, probabilities adding up to 1 within the margin of P-ANSWER-SHAPE); the action is the one the policy produces for those answers; no answer outside the set, no incomplete map and no action outside the profile's set"
     },
     {
       "reported_as": "InternalEngine.decide takes no token, so anyone can decide without one",

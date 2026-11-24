@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:bb157fe461078320e070824032ee3f1c954dd15a8e2262530a0daac382c01cd3"
+prose_version: "threat-model.md@sha256:f6969044e463f3921c71053b6c7cb4dd809850fc55e2b672505e46c1096ccca3"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 477, maintainer: 84, inferred: 0, assumption: 0}
@@ -1832,7 +1832,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 (`v0.19.0`) another base makes them stale when the request names base; a push, a new base, or a base branch moved to another commit while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
+    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 (`v0.19.0`) another base makes them stale when the request names base; a push or a new base while the file list is read, and since pointsman#339 (`v0.24.0`) a base branch moved to another commit then, makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
     violation_symptoms: [x-toctou, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
   - id: P-GITHUB-REQUIRED-CHECKS
@@ -2673,7 +2673,7 @@ known_non_findings:
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
     symptom: prompt-injection-steered-answer
     tool_pattern: "text in the state made the model answer X and the policy acted on that well-formed answer"
-    conditions: "every answer inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set"
+    conditions: "every answer inside the profile's types and options and, since pointsman#313 (`v0.23.0`), complete (every option or level, probabilities adding up to 1 within the margin of P-ANSWER-SHAPE); the action is the one the policy produces for those answers; no answer outside the set, no incomplete map and no action outside the profile's set"
     discharged_by: [D-PROMPT-INJECTION]
     provenance: {kind: maintainer, date: "2026-10"}
   - id: KNF-INTERNAL-CALL-NO-TOKEN
