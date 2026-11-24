@@ -127,8 +127,11 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
   if (!seen.ok) return { id, error: `broker read failed: ${seen.status}`, retry: retryable(seen.status) };
   const known = await seen.json() as Entity;
   const resolved = valueOf(known.reviewStatus) === 'resolved';
-  const ours = valueOf(known.finalAction) === finalAction && (known.reviewedBy === undefined || valueOf(known.reviewedBy) === by);
-  if (resolved && known.finalAction !== undefined && !ours) return { id, skipped: 'already resolved' };
+  // Another writer's resolution, also a partial one, stays: never this work
+  // order's action under someone else's reviewedBy.
+  const other = (known.finalAction !== undefined && valueOf(known.finalAction) !== finalAction)
+    || (known.reviewedBy !== undefined && valueOf(known.reviewedBy) !== by);
+  if (resolved && other) return { id, skipped: 'already resolved' };
 
   const context = [DECISION_CONTEXT, CORE_CONTEXT];
   const review = { finalAction: P(finalAction), reviewedBy: P(by), reviewedAt: P({ '@type': 'DateTime', '@value': modified }) };

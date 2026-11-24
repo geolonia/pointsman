@@ -1355,6 +1355,10 @@ describe('work orders from other apps', () => {
     expect(await (await noAt.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
     const sameAction = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('app:other') } });
     expect(await (await sameAction.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+    // Another app's partial resolution: its reviewedBy, no finalAction. Not finished with this work order's action.
+    const otherHalf = orders({ decisionStatus: 'resolved', halfFields: { reviewedBy: P('app:other'), reviewedAt: P('2026-10-09T00:00:00Z') } });
+    expect(await (await otherHalf.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+    expect(otherHalf.calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
   it('finishing an earlier bridge\u2019s half write runs the review itself: no notification may come (#347)', async () => {
