@@ -419,7 +419,9 @@ from starting a new decision:
 - The result counts as written only when the broker stored it: a `207` to
   the first write (`POST …/attrs`, the attribute was not appended) is a
   failure, so the next notification decides again instead of finding no
-  result every time.
+  result every time. It is tried again like a 5xx (see
+  [Failures and retries](#failures-and-retries)): when the inputs do not
+  change, no next notification comes.
 
 Every call to the broker has 10 seconds, every decision by Pointsman 60
 seconds (`POINTSMAN_TIMEOUT_SECONDS`; it may wait for a model and its
@@ -501,7 +503,8 @@ attribute names in the notification match the ones in `BRIDGE_ROUTES`.
 ## Failures and retries
 
 The bridge answers `502` when an entity failed in a way a second try may fix
-(Pointsman or the broker not reachable, a 5xx or 429), and `200` otherwise,
+(Pointsman or the broker not reachable, a 5xx or 429, or a `207` to a write:
+the broker left attributes unwritten), and `200` otherwise,
 also when Pointsman refused the input (a retry would fail the same way). A
 redirect from the broker or Pointsman also answers `200`: the URL is wrong
 and a retry by the broker would fail the same way until the configuration
@@ -515,7 +518,14 @@ minutes apart), then keeps the notification in its own dead-letter queue.
 After an hour of failures it pauses the subscription (`inactive`), and every
 later notification is lost until someone activates it again (#88). Without
 retries, the next change of an input decides again, but a review or work
-order whose notification was lost stays open.
+order whose notification was lost stays open, and so does a result the
+broker did not store (a `207` to its write) while the inputs stay the same.
+A `207` to any of the bridge's writes (the result, the Decision or Task
+entity, a review's result or Task, a work order's Decision) is such a
+failure, answered `502` like a 5xx (#347; until 0.24.0 it was
+answered `200` and not tried again). A retry is safe: the decide request has
+the same `Idempotency-Key` and gets the decision Pointsman already logged,
+not a second one (see **Repeats** below).
 
 ### Reliable delivery (queue)
 
@@ -537,7 +547,8 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   entity never run at the same moment.
 - **Retries:** a failure a second try may fix is retried after 30 seconds,
   then with the delay doubling up to an hour. With `max_retries` 20 that
-  covers about 14 hours. After the last try, the message goes to the
+  covers about 14 hours. A `207` to one of the bridge's writes counts as
+  such a failure (#347), like a 5xx. After the last try, the message goes to the
   dead-letter queue (`pointsman-bridge-dlq` in the example). Its messages
   hold the entity's id and type and can be sent to the queue again; the
   entity is then read as it is at that time. Failures a

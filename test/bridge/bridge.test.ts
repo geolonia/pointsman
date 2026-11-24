@@ -839,7 +839,8 @@ describe('Task entities', () => {
       return undefined;
     } });
     const res = await t.notify([entity()]);
-    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207', retry: true }] });
+    expect(res.status).toBe(502);
     expect(t.calls.some((c) => c.method === 'PATCH')).toBe(false);
     // The same when cancelling.
     const c2 = setup({ route: { task }, handler: (c) => {
@@ -847,7 +848,9 @@ describe('Task entities', () => {
       if (c.method === 'POST' && c.url.includes('Task')) return new Response('{}', { status: 207 });
       return undefined;
     } });
-    expect(await (await c2.notify([entity()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+    const cancelling = await c2.notify([entity()]);
+    expect(cancelling.status).toBe(502);
+    expect(await cancelling.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207', retry: true }] });
   });
 
   it('takes only review status pending as a pending review: other review values do not open a Task, and cancel an open one', async () => {
@@ -1093,13 +1096,17 @@ describe('reviews resolved in the broker', () => {
     expect(refused.status).toBe(200);
     expect(await refused.json()).toMatchObject({ handled: [{ error: 'pointsman answered 400', retry: false }] });
     // A partial update (207) of the Task is not done.
-    expect(await (await reviews({ task: 207 }).send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task update: 207' }] });
+    const task207 = await reviews({ task: 207 }).send([resolved()]);
+    expect(task207.status).toBe(502);
+    expect(await task207.json()).toMatchObject({ handled: [{ error: 'broker refused the Task update: 207', retry: true }] });
     // A partial update (207) of the result does not complete the Task.
     const partial = reviews({ entity: undefined });
     const fetchFn = partial.config.fetch!;
     partial.config.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
       (init?.method === 'PATCH' ? new Response('{}', { status: 207 }) : fetchFn(input, init))) as typeof fetch;
-    expect(await (await partial.send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker write failed: 207' }] });
+    const result207 = await partial.send([resolved()]);
+    expect(result207.status).toBe(502);
+    expect(await result207.json()).toMatchObject({ handled: [{ error: 'broker write failed: 207', retry: true }] });
     expect(partial.calls.some((c) => c.url.includes('Task'))).toBe(false);
     // No Task (404) is fine.
     expect(await (await reviews({ task: 404 }).send([resolved()])).json()).toMatchObject({ handled: [{ written: true }] });
@@ -1327,7 +1334,10 @@ describe('work orders from other apps', () => {
     const refused = await orders({ post: 400 }).send([order()]);
     expect(refused.status).toBe(200);
     expect(await refused.json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 400', retry: false }] });
-    expect(await (await orders({ post: 207 }).send([order()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207' }] });
+    // A 207: the Decision is not resolved, and the completed work order notifies no more. Tried again.
+    const decision207 = await orders({ post: 207 }).send([order()]);
+    expect(decision207.status).toBe(502);
+    expect(await decision207.json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207', retry: true }] });
   });
 
   it('checks the mapping', () => {
@@ -1777,7 +1787,7 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
   it('a 207 on the first result write (POST …/attrs) is a failure: nothing was stored', async () => {
     const t = setup({ broker: { PATCH: 404, POST: 207 } });
     const result = await handleMessage({ path: '/notify', entity: entity() }, t.config);
-    expect(result).toMatchObject({ error: 'broker write failed: 207' });
+    expect(result).toMatchObject({ error: 'broker write failed: 207', retry: true });
     expect(result).not.toHaveProperty('write');
   });
 
@@ -1861,5 +1871,127 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
       method: 'POST', headers: { 'x-bridge-secret': 'wrong' }, body: JSON.stringify({ type: 'Notification', data: [] }),
     }), config);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('a 207 on a write is tried again (#347)', () => {
+  const ENTITY_ATTRS = `https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent('urn:ngsi-ld:RoadRestriction:1')}/attrs`;
+  /** The consumer's max_retries in bridge/wrangler.jsonc. */
+  const MAX_RETRIES = 20;
+
+  /**
+   * Delivers one message as Cloudflare Queues does: again after each retry,
+   * and to the dead-letter queue once it was retried more than max_retries
+   * times. The move to the dead-letter queue is the runtime's, not the bridge's.
+   */
+  async function deliver(body: BridgeMessage, config: BridgeConfig) {
+    const delays: (number | undefined)[] = [];
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      for (let attempts = 1; ; attempts++) {
+        let outcome: 'ack' | 'retry' | undefined;
+        await handleQueueBatch({ messages: [{ body, attempts, ack: () => { outcome = 'ack'; }, retry: (o) => { outcome = 'retry'; delays.push(o?.delaySeconds); } }] }, config);
+        if (outcome !== 'retry') return { outcome, delays };
+        if (attempts > MAX_RETRIES) return { outcome: 'dead-letter queue' as const, delays };
+      }
+    } finally {
+      logged.mockRestore();
+    }
+  }
+
+  /** A broker whose first result write (POST …/attrs after a 404 on PATCH) answers `status`. */
+  const firstWrite = (status: number) => setup({ broker: { PATCH: 404, POST: status }, handler: (c) => (c.method === 'GET' ? Response.json(entity()) : undefined) });
+
+  it('queue: a 207 on the first result write is retried with the back-off, then sent to the dead-letter queue, as a 5xx', async () => {
+    const partial = await deliver({ path: '/notify', entity: entity() }, firstWrite(207).config);
+    expect(partial).toEqual({ outcome: 'dead-letter queue', delays: Array.from({ length: MAX_RETRIES + 1 }, (_, i) => retryDelay(i + 1)) });
+    expect(await deliver({ path: '/notify', entity: entity() }, firstWrite(503).config)).toEqual(partial);
+  });
+
+  it('direct: a 207 on the first result write answers the broker 502, as a 5xx, so it sends the notification again', async () => {
+    const res = await firstWrite(207).notify([entity()]);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker write failed: 207', retry: true, decision: 'd-1' }] });
+    expect((await firstWrite(503).notify([entity()])).status).toBe(502);
+  });
+
+  it('direct: a 207 on an update of the Decision entity, before the result, is tried again', async () => {
+    const D = (id: string) => `https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(`urn:ngsi-ld:Decision:${id}`)}`;
+    // Resolving the existing Decision entity (a retry after a person answered), and superseding the replaced one.
+    const cases = [
+      { answer: { ...decision, review: { status: 'resolved', final_action: 'publish', resolved_at: '2026-07-09T00:00:00Z' } }, entities: 409, update: D('d-1') },
+      { answer: { ...decision, replaces: 'd-0' }, entities: 201, update: D('d-0') },
+    ];
+    for (const { answer, entities, update } of cases) {
+      const t = setup({
+        route: { decisionEntity: true },
+        pointsman: () => Response.json(answer),
+        broker: { ENTITIES: entities },
+        handler: (c) => {
+          if (c.method === 'GET' && c.url === update) return Response.json({ id: 'x', reviewStatus: P('pending') });
+          if (c.method === 'POST' && c.url === `${update}/attrs`) return new Response('{}', { status: 207 });
+          return undefined;
+        },
+      });
+      const res = await t.notify([entity()]);
+      expect(await res.json(), update).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207', retry: true }] });
+      expect(res.status, update).toBe(502);
+      // Nothing on the entity: no input hash, so without a retry the result would be lost.
+      expect(t.calls.some((c) => c.url.startsWith(ENTITY_ATTRS)), update).toBe(false);
+    }
+  });
+
+  it('the retry decides with the same idempotency key and gets the logged decision back: no second decision', async () => {
+    for (const mode of ['queue', 'direct'] as const) {
+      // A fake Pointsman with a decision log by idempotency key.
+      const logged = new Map<string, string>();
+      let created = false;
+      let posts = 0;
+      const t = setup({
+        route: { decisionEntity: true },
+        pointsman: () => {
+          const key = t.calls.at(-1)!.headers.get('idempotency-key')!;
+          if (!logged.has(key)) logged.set(key, `d-${logged.size + 1}`);
+          return Response.json({ ...decision, decision_id: logged.get(key) });
+        },
+        handler: (c) => {
+          if (c.method === 'GET') return Response.json(entity());
+          // The Decision entity: there from the first try on.
+          if (c.method === 'POST' && c.url === 'https://broker.test/ngsi-ld/v1/entities') {
+            const status = created ? 409 : 201;
+            created = true;
+            return new Response(null, { status });
+          }
+          // The result: a 207 on the first try (not appended), stored on the second.
+          if (c.method === 'POST' && c.url === ENTITY_ATTRS) return posts++ === 0 ? new Response('{}', { status: 207 }) : new Response(null, { status: 204 });
+          return undefined;
+        },
+      });
+      const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+      if (mode === 'queue') {
+        const first = message(1);
+        await handleQueueBatch({ messages: [first] }, t.config);
+        expect(first.outcome, mode).toBe('retry');
+        const second = message(2);
+        await handleQueueBatch({ messages: [second] }, t.config);
+        expect(second.outcome, mode).toBe('ack');
+      } else {
+        expect((await t.notify([entity()])).status, mode).toBe(502);
+        expect((await t.notify([entity()])).status, mode).toBe(200);
+      }
+      quiet.mockRestore();
+      const keys = t.calls.filter((c) => c.url.startsWith('https://pm.test/')).map((c) => c.headers.get('idempotency-key'));
+      expect(keys, mode).toHaveLength(2);
+      expect(keys[0], mode).toBe(keys[1]);
+      expect([...logged.values()], mode).toEqual(['d-1']);
+      const written = t.calls.filter((c) => c.method === 'POST' && c.url === ENTITY_ATTRS).map((c) => (c.body as { check: { decisionId: unknown } }).check.decisionId);
+      expect(written, mode).toEqual([P('d-1'), P('d-1')]);
+    }
+
+    function message(attempts: number) {
+      const m = { body: { path: '/notify', entity: entity() } as BridgeMessage, attempts, outcome: undefined as 'ack' | 'retry' | undefined,
+        ack() { m.outcome = 'ack'; }, retry() { m.outcome = 'retry'; } };
+      return m;
+    }
   });
 });

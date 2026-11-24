@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:9be7a185ea49937abc6842448fc2871ddcc10db7b8ee4edd2bd0c7cef6155e9e"
+prose_version: "threat-model.md@sha256:5d837ab2f386458230a348b3e54a1d9b96cf7a0f82cfc82dd985511fbdc4cf21"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -839,7 +839,7 @@ contract_dimensions:
   # bridge
   - {component: bridge, dimension: numeric-domain, status: claimed, conditions: "queue messages ≤120 KB, batches ≤100/250 KB; retries 30 s doubling to 1 h; reviewedBy ≤100 characters", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Reliable delivery (queue)\"; \"Work orders from other apps\""}}
   - {component: bridge, dimension: failure-atomicity, status: disclaimed, conditions: "NGSI-LD has no conditional update; a writer can get through between a read and a write", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"NGSI-LD has no conditional update, so there is a short window\""}}
-  - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision; since pointsman#323 (not yet released) multi-instance inputs hashed by every instance (sorted by datasetId) and a 207 to the first result write is a failure", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}}
+  - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision; since pointsman#323 (not yet released) multi-instance inputs hashed by every instance (sorted by datasetId) and a 207 to the first result write is a failure; since pointsman#347 a 207 on any bridge write is tried again (queue back-off, then the dead-letter queue; 502 in direct mode)", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}}
   - {component: bridge, dimension: callback-execution, status: not-applicable, conditions: "the bridge runs no caller code; routes are operator configuration", provenance: {kind: documented, source: "bridge/README.md \"Configuration\""}}
   - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339; since pointsman#323 (not yet released) an input without an NGSI-LD attribute type (keyValues) is refused and an unknown ?route= answers 404", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: reference-lifecycle, status: claimed, conditions: "Task ids derived from entity id, attribute and input hash; own Tasks recognised by id", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Task entities\""}}
