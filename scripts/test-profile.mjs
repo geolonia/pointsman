@@ -18,6 +18,7 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { parse as parseYaml } from 'yaml';
+import { checkServerUrl } from '@pointsman/module-api';
 import { collectProfileFiles, factModulesError, loadProfileSet, validateProfile } from './lib/profile.mjs';
 import { answersFit, caseFileErrors, factsFit, judge, runCases } from '../src/cases.ts';
 import { explainProfile } from '../src/explain.ts';
@@ -58,18 +59,15 @@ if (values.url !== undefined) {
     console.error('--url needs a test token in POINTSMAN_TOKEN');
     process.exit(2);
   }
-  try {
-    base = new URL(values.url);
-  } catch {
-    console.error(`--url: not a URL: ${values.url}`);
+  // The token is sent with each request: https, or http only on this machine;
+  // no credentials, query or fragment.
+  const checked = checkServerUrl(values.url);
+  if (!checked.ok) {
+    console.error(`--url ${checked.error}`);
     process.exit(2);
   }
-  // The token is sent with each request: https, or http only on this machine.
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname);
-  if (base.protocol !== 'https:' && !(base.protocol === 'http:' && local)) {
-    console.error('--url must use https (http only for localhost)');
-    process.exit(2);
-  }
+  // With a trailing slash, so the paths below are relative to it (a path prefix, a proxy, is kept).
+  base = new URL(`${checked.value}/`);
 }
 
 const read = (f) => readFileSync(f, 'utf8');
@@ -101,7 +99,7 @@ class NotATestToken extends Error {}
 /** Ask the deployed profile; its answers and facts, with the rules of the file applied. */
 async function deployed(profile, state) {
   // Relative to the URL given, so a path prefix (a proxy) is kept.
-  const url = new URL(`v1/decide/${encodeURIComponent(profile.id)}`, base.href.endsWith('/') ? base : `${base.href}/`);
+  const url = new URL(`v1/decide/${encodeURIComponent(profile.id)}`, base);
   const res = await fetch(url, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },

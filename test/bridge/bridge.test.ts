@@ -1,7 +1,7 @@
 // The FIWARE bridge (packages/fiware, bridge/src) against a fake broker and a fake Pointsman.
 
-import { describe, expect, it, vi } from 'vitest';
-import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, clashingAnswer, handleMessage, handleQueueBatch, handleRequest, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity, toProperty } from '../../packages/fiware/src/bridge.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { type BridgeConfig, type BridgeMessage, type Route, DECISION_CONTEXT, DECISION_TERMS, TASK_CONTEXT, clashingAnswer, handleMessage, handleQueueBatch, handleRequest, idempotencyKey, inputHash, parseRoutes, parseWorkOrders, queueBatches, retryDelay, taskEntityId, toDecisionEntity, toProperty } from '../../packages/fiware/src/bridge.ts';
 import decisionContext from '../fixtures/datamodels/decision/context.jsonld?raw';
 import { configFrom } from '../../packages/fiware/src/config.ts';
 import type { Env } from '../../bridge/src/index';
@@ -34,6 +34,29 @@ const decision = {
 
 type Call = { method: string; url: string; headers: Headers; body: unknown; redirect?: RequestInit['redirect'] };
 
+/**
+ * Every read and delete the fake broker gets carries the same headers: the
+ * broker's authentication and tenant, JSON accepted, no content type, and a
+ * JSON-LD context Link when there is one. Checked after each test.
+ */
+const badReads: string[] = [];
+const LINK = /^<[^>]+>; rel="http:\/\/www\.w3\.org\/ns\/json-ld#context"; type="application\/ld\+json"$/;
+function checkReadHeaders(c: Call, broker: BridgeConfig['broker']) {
+  const got = Object.fromEntries(c.headers);
+  const { link, 'user-agent': agent, ...rest } = got;
+  const want: Record<string, string> = { accept: 'application/json' };
+  if (broker.token) want.authorization = `Bearer ${broker.token}`;
+  if (broker.apiKey) want['x-api-key'] = broker.apiKey;
+  if (broker.tenant) want['ngsild-tenant'] = broker.tenant;
+  const ok = JSON.stringify(Object.entries(rest).sort()) === JSON.stringify(Object.entries(want).sort())
+    && (agent ?? '').startsWith('pointsman-bridge') && (link === undefined || LINK.test(link));
+  if (!ok) badReads.push(`${c.method} ${c.url}: ${JSON.stringify(got)}`);
+}
+afterEach(() => {
+  const bad = badReads.splice(0);
+  expect(bad).toEqual([]);
+});
+
 /** A fake broker and Pointsman. `broker` answers writes: a status per method, or a function. */
 function setup(opts: {
   pointsman?: (body: unknown, url: string, method: string) => Response;
@@ -53,6 +76,7 @@ function setup(opts: {
       if (opts.fail === 'pointsman') throw new Error('connection refused');
       return opts.pointsman ? opts.pointsman(body, url, method) : Response.json(decision);
     }
+    if (url.startsWith('https://broker.test/') && (method === 'GET' || method === 'DELETE')) checkReadHeaders(calls.at(-1)!, config.broker);
     const custom = opts.handler?.(calls.at(-1)!);
     if (custom) return custom;
     if (url === 'https://broker.test/ngsi-ld/v1/entities') return new Response(null, { status: opts.broker?.ENTITIES ?? 201 });
@@ -653,6 +677,15 @@ describe('Task entities', () => {
     expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'check', 'h2')).not.toBe(id);
     expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'evacuation', 'h1')).not.toBe(id);
     expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:2', 'check', 'h1')).not.toBe(id);
+  });
+
+  it('keeps the hashes stored on entities and Tasks unchanged (SHA-256, hex)', async () => {
+    // Pinned values: results and Tasks written earlier are found again by these.
+    expect(await inputHash(entity(), route.inputs)).toBe('b42ae10bb277c9926f957600c558994384e6d126d75fac4838ad867ceec2a895');
+    // The Task id: the first 16 bytes of the SHA-256 of [entity, attribute, hash] as JSON.
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('["urn:ngsi-ld:RoadRestriction:1","check","h1"]')));
+    expect(await taskEntityId('urn:ngsi-ld:RoadRestriction:1', 'check', 'h1')).toBe(`urn:ngsi-ld:Task:${Array.from(digest.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')}`);
+    expect(await idempotencyKey(route, 'urn:ngsi-ld:RoadRestriction:1', { state: entity() })).toBe('bridge-002f09b2a358afa809201fa277d5669615f84506b734d4ff6e5e930d610f8d87');
   });
 
   it('creates the same Task again on a retry, although Pointsman decides with a new id', async () => {

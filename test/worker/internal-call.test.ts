@@ -117,6 +117,15 @@ describe('InternalEngine (the Cloudflare entrypoint)', () => {
     errors.mockRestore();
   });
 
+  it('answers an unexpected failure with internal_error, without its message', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const broken = { prepare: () => { throw new TypeError('the database is down'); } };
+    const answer = await engineWith({ INTERNAL_CLIENT: CLIENT, DB: broken }).get(crypto.randomUUID());
+    expect(answer).toEqual({ status: 500, body: { error: { code: 'internal_error', message: 'internal error' } } });
+    expect(errors.mock.calls.join(' ')).toContain('the database is down');
+    errors.mockRestore();
+  });
+
   it('is a named entrypoint of the engine Worker, reached over RPC', async () => {
     // The Worker's own settings (wrangler.jsonc) have no INTERNAL_CLIENT: refused, over a real RPC call.
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});

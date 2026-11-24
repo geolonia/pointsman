@@ -73,11 +73,35 @@ function routes(over: Record<string, Handler> = {}): Record<string, Handler> {
   };
 }
 
+/**
+ * Every request the facts send carries the same headers: the token, GitHub's
+ * JSON media type and API version, the facts' user agent, and a JSON content
+ * type only with a body. Checked after each test.
+ */
+const badHeaders: string[] = [];
+function checkHeaders(url: URL, init: RequestInit) {
+  const got = Object.fromEntries(new Headers(init.headers));
+  const { authorization, ...rest } = got;
+  const want = {
+    accept: 'application/vnd.github+json',
+    'x-github-api-version': '2022-11-28',
+    'user-agent': 'pointsman (+https://github.com/geolonia/pointsman)',
+    ...(init.body !== undefined && { 'content-type': 'application/json' }),
+  };
+  const ok = /^Bearer \S+$/.test(authorization ?? '') && JSON.stringify(Object.entries(rest).sort()) === JSON.stringify(Object.entries(want).sort());
+  if (!ok) badHeaders.push(`${init.method ?? 'GET'} ${url.pathname}: ${JSON.stringify({ ...rest, authorization: authorization ? 'set' : 'none' })}`);
+}
+afterEach(() => {
+  const bad = badHeaders.splice(0);
+  expect(bad).toEqual([]);
+});
+
 function fakeGitHub(table: Record<string, Handler> = routes()) {
   const calls: { method: string; url: URL; auth: string | null }[] = [];
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     calls.push({ method: init.method ?? 'GET', url, auth: new Headers(init.headers).get('authorization') });
+    checkHeaders(url, init);
     expect(url.origin).toBe('https://api.github.com');
     expect(init.redirect).toBe('manual');
     const handler = table[url.pathname];

@@ -13,6 +13,7 @@
 // the fact, so it is missing rather than wrong.
 
 import { FactError } from '@pointsman/module-api';
+import { isObject } from './github-http';
 import { lockfileSteps } from './lockfile';
 import { larger, parseSpec as parse, stepOf, stripPeers } from './steps';
 
@@ -134,7 +135,6 @@ export function textBefore(after: string, patch: string): string | null {
   return out.join('\n');
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** Deep equality of JSON values; the order of keys does not count. */
 function same(a: unknown, b: unknown): boolean {

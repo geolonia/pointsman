@@ -4,5 +4,6 @@
 export * from './api.ts';
 export * from './capabilities.ts';
 export * from './connector.ts';
+export * from './facts-mode.ts';
 export * from './geo.ts';
 export * from './url.ts';

@@ -3,7 +3,7 @@
 // answers), FACTS_ROUTING_URL (a Valhalla server, https) and the secret
 // FACTS_ROUTING_API_KEY (sent as x-api-key).
 
-import { checkServerUrl, ConfigError, detour, mockProvider, type FactModuleEntry, type FactProvider, type SpatialFactQuery } from '@pointsman/module-api';
+import { checkServerUrl, ConfigError, detour, factsMode, mockProvider, type FactModuleEntry, type FactProvider, type SpatialFactQuery } from '@pointsman/module-api';
 import { ValhallaFactProvider, ValhallaRouter } from './router';
 import { definition } from './definition';
 
@@ -14,16 +14,15 @@ const routers = new Map<string, FactProvider<SpatialFactQuery>>();
 export const valhallaModule: FactModuleEntry = {
   ...definition,
   create(env): FactProvider | undefined {
-    const mode = env.FACTS_MODE ?? 'off';
     const url = typeof env.FACTS_ROUTING_URL === 'string' && env.FACTS_ROUTING_URL ? env.FACTS_ROUTING_URL : undefined;
     const key = typeof env.FACTS_ROUTING_API_KEY === 'string' && env.FACTS_ROUTING_API_KEY ? env.FACTS_ROUTING_API_KEY : undefined;
-    if (url && mode !== 'gsi') throw new ConfigError('FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
+    if (url && env.FACTS_MODE !== 'gsi') throw new ConfigError('FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
     const checked = url ? checkServerUrl(url) : undefined;
     if (checked && !checked.ok) throw new ConfigError(`FACTS_ROUTING_URL ${checked.error}`);
     if (key && !url) throw new ConfigError('FACTS_ROUTING_API_KEY needs FACTS_ROUTING_URL');
-    switch (mode) {
+    // Read after the URL checks, so their errors come first (as before).
+    switch (factsMode(env)) {
       case 'off':
-      case '':
         return undefined;
       case 'mock':
         return mock;
@@ -38,8 +37,6 @@ export const valhallaModule: FactModuleEntry = {
         }
         return p as FactProvider;
       }
-      default:
-        throw new ConfigError('FACTS_MODE must be "off", "mock" or "gsi"');
     }
   },
 };

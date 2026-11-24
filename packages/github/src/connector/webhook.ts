@@ -4,6 +4,8 @@
 // it asks Pointsman, so a replayed or stale event can at most cause a check
 // of the current state.
 
+import { isObject } from '../github-http.ts';
+
 /** Larger bodies are refused before they are read in full. GitHub sends at most 25 MB; events about pull requests are far smaller. */
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -37,7 +39,6 @@ export interface PullRequestTarget {
 const PR_ACTIONS = new Set(['opened', 'reopened', 'synchronize', 'ready_for_review', 'converted_to_draft', 'edited']);
 const REVIEW_ACTIONS = new Set(['submitted', 'dismissed']);
 
-const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 
 function repoOf(payload: Record<string, unknown>): string | undefined {

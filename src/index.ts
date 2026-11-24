@@ -4,7 +4,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { ConfigError, createApp, retryDueCallbacks, type Deps } from './app';
 import type { TokenRecord } from './auth';
-import { byIdInternal, closeAnswer, decideInternal, getAnswer, internalClient, resolveInternal, type ApiAnswer } from './internal';
+import { apiError, byIdInternal, closeAnswer, decideInternal, errorResponse, getAnswer, internalClient, resolveInternal, type ApiAnswer } from './internal';
 import { KvTokenStore } from './auth-kv';
 import { ModuleRouter, type FactProvider } from './facts';
 import type { Connector, ConnectorEntry, ConnectorMessage, FactModuleEntry } from '@pointsman/module-api';
@@ -252,10 +252,10 @@ async function toConnector(request: Request, env: Env, ctx: ExecutionContext, en
     if (!(err instanceof ConfigError)) throw err;
     // The operator's to fix; the message names the setting, never its value.
     console.error(`connector configuration: ${err.message}`);
-    return Response.json({ error: { code: 'not_configured', message: 'the connector is not configured' } }, { status: 500 });
+    return errorResponse(500, 'not_configured', 'the connector is not configured');
   }
   const connector = connectors.get(id);
-  if (!connector) return Response.json({ error: { code: 'not_found', message: 'not found' } }, { status: 404 });
+  if (!connector) return errorResponse(404, 'not_found', 'not found');
   url.pathname = slash < 0 ? '/' : rest.slice(slash);
   return connector.fetch(new Request(url, request));
 }
@@ -330,11 +330,11 @@ export class InternalEngine extends WorkerEntrypoint<Env> {
       if (err instanceof ConfigError) {
         // The message names the setting, never its value.
         console.error(`internal call configuration: ${err.message}`);
-        return { status: 500, body: { error: { code: 'not_configured', message: 'internal calls are not configured' } } };
+        return apiError(500, 'not_configured', 'internal calls are not configured');
       }
       // As the HTTP routes: logged here, not passed to the caller.
       console.error(err);
-      return { status: 500, body: { error: { code: 'internal_error', message: 'internal error' } } };
+      return apiError(500, 'internal_error', 'internal error');
     }
   }
 }

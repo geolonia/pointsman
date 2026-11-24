@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
+import { checkServerUrl } from '@pointsman/module-api';
 import { factModulesError, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile } from '../src/explain.ts';
 
@@ -56,18 +57,15 @@ if (!token) {
   console.error('POINTSMAN_TOKEN is needed: a token that may use the profile (not a test token)');
   process.exit(2);
 }
-let base;
-try {
-  base = new URL(values.url);
-} catch {
-  console.error(`--url: not a URL: ${values.url}`);
+// The token is sent with the request: https, or http only on this machine;
+// no credentials, query or fragment.
+const checked = checkServerUrl(values.url);
+if (!checked.ok) {
+  console.error(`--url ${checked.error}`);
   process.exit(2);
 }
-// The token is sent with the request: https, or http only on this machine.
-if (base.protocol !== 'https:' && !(base.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname))) {
-  console.error('--url must use https (http only for localhost)');
-  process.exit(2);
-}
+// With a trailing slash, so the path below is relative to it (a path prefix, a proxy, is kept).
+const base = new URL(`${checked.value}/`);
 
 const [file] = positionals;
 let profile;
@@ -102,7 +100,7 @@ const body = {
   facts: profile.facts ?? [],
   requires: profile.requires ?? [],
 };
-const url = new URL(`v1/profiles/${encodeURIComponent(profile.id)}/replay`, base.href.endsWith('/') ? base : `${base.href}/`);
+const url = new URL(`v1/profiles/${encodeURIComponent(profile.id)}/replay`, base);
 let res;
 let result;
 try {

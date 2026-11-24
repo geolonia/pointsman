@@ -10,9 +10,9 @@ import { GitHubAppAuth, type Scope } from '../provider.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
 import { COPILOT } from '../reviews.ts';
 import { rateLimited } from '../rate-limit.ts';
+import { API, GITHUB_JSON, githubHeaders, isObject } from '../github-http.ts';
 import type { ReviewRef, ReviewSummary } from './comment.ts';
 
-const API = 'https://api.github.com';
 const USER_AGENT = 'pointsman-github-connector (+https://github.com/geolonia/pointsman)';
 const LEVEL = { read: 1, write: 2 } as Record<string, number>;
 
@@ -185,7 +185,6 @@ export interface ConnectorGitHub {
 export const MARKER = '<!-- pointsman';
 export const markerOf = (head: string, profile: string, kind: string) => `${MARKER} ${kind} ${profile} ${head} -->`;
 
-const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const SHA = /^[0-9a-f]{40}$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
@@ -220,7 +219,7 @@ export class AppGitHub implements ConnectorGitHub {
     this.#fetch = fetchFn;
   }
 
-  async #call(repo: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, what: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<unknown> {
+  async #call(repo: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, what: string, body?: unknown, accept = GITHUB_JSON): Promise<unknown> {
     const res = await this.#send(repo, method, path, what, body, accept);
     if (res.status === 204) return null;
     try {
@@ -244,13 +243,7 @@ export class AppGitHub implements ConnectorGitHub {
       // GraphQL has one URL for every repository; the token is still the one repository's.
       res = await this.#fetch(path === '/graphql' ? `${API}/graphql` : `${API}/repos/${owner}/${name}${path}`, {
       method,
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept,
-        'x-github-api-version': '2022-11-28',
-        'user-agent': USER_AGENT,
-        ...(body !== undefined && { 'content-type': 'application/json' }),
-      },
+      headers: { ...githubHeaders(token, USER_AGENT, accept), ...(body !== undefined && { 'content-type': 'application/json' }) },
       ...(body !== undefined && { body: JSON.stringify(body) }),
       redirect: 'manual',
       signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),

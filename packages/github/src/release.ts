@@ -11,6 +11,7 @@
 // named "version" is not taken for the package's own version.
 
 import { matchesAny } from './glob';
+import { isObject } from './github-http';
 
 /** A changed file as the pull-request files API lists it. */
 export interface ReleaseFile {
@@ -110,7 +111,6 @@ export function onlyVersionMoves(files: ReleaseFile[], heads: ReadonlyMap<string
     } catch {
       return false;
     }
-    const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
     if (!isObject(before) || !isObject(after) || before.version !== from || after.version !== to) return false;
     if (JSON.stringify({ ...before, version: to }) !== JSON.stringify(after)) return false;
   }
