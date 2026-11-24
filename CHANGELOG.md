@@ -12,6 +12,22 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.24.1 (2026-11-25)
+
+A fix for the FIWARE bridge: a `207` on one of its writes is tried again, not acked, so no result is lost when the broker leaves attributes unwritten (#347, #348).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.24.1`, and change modules pinned with a version in `modules` to `@0.24.1` (for example `@pointsman/github@0.24.0` → `@pointsman/github@0.24.1`). No migration, no new secrets, no new GitHub App permission or event, no configuration change.
+- **FIWARE bridge in direct mode** (no `BRIDGE_QUEUE`): a `207` on a write now answers the broker `502`, not `200`. A broker that answers `207` every time (always refusing one attribute) then fails every notification, and GeonicDB pauses the subscription after an hour. With the queue, such a message ends in the dead-letter queue instead; use the queue where that matters.
+
+What changed:
+
+- **FIWARE bridge** (#348): a `207` on any of the bridge's attribute writes (the result, the Decision or Task entity's updates, a review's result or Task, a work order's Decision) is a failure a retry may fix, like a `5xx`: the queue retries it with back-off, then dead-letters it; direct mode answers `502`. Until 0.24.0 it was answered `200` and the result lost, since no later notification comes while the inputs stay the same. A retry makes no second decision (the same `Idempotency-Key`).
+- A retry finishes a write a `207` left half done instead of taking it as done: a Decision resolved without `finalAction`, or with this write's `finalAction` and another of its attributes missing, and a Task cancelled with another `statusLabel` or none. A Task someone else cancelled with another label gets the bridge's label; its progress stays cancelled.
+- A work order writes the Decision's `reviewStatus: resolved` last, in a write of its own, so the `/reviews` notification it starts carries a complete Decision. When the Decision is already resolved by this work order (or left resolved but incomplete by an earlier bridge) and the result still waits, the work order runs the `/reviews` step itself, also on a retry, keeping the review values the Decision has. Another writer's resolution stays when it names another `finalAction` or `reviewedBy`; one with neither cannot be told from the bridge's own half write and is finished like one.
+- **Threat model**: amended a sixteenth time for #347. It is still bound to `v0.18.0`.
+
 ## 0.24.0 (2026-11-24)
 
 The rest of the review of 2026-11: no token can take the internal client's name (#330), small fixes (#331, #332; also `people_answers` in MCP `list_profiles`), the GitHub connector keeps its App tokens between runs (#333), missing tests and a stricter module registry (#334), two races in the GitHub snapshot (#339), the open CodeQL alerts (#345), and the largest files split by job (#335–#338, #340, #341).
