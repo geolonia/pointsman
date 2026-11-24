@@ -16,22 +16,21 @@
 // The record of a check run is written before the check run is created, so a
 // run that stops in between does not create a second one: the next run looks
 // for the check run first.
+//
+// This file holds the object (PullRequestWork) with its run; what it keeps
+// in storage is in records.ts, its check run texts in check-output.ts, the
+// description it sends in description.ts and RetryError in retry.ts.
 
 import { AnswerDesk, buttonsFor, type QueuedAnswer } from './answers.ts';
 import { actionOf, type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
-import { asButtons, checkName, type ActionSpec, type ConnectorSettings, type RunOptions, type SignalSpec } from './settings.ts';
-import { checkText, clean, COMMENT_MARKER, commandFor, commentBody, NO_REVIEWS, type Position, positionOf, type Station, type HeadReviews, reviewStateOf, signalMark, signalOf } from './comment.ts';
+import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
+import { COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type HeadReviews, reviewStateOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, GitHubHistoryLimit, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { BotReview, PullRequestTarget } from './webhook.ts';
-
-/** What a run needs of the object's storage (a Durable Object's storage has it). */
-export interface ObjectStorage {
-  get<T>(key: string): Promise<T | undefined>;
-  /** Writes these keys at once. */
-  put(entries: Record<string, unknown>): Promise<void>;
-  /** Run `run()` at this time (a Durable Object alarm). */
-  setAlarm(at: number): Promise<void>;
-}
+import { authorText, MAX_BODY, MAX_TITLE } from './description.ts';
+import { type Acts, type Asked, type Checks, type Clearing, type CommentRecord, type Given, type Kept, type ObjectStorage, type Rechecks, type ReviewsSeen, type Shown, slim } from './records.ts';
+import { type ActOutcome, checkOutput, describe, type NotActed, notActedOnOutput } from './check-output.ts';
+import { RetryError, retrying } from './retry.ts';
 
 /** An event, as the webhook passes it on. */
 export interface Accepted {
@@ -46,35 +45,6 @@ export interface Accepted {
   answer?: QueuedAnswer;
 }
 
-/** Same as the shadow poller: enough for the AI questions, keeps a very long description out of the model. */
-const MAX_TITLE = 300;
-const MAX_BODY = 8000;
-/** CodeRabbit's summary in the description, between these markers: written by a bot, not by the author. */
-const BOT_BLOCK_START = '<!-- This is an auto-generated comment: release notes by coderabbit.ai -->';
-const BOT_BLOCK_END = '<!-- end of auto-generated comment: release notes by coderabbit.ai -->';
-
-/**
- * The description as the author wrote it: CodeRabbit's summary blocks left
- * out, only whole ones (a start marker without an end marker after it stays
- * text). So its edits neither ask a once_per_head profile again nor reach
- * the model. The author cannot claim more than they wrote this way: they
- * control the description anyway, and the facts come from GitHub.
- */
-export function authorText(body: string): string {
-  let out = '';
-  let rest = body;
-  for (;;) {
-    const i = rest.indexOf(BOT_BLOCK_START);
-    const end = i < 0 ? -1 : rest.indexOf(BOT_BLOCK_END, i + BOT_BLOCK_START.length);
-    if (end < 0) break;
-    out += rest.slice(0, i);
-    rest = rest.slice(end + BOT_BLOCK_END.length);
-  }
-  // Without a block, the author's text exactly (an indented code block keeps its spaces);
-  // with one, the space left around it is trimmed.
-  return rest.length === body.length ? body : (out + rest).trim();
-}
-
 /** A run starts this long after an event, so a burst (several finished check suites) becomes one run. */
 export const SETTLE_MS = 20_000;
 /** Deliveries and bodies are remembered this long, at most this many. */
@@ -87,16 +57,6 @@ const OWN_REVIEWS_MAX = 50;
 export const UNCLEAR_MS = 10 * 60_000;
 
 /**
- * The actions done on one head, by profile and kind: written as `pending`
- * before the action, `done` after it. A new head starts with none.
- */
-interface Acts {
-  head: string;
-  /** `base`: the base branch it was done on (none in older records): an approval on another base is settled and dismissed (#settleOtherBase). */
-  done: Record<string, { decision: string; state: 'pending' | 'done' | 'failed'; at: number; base?: string }>;
-}
-
-/**
  * The same pull request as the one decided on: the same head commit and the
  * same base branch. Its title, description and draft flag are checked where
  * they matter. A new commit on the base branch does not count: the changes
@@ -105,82 +65,6 @@ interface Acts {
  */
 export const samePullRequest = (a: { head: string; base: string }, b: { head: string; base: string }): boolean =>
   a.head === b.head && a.base === b.base;
-
-/** The approvals the connector gave and that may still stand: only these are ever dismissed. */
-interface Given extends OwnApproval {
-  profile: string;
-  /** The base branch it was given on (none in older records): on another base it is dismissed, as after a push. */
-  base?: string;
-}
-
-/** What happened to a decision's action, for its check run. */
-export type ActOutcome =
-  | { kind: 'none' }
-  | { kind: 'done'; text: string }
-  | { kind: 'skipped'; text: string };
-
-/** The check runs of one head, by profile: `id` once created; without it, a create may have happened. */
-export interface Checks {
-  head: string;
-  runs: Record<string, { decision: string; id?: number }>;
-}
-
-/** Decisions kept for once_per_head, by profile: for this head, and the title, body and base they were asked with. */
-interface Kept {
-  head: string;
-  byProfile: Record<string, { key: string; decision: Decision }>;
-}
-
-/**
- * The decision comment (docs/github-connector.md#the-decision-comment): the
- * latest decision shown for each profile on this head, and the comment's
- * state. `pending` is the hash of a body being written (recorded before the
- * write); `hash` the body last written; `failed` a body GitHub refused, not
- * tried again.
- */
-interface CommentRecord {
-  head: string;
-  entries: Record<string, Decision>;
-  id?: number;
-  hash?: string;
-  pending?: string;
-  failed?: string;
-}
-
-/**
- * The decisions a person is asked about (docs/github-connector.md#asking-a-person),
- * by profile: kept for this head, read back on every run until the person
- * answered, and never replaced by a new decision on the same head. `close`:
- * the pending ones of an older head (or of a closed pull request), still to
- * be closed in Pointsman.
- */
-export interface Asked {
-  head: string;
-  /**
-   * The decision, and the hash of what it rests on besides the head (#basisOf);
-   * `offered`: the answers offered in the pull request (answers.ts), when answers are on for the profile;
-   * `base`: the base branch it was asked on (answers.ts refuses an answer once it changed; none in older records).
-   */
-  byProfile: Record<string, { decision: Decision; basis: string; offered?: string[]; base?: string }>;
-  /** `since`: when it was listed; `tries`: closes that failed so far; `lastTry`: when the last one failed. */
-  close: { id: string; since: number; tries: number; lastTry: number }[];
-}
-
-/** The output last written to a profile's check run on a head (`shown:<profile>`): a note on it (answers.ts) or its buttons removed keep the rest. */
-export interface Shown {
-  head: string;
-  output: CheckRunOutput;
-}
-
-/** A removal of an older head's buttons, still to be done (#clearButtons). */
-interface Clearing {
-  id: number;
-  profile: string;
-  /** The head of the check run. */
-  head: string;
-  output: CheckRunOutput;
-  tries: number;
-}
 
 /** The heads of a pull request kept for commands (#seeHead), newest last. */
 export const HEADS_KEPT = 100;
@@ -192,26 +76,6 @@ const CLEAR_TRIES = 10;
 const CLOSE_TRIES = 10;
 const CLOSE_MS = 24 * 3600_000;
 const CLOSE_SPACING_MS = 5 * 60_000;
-
-/** What is not acted on: an answer that is not a decision, a test decision, or a question that could not be read back. */
-type NotActed = Exclude<CheckedAnswer, { kind: 'decision' }> | { kind: 'unreadable'; status: string };
-
-/** What the reviews said about a head when they were last read: kept for a run that cannot read them. */
-interface ReviewsSeen {
-  head: string;
-  state: HeadReviews;
-}
-
-/** Rechecks scheduled for this head, by profile. */
-interface Rechecks {
-  head: string;
-  count: Record<string, number>;
-}
-
-/** A failure a later run can fix (GitHub or Pointsman busy or down). The run is tried again. */
-export class RetryError extends Error {
-  override name = 'RetryError';
-}
 
 export type { Decision } from './engine.ts';
 
@@ -1269,43 +1133,6 @@ export class PullRequestWork {
   }
 }
 
-/** An AI answer as the comment keeps it: its type and a small value of a known shape, or nothing. */
-function slimAnswer(a: unknown): { type: string; value: boolean | string | number } | undefined {
-  if (a === null || typeof a !== 'object') return undefined;
-  const { type, value } = a as { type?: unknown; value?: unknown };
-  if (type === 'noul' && typeof value === 'boolean') return { type, value };
-  if (type === 'choice' && typeof value === 'string') return { type, value: value.slice(0, 65) };
-  if (type === 'score' && typeof value === 'number' && Number.isSafeInteger(value)) return { type, value };
-  return undefined;
-}
-
-/** What the comment keeps of a decision: what it shows, nothing more (no fact values), each part small. */
-function slim(d: Decision): Decision {
-  const answers = d.answers !== null && typeof d.answers === 'object' && !Array.isArray(d.answers)
-    ? Object.fromEntries(Object.entries(d.answers as Record<string, unknown>).filter(([k]) => k.length <= 64).slice(0, 20)
-      .map(([k, a]) => [k, slimAnswer(a)]).filter(([, a]) => a !== undefined))
-    : undefined;
-  return {
-    decision_id: d.decision_id, action: d.action, profile: d.profile, profile_version: d.profile_version, rule: d.rule,
-    ...(typeof d.answered_by === 'string' && LOGIN.test(d.answered_by) && { answered_by: d.answered_by }),
-    ...(d.facts && { facts: Object.fromEntries(Object.entries(d.facts).slice(0, 50).map(([k, f]) => [k, { ...(f.missing !== undefined && { missing: f.missing }), ...(f.reason !== undefined && { reason: f.reason.slice(0, 100) }) }])) }),
-    ...(d.review && { review: { status: d.review.status, ...(typeof d.review.final_action === 'string' && { final_action: d.review.final_action }) } }),
-    ...(answers && { answers }),
-  };
-}
-
-const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-
-/** A GitHub failure that may pass becomes a RetryError; others stay errors (logged by the caller, not retried). */
-async function retrying<T>(f: () => Promise<T>): Promise<T> {
-  try {
-    return await f();
-  } catch (err) {
-    if (err instanceof GitHubError && err.retry) throw new RetryError(err.message);
-    throw err;
-  }
-}
-
 /** The ref of a decision about this head. */
 function refOf(target: { repo: string; number: number }, head: string): string {
   return `github:${target.repo}#${target.number}@${head}`;
@@ -1315,99 +1142,3 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** The check run for a decision: neutral, so it never blocks a merge; it says which action was done or why not. */
-function describe(spec: ActionSpec): string {
-  switch (spec.do) {
-    case 'comment': return 'comment written';
-    case 'label': return `labels added: ${spec.labels.join(', ')}`;
-    case 'request_reviewer': return `review requested from ${spec.reviewers.join(', ')}`;
-    case 'approve': return 'approved this commit';
-    case 'keep_approval': return 'approval of this commit kept';
-    case 'copilot_review': return 'review requested from Copilot';
-  }
-}
-
-/** What the check run's title and details show besides the decision (comment.ts). */
-export interface CheckView {
-  signals?: Record<string, Record<string, SignalSpec>> | undefined;
-  /** With the head: the line and the switch in the details. */
-  head?: string;
-  station?: Position | Station;
-  /** A question open in the pull request (answers.ts): the answers offered, and whether the command is on. */
-  asking?: { offered: string[]; command: boolean };
-}
-
-export function checkOutput(d: Decision, outcome: ActOutcome = { kind: 'none' }, view: CheckView = {}): CheckRunOutput {
-  const missing = Object.entries(d.facts ?? {}).filter(([, f]) => f.missing).map(([name, f]) => `\`${name.slice(0, 100)}\` (${clean(f.reason ?? 'missing', 300)})`);
-  const answered = d.review?.status === 'resolved';
-  const action = actionOf(d);
-  // Who answered in the pull request, without "@" (no mention); an answer given in Pointsman's queue names nobody.
-  const by = answered ? answererOf(d) : undefined;
-  const lines = [
-    `Pointsman decided **${d.action}** with the profile \`${d.profile}\` (version ${d.profile_version}), ${d.rule === null ? 'by its default' : `by rule ${d.rule + 1}`}.`,
-    ...(answered ? ['', by ? `Answered by ${by} in the pull request: **${action}**; that answer is the action.` : `A person answered **${action}** in Pointsman's review queue; that answer is the action.`] : []),
-    '',
-    outcome.kind === 'none'
-      ? 'Shadow mode: this check shows the decision and never blocks; Pointsman acts on nothing for it.'
-      : `${outcome.kind === 'done' ? 'Done' : 'Not done'}: ${outcome.text}. This check never blocks.`,
-    ...(missing.length > 0 ? ['', `Missing facts: ${missing.join(', ')}.`] : []),
-    ...(d.review?.status === 'pending' ? ['', 'Waiting for a person: a person checks this decision before it counts. Their answer is used once they give it.'] : []),
-    ...(d.review?.status === 'pending' && view.asking ? ['', askingText(view.asking, view.head ?? '', d.decision_id)] : []),
-    '',
-    `Decision \`${d.decision_id}\``,
-  ];
-  // The signal and the action, as the comment shows them: "🟢 approve", "🔴 review (shadow)".
-  const signal = signalOf(view.signals, d);
-  const title = `${signalMark(signal)} ${action}${d.review?.status === 'pending' ? ': a person checks first' : by ? `: answered by ${by}` : answered ? ': a person\'s answer' : ''}${outcome.kind === 'none' ? ' (shadow)' : ''}`;
-  return {
-    externalId: d.decision_id, conclusion: 'neutral', title, summary: lines.join('\n'),
-    ...(view.head !== undefined && { text: checkText(d, view.head, view.station) }),
-  };
-}
-
-/** How a person answers in the pull request: the buttons, and the command where it is on. */
-function askingText(asking: { offered: string[]; command: boolean }, head: string, decisionId: string): string {
-  const ways = [
-    ...(asButtons(asking.offered) ? ['with a button above'] : []),
-    // The command names the commit and the question, so it never answers a question about a later push or one that replaced this one.
-    ...(asking.command && head ? [`with a comment of one line: ${asking.offered.map((a) => `\`${commandFor(a, head, decisionId)}\``).join(', ')}`] : []),
-  ];
-  return `Answer in the pull request ${ways.join(', or ')}. Only people with write access can answer; not the author of the pull request, and not the person who pushed this commit.`;
-}
-
-/** The login of the person who answered in the pull request, when it is one. */
-function answererOf(d: Decision): string | undefined {
-  return typeof d.answered_by === 'string' && LOGIN.test(d.answered_by) ? d.answered_by : undefined;
-}
-
-/** The check run for a test decision or an answer that is not a decision: neutral, and nothing was done. */
-export function notActedOnOutput(profile: string, answer: NotActed, note?: string): CheckRunOutput {
-  const lines = answer.kind === 'test'
-    ? [
-      `Pointsman answered with a **test decision** for the profile \`${profile}\` (\`test: true\`, decided **${answer.decision.action}**). A test decision is not logged, so nothing was done for it.`,
-      '',
-      'The connector\'s token is probably a test token: give it a token that is not one (scripts/tokens.mjs without --test). This check never blocks.',
-      '',
-      `Decision \`${answer.decision.decision_id}\``,
-    ]
-    : answer.kind === 'unreadable'
-      ? [
-        `Pointsman refused to read back the decision a person was asked about for the profile \`${profile}\` (${answer.status}), so their answer could not be read. Nothing was done for it; it is read again on the next event or recheck.`,
-        '',
-        'This check never blocks.',
-      ]
-      : [
-        `Pointsman's answer for the profile \`${profile}\` is not a decision the connector can use: ${answer.reason}. Nothing was done for it, and it is not tried again until the next event or recheck.`,
-        '',
-        'This check never blocks.',
-      ];
-  if (note) lines.splice(1, 0, '', note);
-  return {
-    externalId: answer.kind === 'test' ? answer.decision.decision_id : answer.kind === 'unreadable' ? 'unreadable-answer' : 'invalid-answer',
-    conclusion: 'neutral',
-    title: answer.kind === 'test' ? 'test decision: nothing done' : answer.kind === 'unreadable' ? 'answer could not be read: nothing done' : 'invalid answer: nothing done',
-    summary: lines.join('\n'),
-    // Replaces the details of an earlier decision on this check run.
-    text: 'No decision to show: nothing was done for this profile. The decision comment shows no decision from this answer.',
-  };
-}
