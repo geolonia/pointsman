@@ -95,8 +95,9 @@ describe('explainProfile: conditions', () => {
     expect(templates.length).toBeGreaterThan(50);
     for (const template of templates) {
       expect(template.split('%').length, template).toBeLessThanOrEqual(2);
-      expect(fillName(template, '"pr"')).toBe(template.replace('%', '"pr"'));
-      expect(fillName(template, '"$&"')).toBe(template.replace('%', () => '"$&"'));
+      // At most one %, so splitting and joining gives the old answer, with the name literal.
+      expect(fillName(template, '"pr"')).toBe(template.split('%').join('"pr"'));
+      expect(fillName(template, '"$&"')).toBe(template.split('%').join('"$&"'));
     }
   });
 

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { lookupFacts, resultError } from '../../src/facts';
-import { CodeRabbitFactProvider, queueWait, statedBudget, waitFrom } from '@pointsman/coderabbit';
+import { CodeRabbitFactProvider, COMMAND, PAID, queueWait, RATE_LIMIT, statedBudget, waitFrom } from '@pointsman/coderabbit';
 import { TokenAuth } from '@pointsman/github';
 import { MAX_LOG_READ, type DecisionContext, type LoggedDecision } from '@pointsman/module-api';
 import type { FactSpec } from '../../src/types';
@@ -216,6 +216,28 @@ describe('the budget (coderabbit_budget), by the pull request\'s author', () => 
     expect(finishesWithin(500, () => waitFrom(`available in ${'1'.repeat(100_000)} seconds`))).toBe(Infinity);
     expect(statedBudget('2 reviews are currently available')).toEqual({ available: 2, waitMinutes: null, allowancePerHour: null });
     expect(statedBudget('Nothing about it')).toBeNull();
+  });
+
+  it('commands at the start of a line: the same matches as ^\\s*, in linear time on blank lines', () => {
+    const old = {
+      COMMAND: /^\s*@coderabbitai\b/im,
+      RATE_LIMIT: /^\s*@coderabbitai\s+rate\s+limit\b/im,
+      PAID: /^\s*@coderabbitai\s+(?:full\s+)?review\b[^\n]*--use-credits\b/im,
+    };
+    const bodies = [
+      '@coderabbitai review', '  @coderabbitai rate limit', 'text\n\n  @coderabbitai rate limit', 'text @coderabbitai rate limit',
+      '\r\n\t@coderabbitai full review --use-credits', 'x\u2028 @coderabbitai review --use-credits', '\u00a0@coderabbitai review',
+      '\f@coderabbitai\n\nrate limit', 'a\n \n b @coderabbitai review', '@coderabbitai review\n--use-credits', '',
+    ];
+    for (const body of bodies) {
+      expect(COMMAND.test(body), body).toBe(old.COMMAND.test(body));
+      expect(RATE_LIMIT.test(body), body).toBe(old.RATE_LIMIT.test(body));
+      expect(PAID.test(body), body).toBe(old.PAID.test(body));
+    }
+    // A comment of blank lines (GitHub allows 65,536 characters): seconds per pattern before.
+    for (const blank of ['\n'.repeat(65_536), ' \n'.repeat(32_768)]) {
+      for (const re of [COMMAND, RATE_LIMIT, PAID]) expect(finishesWithin(500, () => re.test(blank))).toBe(false);
+    }
   });
 });
 

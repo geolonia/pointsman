@@ -509,15 +509,6 @@
   failure atomicity and concurrency; the code citations into
   `packages/github/src/snapshot.ts`, moved to their lines after this
   change (the validator was not run for this amendment). No new question.
-  The open CodeQL alerts on main (polynomial backtracking and string
-  replacements, in pull-request lockfile lines, CodeRabbit comments, the
-  word templates of explanations and operator URLs) are fixed without a
-  regex that can backtrack, with the same answers; one change is stricter:
-  a `pnpm-lock.yaml` `version:` line that cannot be read (a quote in the
-  middle) now counts as a change of source for `github_bump`, where it was
-  not checked. No claim changed; the code citations into the changed files
-  moved to their lines, and the one for whole CodeRabbit blocks names
-  `outsideBlocks`, which replaced the regex.
   Amended 2026-11-24 a fourteenth time (still bound to `v0.18.0`), with the
   rest of the threat-model suggestions of the review of 2026-11: the other
   suggestions were applied by the amendments listed above; this one adds
@@ -527,6 +518,19 @@
   and the one `console.warn` in the GitHub facts), and states which engine
   version the maintainer's deployment runs (§1.2). Still open: the
   re-binding to a release and the backtest Q49 promised.
+  Amended 2026-11-24 a fifteenth time (still bound to `v0.18.0`) for the
+  open CodeQL alerts on main (polynomial backtracking and string
+  replacements, in pull-request lockfile lines, CodeRabbit comments, the
+  word templates of explanations and operator URLs): they are fixed
+  without a regex that can backtrack, with the same answers; one change is stricter:
+  a `pnpm-lock.yaml` `version:` line that cannot be read (a quote in the
+  middle) now counts as a change of source for `github_bump`, where it was
+  not checked. No claim changed; the code citations into the changed files
+  moved to their lines, and the one for whole CodeRabbit blocks names
+  `outsideBlocks`, which replaced the regex; three more patterns in
+  `packages/coderabbit/src/budget.ts` that rescanned blank lines (the
+  commands at a line start) are linear too, with the same matches (the
+  validator was not run for this amendment). No new question.
   The last of the large files of pointsman#265:
   `packages/fiware/src/bridge.ts` keeps the request and queue entry points
   and the public names; routes, types, sending, the broker client,
@@ -1466,7 +1470,7 @@ they are security-relevant.
 | `engine-facts` `github_copilot`, `github_app_approval` reads | the pull request's reviews (REST) and its review requests and review threads (GraphQL) | partly — reviews and requests are written by whoever may review or request; GitHub records the author's account | data | none — only reviews and requests of the service's own bot account count: Copilot's login and account id; for `github_app_approval` the account type Bot, the login `<app>[bot]` and, with `bot_id`, the account id (`P-SERVICE-ACCOUNT-ONLY`); reviews are read up to 5 pages, then the pull request again (a push in between is `stale`); more than 100 review requests fails the fact | *(documented, docs/profile-format.md `github_copilot` and `github_app_approval` rows; "Missing GitHub facts", `stale`)* |
 | `engine-facts` `github_app_approval` | the fact's `app` slug and `bot_id` in the profile | no — authored by the integrator, validated before publication | resource-name | the slug must match `APP_SLUG`; set `bot_id`, else an app that took over a deleted app's slug counts too (`R-APP-APPROVAL-BOT`) | *(documented, docs/profile-format.md "GitHub pull requests" settings table, `bot_id`: "Set it")* |
 | `engine-facts` CodeRabbit reads | the reviews, conversation comments, the head commit's status history, review threads, the editors of comments and reviews (GraphQL), the base-to-commit comparisons for `rebase_only` (since pointsman#236, `v0.18.0`, also the base branch's own comparison between the two merge bases, without file contents), and the head statuses of the 5 newest other pull requests of the repository | partly — anyone who may comment writes comments; CodeRabbit's bot writes its own; people with write access can edit a bot's comment | data, size | none — only CodeRabbit's account counts (reviews and statuses by its login and account id, comments by its bot through its GitHub App); when anyone else last edited one of its comments or reviews, or the editors cannot be read, or (since pointsman#229, `v0.17.1`) the editors are read with other text than the comment or review itself (an edit between the two reads), the fact is missing; reviews and comments up to 5 pages, statuses up to 3 pages, editors up to 100 (`P-SERVICE-ACCOUNT-ONLY`, `P-FACT-LOOKUP-BOUNDED`); CodeRabbit's text is parsed for its stated budget, price and billable count, which are what it stated (`D-SERVICE-STATE-AS-STATED`) | *(documented, docs/profile-format.md "CodeRabbit reviews")* |
-| `engine-facts` CodeRabbit reads | the pull request's description (`ignored`) and commands in comments (`@coderabbitai rate limit`, a paid review with `--use-credits`) | **yes (pull-request author, and commenters)** | data | none — `ignored` is the author's own statement, read outside CodeRabbit's own summary blocks, and since pointsman#217 (`v0.15.0`) only whole blocks (start and end marker) are left out, as the GitHub connector does, so a lone start marker hides nothing (`packages/coderabbit/src/coderabbit.ts:39`); a budget reply counts only when every command in the 10 minutes before it was the author's; a paid review command counts only from the author, an organization owner or member, or an app in `payer_apps`, and only when CodeRabbit acted on the head within 10 minutes; since pointsman#236 (`v0.18.0`) an edited one counts from its last edit, and only when its author made that edit (`packages/coderabbit/src/budget.ts:264`) | *(documented, docs/profile-format.md "CodeRabbit reviews", `ignored`, `coderabbit_budget`, `paid_for_head`)* |
+| `engine-facts` CodeRabbit reads | the pull request's description (`ignored`) and commands in comments (`@coderabbitai rate limit`, a paid review with `--use-credits`) | **yes (pull-request author, and commenters)** | data | none — `ignored` is the author's own statement, read outside CodeRabbit's own summary blocks, and since pointsman#217 (`v0.15.0`) only whole blocks (start and end marker) are left out, as the GitHub connector does, so a lone start marker hides nothing (`packages/coderabbit/src/coderabbit.ts:39`); a budget reply counts only when every command in the 10 minutes before it was the author's; a paid review command counts only from the author, an organization owner or member, or an app in `payer_apps`, and only when CodeRabbit acted on the head within 10 minutes; since pointsman#236 (`v0.18.0`) an edited one counts from its last edit, and only when its author made that edit (`packages/coderabbit/src/budget.ts:267`) | *(documented, docs/profile-format.md "CodeRabbit reviews", `ignored`, `coderabbit_budget`, `paid_for_head`)* |
 | `engine-facts` facts from the decision log | the asking client's earlier decisions (`DecisionContext.log.recent`): id, time, ref, profile, action and facts | no — the engine's own records of that client, made from earlier lookups; their values came from GitHub and the client's own states | serialized-state | none — only the asking client's decisions, of profiles its token may use, not discarded, at most 1,000 per read, none for a test token (`P-LOG-FACTS-OWN-CLIENT`); a full read makes the CodeRabbit facts missing; the read is not a snapshot (`D-LOG-FACTS-NOT-ATOMIC`); what earlier decisions are found by is up to the module: the CodeRabbit facts find the queue's history, the spend and `taken_by_other_pr` by their fact's name, and the budget readings by their fields under any fact name, always among the client's decisions of the same profile (documented since pointsman#217, `v0.15.0`; the code is that of pointsman#167) | *(documented, docs/modules.md "Facts from the decision log")* |
 | `/mcp` | `Authorization` header: `pm_` API token or OAuth access token | yes | data | none — API tokens go to the token store, other tokens to the OAuth server (`P-AUTH-REQUIRED`); since pointsman#236 (`v0.18.0`) a grant without the person's GitHub account id, made by an earlier version, is refused, so the person logs in again (`src/oauth.ts:101`) | *(documented, docs/mcp.md "Authentication")* |
 | `/mcp` `list_profiles` | none | — | — | — | *(documented, docs/mcp.md "Tools")* |
