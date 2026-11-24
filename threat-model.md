@@ -503,7 +503,8 @@
   with replay requests in `src/replay-request.ts` and callback delivery in
   `src/callback-delivery.ts` (moved, not changed); no claim changed; the
   `engine-callbacks` component names the new file, and the code citations
-  into the changed files moved to their lines.
+  into the changed files moved to their lines (also the two written as
+  "lines N and M of `src/app.ts`", one of which was already off).
   The second part of pointsman#265 (duplicated helpers on shared code:
   the bridge's headers, hashes and properties, GitHub's API base, headers
   and `isObject`, `FACTS_MODE`, the error body, and the scripts' server-URL
@@ -1782,7 +1783,7 @@ what voids it.
   Voided by: nothing. Search:
   `grep -n "app\.\(get\|post\|all\|use\)(" src/app.ts` — every `/v1/*` route
   is registered after the `app.use('/v1/*', …)` middleware at
-  `src/app.ts:64`; `/mcp` authenticates on lines 247 (OAuth resource server) and 249 (API tokens) of `src/app.ts`; the remaining
+  `src/app.ts:64`; `/mcp` authenticates on lines 250 (OAuth resource server) and 252 (API tokens) of `src/app.ts`; the remaining
   routes are the OAuth flow (which issues grants only after GitHub membership)
   and the 404 handler. An internal call is not an HTTP request and carries
   no token; who may make one is `P-INTERNAL-CLIENT-FROM-ENGINE`.
@@ -1822,7 +1823,7 @@ what voids it.
   Tier: security-critical. *(documented, README "API tokens": "A test token
   may only decide, list its profiles and explain them over the REST API,
   not over MCP, and gets no callbacks")*. Voided by: nothing. Search:
-  `grep -n "\.test" src/app.ts src/mcp.ts src/decide.ts` — the checks on lines 38 and 225 of `src/app.ts`, the unlogged return at
+  `grep -n "\.test" src/app.ts src/mcp.ts src/decide.ts` — the checks on lines 74 and 244 of `src/app.ts`, the unlogged return at
   `src/decide.ts:253`, and the callback refusal in `makeDecision` (`src/decide.ts`). A test token
   also cannot send `decisions` or decide a profile with `requires`, so it
   never reads logged decisions (`makeDecision`, docs/decision-chains.md).
