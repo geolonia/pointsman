@@ -274,7 +274,9 @@ reads their completed Tasks as the person's answer:
    `reviewedAt` (the Task's `dateModified`), then, in a second write,
    `reviewStatus` `resolved`. The subscription below watches `reviewStatus`,
    so its notification comes only once the rest is stored; a broker may not
-   notify when a retry writes the same value again (#347).
+   notify when a retry writes the same value again (#347). A Decision that
+   an earlier bridge left `resolved` with attributes missing gets them, and
+   the bridge then runs step 4 itself, since `reviewStatus` does not change.
 4. The broker notifies `/reviews` about the Decision, and the steps above do
    the rest: Pointsman, the entity's result, the bridge's own Task.
 

@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:608cf976e0049c1587ed11e847c25603b94c9ce444fe760341041c827e3b428c"
+prose_version: "threat-model.md@sha256:261ae126d1b0e9bdb5b04aa276e90c25677a7bfb167388187a0f12b45ec0ddbc"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}

@@ -1194,7 +1194,7 @@ describe('work orders from other apps', () => {
   });
   const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  function orders(opts: { entity?: unknown; get?: number; post?: number; postResolved?: number; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null; halfFields?: Record<string, unknown> } = {}) {
+  function orders(opts: { entity?: unknown; get?: number; post?: number; postResolved?: number; pointsman?: (body: unknown, url: string, method: string) => Response; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null; halfFields?: Record<string, unknown> } = {}) {
     let status = opts.decisionStatus ?? 'pending';
     // A resolved Decision is complete (another app's) unless a test says not
     // (finalAction null: an update a 207 cut short); halfFields replaces it.
@@ -1203,13 +1203,14 @@ describe('work orders from other apps', () => {
       : {});
     const t = setup({
       route: { decisionEntity: true, task: { actions: ['review', 'urgent'] }, reviewActions: ['review', 'urgent'] },
+      ...(opts.pointsman && { pointsman: opts.pointsman }),
       handler: (c) => {
         if (c.method === 'GET' && c.url.includes(encodeURIComponent(R))) {
           return opts.get ? new Response(null, { status: opts.get }) : Response.json(opts.entity ?? { id: R, type: 'RoadRestriction', check: pending });
         }
         if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           expect(c.headers.get('link')).toContain(DECISION_CONTEXT);
-          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status), ...fields });
+          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', used: { type: 'Relationship', object: R }, reviewStatus: P(status), ...fields });
         }
         if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           // Two writes: the review attributes, then reviewStatus (postResolved answers that one).
@@ -1354,6 +1355,17 @@ describe('work orders from other apps', () => {
     expect(await (await noAt.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
     const sameAction = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('app:other') } });
     expect(await (await sameAction.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+  });
+
+  it('finishing an earlier bridge\u2019s half write runs the review itself: no notification may come (#347)', async () => {
+    const t = orders({
+      decisionStatus: 'resolved', finalAction: null,
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+    });
+    expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    // No second reviewStatus write; Pointsman gets the person's answer as /reviews would send it.
+    expect(t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision')).map((c) => Object.keys(c.body as object))).toEqual([['@context', 'finalAction', 'reviewedBy', 'reviewedAt']]);
+    expect(t.calls.find((c) => c.url.endsWith('/resolve'))?.body).toEqual({ action: 'publish', correct: {}, by: 'redmine:city-a#42' });
   });
 
   it('a 207 on either Decision write leaves it pending, and the retry writes both (#347)', async () => {

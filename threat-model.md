@@ -529,7 +529,9 @@
   its own `finalAction` and another attribute missing; a Task cancelled
   with another `statusLabel`) instead of taking it as done. A work order
   writes the Decision's `reviewStatus: resolved` last, in a write of its
-  own, so the `/reviews` notification it starts carries a complete Decision. Changed: the bridge's
+  own, so the `/reviews` notification it starts carries a complete Decision;
+  when it finishes a Decision an earlier bridge left resolved but
+  incomplete, it runs the `/reviews` step itself. Changed: the bridge's
   matrix row for its recursive topology (prose, YAML). No citation moved;
   the validator was not run for this amendment. No new question.
   Amended 2026-11-24 a fifteenth time (still bound to `v0.18.0`) for the

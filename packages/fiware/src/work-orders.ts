@@ -4,7 +4,7 @@
 
 import { brokerRequest, readHeaders, updatedAll } from './broker.ts';
 import { DECISION_CONTEXT } from './decision-entity.ts';
-import { dateValue, isDateTime } from './reviews.ts';
+import { dateValue, handleReview, isDateTime } from './reviews.ts';
 import { retryable, send } from './send.ts';
 import { CORE_CONTEXT, type Entity, P, valueOf } from './shared.ts';
 import { OWN_TASK } from './tasks.ts';
@@ -139,13 +139,16 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
   // "resolved" is stored only once the rest is, and its notification carries
   // a complete Decision (#347). A 207 on either leaves it pending for the retry.
   const context = [DECISION_CONTEXT, CORE_CONTEXT];
-  const res = await brokerRequest('POST', decision, config, {
-    '@context': context,
-    finalAction: P(finalAction),
-    reviewedBy: P(by),
-    reviewedAt: P({ '@type': 'DateTime', '@value': modified }),
-  });
+  const review = { finalAction: P(finalAction), reviewedBy: P(by), reviewedAt: P({ '@type': 'DateTime', '@value': modified }) };
+  const res = await brokerRequest('POST', decision, config, { '@context': context, ...review });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
+  if (valueOf(known.reviewStatus) === 'resolved') {
+    // Finishing an earlier bridge's half write: reviewStatus does not change,
+    // so no notification may come. Run /reviews' step here (safe to repeat).
+    const done = await handleReview({ ...known, id: decision, type: 'Decision', reviewStatus: P('resolved'), ...review }, config);
+    if ('error' in done) return { ...done, id };
+    return { id, resolves: decision, finalAction };
+  }
   const resolved = await brokerRequest('POST', decision, config, { '@context': context, reviewStatus: P('resolved') });
   if (!updatedAll(resolved)) return { id, error: `broker refused the Decision update: ${resolved.status}`, retry: retryable(resolved.status) };
   return { id, resolves: decision, finalAction };
