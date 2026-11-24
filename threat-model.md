@@ -1188,7 +1188,7 @@ modeled tree.
   (`packages/facts-valhalla/src/router.ts`,
   operator URL), the client-supplied `callback_url` (`src/callbacks.ts:78`),
   `github.com` and `api.github.com` (`src/oauth.ts`), `api.github.com` for
-  GitHub and CodeRabbit facts (`packages/github/src/snapshot.ts` through `packages/github/src/requests.ts`, with the fixed `API` constant of `packages/github/src/github-http.ts`; GET
+  GitHub and CodeRabbit facts (`packages/github/src/requests.ts`, `auth.ts` and `snapshot.ts`, with the fixed `API` constant of `packages/github/src/github-http.ts`; GET
   requests to the REST API, POST requests to `/graphql` with the two
   queries defined in `packages/github/src/reviews.ts`, never a mutation,
   and one POST that creates a GitHub App installation
@@ -2010,7 +2010,7 @@ what voids it.
   `unbounded-allocation`. Tier: correctness-only.
   *(documented, docs/profile-format.md "One snapshot"; maintainer, 2026-10)*.
   Voided by: nothing found. Search:
-  `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" packages/module-api/src/capabilities.ts packages/facts-gsi/src/provider.ts packages/facts-valhalla/src/router.ts packages/github/src/definition.ts packages/github/src/snapshot.ts packages/github/src/codeowners.ts`
+  `grep -n "MAX_\|> 16\|> 9\|TIMEOUT" packages/module-api/src/capabilities.ts packages/facts-gsi/src/provider.ts packages/facts-valhalla/src/router.ts packages/github/src/definition.ts packages/github/src/snapshot.ts packages/github/src/auth.ts packages/github/src/codeowners.ts`
   — the limits at `packages/module-api/src/capabilities.ts:23`, `packages/github/src/definition.ts:93` (GitHub),
   `packages/facts-gsi/src/provider.ts:117`, `packages/facts-gsi/src/provider.ts:160`, `packages/facts-gsi/src/provider.ts:161`, `packages/facts-valhalla/src/router.ts:27`,
   `packages/github/src/snapshot.ts:31`, `packages/github/src/snapshot.ts:33`, `packages/github/src/snapshot.ts:41` and, for
