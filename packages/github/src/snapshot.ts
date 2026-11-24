@@ -3,7 +3,8 @@
 // modules (snapshotOf). The pull request and its commits are read once and
 // checked against the requested head; then only the parts the facts need,
 // each once. A push or a new base while a list is read makes the facts
-// stale. The answers are checked in answers.ts.
+// stale, and for the file list also a base branch that moved to another
+// commit. The answers are checked in answers.ts.
 
 import { FactError, FactStaleError, FactUnavailableError, type FactScope } from '@pointsman/module-api';
 import { GITHUB_TIMEOUT_MS, type PullRequestRef } from './definition';
