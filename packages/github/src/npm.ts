@@ -118,8 +118,12 @@ export class TimeScanner {
   }
 }
 
-/** The address of a package's document: a scoped name keeps its "@", its "/" is encoded. */
-export const documentUrl = (name: string): string => `${REGISTRY}/${name.replace('/', '%2F')}`;
+/**
+ * The address of a package's document: a scoped name keeps its "@", its "/"
+ * is encoded. Names are checked before (NPM_NAME in bump.ts: at most one
+ * "/"), so every "/" is the scope's.
+ */
+export const documentUrl = (name: string): string => `${REGISTRY}/${name.replaceAll('/', '%2F')}`;
 
 /**
  * When each version of a package was published (milliseconds since 1970),

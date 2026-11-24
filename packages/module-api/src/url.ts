@@ -5,6 +5,13 @@ const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
+/** A URL without its trailing slashes (any number), as .replace(/\/+$/, '') but in linear time. */
+export function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end--;
+  return url.slice(0, end);
+}
+
 /**
  * Checks a server base URL: https, or http for a loopback host (local
  * development). No credentials, query or fragment. The value has no trailing
@@ -24,5 +31,5 @@ export function checkServerUrl(raw: string): Parsed<string> {
   if (url.search || url.hash || raw.includes('?') || raw.includes('#')) {
     return { ok: false, error: 'must not have a query or fragment' };
   }
-  return { ok: true, value: url.toString().replace(/\/+$/, '') };
+  return { ok: true, value: withoutTrailingSlashes(url.toString()) };
 }

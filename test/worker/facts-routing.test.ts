@@ -1,13 +1,13 @@
 // Detour facts from Valhalla (packages/facts-valhalla/src/router.ts) with a fake server.
 
-import { providerOf } from './helpers';
+import { finishesWithin, providerOf } from './helpers';
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { ConfigError } from '../../src/app';
 import { FactError, lookupFacts, type Geometry } from '../../src/facts';
 import { GsiFactProvider } from '@pointsman/facts-gsi';
 import { inside, ValhallaFactProvider, ValhallaRouter } from '@pointsman/facts-valhalla';
-import { distance } from '@pointsman/module-api';
+import { checkServerUrl, distance, withoutTrailingSlashes } from '@pointsman/module-api';
 import { depsFor } from '../../src/index';
 
 /** The spatial provider behind the deployment's fact router. */
@@ -415,5 +415,24 @@ describe('FACTS_ROUTING_URL', () => {
     expect(() => depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: key })).toThrow(ConfigError);
     // An empty secret counts as unset.
     expect(providerOf(depsFor({ ...base, FACTS_MODE: 'gsi', FACTS_ROUTING_API_KEY: '' }), '@pointsman/facts-gsi')).toBeInstanceOf(GsiFactProvider);
+  });
+});
+
+describe('a server URL without its trailing slashes (router, connector, bridge)', () => {
+  it('drops every trailing "/", as .replace(/\\/+$/, \'\') did, in linear time', () => {
+    // The answers of the regular expression this replaced (CodeQL js/polynomial-redos).
+    for (const [url, out] of [
+      ['https://valhalla.example.org', 'https://valhalla.example.org'],
+      ['https://valhalla.example.org/', 'https://valhalla.example.org'],
+      ['https://valhalla.example.org/route///', 'https://valhalla.example.org/route'],
+      ['https://valhalla.example.org/a/b', 'https://valhalla.example.org/a/b'],
+      ['///', ''],
+      ['', ''],
+    ]) expect(withoutTrailingSlashes(url!), url).toBe(out);
+    expect(checkServerUrl('https://valhalla.example.org/route//')).toEqual({ ok: true, value: 'https://valhalla.example.org/route' });
+    // Many "/" not at the end (quadratic before: seconds).
+    const long = `https://x.example.org/${'/'.repeat(100_000)}a`;
+    expect(finishesWithin(500, () => withoutTrailingSlashes(long))).toBe(long);
+    expect(finishesWithin(500, () => withoutTrailingSlashes(`https://x.example.org${'/'.repeat(100_000)}`))).toBe('https://x.example.org');
   });
 });

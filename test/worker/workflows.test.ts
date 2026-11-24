@@ -190,7 +190,7 @@ jobs:
 });
 
 describe('secrets (secrets_new)', () => {
-  const job = (env: string) => target(`      - run: ./publish\n        env:\n${env}`).replace('jobs:', 'jobs:');
+  const job = (env: string) => target(`      - run: ./publish\n        env:\n${env}`);
   it('secrets a privileged job reads at head but not before', () => {
     const before = job("          A: '${{ secrets.NPM_TOKEN }}'\n");
     const after = job("          A: '${{ secrets.npm_token }}'\n          B: '${{ secrets[''DEPLOY_KEY''] }}'\n");

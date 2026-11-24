@@ -38,10 +38,19 @@ const inGroup = (pages, dir) => pages
   .filter((p) => p.slug === dir || p.slug.startsWith(`${dir}/`))
   .sort((a, b) => order(a) - order(b) || a.data.title.localeCompare(b.data.title));
 
+/** HTML comments removed, again until none is left: removing one can join the text around it into another. */
+function withoutComments(text) {
+  let before;
+  do {
+    before = text;
+    text = text.replace(/<!--[\s\S]*?-->\n?/g, '');
+  } while (text !== before);
+  return text;
+}
+
 /** Markdown of a page for an AI tool: site links absolute, diagrams as their title, no comments. */
-function plain(body) {
-  return body
-    .replace(/<!--[\s\S]*?-->\n?/g, '')
+export function plain(body) {
+  return withoutComments(body)
     .replace(/<svg[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<\/svg>/g, '(Diagram: $1)')
     .replace(/\]\(\//g, `](${SITE}/`)
     .replace(/\n{3,}/g, '\n\n')

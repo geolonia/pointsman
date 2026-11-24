@@ -252,6 +252,16 @@ function levelSentence(subject: string, op: Op, n: number, q: Question, w: Words
   return w === W.ja ? `${subject}が ${words[op](at)}` : `${subject} is ${words[op](at)}`;
 }
 
+/**
+ * A module's words with the name in place of their "%" (the first one; a
+ * template has one). The name is put in as it is: String.replace would read
+ * "$&" or "$'" in it as patterns.
+ */
+export function fillName(template: string, name: string): string {
+  const at = template.indexOf('%');
+  return at === -1 ? template : template.slice(0, at) + name + template.slice(at + 1);
+}
+
 function factSentence(ref: FactOperand, op: Op, lit: Value, ctx: Ctx): string {
   const { w } = ctx;
   const name = w.q(ref.fact);
@@ -263,12 +273,12 @@ function factSentence(ref: FactOperand, op: Op, lit: Value, ctx: Ctx): string {
   }
   const words = spec && factRegistry().type(spec.type)?.words[w.lang].fields;
   const part = words && Object.hasOwn(words, ref.field) ? words[ref.field] : undefined;
-  if (Array.isArray(part)) return part[truth(op, lit) ? 0 : 1].replace('%', name);
+  if (Array.isArray(part)) return fillName(part[truth(op, lit) ? 0 : 1], name);
   if (typeof part === 'string') {
-    const subject = part.replace('%', name);
+    const subject = fillName(part, name);
     return typeof lit === 'string' ? (op === '==' ? w.is : w.isNot)(subject, quoted(lit, w)) : numeric(subject, op, num(lit as number), w);
   }
-  if (part) return numeric(part.subject.replace('%', name), op, `${num(lit as number)} ${part.unit}`, w);
+  if (part) return numeric(fillName(part.subject, name), op, `${num(lit as number)} ${part.unit}`, w);
   return numeric(`${name}.${ref.field}`, op, String(lit), w);
 }
 

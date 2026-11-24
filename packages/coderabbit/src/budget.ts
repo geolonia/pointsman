@@ -28,7 +28,8 @@ export function waitFrom(text: string): number | null {
   const m = /available in:?\s*((?:\d+\s*(?:hours?|minutes?|seconds?)[\s,]*(?:and\s+)?)+)/i.exec(text);
   if (!m) return null;
   let seconds = 0;
-  for (const [, n, unit] of m[1]!.matchAll(/(\d+)\s*(hour|minute|second)/gi)) {
+  // (?<!\d): a number starts where its digits start, never inside them (linear on a long run of digits).
+  for (const [, n, unit] of m[1]!.matchAll(/(?<!\d)(\d+)\s*(hour|minute|second)/gi)) {
     seconds += Number(n) * ({ hour: 3600, minute: 60, second: 1 } as Record<string, number>)[unit!.toLowerCase()]!;
   }
   return Math.ceil(seconds / 60);
@@ -65,9 +66,12 @@ export function statedPrice(body: string): number | null {
 }
 
 const REPLY = '<!-- This is an auto-generated reply by CodeRabbit -->';
-const COMMAND = /^\s*@coderabbitai\b/im;
-const RATE_LIMIT = /^\s*@coderabbitai\s+rate\s+limit\b/im;
-const PAID = /^\s*@coderabbitai\s+(?:full\s+)?review\b[^\n]*--use-credits\b/im;
+// A command at the start of a line, after white space that does not end the
+// line: the same matches as `^\s*` in multiline mode, without rescanning a run
+// of blank lines from each of their starts (anyone can write a comment).
+export const COMMAND = /^[^\S\r\n\u2028\u2029]*@coderabbitai\b/im;
+export const RATE_LIMIT = /^[^\S\r\n\u2028\u2029]*@coderabbitai\s+rate\s+limit\b/im;
+export const PAID = /^[^\S\r\n\u2028\u2029]*@coderabbitai\s+(?:full\s+)?review\b[^\n]*--use-credits\b/im;
 
 const sameLogin = (a: string, b: string) => a !== '' && a.toLowerCase() === b.toLowerCase();
 

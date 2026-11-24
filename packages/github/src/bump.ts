@@ -195,16 +195,55 @@ export function manifestBumps(manifest: string, before: string, after: string): 
 const SOURCE_SPEC = /[:/]/;
 
 /**
+ * Whether a text has a URL with a scheme: "://" right after a run of scheme
+ * characters (letters, digits, "+", ".", "-") with a letter in it. The same
+ * answer as /[A-Za-z][A-Za-z0-9+.-]*:\/\//, in linear time: the runs before
+ * the "://"s do not overlap (":" ends a run), so each character is looked
+ * at a bounded number of times, however long the line.
+ */
+function hasUrl(text: string): boolean {
+  for (let at = text.indexOf('://'); at !== -1; at = text.indexOf('://', at + 1)) {
+    for (let i = at - 1; i >= 0 && /[A-Za-z0-9+.-]/.test(text[i]!); i--) {
+      if (/[A-Za-z]/.test(text[i]!)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Whether a changed lockfile line may change where a package comes from: a
  * URL other than the npm registry, a source key (tarball, repo, commit,
  * directory, registry), or a protocol such as git+, file:, link: or npm:.
  */
 export function changesSource(line: string): boolean {
   const rest = line.split(`${NPM_REGISTRY}/`).join('');
-  if (/[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(rest) || /(?:^|["'\s])\/\//.test(rest)) return true;
+  if (hasUrl(rest) || /(?:^|["'\s])\/\//.test(rest)) return true;
   if (/(?:^|[\s{,"'])(?:tarball|repo|commit|directory|registry)["']?\s*:/.test(rest)) return true;
   // Also after "@", for an alias in a pnpm-lock.yaml key (name@npm:other@1.0.0).
   return /(?:^|[\s"'@])(?:git\+|git:|github:|gitlab:|bitbucket:|file:|link:|npm:|workspace:)/.test(rest);
+}
+
+/**
+ * The value of a pnpm-lock.yaml `version:` line (indented), maybe in single
+ * quotes; null for any other line. The same value as the capture of
+ * /^\s+version:\s*'?([^']*)'?\s*$/ and null where it does not match, in
+ * linear time: leading white space is dropped; trailing white space stays
+ * in an unquoted value (so it is not a pinned version), as it did there.
+ */
+export function lockVersion(text: string): string | null {
+  const line = text.trimStart();
+  if (line.length === text.length || !line.startsWith('version:')) return null;
+  const rest = line.slice('version:'.length);
+  const blank = (s: string) => s.trim() === '';
+  const parts = rest.split("'");
+  if (parts.length === 1) return rest.trimStart();
+  if (parts.length === 2) {
+    // One quote: an opening one (only white space before it), else a closing one (only white space after it).
+    if (blank(parts[0]!)) return parts[1]!;
+    return blank(parts[1]!) ? parts[0]!.trimStart() : null;
+  }
+  if (parts.length === 3 && blank(parts[0]!) && blank(parts[2]!)) return parts[1]!;
+  return null;
 }
 
 /** A version as a lockfile pins it: no range, no alias. */
@@ -246,10 +285,10 @@ export function lockfileChanges(file: string, patch: string): { sourceChanged: b
       // An escape ("\u0065", "\/") can spell a field or URL the checks here
       // do not see; pnpm writes none in these lines.
       if (changesSource(text) || text.includes('\\')) sourceChanged = true;
-      const v = /^\s+version:\s*'?([^']*)'?\s*$/.exec(text);
-      if (v) {
-        if (!PINNED.test(stripPeers(v[1]!))) sourceChanged = true;
-      }
+      const v = lockVersion(text);
+      if (v !== null && !PINNED.test(stripPeers(v))) sourceChanged = true;
+      // A version line that cannot be read (a quote in the middle) is not checked, so it counts as a change.
+      if (v === null && /^\s+version:/.test(text)) sourceChanged = true;
       const key = PNPM_KEY.exec(text);
       if (key && mark === '+') add(key[1]!, key[2]!);
       else if (!key && PNPM_BLOCK_KEY.test(text)) sourceChanged = true;

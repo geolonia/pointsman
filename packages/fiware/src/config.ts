@@ -3,7 +3,7 @@
 // calls Pointsman at POINTSMAN_URL; inside the engine Worker it calls the
 // engine in process and POINTSMAN_URL is not used.
 
-import type { EngineApi } from '@pointsman/module-api';
+import { type EngineApi, withoutTrailingSlashes } from '@pointsman/module-api';
 import type { BridgeConfig, BridgeQueue } from './bridge.ts';
 import { parseRoutes, parseWorkOrders } from './bridge.ts';
 export { SETTINGS } from './settings.ts';
@@ -54,7 +54,6 @@ export function configFrom(env: Env, engine?: EngineApi): BridgeConfig {
   }
   // GeonicDB prefers the Bearer token when both are sent; refuse instead of guessing.
   if (env.BROKER_TOKEN && env.BROKER_API_KEY) throw new Error('set BROKER_TOKEN or BROKER_API_KEY, not both');
-  const trim = (u: string) => u.replace(/\/+$/, '');
   const seconds = env.POINTSMAN_TIMEOUT_SECONDS === undefined || env.POINTSMAN_TIMEOUT_SECONDS === '' ? undefined : Number(env.POINTSMAN_TIMEOUT_SECONDS);
   if (seconds !== undefined && (!Number.isInteger(seconds) || seconds < 10 || seconds > 600)) throw new Error('POINTSMAN_TIMEOUT_SECONDS must be a whole number from 10 to 600');
   const timeout = seconds === undefined ? {} : { timeoutMs: seconds * 1000 };
@@ -69,10 +68,10 @@ export function configFrom(env: Env, engine?: EngineApi): BridgeConfig {
     ...(env.BRIDGE_WORK_ORDERS && { workOrders: parseWorkOrders(env.BRIDGE_WORK_ORDERS) }),
     notifySecret: env.NOTIFY_SECRET!,
     pointsman: inEngine
-      ? { url: trim(engine.url), token: env.POINTSMAN_TOKEN!, fetch: (url, init) => engine.fetch(url, init), ...timeout }
-      : { url: trim(env.POINTSMAN_URL!), token: env.POINTSMAN_TOKEN!, ...timeout },
+      ? { url: withoutTrailingSlashes(engine.url), token: env.POINTSMAN_TOKEN!, fetch: (url, init) => engine.fetch(url, init), ...timeout }
+      : { url: withoutTrailingSlashes(env.POINTSMAN_URL!), token: env.POINTSMAN_TOKEN!, ...timeout },
     broker: {
-      url: trim(env.BROKER_URL!),
+      url: withoutTrailingSlashes(env.BROKER_URL!),
       ...(env.BROKER_TOKEN && { token: env.BROKER_TOKEN }),
       ...(env.BROKER_API_KEY && { apiKey: env.BROKER_API_KEY }),
       ...(env.BROKER_TENANT && { tenant: env.BROKER_TENANT }),
