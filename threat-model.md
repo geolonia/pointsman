@@ -509,6 +509,15 @@
   failure atomicity and concurrency; the code citations into
   `packages/github/src/snapshot.ts`, moved to their lines after this
   change (the validator was not run for this amendment). No new question.
+  Amended 2026-11-24 a fourteenth time (still bound to `v0.18.0`), with the
+  rest of the threat-model suggestions of the review of 2026-11: the other
+  suggestions were applied by the amendments listed above; this one adds
+  `explain` to `P-TEST-TOKEN-ISOLATED`, names all six tools in
+  `P-MCP-VISIBILITY`'s search, brings the logging counts to the code
+  (13 in `src/`, 11 for the bridge, 40 for the GitHub connector, 64 hits,
+  and the one `console.warn` in the GitHub facts), and states which engine
+  version the maintainer's deployment runs (§1.2). Still open: the
+  re-binding to a release and the backtest Q49 promised.
   The last of the large files of pointsman#265:
   `packages/fiware/src/bridge.ts` keeps the request and queue entry points
   and the public names; routes, types, sending, the broker client,
@@ -801,6 +810,10 @@ error in the GitHub facts (`P-FACTS-NEVER-GUESSED`,
 connector's approval rules (`P-CONNECTOR-APPROVE-HEAD`) can approve a
 pull request in a live repository; whether the approval is enough to
 merge is the repository's ruleset (`R-CONNECTOR-APPROVE`).
+As of 2026-11-24 the maintainer's deployment runs engine `v0.23.0`, newer
+than this model's binding: the amendments marked "not yet released" up to
+pointsman#328 are in that release, the later ones are not yet deployed
+*(maintainer, 2026-11)*.
 
 Roles, as this model uses them *(maintainer, 2026-10)*:
 
@@ -1312,11 +1325,13 @@ modeled tree.
   connector's tokens too, which it also drops when GitHub refuses one
   (401) or answers 403 (not a rate limit) or 404 *(documented, docs/github-connector.md "Retries")*.
 - **Logging**: the engine writes to the Workers log (`observability`
-  enabled) through `console.error` and `console.log` in 10 places in `src/`,
-  none in the fact modules (the bridge in 9 places, 7 in
+  enabled) through `console.error` and `console.log` in 13 places in `src/` (10 at
+  `v0.18.0`), and in the fact modules only one `console.warn` since
+  pointsman#307, which names a `github_pr` field that could not be read and
+  the error's message (the bridge in 11 places, 9 in
   `packages/fiware/src/bridge.ts` and 2 in `bridge/src/index.ts`; the GitHub
   connector in 15 at `v0.14.2`, at `v0.16.0` and `v0.17.0` in 35, and at
-  `v0.17.1` and `v0.17.2` in 36, and at `v0.18.0` in 39: 21
+  `v0.17.1` and `v0.17.2` in 36, at `v0.18.0` in 39, and now in 40: 22
   in `packages/github/src/connector/pull-request.ts`, 15 in
   `packages/github/src/connector/answers.ts` and 3 in
   `connectors/github/src/index.ts`, plus one `console.warn` for a
@@ -1849,8 +1864,8 @@ what voids it.
   so a plain hash is enough")*. Voided by: nothing. Search:
   `grep -rn "TOKENS\|tokenKey" src scripts/tokens.mjs` — the only write is
   `scripts/tokens.mjs:257` with `tokenKey(hash)`.
-- **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide` and
-  `GET /v1/profiles`; its decisions are marked `test: true`, are not logged,
+- **`P-TEST-TOKEN-ISOLATED`** — a test token may only `POST /v1/decide`,
+  `GET /v1/profiles` and `GET /v1/profiles/{id}/explain`; its decisions are marked `test: true`, are not logged,
   never reach the review queue or the stats, get no callback, and `/mcp`
   refuses the token. Symptom: `x-unlogged-decision-acted-on`, `info-leak`.
   Tier: security-critical. *(documented, README "API tokens": "A test token
@@ -2098,12 +2113,12 @@ what voids it.
   include ... the key"; docs/profile-format.md "The key is never logged and
   never sent to browsers"; "Settings": "The token and the key are never
   logged")*. Voided by: nothing found. Search:
-  `grep -rn "console\.\(log\|error\)" src packages/*/src bridge/src connectors/*/src` — 58 hits at `v0.18.0` (34 at `v0.14.2`):
-  10 in `src` (9 `console.error`, 1 `console.log`), each logging a message
+  `grep -rn "console\.\(log\|error\)" src packages/*/src bridge/src connectors/*/src` — 64 hits on 2026-11-24 (58 at `v0.18.0`, 34 at `v0.14.2`):
+  13 in `src` (12 `console.error`, 1 `console.log`), each logging a message
   built from an error's `message`, a name, a setting's name or a count, or
-  an unexpected error object as the HTTP routes do; 9 of the same kind for
-  the bridge (7 in `packages/fiware/src/bridge.ts`, 2 in
-  `bridge/src/index.ts`); 39 for the GitHub connector (21 in
+  an unexpected error object as the HTTP routes do; 11 of the same kind for
+  the bridge (9 in `packages/fiware/src/bridge.ts`, 2 in
+  `bridge/src/index.ts`); 40 for the GitHub connector (22 in
   `packages/github/src/connector/pull-request.ts`, 15 in
   `packages/github/src/connector/answers.ts`, 3 in
   `connectors/github/src/index.ts`), which log the repository, the pull
@@ -2182,7 +2197,7 @@ what voids it.
   *(documented, docs/mcp.md "Only profiles that set `mcp.visible: true` are
   listed or callable through MCP ... any other profile looks unknown")*.
   Voided by: nothing. Search: `grep -n "visible(" src/mcp.ts` — checked in
-  all four tools.
+  all six tools: `list_profiles`, `explain_profile`, `replay_profile` and `decide` through `visible()`, `get_decision` and `submit_feedback` through `shownDecision`.
 - **`P-OAUTH-ORG-MEMBERSHIP`** — a person gets a grant only after GitHub
   confirms their login and an active membership in one of
   `ALLOWED_GITHUB_ORGS`; since pointsman#236 (`v0.18.0`) the grant also

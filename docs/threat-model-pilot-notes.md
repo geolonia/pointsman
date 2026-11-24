@@ -865,6 +865,22 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   the confidence counts do not change.
 - **Questions**: none.
 
+## The review's threat-model suggestions (2026-11-24)
+
+- **Why**: the security review of 2026-11 listed nine threat-model updates.
+  Most were applied by the amendments that fixed their findings: the base
+  branch (pointsman#270, #339), callbacks (#281), complete answer maps
+  (#313), deploy-watch (#325), outbound fetches (#328), the
+  `INTERNAL_CLIENT` name (#330).
+- **Changed here**: `P-TEST-TOKEN-ISOLATED` lists `explain`;
+  `P-MCP-VISIBILITY`'s search names all six tools; the logging counts
+  match the code (they had drifted since `v0.18.0`, and the GitHub facts
+  log one `console.warn` since #307); §1.2 says which engine version the
+  maintainer's deployment runs.
+- **Still open**: the re-binding to a release, and the backtest with the
+  advisories that Q49 promised.
+- **Questions**: none.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).
