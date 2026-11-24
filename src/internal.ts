@@ -19,7 +19,8 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
-import { ConfigError, deliver, makeDecision, publicRecord, type Deps } from './decide';
+import { deliver } from './callback-delivery';
+import { ConfigError, makeDecision, publicRecord, type Deps } from './decide';
 import { parseFeedback, parseResolution } from './feedback';
 import type { DecisionLog, DecisionRecord, FinalAnswer } from './log';
 import { peopleAnswers } from './policy';
