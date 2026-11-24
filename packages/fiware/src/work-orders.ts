@@ -125,9 +125,14 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
   // Decision since the entity's result was written. Read it, not the result.
   const seen = await brokerRequest('GET', decision, config, undefined, undefined, DECISION_CONTEXT);
   if (!seen.ok) return { id, error: `broker read failed: ${seen.status}`, retry: retryable(seen.status) };
-  // Resolved with no finalAction is a write a 207 cut short (#347): finish it.
+  // A write a 207 cut short (#347) is finished: resolved with no finalAction,
+  // or with this work order's finalAction (and reviewedBy, if stored) and
+  // reviewedBy or reviewedAt missing.
   const known = await seen.json() as Entity;
-  if (valueOf(known.reviewStatus) === 'resolved' && known.finalAction !== undefined) return { id, skipped: 'already resolved' };
+  const ownHalf = valueOf(known.finalAction) === finalAction
+    && (known.reviewedBy === undefined || valueOf(known.reviewedBy) === by)
+    && (known.reviewedBy === undefined || known.reviewedAt === undefined);
+  if (valueOf(known.reviewStatus) === 'resolved' && known.finalAction !== undefined && !ownHalf) return { id, skipped: 'already resolved' };
 
   const res = await brokerRequest('POST', decision, config, {
     '@context': [DECISION_CONTEXT, CORE_CONTEXT],

@@ -79,17 +79,19 @@ export async function putTask(task: Record<string, unknown>, config: BridgeConfi
 
 /**
  * When the decision needs no person, an open Task for the same input values
- * (from a retry or an earlier decision) is cancelled; a done one stays as it
- * is. Returns the failed response, if any.
+ * (from a retry or an earlier decision) is cancelled; a completed or failed
+ * one stays as it is, and a cancelled one gets this label if it has another.
+ * Returns the failed response, if any.
  */
 export async function cancelOpenTask(id: string, action: string, config: BridgeConfig): Promise<Response | null> {
   const found = await brokerRequest('GET', id, config);
   if (found.status === 404) return null;
   if (!found.ok) return found;
-  const known = await found.json() as { progress?: { value?: unknown }; statusLabel?: unknown };
+  const known = await found.json() as { progress?: { value?: unknown }; statusLabel?: { value?: unknown } };
   const progress = known.progress?.value;
-  // Cancelled with no statusLabel is a write a 207 cut short (#347): finish it.
-  if (progress === 'completed' || progress === 'failed' || (progress === 'cancelled' && known.statusLabel !== undefined)) return null;
+  // Cancelled counts as done only with this label: a 207 may have stored
+  // progress and kept the Task's old statusLabel (#347).
+  if (progress === 'completed' || progress === 'failed' || (progress === 'cancelled' && known.statusLabel?.value === action)) return null;
   const updated = await brokerRequest('POST', id, config, {
     '@context': [TASK_CONTEXT, CORE_CONTEXT],
     progress: P('cancelled'),

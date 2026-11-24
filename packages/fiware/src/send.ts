@@ -32,8 +32,9 @@ export function failure(id: string, err: unknown, decision?: string): EntityResu
  * consumer's max_retries, and a direct notification gets 502. Safe to repeat:
  * a retried decide request has the same Idempotency-Key and gets the decision
  * Pointsman logged, and the other writes check what is there first, taking a
- * write a 207 cut short (a resolved Decision without finalAction, a cancelled
- * Task without statusLabel) as not done.
+ * write a 207 cut short (a resolved Decision without finalAction, or with its
+ * own finalAction and another attribute missing; a cancelled Task with
+ * another statusLabel) as not done.
  */
 export function retryable(status: number): boolean {
   return status === 429 || status === 207 || status >= 500;

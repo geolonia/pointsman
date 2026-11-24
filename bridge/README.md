@@ -526,8 +526,10 @@ failure, answered `502` like a 5xx (#347; until 0.24.0 it was
 answered `200` and not tried again). A retry is safe: the decide request has
 the same `Idempotency-Key` and gets the decision Pointsman already logged,
 not a second one (see **Repeats** below). A retry also finishes a write that
-a `207` left half done: a Decision entity resolved without `finalAction`, or
-a Task cancelled without `statusLabel`, is written again, not taken as done.
+a `207` left half done, not taking it as done: a Decision entity resolved
+without `finalAction`, or with the same `finalAction` and `reviewedAt` (or a
+work order's `reviewedBy`) missing, is written again, and so is a Task
+cancelled with another `statusLabel` (the old one a `207` kept) or none.
 In direct mode, a `207` that comes back every time (a broker that always
 refuses one attribute) fails every notification, and GeonicDB then pauses
 the subscription after an hour. With the queue, such a message ends in the

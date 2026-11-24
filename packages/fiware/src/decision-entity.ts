@@ -153,18 +153,22 @@ export function toDecisionEntity(d: Decision, entityId: string, route: Route, no
 /**
  * Marks an existing Decision entity resolved with the person's answer, as
  * toDecisionEntity would have written it, only while it is still pending (or
- * resolved with no finalAction, a write a 207 cut short): a resolution already
- * there (another writer, a work order) is left alone.
+ * when a 207 cut its own earlier write short): a resolution already there
+ * (another writer, a work order) is left alone.
  * Returns the failed response, or null.
  */
 export async function resolveDecisionEntity(id: string, d: Decision, config: BridgeConfig): Promise<Response | null> {
   const seen = await brokerRequest('GET', id, config, undefined, undefined, DECISION_CONTEXT);
   if (!seen.ok) return seen;
   const known = await seen.json() as Entity;
-  // Resolved with no finalAction is a write a 207 cut short (#347): finish it.
-  const halfWritten = valueOf(known.reviewStatus) === 'resolved' && known.finalAction === undefined;
+  const fields = reviewFields(d, 'decision');
+  // A write a 207 cut short (#347) is finished: resolved with no finalAction,
+  // or with this finalAction and an attribute of this write missing.
+  const halfWritten = valueOf(known.reviewStatus) === 'resolved'
+    && (known.finalAction === undefined
+      || (valueOf(known.finalAction) === valueOf(fields.finalAction) && Object.keys(fields).some((name) => known[name] === undefined)));
   if (valueOf(known.reviewStatus) !== 'pending' && !halfWritten) return null;
-  const res = await brokerRequest('POST', id, config, { '@context': [DECISION_CONTEXT, CORE_CONTEXT], ...reviewFields(d, 'decision') });
+  const res = await brokerRequest('POST', id, config, { '@context': [DECISION_CONTEXT, CORE_CONTEXT], ...fields });
   return updatedAll(res) ? null : res;
 }
 

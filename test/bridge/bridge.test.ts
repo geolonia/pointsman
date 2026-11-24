@@ -764,13 +764,18 @@ describe('Task entities', () => {
   it('a resolved retry marks a Decision entity left pending by the first try, and leaves a resolution already there', async () => {
     const resolved = () => Response.json({ ...decision, action: 'urgent', review: { status: 'resolved', final_action: 'reject', resolved_at: '2026-10-26T06:00:00.000Z' } });
     // Resolved with no finalAction: a first try whose update a 207 cut short (#347).
-    for (const [status, written, finalAction] of [['pending', true, undefined], ['resolved', false, 'publish'], ['resolved', true, undefined]] as const) {
+    // Or with this finalAction and reviewedAt missing; another writer's other finalAction stays.
+    const at = P({ '@type': 'DateTime', '@value': '2026-10-26T06:00:00.000Z' });
+    for (const [status, written, finalAction, reviewedAt] of [
+      ['pending', true, undefined, undefined], ['resolved', false, 'publish', undefined], ['resolved', true, undefined, undefined],
+      ['resolved', true, 'reject', undefined], ['resolved', false, 'reject', at],
+    ] as const) {
       const { notify, calls } = setup({
         pointsman: resolved, route: { decisionEntity: true, reviewActions: ['review'] },
         handler: (c) => {
           const body = c.body as { type?: string } | undefined;
           if (c.url === 'https://broker.test/ngsi-ld/v1/entities' && body?.type === 'Decision') return new Response(null, { status: 409 });
-          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: P(status), ...(finalAction && { finalAction: P(finalAction) }) });
+          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: P(status), ...(finalAction && { finalAction: P(finalAction) }), ...(reviewedAt && { reviewedAt }) });
           return undefined;
         },
       });
@@ -914,13 +919,17 @@ describe('Task entities', () => {
     store.tasks.get(id!)!.progress = P('completed');
     await t.notify([entity()]);
     expect(store.tasks.get(id!)!.progress).toEqual(P('completed'));
-    // Cancelled, with its statusLabel: stays. Without one, a cancel a 207 cut short (#347): finished.
-    Object.assign(store.tasks.get(id!)!, { progress: P('cancelled'), statusLabel: P('other') });
+    // Cancelled with this label: nothing written. With the old label kept, or none, a cancel a 207 cut short (#347): finished.
+    Object.assign(store.tasks.get(id!)!, { progress: P('cancelled'), statusLabel: P('publish') });
+    const before = t.calls.length;
     await t.notify([entity()]);
-    expect(store.tasks.get(id!)!.statusLabel).toEqual(P('other'));
-    delete store.tasks.get(id!)!.statusLabel;
-    await t.notify([entity()]);
-    expect(store.tasks.get(id!)).toMatchObject({ progress: P('cancelled'), statusLabel: P('publish') });
+    expect(t.calls.slice(before).some((c) => c.method === 'POST' && c.url.includes('Task'))).toBe(false);
+    for (const label of [P('urgent'), undefined]) {
+      Object.assign(store.tasks.get(id!)!, { progress: P('cancelled'), statusLabel: label });
+      if (!label) delete store.tasks.get(id!)!.statusLabel;
+      await t.notify([entity()]);
+      expect(store.tasks.get(id!)).toMatchObject({ progress: P('cancelled'), statusLabel: P('publish') });
+    }
   });
 
   it('asks for a retry when it cannot read the Task to cancel it', async () => {
@@ -1185,10 +1194,13 @@ describe('work orders from other apps', () => {
   });
   const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null } = {}) {
+  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null; halfFields?: Record<string, unknown> } = {}) {
     let status = opts.decisionStatus ?? 'pending';
-    // A resolved Decision has a finalAction unless a test says not (null: an update a 207 cut short).
-    let finalAction = opts.finalAction === null ? undefined : opts.finalAction ?? (status === 'resolved' ? 'publish' : undefined);
+    // A resolved Decision is complete (another app's) unless a test says not
+    // (finalAction null: an update a 207 cut short); halfFields replaces it.
+    let fields: Record<string, unknown> = opts.halfFields ?? (status === 'resolved' && opts.finalAction !== null
+      ? { finalAction: P(opts.finalAction ?? 'publish'), reviewedBy: P('app:other'), reviewedAt: P('2026-10-09T00:00:00Z') }
+      : {});
     const t = setup({
       route: { decisionEntity: true, task: { actions: ['review', 'urgent'] }, reviewActions: ['review', 'urgent'] },
       handler: (c) => {
@@ -1197,12 +1209,13 @@ describe('work orders from other apps', () => {
         }
         if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           expect(c.headers.get('link')).toContain(DECISION_CONTEXT);
-          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status), ...(finalAction && { finalAction: P(finalAction) }) });
+          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status), ...fields });
         }
         if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           if ((opts.post ?? 204) < 300) {
             status = 'resolved';
-            finalAction = (c.body as { finalAction: { value: string } }).finalAction.value;
+            const { '@context': _, reviewStatus: __, ...written } = c.body as Record<string, unknown>;
+            fields = written;
           }
           return new Response(null, { status: opts.post ?? 204 });
         }
@@ -1329,6 +1342,11 @@ describe('work orders from other apps', () => {
     // Resolved with no finalAction: an update a 207 cut short (#347), finished now.
     const half = orders({ decisionStatus: 'resolved', finalAction: null });
     expect(await (await half.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    // Or with this work order's finalAction (and reviewedBy) but reviewedAt missing; another app's same action stays.
+    const noAt = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('redmine:city-a#42') } });
+    expect(await (await noAt.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    const sameAction = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('app:other') } });
+    expect(await (await sameAction.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
   });
 
   it('refuses a Task id too long to name who resolved it', async () => {
