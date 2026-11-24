@@ -7,6 +7,8 @@
 // routes' work once the token is checked: the HTTP routes (src/app.ts) and
 // internal calls both use them, so both pass the same checks (profile scope,
 // body, idempotency key, who may close) and log the same way.
+// `feedbackAnswer` is POST /v1/decisions/{id}/feedback: it is shared with
+// the MCP tool submit_feedback (src/mcp.ts), not with internal calls.
 //
 // An internal call comes from a connector in the same deployment through a
 // channel of the runtime that is not reachable from outside (on Cloudflare
@@ -18,8 +20,8 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
 import { ConfigError, deliver, makeDecision, publicRecord, type Deps } from './decide';
-import { parseResolution } from './feedback';
-import type { DecisionLog, FinalAnswer } from './log';
+import { parseFeedback, parseResolution } from './feedback';
+import type { DecisionLog, DecisionRecord, FinalAnswer } from './log';
 import { peopleAnswers } from './policy';
 
 /** A route's answer, as status and JSON body. */
@@ -171,6 +173,49 @@ export async function closeAnswer(deps: Deps, client: TokenRecord, id: string): 
   if (!(await deps.log.closeReview(id, client.client))) return notPending();
   return { status: 200, body: { decision_id: id, review: { status: 'superseded' } } };
 }
+
+/** An answer without a body (204). */
+export interface NoContent {
+  status: 204;
+  body: null;
+}
+
+/**
+ * POST /v1/decisions/{id}/feedback for a known client (a 204), and the MCP
+ * tool submit_feedback. `shown` is a further check on the decision (MCP: its
+ * profile is MCP-visible); a decision that fails it is unknown (404), as one
+ * out of scope. The body is read after that check, and the feedback is
+ * checked against the profile version the decision used.
+ */
+export async function feedbackAnswer(
+  deps: Pick<Deps, 'store' | 'log'>,
+  client: TokenRecord,
+  id: string,
+  readBody: () => Promise<unknown>,
+  shown?: (record: DecisionRecord) => Promise<boolean>,
+): Promise<ApiAnswer | NoContent> {
+  const record = await findDecision(client, deps.log, id);
+  if (!record || (shown && !(await shown(record)))) return notFound();
+
+  let raw: unknown;
+  try {
+    raw = await readBody();
+  } catch {
+    return error(400, 'invalid_request', 'body must be valid JSON');
+  }
+  const profile = await deps.store.get(record.profile, record.profile_version);
+  if (!profile) {
+    return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
+  }
+  const feedback = parseFeedback(raw, profile);
+  if (typeof feedback === 'string') return error(400, 'invalid_request', feedback);
+
+  await deps.log.addFeedback(id, { ...feedback, created_at: new Date().toISOString(), client: client.client });
+  return { status: 204, body: null };
+}
+
+/** The message of an error answer. */
+export const errorMessage = (answer: ApiAnswer): string => (answer.body as { error: { message: string } }).error.message;
 
 /** The setting that names the client of internal calls. */
 export const INTERNAL_CLIENT = 'INTERNAL_CLIENT';

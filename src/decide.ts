@@ -366,11 +366,17 @@ async function repeated(earlier: DecisionRecord, digest: string, log: DecisionLo
 /**
  * A logged decision as a token may read it: without callback_url and the
  * request digest, and with required decisions of profiles outside the
- * token's scope hidden (P-TOKEN-SCOPE).
+ * token's scope hidden (P-TOKEN-SCOPE). `seen` says which required
+ * profiles are shown: by default those in the token's scope; MCP passes
+ * the MCP-visible ones among them.
  */
-export function publicRecord<R extends DecisionRecord>(record: R, client: TokenRecord) {
+export function publicRecord<R extends DecisionRecord>(
+  record: R,
+  client: TokenRecord,
+  seen: (profile: string) => boolean = (profile) => canUse(client, profile),
+) {
   const { callback_url: _, request_digest: __, requires, ...visible } = record;
-  const shown = visibleRequires(requires, (profile) => canUse(client, profile));
+  const shown = visibleRequires(requires, seen);
   return shown ? { ...visible, requires: shown } : visible;
 }
 
