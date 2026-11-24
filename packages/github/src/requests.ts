@@ -58,12 +58,18 @@ export async function graphql(fetchFn: typeof fetch, query: string, variables: R
 
 /** The "after" cursor of a Link header's next page; null when there is none. Only the cursor is used, never the URL. */
 export function nextCursor(link: string | null): string | null {
-  const m = link ? /<([^>]+)>;\s*rel="next"/.exec(link) : null;
-  if (!m) return null;
-  try {
-    const after = new URL(m[1]!).searchParams.get('after');
-    return after && after.length <= 500 ? after : null;
-  } catch {
-    return null;
+  // `<url>; rel="next", <url>; rel="prev"`, read by splitting, not by a
+  // regex, so a long or odd header costs linear time (CodeQL js/polynomial-redos).
+  for (const part of (link ?? '').split(',')) {
+    const [target, rel] = part.split(';');
+    const url = target!.trim();
+    if (rel?.trim() !== 'rel="next"' || !url.startsWith('<') || !url.endsWith('>')) continue;
+    try {
+      const after = new URL(url.slice(1, -1)).searchParams.get('after');
+      return after && after.length <= 500 ? after : null;
+    } catch {
+      return null;
+    }
   }
+  return null;
 }

@@ -505,7 +505,9 @@
   `rebase.ts` and `snapshot.ts` (moved, not changed); no claim changed; 31
   code citations moved to their new files and lines, checked against the
   old text of each line, and the sentences and searches that named
-  `provider.ts` for moved code name the new files.
+  `provider.ts` for moved code name the new files. One change: `nextCursor`
+  reads the Link header by splitting it, not by a regex that CodeQL found
+  could backtrack (js/polynomial-redos); the same answers.
   The first of the large files of pointsman#265: `src/decide.ts` is split,
   with replay requests in `src/replay-request.ts` and callback delivery in
   `src/callback-delivery.ts` (moved, not changed); no claim changed; the
