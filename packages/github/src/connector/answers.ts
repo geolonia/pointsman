@@ -16,7 +16,7 @@
 import { asButtons, type ConnectorSettings } from './settings.ts';
 import type { EngineAnswer, EngineClient } from './engine.ts';
 import { type CheckRunButton, type CheckRunOutput, type ConnectorGitHub, GitHubError, type PullRequestInfo } from './github.ts';
-import type { Asked, Checks, ObjectStorage, Shown } from './pull-request.ts';
+import type { Asked, Checks, ObjectStorage, Shown } from './records.ts';
 import type { AnswerEvent, Answerer, PullRequestTarget } from './webhook.ts';
 
 /** An answer waiting in the object's queue. */
