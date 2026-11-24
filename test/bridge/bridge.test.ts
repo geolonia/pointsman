@@ -321,7 +321,7 @@ describe('redirects (#97)', () => {
     }])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
 
     const calls = [...decide.calls, ...review.calls, ...order.calls];
-    expect(calls.length).toBe(5 + 6 + 3);
+    expect(calls.length).toBe(5 + 6 + 4);
     for (const c of calls) expect(c.redirect).toBe('manual');
   });
 
@@ -1194,7 +1194,7 @@ describe('work orders from other apps', () => {
   });
   const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null; halfFields?: Record<string, unknown> } = {}) {
+  function orders(opts: { entity?: unknown; get?: number; post?: number; postResolved?: number; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null; halfFields?: Record<string, unknown> } = {}) {
     let status = opts.decisionStatus ?? 'pending';
     // A resolved Decision is complete (another app's) unless a test says not
     // (finalAction null: an update a 207 cut short); halfFields replaces it.
@@ -1212,12 +1212,15 @@ describe('work orders from other apps', () => {
           return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status), ...fields });
         }
         if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
-          if ((opts.post ?? 204) < 300) {
-            status = 'resolved';
-            const { '@context': _, reviewStatus: __, ...written } = c.body as Record<string, unknown>;
-            fields = written;
+          // Two writes: the review attributes, then reviewStatus (postResolved answers that one).
+          const { '@context': _, reviewStatus, ...written } = c.body as Record<string, unknown>;
+          const answer = reviewStatus ? opts.postResolved ?? opts.post ?? 204 : opts.post ?? 204;
+          // A 207 here stores nothing (reviewStatus stays pending either way).
+          if (answer < 300 && answer !== 207) {
+            if (reviewStatus) status = 'resolved';
+            else fields = { ...fields, ...written };
           }
-          return new Response(null, { status: opts.post ?? 204 });
+          return new Response(null, { status: answer });
         }
         return undefined;
       },
@@ -1235,14 +1238,18 @@ describe('work orders from other apps', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
     expect(t.calls.find((c) => c.method === 'GET')!.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(R)}?attrs=check`);
-    const write = t.calls.find((c) => c.method === 'POST')!;
-    expect(write.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(D)}/attrs`);
-    expect(write.headers.get('content-type')).toBe('application/ld+json');
-    expect(write.body).toEqual({
-      '@context': [DECISION_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
-      reviewStatus: P('resolved'), finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'),
+    // reviewStatus last, in a write of its own: its notification then carries a complete Decision (#347).
+    const [write, resolve] = t.calls.filter((c) => c.method === 'POST');
+    for (const w of [write!, resolve!]) {
+      expect(w.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(D)}/attrs`);
+      expect(w.headers.get('content-type')).toBe('application/ld+json');
+    }
+    const context = [DECISION_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'];
+    expect(write!.body).toEqual({
+      '@context': context, finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'),
       reviewedAt: P({ '@type': 'DateTime', '@value': '2026-10-09T05:00:00Z' }),
     });
+    expect(resolve!.body).toEqual({ '@context': context, reviewStatus: P('resolved') });
     // Nothing goes to Pointsman here: /reviews does that when the broker notifies the Decision.
     expect(t.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(false);
   });
@@ -1334,7 +1341,7 @@ describe('work orders from other apps', () => {
       { id: W, resolves: D, finalAction: 'publish' },
       { id: 'urn:ngsi-ld:Issue:redmine:city-a:43', skipped: 'already resolved' },
     ] });
-    expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(2);
     // Resolved by another app before: left alone.
     const other = orders({ decisionStatus: 'resolved' });
     expect(await (await other.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
@@ -1347,6 +1354,22 @@ describe('work orders from other apps', () => {
     expect(await (await noAt.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
     const sameAction = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('app:other') } });
     expect(await (await sameAction.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+  });
+
+  it('a 207 on either Decision write leaves it pending, and the retry writes both (#347)', async () => {
+    for (const first of [{ post: 207 }, { postResolved: 207 }]) {
+      const opts: { post?: number; postResolved?: number } = { ...first };
+      const t = orders(opts);
+      expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, error: 'broker refused the Decision update: 207', retry: true }] });
+      // A 207 on the first write sends no reviewStatus; on the second, "resolved" was not stored.
+      const posts = first.post ? 1 : 2;
+      expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(posts);
+      // The retry finds it pending and writes both.
+      delete opts.post;
+      delete opts.postResolved;
+      expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+      expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(posts + 2);
+    }
   });
 
   it('refuses a Task id too long to name who resolved it', async () => {

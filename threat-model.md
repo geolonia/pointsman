@@ -527,7 +527,9 @@
   no second decision (the same `Idempotency-Key`), and finishes a write the
   `207` left half done (a Decision resolved without `finalAction`, or with
   its own `finalAction` and another attribute missing; a Task cancelled
-  with another `statusLabel`) instead of taking it as done. Changed: the bridge's
+  with another `statusLabel`) instead of taking it as done. A work order
+  writes the Decision's `reviewStatus: resolved` last, in a write of its
+  own, so the `/reviews` notification it starts carries a complete Decision. Changed: the bridge's
   matrix row for its recursive topology (prose, YAML). No citation moved;
   the validator was not run for this amendment. No new question.
   Amended 2026-11-24 a fifteenth time (still bound to `v0.18.0`) for the

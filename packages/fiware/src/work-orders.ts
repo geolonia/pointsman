@@ -127,20 +127,26 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
   if (!seen.ok) return { id, error: `broker read failed: ${seen.status}`, retry: retryable(seen.status) };
   // A write a 207 cut short (#347) is finished: resolved with no finalAction,
   // or with this work order's finalAction (and reviewedBy, if stored) and
-  // reviewedBy or reviewedAt missing.
+  // reviewedBy or reviewedAt missing (from a bridge before this two-step write).
   const known = await seen.json() as Entity;
   const ownHalf = valueOf(known.finalAction) === finalAction
     && (known.reviewedBy === undefined || valueOf(known.reviewedBy) === by)
     && (known.reviewedBy === undefined || known.reviewedAt === undefined);
   if (valueOf(known.reviewStatus) === 'resolved' && known.finalAction !== undefined && !ownHalf) return { id, skipped: 'already resolved' };
 
+  // Two writes, reviewStatus last: the /reviews subscription watches it, and
+  // a broker may not notify when a retry writes the same value again. So
+  // "resolved" is stored only once the rest is, and its notification carries
+  // a complete Decision (#347). A 207 on either leaves it pending for the retry.
+  const context = [DECISION_CONTEXT, CORE_CONTEXT];
   const res = await brokerRequest('POST', decision, config, {
-    '@context': [DECISION_CONTEXT, CORE_CONTEXT],
-    reviewStatus: P('resolved'),
+    '@context': context,
     finalAction: P(finalAction),
     reviewedBy: P(by),
     reviewedAt: P({ '@type': 'DateTime', '@value': modified }),
   });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
+  const resolved = await brokerRequest('POST', decision, config, { '@context': context, reviewStatus: P('resolved') });
+  if (!updatedAll(resolved)) return { id, error: `broker refused the Decision update: ${resolved.status}`, retry: retryable(resolved.status) };
   return { id, resolves: decision, finalAction };
 }
