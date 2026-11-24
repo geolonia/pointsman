@@ -6,7 +6,7 @@ Three roles (#145):
 
 | Role | What it does | Examples |
 | --- | --- | --- |
-| Engine | Takes a case, asks the model, applies the rules, logs the decision | `src/decide.ts`, `src/policy.ts`, the decision log |
+| Engine | Takes a case, asks the model, applies the rules, logs the decision | `src/decide.ts`, `src/replay-request.ts`, `src/callback-delivery.ts`, `src/policy.ts`, the decision log |
 | Fact module | Looks something up during a decision, inside the engine | GSI flood zones and shelters, Valhalla detours, GitHub pull requests |
 | Connector | Brings cases in and carries results out, through the public API | the FIWARE bridge (`@pointsman/fiware`), `actions/triage` |
 

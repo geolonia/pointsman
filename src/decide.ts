@@ -1,11 +1,11 @@
-// Making decisions and replays, and delivering review callbacks: the
-// engine core behind the HTTP API (src/app.ts) and MCP (src/mcp.ts). It uses
-// no runtime-specific API (docs/adapters.md).
+// Making decisions: the engine core behind the HTTP API (src/app.ts) and
+// MCP (src/mcp.ts). Replays are in src/replay-request.ts, review callbacks in
+// src/callback-delivery.ts. It uses no runtime-specific API (docs/adapters.md).
 
 import { factContext } from './log-facts';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { canUse, type TokenRecord, type TokenStore } from './auth';
-import { attempt, failedAttempt, type Fetch } from './callbacks';
+import type { Fetch } from './callbacks';
 import { factModules, lookupFacts, type FactProvider } from './facts';
 import { MAX_MODEL_REQUEST_BYTES, readImages } from './images';
 import { buildState, pickInputFields } from './input';
@@ -13,13 +13,12 @@ import { hashState, type DecisionLog, type DecisionRecord } from './log';
 import { ModelError, toModelRequest, type ModelAdapter } from './models/adapter';
 import { normalizeAnswers } from './models/normalize';
 import { decisionsError, loadRequired, snapshotOf, visibleRequires } from './chains';
-import { compilePolicy, peopleCheck, PolicyError, type RequiredProfiles } from './policy';
-import { compileDraft, policyShapeError, replay, REPLAY_LIMIT, unchangedPartError, type ReplayResult } from './replay';
+import { compilePolicy, peopleCheck } from './policy';
 import type { OAuthConfig } from './auth';
 import { ConfigError } from '@pointsman/module-api';
 import { factRegistry } from './modules/registry';
 import type { ProfileStore } from './profiles/store';
-import type { Decision, Profile } from './types';
+import type { Decision } from './types';
 import { ENGINE_VERSION } from './version';
 
 const MAX_REF_LENGTH = 200;
@@ -82,59 +81,6 @@ export type DecisionResult =
   | { ok: false; status: ContentfulStatusCode; code: string; message: string };
 
 const fail = (status: ContentfulStatusCode, code: string, message: string): DecisionResult => ({ ok: false, status, code, message });
-
-/**
- * A replay for a caller. `allowed` says which profiles the caller may use
- * (API scope, or MCP visibility); the profile and every profile it requires
- * must be allowed, since the replay reads their logged decisions.
- */
-export async function makeReplay(
-  deps: Pick<Deps, 'store' | 'log'>,
-  id: string,
-  raw: unknown,
-  allowed: (id: string) => boolean | Promise<boolean>,
-): Promise<{ ok: true; replay: ReplayResult } | { ok: false; status: ContentfulStatusCode; code: string; message: string }> {
-  const fail = (status: ContentfulStatusCode, code: string, message: string) => ({ ok: false as const, status, code, message });
-  if (!(await allowed(id))) return fail(403, 'forbidden', 'not allowed to use this profile');
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return fail(400, 'invalid_request', 'body must be an object');
-  const body = raw as Record<string, unknown>;
-  for (const k of Object.keys(body)) {
-    if (!['policy', 'version', 'limit', 'questions', 'facts', 'requires'].includes(k)) return fail(400, 'invalid_request', `"${k}" is not a replay field`);
-  }
-  const { version, limit = REPLAY_LIMIT.default } = body;
-  if (version !== undefined && !(Number.isInteger(version) && (version as number) >= 1)) return fail(400, 'invalid_request', '"version" must be a positive integer');
-  if (!Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > REPLAY_LIMIT.max) {
-    return fail(400, 'invalid_request', `"limit" must be a whole number from 1 to ${REPLAY_LIMIT.max}`);
-  }
-  const shape = policyShapeError(body.policy);
-  if (shape) return fail(400, 'invalid_request', shape);
-  for (const k of ['questions', 'facts', 'requires'] as const) {
-    if (body[k] !== undefined && !Array.isArray(body[k])) return fail(400, 'invalid_request', `"${k}" must be a list`);
-  }
-  const base = await deps.store.get(id, version as number | undefined);
-  if (!base) return fail(404, 'profile_not_found', version === undefined ? 'unknown profile' : 'unknown profile or version');
-  // The replay reads what the required decisions were: their profiles must be
-  // allowed too. Checked before anything is compared with the draft, so the
-  // answer never tells whether a guessed hidden profile id is right.
-  for (const r of base.requires ?? []) {
-    if (!(await allowed(r.profile))) return fail(403, 'forbidden', 'not allowed to use a profile that this profile requires');
-  }
-  const changed = unchangedPartError(base, body as Partial<Pick<Profile, 'questions' | 'facts' | 'requires'>>);
-  if (changed) return fail(409, 'not_policy_only', changed);
-  const required: RequiredProfiles = {};
-  for (const r of base.requires ?? []) required[r.profile] = (await deps.store.get(r.profile)) ?? undefined;
-  const policy = body.policy as Profile['policy'];
-  let compiled;
-  try {
-    // Before the log is read: a policy that does not compile costs no D1 read.
-    compiled = compileDraft(base, policy, required);
-  } catch (err) {
-    if (err instanceof PolicyError) return fail(400, 'invalid_policy', err.message);
-    throw err;
-  }
-  const records = await deps.log.recent(base.id, base.version, limit as number);
-  return { ok: true, replay: replay(base, policy, compiled, records, required) };
-}
 
 /**
  * Decide for one client: scope check, request check, model call (with
@@ -435,57 +381,4 @@ function decisionOf(r: DecisionRecord): Decision {
     ...(r.review && { review: reviewOf(r.review) }),
     ...(r.versions && { versions: r.versions }),
   };
-}
-
-/** Longer than one attempt (10 s timeout), so a claim never expires mid-send. */
-const CLAIM_LEASE_MS = 60_000;
-
-/** The current time; tests pass their own. */
-export type Clock = () => Date;
-const systemClock: Clock = () => new Date();
-
-/**
- * One callback attempt for a resolved decision. The callback is claimed
- * first, so the first delivery and the cron retry can never send the same
- * attempt twice; only the claimant sends and records the outcome. The claim,
- * the signing time and the next retry each read the clock when they happen.
- */
-export async function deliver(d: DecisionRecord, deps: Pick<Deps, 'log' | 'callbacks'>, clock: Clock = systemClock): Promise<void> {
-  const now = clock();
-  const claim = {
-    id: crypto.randomUUID(),
-    now: now.toISOString(),
-    leaseUntil: new Date(now.getTime() + CLAIM_LEASE_MS).toISOString(),
-    attempts: d.callback?.attempts ?? 0,
-  };
-  if (!(await deps.log.claimCallback(d.decision_id, claim))) return; // someone else has it
-  let state;
-  try {
-    state = await attempt(d, { ...deps.callbacks, clock });
-  } catch (err) {
-    // Counted like any failed attempt, so a record that always throws ends as failed.
-    state = failedAttempt(d, err instanceof Error ? err.message : String(err), clock);
-  }
-  await deps.log.recordCallback(d.decision_id, state, claim.id);
-  if (state.status !== 'delivered') console.error(`callback for ${d.decision_id}: ${state.last_error} (${state.status})`);
-}
-
-/**
- * Retry every callback that is due (run by the scheduled handler). Each item
- * reads the clock itself, so a slow receiver does not age the later claims
- * and signatures. An error in one item is logged and the batch goes on. An
- * error in the attempt is recorded as a failed attempt (deliver); an error in
- * the claim or the record leaves the item to a later run once its lease
- * runs out, so a callback can be sent again (at least once, docs/reviews.md).
- */
-export async function retryDueCallbacks(deps: Pick<Deps, 'log' | 'callbacks'>, clock: Clock = systemClock): Promise<number> {
-  const due = await deps.log.dueCallbacks(clock().toISOString(), 50);
-  for (const d of due) {
-    try {
-      await deliver(d, deps, clock);
-    } catch (err) {
-      console.error(`callback for ${d.decision_id}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  return due.length;
 }

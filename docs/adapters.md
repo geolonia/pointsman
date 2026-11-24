@@ -32,7 +32,7 @@ Each port is an interface in the core. Every adapter for it must keep the guaran
 
 Today: `src/index.ts` (Worker `fetch` and `scheduled`), with the routes in `src/app.ts`.
 
-The entry reads the deployment's settings, builds the other adapters and passes them to the core as `Deps` (`src/decide.ts`). The decision logic itself is in `src/decide.ts` (`makeDecision`, `makeReplay`) and `src/mcp.ts`.
+The entry reads the deployment's settings, builds the other adapters and passes them to the core as `Deps` (`src/decide.ts`). The decision logic itself is in `src/decide.ts` (`makeDecision`), `src/replay-request.ts` (`makeReplay`) and `src/mcp.ts`.
 
 An adapter must:
 
@@ -107,7 +107,7 @@ An adapter must:
 
 ### Scheduled jobs
 
-Today: the Worker's cron trigger (`wrangler.jsonc` `triggers`, every 5 minutes) calls `retryDueCallbacks` (`src/decide.ts`) and removes expired OAuth records.
+Today: the Worker's cron trigger (`wrangler.jsonc` `triggers`, every 5 minutes) calls `retryDueCallbacks` (`src/callback-delivery.ts`) and removes expired OAuth records.
 
 An adapter must:
 

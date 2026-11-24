@@ -5,7 +5,7 @@ The decision engine on Cloudflare Workers, plus FIWARE bridge, GitHub connector,
 Canonical docs (do not duplicate): AGENTS.md (changelog rule, issue intake from Slack), README.md (what it does, API, tokens, Development), CONTRIBUTING.md (change flow, docs rules, DCO), CHANGELOG.md header (versioning, how deployments pin `ref`), docs/ (adapters.md, modules.md, connectors.md, profile-format.md, deployment.md), openapi.yaml (the API contract), bridge/README.md.
 
 Source map:
-- `src/` = engine core. `decide.ts` (makeDecision/makeReplay), `policy.ts` (rules), `facts.ts`, `mcp*.ts`, `models/` (model adapters), `profiles/` (stores), `modules/` (registry).
+- `src/` = engine core. `decide.ts` (makeDecision), `replay-request.ts` (makeReplay), `callback-delivery.ts` (deliver/retryDueCallbacks), `policy.ts` (rules), `facts.ts`, `mcp*.ts`, `models/` (model adapters), `profiles/` (stores), `modules/` (registry).
 - Cloudflare adapters = the only `src/` files that may use CF APIs (`connectors/github/src` is an adapter as a whole): `index.ts`, `app.ts`, `oauth.ts`, `log-d1.ts`, `auth-kv.ts`, `profiles/store-kv.ts`, `models/workers-ai.ts`. List lives in `tsconfig.core.json` and docs/adapters.md; keep both in step.
 - `packages/` = pnpm workspace: `module-api` (interface + capabilities in `src/capabilities.ts`), `facts-*`, `github`, `coderabbit`, `fiware` (the bridge as a module).
 - `bridge/` = FIWARE bridge Worker; `connectors/github/` = GitHub connector Worker (own Worker on purpose: it holds a write key).

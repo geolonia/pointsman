@@ -2,7 +2,8 @@
 
 import { Hono, type Context } from 'hono';
 import { authenticate, canUse, type TokenRecord } from './auth';
-import { connected, makeReplay, publicRecord, type Deps } from './decide';
+import { connected, publicRecord, type Deps } from './decide';
+import { makeReplay } from './replay-request';
 import { BodyTooLargeError, closeAnswer, decideAnswer, errorResponse, feedbackAnswer, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
@@ -41,7 +42,9 @@ export async function readJsonUpTo(req: Request, max: number): Promise<unknown> 
   return JSON.parse(new TextDecoder().decode(all));
 }
 
-export { ConfigError, deliver, makeDecision, makeReplay, NO_MODEL, retryDueCallbacks, type DecisionResult, type Deps } from './decide';
+export { ConfigError, makeDecision, NO_MODEL, type DecisionResult, type Deps } from './decide';
+export { makeReplay } from './replay-request';
+export { deliver, retryDueCallbacks } from './callback-delivery';
 
 export function createApp(deps: (env: Env) => Deps) {
   type AppEnv = { Bindings: Env; Variables: { client: TokenRecord; deps: Deps } };

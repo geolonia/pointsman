@@ -7,7 +7,8 @@
 
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { PEOPLE_ONLY, TOOLS } from './mcp-tools';
-import { makeDecision, makeReplay, publicRecord, type Deps } from './decide';
+import { makeDecision, publicRecord, type Deps } from './decide';
+import { makeReplay } from './replay-request';
 import { canUse, type TokenRecord } from './auth';
 import { visibleRequires } from './chains';
 import { explainProfile, explanationText } from './explain';
