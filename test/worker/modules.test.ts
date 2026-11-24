@@ -232,3 +232,71 @@ describe('versions', () => {
     }
   });
 });
+
+describe('FACTS_MODE in the GSI and Valhalla modules', () => {
+  const runtime = { cache: undefined } as never;
+  const URL_ = 'https://routing.test';
+  const outcome = (create: () => unknown) => {
+    try {
+      const p = create();
+      return p === undefined ? 'none' : 'provider';
+    } catch (err) {
+      return `${(err as Error).name}: ${(err as Error).message}`;
+    }
+  };
+
+  it('reads it the same way in both: unset or empty is off, mock, gsi, anything else a ConfigError', async () => {
+    const { gsiModule } = await import('@pointsman/facts-gsi');
+    const { valhallaModule } = await import('@pointsman/facts-valhalla');
+    const bad = 'ConfigError: FACTS_MODE must be "off", "mock" or "gsi"';
+    const modes: [unknown, string, string][] = [
+      [undefined, 'none', 'none'],
+      ['', 'none', 'none'],
+      ['off', 'none', 'none'],
+      ['mock', 'provider', 'provider'],
+      // Valhalla without FACTS_ROUTING_URL: detours unavailable.
+      ['gsi', 'provider', 'none'],
+      ['osm', bad, bad],
+      ['GSI', bad, bad],
+      [1, bad, bad],
+      [null, 'none', 'none'],
+    ];
+    for (const [mode, gsi, valhalla] of modes) {
+      const env = mode === undefined ? {} : { FACTS_MODE: mode };
+      expect(outcome(() => gsiModule.create(env, runtime)), `gsi ${String(mode)}`).toBe(gsi);
+      expect(outcome(() => valhallaModule.create(env, runtime)), `valhalla ${String(mode)}`).toBe(valhalla);
+    }
+    // With a routing URL, the URL's own check comes first, also for a mode that is not valid.
+    expect(outcome(() => valhallaModule.create({ FACTS_MODE: 'osm', FACTS_ROUTING_URL: URL_ }, runtime))).toBe('ConfigError: FACTS_ROUTING_URL needs FACTS_MODE "gsi"');
+    expect(outcome(() => valhallaModule.create({ FACTS_MODE: 'gsi', FACTS_ROUTING_URL: URL_ }, runtime))).toBe('provider');
+  });
+});
+
+describe('connector routes (/connectors/{id}/…)', () => {
+  const ctx = { waitUntil: () => {}, passThroughOnException: () => {}, props: {} } as unknown as ExecutionContext;
+  const entry = (id: string, connect: FactModuleEntry['create']) => ({
+    name: `@test/${id}`, version: '1.0.0', connector: { id, placements: ['engine'], settings: [], actions: [] }, connect,
+  }) as never;
+
+  it('answers 500 not_configured for a connector whose settings do not fit, 404 not_found for one that is not there', async () => {
+    const { worker } = await import('../../src/index');
+    const { ConfigError: ModuleConfigError } = await import('@pointsman/module-api');
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const w = worker([
+      entry('broken', () => { throw new ModuleConfigError('BROKEN_SETTING is missing'); }),
+      entry('off', () => undefined),
+    ]);
+    const broken = await w.fetch(new Request('https://pm.test/connectors/broken/notify', { method: 'POST' }), env as never, ctx);
+    expect(broken.status).toBe(500);
+    expect(broken.headers.get('content-type')).toMatch(/^application\/json/);
+    expect(await broken.json()).toEqual({ error: { code: 'not_configured', message: 'the connector is not configured' } });
+    expect(errors.mock.calls.join(' ')).toContain('BROKEN_SETTING is missing');
+    for (const path of ['/connectors/off/notify', '/connectors/nothing']) {
+      const missing = await w.fetch(new Request(`https://pm.test${path}`), env as never, ctx);
+      expect(missing.status, path).toBe(404);
+      expect(missing.headers.get('content-type')).toMatch(/^application\/json/);
+      expect(await missing.json()).toEqual({ error: { code: 'not_found', message: 'not found' } });
+    }
+    errors.mockRestore();
+  });
+});

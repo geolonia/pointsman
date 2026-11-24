@@ -418,6 +418,33 @@ describe('settings and tokens', () => {
     expect(requests.at(-1)).toMatchObject({ method: 'POST', body: { name: 'Pointsman: x', head_sha: HEAD, status: 'completed', conclusion: 'neutral' } });
   });
 
+  it('sends GitHub\'s headers: the app token requests as the facts do, its own requests with the connector\'s user agent', async () => {
+    const sent: { method: string; path: string; headers: Record<string, string> }[] = [];
+    const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const url = new URL(String(input));
+      const headers = Object.fromEntries(new Headers(init.headers));
+      if (headers.authorization) headers.authorization = headers.authorization.replace(/^Bearer \S+$/, 'Bearer …');
+      sent.push({ method: init.method ?? 'GET', path: url.pathname, headers });
+      expect(init.redirect).toBe('manual');
+      if (url.pathname.endsWith('/installation')) return Response.json({ id: 9, permissions: { metadata: 'read', contents: 'read', pull_requests: 'write', checks: 'write' } });
+      if (url.pathname.endsWith('/access_tokens')) return Response.json({ token: 'ghs_test', expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
+      if (url.pathname.endsWith('/check-runs')) return Response.json({ id: 77 }, { status: 201 });
+      if (url.pathname.endsWith('/pulls/7') && init.headers && new Headers(init.headers).get('accept') === 'application/vnd.github.diff') return new Response('diff');
+      throw new Error(`unexpected ${url}`);
+    }) as typeof fetch;
+    const gh = new AppGitHub(APP_ID, KEY, fetchFn, true, true);
+    await gh.createCheckRun(REPO, HEAD, 'Pointsman: x', checkOutput(decision('x')));
+    await gh.diff(REPO, 7, 100);
+    const facts = { authorization: 'Bearer …', accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'pointsman (+https://github.com/geolonia/pointsman)' };
+    const connector = { ...facts, 'user-agent': 'pointsman-github-connector (+https://github.com/geolonia/pointsman)' };
+    expect(sent).toEqual([
+      { method: 'GET', path: `/repos/${REPO}/installation`, headers: facts },
+      { method: 'POST', path: '/app/installations/9/access_tokens', headers: { ...facts, 'content-type': 'application/json' } },
+      { method: 'POST', path: `/repos/${REPO}/check-runs`, headers: { ...connector, 'content-type': 'application/json' } },
+      { method: 'GET', path: `/repos/${REPO}/pulls/7`, headers: { ...connector, accept: 'application/vnd.github.diff' } },
+    ]);
+  });
+
   describe('reading lists and the pull request: a bad or cut answer is an error, never "none" or "closed"', () => {
     const MARK = '<!-- pointsman:x -->';
     /** A fake GitHub: the pull request, and pages of comments and reviews (index 0 = page 1). */
@@ -502,6 +529,13 @@ describe('settings and tokens', () => {
       const more = await server({ reviews: Array.from({ length: 1001 }, (_, i) => review(i)) }).gh.ownApprovals(REPO, 7);
       expect(more.cut).toBe(true);
     });
+  });
+
+  it('isObject (shared by the facts and the connector) takes plain objects only, never a list or null', async () => {
+    const { isObject } = await import('../../packages/github/src/github-http');
+    expect(isObject({})).toBe(true);
+    expect(isObject({ a: 1 })).toBe(true);
+    for (const v of [[], [1], null, undefined, 'x', 1, true]) expect(isObject(v)).toBe(false);
   });
 
   describe('the app token is kept between runs (#263)', () => {

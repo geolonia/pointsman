@@ -1,10 +1,9 @@
 // HTTP API. See openapi.yaml for the contract.
 
 import { Hono, type Context } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authenticate, canUse, type TokenRecord } from './auth';
 import { connected, makeReplay, publicRecord, type Deps } from './decide';
-import { BodyTooLargeError, closeAnswer, decideAnswer, feedbackAnswer, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
+import { BodyTooLargeError, closeAnswer, decideAnswer, errorResponse, feedbackAnswer, getAnswer, resolveAnswer, type ApiAnswer } from './internal';
 import { serveMcp } from './mcp';
 import { answerConsent, finishLogin, serveAuthorizationServer, serveProtectedMcp, showConsent, type Caller, type OAuthConfig, type OAuthEnv } from './oauth';
 import { decisionGraph, toDmn, toSvg } from './graph';
@@ -44,11 +43,6 @@ export async function readJsonUpTo(req: Request, max: number): Promise<unknown> 
 
 export { ConfigError, deliver, makeDecision, makeReplay, NO_MODEL, retryDueCallbacks, type DecisionResult, type Deps } from './decide';
 
-function error(status: ContentfulStatusCode, code: string, message: string) {
-  return Response.json({ error: { code, message } }, { status });
-}
-
-
 export function createApp(deps: (env: Env) => Deps) {
   type AppEnv = { Bindings: Env; Variables: { client: TokenRecord; deps: Deps } };
   const app = new Hono<AppEnv>();
@@ -67,7 +61,7 @@ export function createApp(deps: (env: Env) => Deps) {
   app.use('/v1/*', async (c, next) => {
     const record = await authenticate(c.req.header('authorization'), depsOf(c).tokens);
     if (!record) {
-      const res = error(401, 'unauthorized', 'a valid API token is required');
+      const res = errorResponse(401, 'unauthorized', 'a valid API token is required');
       res.headers.set('www-authenticate', 'Bearer');
       return res;
     }
@@ -76,7 +70,7 @@ export function createApp(deps: (env: Env) => Deps) {
     // decisions are not logged, and it must not read or resolve the logged ones.
     if (record.test && !(c.req.method === 'POST' && /^\/v1\/decide\/[^/]+$/.test(c.req.path))
       && !(c.req.method === 'GET' && (c.req.path === '/v1/profiles' || /^\/v1\/profiles\/[^/]+\/explain$/.test(c.req.path)))) {
-      return error(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile');
+      return errorResponse(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile');
     }
     await next();
   });
@@ -98,13 +92,13 @@ export function createApp(deps: (env: Env) => Deps) {
     const client = c.get('client');
     const id = c.req.param('id');
     const format = c.req.query('format') ?? 'json';
-    if (format !== 'json' && format !== 'dmn' && format !== 'svg') return error(400, 'invalid_request', '"format" must be json, dmn or svg');
+    if (format !== 'json' && format !== 'dmn' && format !== 'svg') return errorResponse(400, 'invalid_request', '"format" must be json, dmn or svg');
     const lang = c.req.query('lang') ?? 'en';
-    if (lang !== 'en' && lang !== 'ja') return error(400, 'invalid_request', '"lang" must be en or ja');
+    if (lang !== 'en' && lang !== 'ja') return errorResponse(400, 'invalid_request', '"lang" must be en or ja');
     // Checked before the lookup, as for decide: no probing outside the scope.
-    if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
+    if (!canUse(client, id)) return errorResponse(403, 'forbidden', 'this token may not use this profile');
     const profile = await store.get(id);
-    if (!profile) return error(404, 'profile_not_found', 'unknown profile');
+    if (!profile) return errorResponse(404, 'profile_not_found', 'unknown profile');
     // Only the profiles connected to this one through requires (both ways),
     // found in the index, are read: KV allows a limited number of reads per
     // request. An index without requires (written before the graph) gives
@@ -134,14 +128,14 @@ export function createApp(deps: (env: Env) => Deps) {
     const client = c.get('client');
     const id = c.req.param('id');
     const format = c.req.query('format') ?? 'json';
-    if (format !== 'json' && format !== 'text') return error(400, 'invalid_request', '"format" must be json or text');
+    if (format !== 'json' && format !== 'text') return errorResponse(400, 'invalid_request', '"format" must be json or text');
     const lang = c.req.query('lang') ?? 'en';
-    if (lang !== 'en' && lang !== 'ja') return error(400, 'invalid_request', '"lang" must be en or ja');
+    if (lang !== 'en' && lang !== 'ja') return errorResponse(400, 'invalid_request', '"lang" must be en or ja');
     const v = c.req.query('version');
-    if (v !== undefined && !/^[1-9][0-9]{0,8}$/.test(v)) return error(400, 'invalid_request', '"version" must be a positive integer');
-    if (!canUse(client, id)) return error(403, 'forbidden', 'this token may not use this profile');
+    if (v !== undefined && !/^[1-9][0-9]{0,8}$/.test(v)) return errorResponse(400, 'invalid_request', '"version" must be a positive integer');
+    if (!canUse(client, id)) return errorResponse(403, 'forbidden', 'this token may not use this profile');
     const profile = await store.get(id, v === undefined ? undefined : Number(v));
-    if (!profile) return error(404, 'profile_not_found', v === undefined ? 'unknown profile' : 'unknown profile or version');
+    if (!profile) return errorResponse(404, 'profile_not_found', v === undefined ? 'unknown profile' : 'unknown profile or version');
     const required: Record<string, Profile> = {};
     for (const r of profile.requires ?? []) {
       if (Object.hasOwn(required, r.profile) || !canUse(client, r.profile)) continue;
@@ -161,10 +155,10 @@ export function createApp(deps: (env: Env) => Deps) {
     try {
       raw = await c.req.json();
     } catch {
-      return error(400, 'invalid_request', 'body must be valid JSON');
+      return errorResponse(400, 'invalid_request', 'body must be valid JSON');
     }
     const result = await makeReplay(depsOf(c), c.req.param('id'), raw, (id) => canUse(c.get('client'), id));
-    if (!result.ok) return error(result.status, result.code, result.message);
+    if (!result.ok) return errorResponse(result.status, result.code, result.message);
     return c.json(result.replay);
   });
 
@@ -175,7 +169,7 @@ export function createApp(deps: (env: Env) => Deps) {
   app.post('/v1/decide/:profile', async (c) => {
     // Images make large bodies normal (up to Clef's 13 MiB request); larger
     // ones are refused before they are read.
-    if (Number(c.req.header('content-length') ?? 0) > MAX_DECIDE_BODY) return error(413, 'invalid_request', 'the request is larger than 14 MiB');
+    if (Number(c.req.header('content-length') ?? 0) > MAX_DECIDE_BODY) return errorResponse(413, 'invalid_request', 'the request is larger than 14 MiB');
     // Content-Length can be missing (a chunked body): the limit holds while reading too.
     return json(await decideAnswer(depsOf(c), c.get('client'), c.req.param('profile'), () => readJsonUpTo(c.req.raw, MAX_DECIDE_BODY),
     c.req.query('version'), c.req.header('Idempotency-Key'), c.req.raw.signal));
@@ -194,14 +188,14 @@ export function createApp(deps: (env: Env) => Deps) {
   // review queue and corrections (no state, no single decisions).
   app.get('/v1/stats/:profile', async (c) => {
     const profile = c.req.param('profile');
-    if (!canUse(c.get('client'), profile)) return error(403, 'forbidden', 'this token may not use this profile');
+    if (!canUse(c.get('client'), profile)) return errorResponse(403, 'forbidden', 'this token may not use this profile');
     const daysParam = c.req.query('days') ?? '7';
     if (!/^[1-9][0-9]?$/.test(daysParam) || Number(daysParam) > 90) {
-      return error(400, 'invalid_request', '"days" must be a whole number from 1 to 90');
+      return errorResponse(400, 'invalid_request', '"days" must be a whole number from 1 to 90');
     }
     const days = Number(daysParam);
     // Zeros for a typo would look like a quiet week.
-    if (!(await depsOf(c).store.get(profile))) return error(404, 'profile_not_found', 'unknown profile');
+    if (!(await depsOf(c).store.get(profile))) return errorResponse(404, 'profile_not_found', 'unknown profile');
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const stats = await depsOf(c).log.stats(profile, since);
     return c.json({ profile, days, since, ...stats });
@@ -212,7 +206,7 @@ export function createApp(deps: (env: Env) => Deps) {
     const profile = c.req.query('profile');
     let profiles = client.profiles;
     if (profile !== undefined) {
-      if (!canUse(client, profile)) return error(403, 'forbidden', 'this token may not use this profile');
+      if (!canUse(client, profile)) return errorResponse(403, 'forbidden', 'this token may not use this profile');
       profiles = [profile];
     }
     const pending = await depsOf(c).log.pendingReviews(profiles, 100);
@@ -245,7 +239,7 @@ export function createApp(deps: (env: Env) => Deps) {
   // A test token only decides over the REST API: MCP would let it read
   // logged decisions (get_decision).
   const mcpFor = (d: Deps) => (req: Request, caller: Caller) => (caller.kind === 'token' && caller.record.test
-    ? Promise.resolve(error(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile over the REST API'))
+    ? Promise.resolve(errorResponse(403, 'forbidden', 'a test token may only decide, list profiles and explain a profile over the REST API'))
     : serveMcp(req, d, caller));
   app.all('/mcp', async (c) => {
     const d = depsOf(c);
@@ -254,7 +248,7 @@ export function createApp(deps: (env: Env) => Deps) {
     }
     const record = await authenticate(c.req.header('authorization'), d.tokens);
     if (!record) {
-      const res = error(401, 'unauthorized', 'a valid API token is required');
+      const res = errorResponse(401, 'unauthorized', 'a valid API token is required');
       res.headers.set('www-authenticate', 'Bearer');
       return res;
     }
@@ -265,10 +259,10 @@ export function createApp(deps: (env: Env) => Deps) {
   type OAuthRoute = (req: Request, env: OAuthEnv, ctx: ExecutionContext, config: OAuthConfig, d: Deps) => Promise<Response>;
   const withOAuth = (serve: OAuthRoute) => async (c: Context<AppEnv>) => {
     const d = depsOf(c);
-    if (!d.oauth) return error(404, 'not_found', 'not found');
+    if (!d.oauth) return errorResponse(404, 'not_found', 'not found');
     return serve(c.req.raw, c.env as unknown as OAuthEnv, ctxOf(c), d.oauth, d);
   };
-  const notFound = () => Promise.resolve(error(404, 'not_found', 'not found'));
+  const notFound = () => Promise.resolve(errorResponse(404, 'not_found', 'not found'));
   app.all('/.well-known/oauth-protected-resource/mcp', withOAuth((req, env, ctx, config, d) => serveProtectedMcp(req, env, ctx, config, d.tokens, notFound)));
   app.all('/.well-known/oauth-authorization-server', withOAuth(serveAuthorizationServer));
   app.all('/oauth/token', withOAuth(serveAuthorizationServer));
@@ -277,11 +271,11 @@ export function createApp(deps: (env: Env) => Deps) {
   app.post('/authorize', withOAuth((req, env, _ctx, config) => answerConsent(req, env, config)));
   app.get('/callback', withOAuth((req, env, _ctx, config) => finishLogin(req, env, config)));
 
-  app.notFound(() => error(404, 'not_found', 'not found'));
+  app.notFound(() => errorResponse(404, 'not_found', 'not found'));
 
   app.onError((err) => {
     console.error(err);
-    return error(500, 'internal_error', 'internal error');
+    return errorResponse(500, 'internal_error', 'internal error');
   });
 
   return app;

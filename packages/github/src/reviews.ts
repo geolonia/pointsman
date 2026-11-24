@@ -6,8 +6,8 @@
 // facts, which need nothing else.
 
 import { FactError } from '@pointsman/module-api';
+import { isObject } from './github-http';
 
-const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const id = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : null);
 const time = (v: unknown): string => (typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : '');
 

@@ -30,7 +30,14 @@ export interface ApiAnswer {
   body: unknown;
 }
 
-const error = (status: ContentfulStatusCode, code: string, message: string): ApiAnswer => ({ status, body: { error: { code, message } } });
+/** An error answer; its body `{ error: { code, message } }` (openapi.yaml Error), the same for every error of the API. */
+export const apiError = (status: ContentfulStatusCode, code: string, message: string): ApiAnswer => ({ status, body: { error: { code, message } } });
+
+/** apiError as a JSON Response. */
+export function errorResponse(status: ContentfulStatusCode, code: string, message: string): Response {
+  const answer = apiError(status, code, message);
+  return Response.json(answer.body, { status: answer.status });
+}
 
 /** Thrown by a `readBody` that stops reading a body over its limit (a 413). */
 export class BodyTooLargeError extends Error {}
@@ -50,18 +57,18 @@ export async function decideAnswer(
   signal?: AbortSignal,
 ): Promise<ApiAnswer> {
   if (version !== undefined && !/^[1-9][0-9]{0,8}$/.test(version)) {
-    return error(400, 'invalid_request', '"version" must be a positive integer');
+    return apiError(400, 'invalid_request', '"version" must be a positive integer');
   }
   let raw: unknown;
   try {
     raw = await readBody();
   } catch (err) {
-    if (err instanceof BodyTooLargeError) return error(413, 'invalid_request', err.message);
-    return error(400, 'invalid_request', 'body must be valid JSON');
+    if (err instanceof BodyTooLargeError) return apiError(413, 'invalid_request', err.message);
+    return apiError(400, 'invalid_request', 'body must be valid JSON');
   }
   const result = await makeDecision(deps, client, profile, raw, version === undefined ? undefined : Number(version),
     { ...(idempotencyKey !== undefined && { idempotencyKey }), ...(signal && { signal }) });
-  if (!result.ok) return error(result.status, result.code, result.message);
+  if (!result.ok) return apiError(result.status, result.code, result.message);
   // A repeated request returns the logged decision: hide what the client may no longer see.
   const requires = visibleRequires(result.decision.requires, (p) => canUse(client, p));
   return { status: 200, body: requires ? { ...result.decision, requires } : result.decision };
@@ -79,8 +86,8 @@ export async function findDecision(client: TokenRecord, log: DecisionLog, id: st
   return record && canUse(client, record.profile) ? record : null;
 }
 
-const notFound = () => error(404, 'decision_not_found', 'unknown decision');
-const notPending = () => error(409, 'not_pending', 'this decision has no pending review');
+const notFound = () => apiError(404, 'decision_not_found', 'unknown decision');
+const notPending = () => apiError(409, 'not_pending', 'this decision has no pending review');
 
 /** GET /v1/decisions/{id} for a known client. */
 export async function getAnswer(deps: Deps, client: TokenRecord, id: string): Promise<ApiAnswer> {
@@ -108,19 +115,19 @@ export async function resolveAnswer(
   try {
     raw = await readBody();
   } catch {
-    return error(400, 'invalid_request', 'body must be valid JSON');
+    return apiError(400, 'invalid_request', 'body must be valid JSON');
   }
   const profile = await deps.store.get(record.profile, record.profile_version);
   if (!profile) {
-    return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
+    return apiError(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
   }
   const input = parseResolution(raw, profile);
-  if (typeof input === 'string') return error(400, 'invalid_request', input);
+  if (typeof input === 'string') return apiError(400, 'invalid_request', input);
   // Only the answers the profile lists, so rules that read a person's answer
   // (decisions.<name>.outcome) know every value it can have.
   const answers = peopleAnswers(profile);
   if (!answers.includes(input.action)) {
-    return error(400, 'invalid_request', `"action" must be one of: ${answers.join(', ')}`);
+    return apiError(400, 'invalid_request', `"action" must be one of: ${answers.join(', ')}`);
   }
 
   const finalAnswers: Record<string, FinalAnswer> = {};
@@ -201,14 +208,14 @@ export async function feedbackAnswer(
   try {
     raw = await readBody();
   } catch {
-    return error(400, 'invalid_request', 'body must be valid JSON');
+    return apiError(400, 'invalid_request', 'body must be valid JSON');
   }
   const profile = await deps.store.get(record.profile, record.profile_version);
   if (!profile) {
-    return error(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
+    return apiError(409, 'profile_version_gone', 'the profile version of this decision is no longer available');
   }
   const feedback = parseFeedback(raw, profile);
-  if (typeof feedback === 'string') return error(400, 'invalid_request', feedback);
+  if (typeof feedback === 'string') return apiError(400, 'invalid_request', feedback);
 
   await deps.log.addFeedback(id, { ...feedback, created_at: new Date().toISOString(), client: client.client });
   return { status: 204, body: null };
@@ -259,14 +266,14 @@ export function internalClient(value: unknown): TokenRecord {
  * reach the engine.
  */
 export async function decideInternal(deps: Deps, client: TokenRecord, profile: unknown, request: unknown, options: unknown): Promise<ApiAnswer> {
-  if (typeof profile !== 'string') return error(400, 'invalid_request', 'the profile must be a string');
+  if (typeof profile !== 'string') return apiError(400, 'invalid_request', 'the profile must be a string');
   const o = options ?? {};
-  if (typeof o !== 'object' || Array.isArray(o)) return error(400, 'invalid_request', 'the options must be an object');
+  if (typeof o !== 'object' || Array.isArray(o)) return apiError(400, 'invalid_request', 'the options must be an object');
   const { idempotencyKey, version, ...rest } = o as { idempotencyKey?: unknown; version?: unknown };
-  if (Object.keys(rest).length > 0) return error(400, 'invalid_request', `unknown option ${Object.keys(rest)[0]}`);
-  if (idempotencyKey !== undefined && typeof idempotencyKey !== 'string') return error(400, 'invalid_request', 'the idempotency key must be a string');
+  if (Object.keys(rest).length > 0) return apiError(400, 'invalid_request', `unknown option ${Object.keys(rest)[0]}`);
+  if (idempotencyKey !== undefined && typeof idempotencyKey !== 'string') return apiError(400, 'invalid_request', 'the idempotency key must be a string');
   if (version !== undefined && !(typeof version === 'number' && Number.isInteger(version))) {
-    return error(400, 'invalid_request', '"version" must be a positive integer');
+    return apiError(400, 'invalid_request', '"version" must be a positive integer');
   }
   return decideAnswer(deps, client, profile, async () => JSON.parse(JSON.stringify(request)) as unknown,
     version === undefined ? undefined : String(version), idempotencyKey);
@@ -274,12 +281,12 @@ export async function decideInternal(deps: Deps, client: TokenRecord, profile: u
 
 /** An internal get or close call: the id is checked like a path parameter. */
 export async function byIdInternal(deps: Deps, client: TokenRecord, id: unknown, call: typeof getAnswer | typeof closeAnswer): Promise<ApiAnswer> {
-  if (typeof id !== 'string') return error(400, 'invalid_request', 'the decision id must be a string');
+  if (typeof id !== 'string') return apiError(400, 'invalid_request', 'the decision id must be a string');
   return call(deps, client, id);
 }
 
 /** An internal resolve call: the body goes through JSON, as over HTTP. */
 export async function resolveInternal(deps: Deps, client: TokenRecord, id: unknown, request: unknown, defer: (work: Promise<unknown>) => Promise<void>): Promise<ApiAnswer> {
-  if (typeof id !== 'string') return error(400, 'invalid_request', 'the decision id must be a string');
+  if (typeof id !== 'string') return apiError(400, 'invalid_request', 'the decision id must be a string');
   return resolveAnswer(deps, client, id, async () => JSON.parse(JSON.stringify(request)) as unknown, defer);
 }

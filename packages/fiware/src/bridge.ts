@@ -296,7 +296,12 @@ export async function inputHash(entity: Entity, inputs: string[], requires?: Rec
     const sub = (key: string) => valueOf((entity[name] as Record<string, unknown> | undefined)?.[key]) ?? null;
     return [value, sub('decisionId'), ...(req.rerunOnReview ? [sub('finalAction'), sub('reviewedAt')] : [])];
   });
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(values)));
+  return sha256Hex(JSON.stringify(values));
+}
+
+/** The SHA-256 of a text (UTF-8), as lowercase hex. */
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -519,10 +524,7 @@ function failure(id: string, err: unknown, decision?: string): EntityResult {
 
 /** An entity as it is now (normalized, with the given context's names), 'gone', or the failed response. */
 async function readEntity(id: string, config: BridgeConfig, context = config.broker.context): Promise<Entity | 'gone' | Response> {
-  const headers = brokerHeaders(config, 'application/json');
-  delete headers['content-type'];
-  headers.accept = 'application/json';
-  if (context) headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  const headers = readHeaders(config, context);
   const res = await send(config, 'broker', `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}`, { headers });
   if (res.status === 404) return 'gone';
   if (!res.ok) return res;
@@ -605,8 +607,7 @@ export function decisionsOf(entity: Entity, requires: Record<string, Requirement
  */
 export async function idempotencyKey(route: Route, entityId: string, body: unknown): Promise<string> {
   // Keys sorted, so the same entity read twice in another attribute order is the same request.
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson([route.name ?? route.type, route.profile, entityId, body])));
-  return `bridge-${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  return `bridge-${await sha256Hex(canonicalJson([route.name ?? route.type, route.profile, entityId, body]))}`;
 }
 
 /** JSON with object keys sorted, at every level. */
@@ -822,7 +823,6 @@ export function clashingAnswer(names: string[]): string | undefined {
 export function toProperty(d: Decision, hash: string, now = new Date(), decisionRef?: string, checked = false): Record<string, unknown> {
   const clash = clashingAnswer(Object.keys(d.answers));
   if (clash !== undefined) throw new Error(answerClash(clash));
-  const P = (value: unknown) => ({ type: 'Property', value });
   const rule = policyRule(d);
   const property: Record<string, unknown> = {
     type: 'Property',
@@ -845,6 +845,9 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
   }
   return property;
 }
+
+/** An NGSI-LD Property with this value. */
+const P = (value: unknown) => ({ type: 'Property', value });
 
 /**
  * Sent on every request. Some brokers sit behind firewalls that refuse
@@ -914,6 +917,18 @@ function brokerHeaders(config: BridgeConfig, contentType: string): Record<string
   return headers;
 }
 
+/** For a GET or DELETE: the broker's headers without a body, JSON accepted, the context's Link when there is one. */
+function readHeaders(config: BridgeConfig, context: string | undefined): Record<string, string> {
+  const headers = brokerHeaders(config, 'application/json');
+  delete headers['content-type'];
+  headers.accept = 'application/json';
+  if (context) headers.link = contextLink(context);
+  return headers;
+}
+
+/** The Link header that names a JSON-LD context. */
+const contextLink = (context: string) => `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+
 /**
  * Writes one attribute with `PATCH …/attrs/{name}`; the first time, when the
  * attribute does not exist yet (404), appends it with `POST …/attrs`. Not
@@ -923,7 +938,7 @@ function brokerHeaders(config: BridgeConfig, contentType: string): Record<string
 async function writeAttribute(id: string, name: string, property: Record<string, unknown>, config: BridgeConfig): Promise<Response> {
   const { broker } = config;
   const headers = brokerHeaders(config, 'application/json');
-  if (broker.context) headers.link = `<${broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  if (broker.context) headers.link = contextLink(broker.context);
   const attrs = `${broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}/attrs`;
   const write = await send(config, 'broker', `${attrs}/${encodeURIComponent(name)}`, { method: 'PATCH', headers, body: JSON.stringify(property) });
   if (write.status !== 404) return write;
@@ -1014,7 +1029,6 @@ export function resolvedOf(d: Pick<Decision, 'review'>): { action: string; at?: 
  * as a DateTime.
  */
 function reviewFields(d: Pick<Decision, 'review'>, on: 'result' | 'decision'): Record<string, unknown> {
-  const P = (value: unknown) => ({ type: 'Property', value });
   const done = resolvedOf(d);
   if (!done) return { reviewStatus: P('pending') };
   return {
@@ -1030,7 +1044,6 @@ function reviewFields(d: Pick<Decision, 'review'>, on: 'result' | 'decision'): R
  * the action is taken and a person can correct it later through Pointsman's feedback.
  */
 export function toDecisionEntity(d: Decision, entityId: string, route: Route, now = new Date(), informedBy?: string): Record<string, unknown> {
-  const P = (value: unknown) => ({ type: 'Property', value });
   const checked = isChecked(d, route);
   // The earlier decisions, by name, as Pointsman read them (hidden ones left out).
   const required = Object.entries(d.requires ?? {}).flatMap(([name, r]) => (typeof r?.decision === 'string' ? [{ name, decision: decisionEntityId(r.decision) }] : []));
@@ -1230,10 +1243,7 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   const profile = valueOf(decisionAttr(decision, 'profile'));
   const candidates = config.routes.filter((r) => r.profile === profile && r.decisionEntity);
   if (candidates.length === 0 || typeof target !== 'string') return { id, review, written: false };
-  const headers = brokerHeaders(config, 'application/json');
-  delete headers['content-type'];
-  headers.accept = 'application/json';
-  if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  const headers = readHeaders(config, config.broker.context);
   const attrs = [...new Set(candidates.map((r) => r.attribute))].map(encodeURIComponent).join(',');
   const got = await send(config, 'broker', `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
   if (got.status === 404) return { id, review, written: false };
@@ -1247,19 +1257,19 @@ async function handleReview(decision: Entity, config: BridgeConfig): Promise<Ent
   const when = reviewedAt;
   const write = await writeAttribute(target, route.attribute, {
     ...result,
-    finalAction: { type: 'Property', value: finalAction },
-    reviewedAt: { type: 'Property', value: when },
+    finalAction: P(finalAction),
+    reviewedAt: P(when),
     // The marker for open checks (toProperty) follows the review.
-    ...(result?.reviewStatus !== undefined && { reviewStatus: { type: 'Property', value: 'resolved' } }),
+    ...(result?.reviewStatus !== undefined && { reviewStatus: P('resolved') }),
   }, config);
   if (!updatedAll(write)) return { id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
   const hash = valueOf(result?.inputHash);
   if (route.task && typeof hash === 'string') {
     const done = await brokerRequest('POST', await taskEntityId(target, route.attribute, hash), config, {
       '@context': [TASK_CONTEXT, CORE_CONTEXT],
-      progress: { type: 'Property', value: 'completed' },
-      statusLabel: { type: 'Property', value: finalAction },
-      completedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': when } },
+      progress: P('completed'),
+      statusLabel: P(finalAction),
+      completedAt: P({ '@type': 'DateTime', '@value': when }),
     });
     // 404: no Task (an action without one, or made before Tasks).
     if (!updatedAll(done) && done.status !== 404) return { id, error: `broker refused the Task update: ${done.status}`, retry: retryable(done.status) };
@@ -1356,10 +1366,7 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
   // the entity could not tell them apart.
   const candidates = config.routes.filter((r) => r.decisionEntity && r.name === undefined);
   if (candidates.length === 0) return { id, skipped: 'nothing to resolve' };
-  const headers = brokerHeaders(config, 'application/json');
-  delete headers['content-type'];
-  headers.accept = 'application/json';
-  if (config.broker.context) headers.link = `<${config.broker.context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
+  const headers = readHeaders(config, config.broker.context);
   const attrs = [...new Set(candidates.map((r) => r.attribute))].map(encodeURIComponent).join(',');
   const got = await send(config, 'broker', `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(target)}?attrs=${attrs}`, { headers });
   if (got.status === 404) return { id, skipped: 'nothing to resolve' };
@@ -1393,10 +1400,10 @@ async function handleWorkOrder(task: Entity, mapping: Record<string, string>, co
 
   const res = await brokerRequest('POST', decision, config, {
     '@context': [DECISION_CONTEXT, CORE_CONTEXT],
-    reviewStatus: { type: 'Property', value: 'resolved' },
-    finalAction: { type: 'Property', value: finalAction },
-    reviewedBy: { type: 'Property', value: by },
-    reviewedAt: { type: 'Property', value: { '@type': 'DateTime', '@value': modified } },
+    reviewStatus: P('resolved'),
+    finalAction: P(finalAction),
+    reviewedBy: P(by),
+    reviewedAt: P({ '@type': 'DateTime', '@value': modified }),
   });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
   return { id, resolves: decision, finalAction };
@@ -1416,8 +1423,8 @@ export const TASK_CONTEXT = 'https://datamodels.jp/context/task/v1.jsonld';
  */
 export async function taskEntityId(entityId: string, attribute: string, hash: string): Promise<string> {
   // OWN_TASK recognises this form; other apps' Tasks must not use it.
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([entityId, attribute, hash])));
-  return `urn:ngsi-ld:Task:${[...new Uint8Array(digest)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  // The first 16 bytes (32 hex digits).
+  return `urn:ngsi-ld:Task:${(await sha256Hex(JSON.stringify([entityId, attribute, hash]))).slice(0, 32)}`;
 }
 
 /**
@@ -1427,7 +1434,6 @@ export async function taskEntityId(entityId: string, attribute: string, hash: st
  * to completed; the bridge only cancels an open Task (cancelOpenTask).
  */
 export function toTaskEntity(d: Decision, entity: Entity, options: TaskOptions, id: string, now = new Date()): Record<string, unknown> {
-  const P = (value: unknown) => ({ type: 'Property', value });
   const label = options.name ? valueOf(entity[options.name]) : undefined;
   // Own keys only: an action named like an Object method is not a priority.
   const priority = options.priority && Object.hasOwn(options.priority, d.action) ? options.priority[d.action] : undefined;
@@ -1461,7 +1467,6 @@ async function resolveDecisionEntity(id: string, d: Decision, config: BridgeConf
 
 /** A Task for a decision a person has resolved already: completed, with their action, as handleReview completes one. */
 function completedTask(task: Record<string, unknown>, done: { action: string; at?: string }, now: Date): Record<string, unknown> {
-  const P = (value: unknown) => ({ type: 'Property', value });
   return {
     ...task,
     progress: P('completed'),
@@ -1504,8 +1509,8 @@ async function cancelOpenTask(id: string, action: string, config: BridgeConfig):
   if (progress === 'completed' || progress === 'cancelled' || progress === 'failed') return null;
   const updated = await brokerRequest('POST', id, config, {
     '@context': [TASK_CONTEXT, CORE_CONTEXT],
-    progress: { type: 'Property', value: 'cancelled' },
-    statusLabel: { type: 'Property', value: action },
+    progress: P('cancelled'),
+    statusLabel: P(action),
   });
   return updatedAll(updated) ? null : updated;
 }
@@ -1522,7 +1527,7 @@ async function supersedeDecisionEntity(id: string, config: BridgeConfig): Promis
   if (valueOf((await found.json() as Entity).reviewStatus) !== 'pending') return null;
   const updated = await brokerRequest('POST', id, config, {
     '@context': [DECISION_CONTEXT, CORE_CONTEXT],
-    reviewStatus: { type: 'Property', value: 'superseded' },
+    reviewStatus: P('superseded'),
   });
   return updatedAll(updated) ? null : updated;
 }
@@ -1534,12 +1539,7 @@ const updatedAll = (res: Response) => res.ok && res.status !== 207;
 function brokerRequest(method: 'GET' | 'DELETE' | 'POST', id: string, config: BridgeConfig, body?: unknown, attribute?: string, context = TASK_CONTEXT): Promise<Response> {
   const path = method === 'POST' ? '/attrs' : attribute ? `/attrs/${encodeURIComponent(attribute)}` : '';
   const url = `${config.broker.url}/ngsi-ld/v1/entities/${encodeURIComponent(id)}${path}`;
-  const headers = brokerHeaders(config, 'application/ld+json');
-  if (method !== 'POST') {
-    delete headers['content-type'];
-    headers.accept = 'application/json';
-    headers.link = `<${context}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"`;
-  }
+  const headers = method === 'POST' ? brokerHeaders(config, 'application/ld+json') : readHeaders(config, context);
   return send(config, 'broker', url, { method, headers, ...(body !== undefined && { body: JSON.stringify(body) }) });
 }
 

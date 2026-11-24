@@ -28,6 +28,7 @@ import {
 import { APP_SLUG as APP_SLUG_PATTERN, GITHUB_TIMEOUT_MS, RELEASE_CHANGELOGS, type GitHubFactQuery, type PullRequestRef } from './definition';
 import { MAX_CODEOWNERS_BYTES, ownerLookup, parseCodeowners } from './codeowners';
 import { matchesAny } from './glob';
+import { API, githubHeaders, isObject } from './github-http';
 import { rateLimited } from './rate-limit';
 import { manifestsOf, NOT_RELEASE, onlyVersionMoves, releaseFacts, type ReleaseFacts } from './release';
 import { ageInDays, bumpFacts, devOnlyInRepository, manifestsToRead, NO_BUMP, type BumpFacts } from './bump';
@@ -41,7 +42,6 @@ import {
   type Comment, type Editors, type Review, type ReviewState, type Status,
 } from './reviews';
 
-const API = 'https://api.github.com';
 const USER_AGENT = 'pointsman (+https://github.com/geolonia/pointsman)';
 const PER_PAGE = 100;
 /** Larger pull requests fail path facts (`error`): 10 calls are enough. GitHub itself lists 3,000. */
@@ -262,12 +262,7 @@ export class GitHubAppAuth implements GitHubAuth {
 // ---- requests ----
 
 function headers(token: string): Record<string, string> {
-  return {
-    authorization: `Bearer ${token}`,
-    accept: 'application/vnd.github+json',
-    'x-github-api-version': '2022-11-28',
-    'user-agent': USER_AGENT,
-  };
+  return githubHeaders(token, USER_AGENT);
 }
 
 /** The JSON body of a 2xx answer; otherwise a FactError that names `what` and the status (never the token). */
@@ -314,8 +309,6 @@ async function graphql(fetchFn: typeof fetch, query: string, variables: Record<s
 }
 
 // ---- answers ----
-
-const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 export interface PullRequest {
   open: boolean;

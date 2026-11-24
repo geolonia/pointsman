@@ -129,3 +129,26 @@ test('does not send an invalid draft, or to an unsafe URL, or without a token', 
   assert.equal(run([triage, '--url', 'https://x.example', '--limit', '0']).status, 2);
   assert.equal(run([triage, '--url', 'https://x.example', '--limit', '501']).status, 2);
 });
+
+test('--url: https, or http only on this machine; the path prefix kept, with or without a trailing slash', async (t) => {
+  const notUrl = run([triage, '--url', 'not a url']);
+  assert.equal(notUrl.status, 2);
+  assert.match(notUrl.stderr, /^--url.*not a URL/);
+  for (const bad of ['http://pointsman.example.com', 'ftp://localhost', 'http://127.0.0.2']) {
+    const r = run([triage, '--url', bad]);
+    assert.equal(r.status, 2, bad);
+    assert.equal(r.stderr, '--url must use https (http only for localhost)\n', bad);
+  }
+  const { url, seen } = await fakeDeployment(t, () => [200, { matched: 0, changed: 0, items: [] }]);
+  for (const base of [`${url}/base`, `${url}/base/`]) await runAsync([triage, '--url', base]);
+  await runAsync([triage, '--url', url.replace('127.0.0.1', 'localhost')]);
+  assert.deepEqual(seen.map((s) => s.url), ['/base/v1/profiles/issue-triage/replay', '/base/v1/profiles/issue-triage/replay', '/v1/profiles/issue-triage/replay']);
+});
+
+test('--url with credentials, a query or a fragment is refused (checkServerUrl): before, a query or fragment dropped the path prefix', () => {
+  for (const [bad, message] of [['https://u:p@x.example', 'credentials'], ['https://x.example/base?a=1', 'query'], ['https://x.example/base#f', 'query'], ['https://x.example/base?', 'query']]) {
+    const r = run([triage, '--url', bad]);
+    assert.equal(r.status, 2, bad);
+    assert.match(r.stderr, new RegExp(`^--url must not .*${message}`), bad);
+  }
+});

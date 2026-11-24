@@ -366,3 +366,31 @@ test('a field_text value longer than the module takes cannot be a case fact: it 
   const year = { ...p, facts: [{ name: 'code', type: 'field_number', at: '$.code' }], policy: { rules: [{ when: 'facts.code.value <= 1981', action: 'high' }], default: 'low' } };
   for (const v of [Infinity, -Infinity, NaN]) assert.throws(() => caseInputs(c({ value: v }), year), /finite number/);
 });
+
+test('--url: https, or http only on this machine; the path prefix kept, with or without a trailing slash', async (t) => {
+  const cases = join(examples, 'cases', 'issue-triage.yaml');
+  const profiles = join(examples, 'profiles');
+  const token = { POINTSMAN_TOKEN: 'pm_test' };
+  const notUrl = run([cases, '--profiles', profiles, '--url', 'not a url'], token);
+  assert.equal(notUrl.status, 2);
+  assert.match(notUrl.stderr, /^--url.*not a URL/);
+  for (const bad of ['http://pointsman.example.com', 'ftp://localhost', 'http://127.0.0.2']) {
+    const r = run([cases, '--profiles', profiles, '--url', bad], token);
+    assert.equal(r.status, 2, bad);
+    assert.equal(r.stderr, '--url must use https (http only for localhost)\n', bad);
+  }
+  const { url, seen } = await fakeDeployment(t, () => [200, { decision_id: 'x', test: true, profile_version: 1, action: 'auto', rule: 0, answers: triageAnswers(0.9) }]);
+  for (const base of [`${url}/base`, `${url}/base/`]) await runAsync([cases, '--profiles', profiles, '--url', base], token);
+  await runAsync([cases, '--profiles', profiles, '--url', url.replace('127.0.0.1', 'localhost')], token);
+  assert.deepEqual([...new Set(seen.map((s) => s.url))], ['/base/v1/decide/issue-triage', '/v1/decide/issue-triage']);
+  assert.ok(seen.filter((s) => s.url.startsWith('/base/')).length >= 2);
+});
+
+test('--url with credentials, a query or a fragment is refused (checkServerUrl): before, a query or fragment dropped the path prefix', () => {
+  const cases = join(examples, 'cases', 'issue-triage.yaml');
+  for (const [bad, message] of [['https://u:p@x.example', 'credentials'], ['https://x.example/base?a=1', 'query'], ['https://x.example/base#f', 'query'], ['https://x.example/base?', 'query']]) {
+    const r = run([cases, '--profiles', join(examples, 'profiles'), '--url', bad], { POINTSMAN_TOKEN: 'pm_test' });
+    assert.equal(r.status, 2, bad);
+    assert.match(r.stderr, new RegExp(`^--url must not .*${message}`), bad);
+  }
+});

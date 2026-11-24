@@ -1,7 +1,7 @@
 // The module @pointsman/facts-gsi: its definition and its provider.
 // Setting: FACTS_MODE "gsi" (GSI data), "mock" (fixed answers), "off" or unset.
 
-import { ConfigError, inside, mockProvider, nearest, type FactModuleEntry, type FactProvider } from '@pointsman/module-api';
+import { factsMode, inside, mockProvider, nearest, type FactModuleEntry, type FactProvider } from '@pointsman/module-api';
 import { GsiFactProvider } from './provider';
 import { definition } from './definition';
 
@@ -12,16 +12,13 @@ let gsi: GsiFactProvider | undefined;
 export const gsiModule: FactModuleEntry = {
   ...definition,
   create(env, runtime): FactProvider | undefined {
-    switch (env.FACTS_MODE ?? 'off') {
+    switch (factsMode(env)) {
       case 'off':
-      case '':
         return undefined;
       case 'mock':
         return mock;
       case 'gsi':
         return (gsi ??= new GsiFactProvider({ cache: runtime.cache }));
-      default:
-        throw new ConfigError('FACTS_MODE must be "off", "mock" or "gsi"');
     }
   },
 };
