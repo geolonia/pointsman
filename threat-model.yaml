@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:7c5c644ae098de768dd0b2dee57dae9b438209c7e281b06d609e081e103501da"
+prose_version: "threat-model.md@sha256:cadc0f04407d6b2e5b136cec7a64003aa2a158c61b006a11aa0ff9853dbea58d"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
@@ -136,7 +136,7 @@ host_side_effects:
   - effect: logging
     stance: present
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, connector-github]
-    conditions: "console.error (and one console.warn in the connector) with reasons only; never the state, a token, a key or a model response; the AI Gateway keeps the state when collect_logs is on"
+    conditions: "console.error (and two console.warn: the connector's leftover POINTSMAN_TOKEN and, since pointsman#307, a github_pr field the GitHub facts could not read) with reasons only; never the state, a token, a key or a model response; the AI Gateway keeps the state when collect_logs is on"
     provenance: {kind: documented, source: "docs/models.md \"Errors and logs never include the request, the response body or the key\""}
 
 entry_points:
