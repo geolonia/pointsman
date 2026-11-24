@@ -478,6 +478,16 @@ describe('code owners (github_pr.author_sole_code_owner)', () => {
     expect(await reasonOf('pr', moved)).toEqual({ missing: true, reason: 'stale' });
   });
 
+  it('a push that shortens the file list while it is read is stale, not a field without a value', async () => {
+    let reads = 0;
+    // The first read counts two files; the list comes back with one, and the pull request has moved by the read after it.
+    const moved = owners('* @alice', {
+      [PR]: () => (++reads > 1 ? pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1, full_name: 'octo-org/demo' } } }) : pullRequest()),
+      [`${PR}/files`]: () => [file('docs/guide.md')],
+    });
+    expect(await reasonOf('pr', moved)).toEqual({ missing: true, reason: 'stale' });
+  });
+
   it('a push while CODEOWNERS is matched is still stale, not false', async () => {
     let reads = 0;
     const moved = owners('* @alice', { [PR]: () => (++reads > 1 ? pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1, full_name: 'octo-org/demo' } } }) : pullRequest()) });
@@ -598,6 +608,26 @@ describe('changed paths (github_paths)', () => {
     let reads = 0;
     const retargeted = routes({ [PR]: () => (++reads === 1 ? pullRequest() : pullRequest({ base: { ref: 'release', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } } })) });
     expect(await reasonOf('docs', retargeted)).toEqual({ missing: true, reason: 'stale' });
+  });
+
+  it('a push that shortens the file list while it is read: stale, not error', async () => {
+    let reads = 0;
+    const moved = routes({
+      [PR]: () => (++reads === 1 ? pullRequest() : pullRequest({ head: { sha: OTHER, ref: 'fix-typo', repo: { id: 1 } } })),
+      [`${PR}/files`]: () => [file('docs/guide.md')],
+    });
+    expect(await reasonOf('docs', moved)).toEqual({ missing: true, reason: 'stale' });
+  });
+
+  it('the base branch moves while the files are read (same name, another commit): stale; it stays: read', async () => {
+    const at = (sha: string) => pullRequest({ base: { ref: 'main', sha, repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } } });
+    let reads = 0;
+    const moved = routes({ [PR]: () => at(++reads === 1 ? OTHER : 'c'.repeat(40)) });
+    expect(await reasonOf('docs', moved)).toEqual({ missing: true, reason: 'stale' });
+    const server = fakeGitHub(routes({ [PR]: () => at(OTHER) }));
+    expect((await lookupFacts(spec('docs'), state, provider(server))).docs).toMatchObject({ missing: false, values: { all: true, count: 2 } });
+    // Read twice, both times with the same base commit.
+    expect(server.count(PR)).toBe(2);
   });
 
   it('a file list that does not match the pull request is an error', async () => {

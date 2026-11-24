@@ -838,8 +838,9 @@ without regular expressions, so a long pattern cannot slow a decision down.
   started for the ruleset, not through a workflow at the same path in the
   repository (a pull request can change that one).
 - The file list is the pull request's current one, so the pull request is
-  read once more after it: a push or a new base branch in between makes
-  the facts `stale`.
+  read once more after it: a push, a new base branch, or a base branch
+  that moved to another commit (for example a merge into `main`) in
+  between makes the facts `stale`.
 - A check run and a commit status with the same name that disagree: the
   stricter result counts.
 - Reviews and conversation comments: 100 per page, page by page, fewer
@@ -866,7 +867,7 @@ without regular expressions, so a long pattern cannot slow a decision down.
 | Reason | When |
 |---|---|
 | `no_pr` | No pull request at `at`: `repo` must be `owner/name`, `number` a whole number from 1, `head` a full 40-character commit id, and `base`, when given, a branch name (1 to 255 characters, no spaces, control characters or `~^:?*[\`). Nothing is sent to GitHub. |
-| `stale` | GitHub's head commit is not `head`, or its base branch is not `base` (when given): every GitHub fact of the decision is `stale`. A push or a new base branch that comes in while the changed files are read makes the facts that use them `stale` (`github_paths`, and `github_pr`, which reads them for `author_sole_code_owner`); so does one while the reviews are read, and a push while the review threads are read (`github_copilot`, `github_app_approval`); `github_checks` is read by the commit id, so a later push does not change it. |
+| `stale` | GitHub's head commit is not `head`, or its base branch is not `base` (when given): every GitHub fact of the decision is `stale`. A push, a new base branch, or a base branch that moves to another commit while the changed files are read makes the facts that use them `stale` (`github_paths`, `github_workflows`, `github_release`, `github_bump`, and `github_pr`, which reads them for `author_sole_code_owner`); so does a push or a new base branch while the reviews are read (a base branch that only moved does not change the reviews), and a push while the review threads are read (`github_copilot`, `github_app_approval`); `github_checks` is read by the commit id, so a later push does not change it. |
 | `unavailable` | No GitHub provider (`FACTS_GITHUB` is off), or the token cannot see the repository (GitHub answers 404 or 403, or the app is not installed there). |
 | `timeout` | GitHub took longer than 5 seconds. |
 | `error` | Anything else: a GitHub error (5xx), a rate limit (also a 403 that says so only in its message, as GitHub's secondary rate limit can), a redirect (not followed: it would carry the token elsewhere), an answer of the wrong shape, too many files or checks. |

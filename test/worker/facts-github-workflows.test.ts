@@ -195,6 +195,15 @@ describe('github_workflows missing', () => {
     expect(await reason({ ...ok(), [PR]: () => pullRequest({ base: { ref: 'main', repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } } }) })).toEqual({ missing: true, reason: 'error' });
     expect(await reason({ ...ok(), [`${REPO}/git/blobs/:sha`]: () => new Response('{}', { status: 500 }) })).toEqual({ missing: true, reason: 'error' });
   });
+  it('the base branch moves while the files are read: stale, so the list and the base contents come from the same base commit', async () => {
+    // The list GitHub gives is against the merge base at the time; the base contents are read at the base commit read first.
+    let reads = 0;
+    const moved = { ...ok(), [PR]: () => pullRequest({ changed_files: 1, ...(++reads > 1 && { base: { ref: 'main', sha: SHA, repo: { id: 1, default_branch: 'main', owner: { type: 'Organization' } } } }) }) };
+    const { facts, server } = await lookup(moved);
+    expect(facts.wf).toEqual({ missing: true, reason: 'stale' });
+    // Nothing is read against the old base commit after that.
+    expect(server.calls.some((c) => c.path.startsWith(`${REPO}/git/`))).toBe(false);
+  });
   it('another head: stale; no access: unavailable; too slow: timeout', async () => {
     expect(await reason({ ...ok(), [PR]: () => pullRequest({ head: { sha: BASE, ref: 'ci', repo: { id: 1 } } }) })).toEqual({ missing: true, reason: 'stale' });
     expect(await reason({ ...ok(), [`${REPO}/git/trees/${HEAD}`]: () => new Response('{}', { status: 403 }) })).toEqual({ missing: true, reason: 'unavailable' });

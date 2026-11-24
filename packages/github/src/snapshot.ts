@@ -3,7 +3,8 @@
 // modules (snapshotOf). The pull request and its commits are read once and
 // checked against the requested head; then only the parts the facts need,
 // each once. A push or a new base while a list is read makes the facts
-// stale. The answers are checked in answers.ts.
+// stale, and for the file list also a base branch that moved to another
+// commit. The answers are checked in answers.ts.
 
 import { FactError, FactStaleError, FactUnavailableError, type FactScope } from '@pointsman/module-api';
 import { GITHUB_TIMEOUT_MS, type PullRequestRef } from './definition';
@@ -245,10 +246,14 @@ export class Snapshot {
       if (pr.files > MAX_FILES) throw new FactError(`the pull request changes more than ${MAX_FILES} files`);
       const all = (await Promise.all(pages(Math.ceil(pr.files / PER_PAGE)).map(async (p) =>
         changedFiles(await this.json(`${this.repoPath}/pulls/${this.ref.number}/files?per_page=${PER_PAGE}&page=${p}`, 'files'))))).flat();
-      if (all.length !== pr.files) throw new FactError('GitHub files: the list does not match the pull request');
       // The file list is the pull request's current one, not the one at a commit:
-      // read it once more, so a push or a new base in between makes the facts stale.
-      await this.stillAtHead('files');
+      // read it once more, so a push, a new base branch or a base branch that moved
+      // in between makes the facts stale. Before the count: a push that changes the
+      // list is stale, and only a list cut short at the same head and base is an error.
+      // The base commit too: the list is against the merge base at the time, the base
+      // contents (workflowFiles) are read at the base commit read first.
+      await this.stillAtHead('files', { baseCommit: true });
+      if (all.length !== pr.files) throw new FactError('GitHub files: the list does not match the pull request');
       return all;
     });
   }
@@ -484,12 +489,17 @@ export class Snapshot {
    * Reads the pull request once more after a list: a push or a new base
    * while the list was read makes the facts that use it stale, so nothing
    * written about a newer head, or read against another base, is taken for
-   * this one. The base is compared with the one the snapshot read first.
+   * this one. The base is compared with the one the snapshot read first:
+   * the branch always, and with `baseCommit` also its commit (base.sha, read
+   * the same way both times), for a list that depends on it (the changed
+   * files): a base branch that moved, even under the same name, is stale.
    */
-  private async stillAtHead(what: string): Promise<void> {
+  private async stillAtHead(what: string, { baseCommit = false } = {}): Promise<void> {
     const { pr } = await this.base;
     const again = pullRequest(await this.json(`${this.repoPath}/pulls/${this.ref.number}`, 'pull request'));
-    if (again.head !== this.ref.head || again.base !== pr.base) throw new FactStaleError(`the pull request changed while its ${what} were read`);
+    if (again.head !== this.ref.head || again.base !== pr.base || (baseCommit && again.baseSha !== pr.baseSha)) {
+      throw new FactStaleError(`the pull request changed while its ${what} were read`);
+    }
   }
 
   /** The pull request's reviews, oldest first. */

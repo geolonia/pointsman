@@ -1585,7 +1585,7 @@
       "property": "P-GITHUB-FACTS-FOR-HEAD",
       "violation_symptom": "x-toctou, wrong-output",
       "severity_tier": "security",
-      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 another base makes them stale when the request names base; a push or a new base while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
+      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 another base makes them stale when the request names base; a push, a new base, or a base branch moved to another commit while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
       "provenance": "documented",
       "source": "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""
     },
