@@ -6,7 +6,7 @@
 // and who pushed the head (the activity list: contents: read).
 
 import { FactError, FactUnavailableError } from '@pointsman/module-api';
-import { GitHubAppAuth, type Scope } from '../provider.ts';
+import { GitHubAppAuth, type Scope } from '../auth.ts';
 import { GITHUB_TIMEOUT_MS } from '../definition.ts';
 import { COPILOT } from '../reviews.ts';
 import { rateLimited } from '../rate-limit.ts';

@@ -1,4 +1,4 @@
-// GitHub pull-request facts (packages/github/src/provider.ts) against a fake GitHub API:
+// GitHub pull-request facts (packages/github/src/provider.ts, snapshot.ts, auth.ts) against a fake GitHub API:
 // every field, the shared snapshot, each way a fact can be missing, the
 // settings, and that only GET requests are sent.
 

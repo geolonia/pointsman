@@ -4,7 +4,7 @@
 
 import { ConfigError } from '@pointsman/module-api';
 import { definition } from '../definition.ts';
-import { privateKeyDer } from '../provider.ts';
+import { privateKeyDer } from '../auth.ts';
 import { ACTION, engineSetting, type EngineSetting } from './engine.ts';
 
 /** The settings it reads (in the module's definition). */

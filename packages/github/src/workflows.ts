@@ -1,7 +1,7 @@
 // GitHub Actions files of a pull request, read for the `github_workflows`
 // fact (docs/profile-format.md#github-workflows). Pure functions: the YAML
 // parser with limits, the `${{ }}` tokenizer, and the counts. Nothing here
-// runs or evaluates anything, and nothing reads GitHub (provider.ts
+// runs or evaluates anything, and nothing reads GitHub (snapshot.ts
 // does).
 //
 // The files are written by the pull request's author, so every limit or

@@ -1,5 +1,5 @@
 // Whether a GitHub answer is a rate limit. One check for the facts
-// (provider.ts) and the connector (connector/github.ts), so both read the
+// (requests.ts, snapshot.ts) and the connector (connector/github.ts), so both read the
 // same answer the same way: a rate limit is "try again later" (the fact
 // `error`, a connector write left for the next run), never "no access".
 
