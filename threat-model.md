@@ -766,8 +766,11 @@
 - **Backtest note**: run on 2026-11-25 for the re-binding to `v0.24.1`,
   with a historical corpus (Q49): the seven advisories and pointsman#228 of
   the CodeRabbit deep scan, routed against the model as bound to `v0.17.0`,
-  and the 27 defect reports of the review of 2026-11 (pointsman#243 to
-  #277 without the six that report no defect, and #347), each routed
+  and the 27 defect reports of the review of 2026-11 (the issues
+  pointsman#243 to #277 without #246 and #263 to #268, which report
+  documentation, performance, refactoring, a linter, tests and nits, and
+  without #270, fixed in `v0.19.0` before the review's other fixes; and
+  #347), each routed
   against the model at the release before its fix (`v0.22.0`; `v0.23.0`
   for #275, `v0.24.0` for #347) and again against this model: a 35-item
   corpus, 35 real and 0 synthesized. Every item of the corpus was fixed,
@@ -782,8 +785,9 @@
   `KNF-STEERED-ANSWER` (an incomplete probability map counted as inside the
   profile's options before #313); #276 and #249 on a non-default build
   (#249's close is accurate: the wrong output reached only the dev-only
-  bundled store); #277 on a dependency's contract (the fix was the upgrade
-  that disposition prescribes). Under rule 5 as Q52 words it, 4 of 35
+  bundled store); #277 on an unsupported component, the dependencies' own
+  code (the fix was the upgrade that `OUT-OF-MODEL: dependency-contract`
+  prescribes). With rule 5 as Q52 words it, 4 of 35
   close, and one of them (#272) is a substantive miss. Contradictions with
   the historical calls: 1 (the hand triage of pointsman#228). Against this
   model, after the changes of Q52 to Q55, each item was routed again by
@@ -2144,7 +2148,7 @@ what voids it.
   call that takes longer is a model error and the next fallback model is
   tried. Since pointsman#324 no fact lookup starts before a model's adapter
   is found, and when every model fails the 502 does not wait for the fact
-  lookups (`src/decide.ts:203`). Symptom: `hang`. Tier: correctness-only.
+  lookups (`src/decide.ts:195`, `src/decide.ts:203`). Symptom: `hang`. Tier: correctness-only.
   *(documented, docs/models.md "Workers AI and AI Gateway": "Either way a
   call that takes longer than 10 seconds is a model error"; "Model server
   (local or self-hosted models)")*. Voided by: nothing; the size of the
@@ -2952,7 +2956,7 @@ Revise the model when any of these happens:
 
 | Disposition | Meaning | Licensed by |
 | --- | --- | --- |
-| `VALID` | Violates a claimed property, via an in-scope adversary and input. | §1.11, §1.7, §1.10 |
+| `VALID` | Violates a claimed property, via an in-scope adversary and input, or via an honest in-scope input that no attacker controls (Q52). | §1.11, §1.7, §1.10 |
 | `VALID-HARDENING` | No §1.11 property violated, but the API makes a §1.14 misuse easy enough to harden. Private; maintainer discretion; usually no CVE. | §1.14 |
 | `OUT-OF-MODEL: trusted-input` | Requires attacker control of an input marked trusted. | §1.7 |
 | `OUT-OF-MODEL: adversary-not-in-scope` | Requires an excluded attacker capability. | §1.10 |

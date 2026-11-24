@@ -911,7 +911,10 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   claim describes; the three `src/mcp.ts` citations were checked by hand).
   The validator found two citations on comment lines; they now point at
   the code.
-- **Backtest (Q49)**: the first run with a historical corpus. Three fresh
+- **Backtest (Q49)**: the first run with a historical corpus: the seven
+  advisories, #228, and the review's issues #243 to #277 that report a
+  defect (without #246 and #263 to #268, and without #270, fixed in
+  `v0.19.0`), plus #347: 35 items. Three fresh
   subagents routed the 35 items in parallel against the model before each
   fix and against the model now, with a written brief; I read their
   tables and checked the disagreements against the model. Figures are in
