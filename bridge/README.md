@@ -595,6 +595,9 @@ Another Worker can mount the bridge instead of running it on its own:
 [packages/fiware/src/bridge.ts](../packages/fiware/src/bridge.ts) (also
 still at `bridge/src/bridge.ts`), with `configFrom` from
 [packages/fiware/src/config.ts](../packages/fiware/src/config.ts).
+`bridge.ts` imports the files beside it (routes, decisions, reviews,
+Tasks, broker requests) with `.ts` extensions: a Worker that type-checks
+it with `tsc` needs `allowImportingTsExtensions` in its `tsconfig.json`.
 
 Tests: `pnpm test:worker` (in `test/bridge/`, with a fake broker and
 Pointsman, and inside the Pointsman Worker).

@@ -1,4 +1,4 @@
-// The bridge's Decision entities (packages/fiware/src/bridge.ts) against the data
+// The bridge's Decision entities (packages/fiware/src/decision-entity.ts) against the data
 // model's JSON Schema (datamodels.jp, pinned copy in test/fixtures). Node runs the bridge's
 // TypeScript directly (type stripping); Ajv cannot run in the Workers tests.
 
