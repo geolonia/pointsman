@@ -137,12 +137,15 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
     // bridge's write a 207 cut short), and the result still waits: the
     // /reviews step did not finish. reviewStatus does not change, so no
     // notification may come: fill in what is missing and run that step here.
-    // It is safe to repeat, also on the next retry if it fails (#347).
-    if (known.finalAction === undefined || known.reviewedBy === undefined || known.reviewedAt === undefined) {
-      const res = await brokerRequest('POST', decision, config, { '@context': context, ...review });
+    // It is safe to repeat, also on the next retry if it fails (#347). What
+    // is stored stays (a later dateModified does not move reviewedAt), and
+    // the step gets the same values the Decision has.
+    const missing = Object.fromEntries(Object.entries(review).filter(([name]) => known[name] === undefined));
+    if (Object.keys(missing).length > 0) {
+      const res = await brokerRequest('POST', decision, config, { '@context': context, ...missing });
       if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
     }
-    const done = await handleReview({ ...known, id: decision, type: 'Decision', reviewStatus: P('resolved'), ...review }, config);
+    const done = await handleReview({ ...known, ...missing, id: decision, type: 'Decision', reviewStatus: P('resolved') }, config);
     if ('error' in done) return { ...done, id };
     return { id, resolves: decision, finalAction };
   }

@@ -1210,7 +1210,7 @@ describe('work orders from other apps', () => {
         }
         if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           expect(c.headers.get('link')).toContain(DECISION_CONTEXT);
-          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', used: { type: 'Relationship', object: R }, reviewStatus: P(status), ...fields });
+          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', refersTo: { type: 'Relationship', object: R }, profile: P('road-restriction-check'), reviewStatus: P(status), ...fields });
         }
         if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           // Two writes: the review attributes, then reviewStatus (postResolved answers that one).
@@ -1382,6 +1382,21 @@ describe('work orders from other apps', () => {
     expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
     expect(resolves).toBe(2);
     expect(t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision'))).toHaveLength(posts);
+    // And the result gets the person's answer.
+    const result = t.calls.filter((c) => c.method !== 'GET' && c.url.includes(encodeURIComponent(R))).at(-1);
+    expect(result?.body).toMatchObject({ check: { value: 'review', finalAction: P('publish'), reviewedAt: P('2026-10-09T05:00:00Z') } });
+  });
+
+  it('a retry keeps what the Decision has: a later dateModified does not move reviewedAt (#347)', async () => {
+    const at = P({ '@type': 'DateTime', '@value': '2026-10-09T04:00:00Z' });
+    const t = orders({
+      decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'), reviewedAt: at },
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+    });
+    expect(await (await t.send([order({ dateModified: P({ '@type': 'DateTime', '@value': '2026-10-09T06:00:00Z' }) })])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    expect(t.calls.some((c) => c.method === 'POST' && c.url.includes('Decision'))).toBe(false);
+    const result = t.calls.filter((c) => c.method !== 'GET' && c.url.includes(encodeURIComponent(R))).at(-1);
+    expect(result?.body).toMatchObject({ check: { finalAction: P('publish'), reviewedAt: P('2026-10-09T04:00:00Z') } });
   });
 
   it('a 207 on either Decision write leaves it pending, and the retry writes both (#347)', async () => {
