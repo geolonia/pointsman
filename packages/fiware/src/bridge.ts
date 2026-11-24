@@ -11,7 +11,8 @@
 //
 // No package imports, only those files: other Workers (for example the demo)
 // build this file from an engine checkout without installing its packages.
-// Their tsconfig needs allowImportingTsExtensions for the `.ts` imports.
+// Their tsconfig needs allowImportingTsExtensions for the `.ts` imports
+// (TS5097 otherwise), in the same change that moves their engine.json here.
 
 import { readEntity } from './broker.ts';
 import { handleEntity } from './decide.ts';

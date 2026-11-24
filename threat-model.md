@@ -2203,7 +2203,7 @@ what voids it.
   `x-authentication-bypass`. Tier: security-critical. *(documented,
   bridge/README.md "Configuration": "other notifications are refused")*.
   Voided by: nothing. Search: `grep -n "sameSecret\|pathname" packages/fiware/src/bridge.ts`
-  — the two routes at `packages/fiware/src/bridge.ts:61` and the secret check at `packages/fiware/src/bridge.ts:63`.
+  — the two routes at `packages/fiware/src/bridge.ts:62` and the secret check at `packages/fiware/src/bridge.ts:64`.
 - **`P-BRIDGE-LOOP-GUARD`** — the bridge stores a hash of the input attribute
   values with the result and skips a notification whose inputs already have
   that hash; it writes with attribute-level `PATCH` so its own write does not
