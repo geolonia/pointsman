@@ -12,6 +12,34 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.24.0 (2026-11-24)
+
+The rest of the review of 2026-11: no token can take the internal client's name (#330), small fixes (#331, #332; also `people_answers` in MCP `list_profiles`), the GitHub connector keeps its App tokens between runs (#333), missing tests and a stricter module registry (#334), two races in the GitHub snapshot (#339), the open CodeQL alerts (#345), and the largest files split by job (#335–#338, #340, #341).
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.24.0`, and change modules pinned with a version in `modules` to `@0.24.0` (for example `@pointsman/github@0.23.0` → `@pointsman/github@0.24.0`); an old pin stops validation and the build. No migration, no new secrets, no new GitHub App permission or event.
+- **A Worker that builds the FIWARE bridge from an engine checkout** (the demos do): `packages/fiware/src/bridge.ts` now imports the files beside it with `.ts` extensions, so its `tsconfig.json` needs `"allowImportingTsExtensions": true` in the same change that moves its `engine.json` here; otherwise `tsc` fails with TS5097 (#341).
+- `scripts/tokens.mjs` reads `INTERNAL_CLIENT` from the Wrangler config (`--config`, else the one wrangler finds from the current folder up): `create` and `rotate` refuse its client name, and `list` marks a token that has it (#330). A JSON or JSONC config that cannot be read is now an error, a TOML config a warning, and where wrangler would redirect to a generated config, `--config` is required. It exits 2 only for bad options and 1 for every other failure (#332). It does not see an `INTERNAL_CLIENT` set only as a secret or in `.dev.vars`; and while a deployment moves to internal calls, `rotate` of the connector's old token is refused too: revoke it instead.
+- `INTERNAL_CLIENT` profile ids, and the GitHub connector's, must have the profile schema's id form (no `_`, at most 63 characters), as every profile id has (#331, #332).
+- `test-profile` and `replay-profile` refuse a `--url` with a user name, password, query or fragment (#336).
+- GitHub facts can be `stale` in more cases: a push while the file list is read (before: an error, or a `github_pr` field without a value), and a base branch that moved to another commit while it is read (#339). The next event or recheck reads them again.
+- deploy-watch: `cancel-update` is on for `true`, `True` or `TRUE` (#331).
+- For third-party fact modules: the registry refuses a fact type whose `cases` rules name unknown fields or give values the engine would refuse (#334), and `FactLog.recent` refuses a `limit` that is not a whole number (#331).
+
+What changed:
+
+- **Tokens** (#330): no token gets the client name of `INTERNAL_CLIENT`, whose decisions it would share; after setting or changing `INTERNAL_CLIENT`, run `tokens.mjs list` and revoke a token it marks once internal calls work.
+- **GitHub connector** (#333, #331): one GitHub client per app (id, key, scope) per isolate, so installation tokens are kept between runs, each for its one repository, until 5 minutes before they expire; a 401, 404 or a 403 that is not a rate limit drops the token, and a 401 is tried again. A fork is told by repository id.
+- **GitHub facts** (#339, #331, #345): the snapshot re-reads the pull request before it counts the file list, and compares the base commit after it; `checks` is cached per ignored check (`FACTS_GITHUB_IGNORE_CHECK`); a login with a trailing hyphen is not looked up; a `pnpm-lock.yaml` `version:` line that cannot be read counts as a change of source for `github_bump`.
+- **Smaller changes** (#331): a GSI position at lon 180 or lat ±90 gives the edge tile; an unreadable push time gives the CodeRabbit facts no time instead of NaN.
+- **Engine** (#333, #331, #335): dependencies are built once per request; MCP `list_profiles` reads each profile once and lists `people_answers`; REST and MCP share the feedback and decision code; the test-token 403s name what such a token may do; `explain` fills a fact's name literally (#345).
+- **Scripts** (#332): `validate-profiles` marks every file with a duplicate id; the profile library no longer exits when imported; `ai-gateway.mjs` reads the credentials once and reports a network error.
+- **Security scanning** (#345, #338): no regular expression that can backtrack on long input in the lockfile, Link-header, CodeRabbit-comment and URL parsers; the open CodeQL alerts are closed.
+- **Code layout** (#335–#338, #340, #341): `src/decide.ts`, `packages/github/src/provider.ts`, `packages/github/src/connector/pull-request.ts` and `packages/fiware/src/bridge.ts` split into files by job, the code moved, not changed (except `nextCursor`, below); REST and MCP share code (#335), and shared helpers replace duplicated code (#336).
+- **Tests** (#334): the idempotency race, FIWARE dead letters, Task entities, the test-token routes, GitHub helpers and two scripts.
+- **Threat model**: amended for #263, #268, #275, #339 and #345 (citations for #265), and the review's remaining suggestions (#342). It is still bound to `v0.18.0`; it is not yet bound to 0.19.0 to 0.24.0.
+
 ## 0.23.0 (2026-11-23)
 
 Fixes from a review of the engine, the connectors and the Actions: signed callbacks name the client and the URL (#281), stricter model answers and profile names (#313), the FIWARE bridge gets time limits (#323), GitHub and GSI facts say "not known" instead of guessing (#307, #309), and more errors are caught and logged (#319, #324, #325, #326). New checks: oxlint, and `check-config` requires `global_fetch_strictly_public` (#328).
