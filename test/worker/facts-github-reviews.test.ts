@@ -135,6 +135,10 @@ describe('Copilot (github_copilot)', () => {
     reads = 0;
     const retargeted = () => (++reads === 1 ? pullRequest() : { ...pullRequest(), base: { ...pullRequest().base, ref: 'release' } });
     expect(await reason(routes({ [PR]: retargeted }))).toBe('stale');
+    // The base branch moving to another commit while the reviews were read is not: reviews do not depend on the base commit.
+    reads = 0;
+    const moved = () => ({ ...pullRequest(), base: { ...pullRequest().base, sha: (++reads === 1 ? 'c' : 'd').repeat(40) } });
+    expect(await reason(routes({ [PR]: moved }))).toBe('not missing');
     expect(await reason(routes({ '/graphql': () => new Response('{}', { status: 403 }) }))).toBe('unavailable');
     expect(await reason(routes({ '/graphql': () => graph({ head: OLD }) }))).toBe('stale');
     expect(await reason(routes({ '/graphql': () => graph({ requested: [copilotRequest], total: 101 }) }))).toBe('error');
