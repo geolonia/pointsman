@@ -763,20 +763,21 @@ describe('Task entities', () => {
 
   it('a resolved retry marks a Decision entity left pending by the first try, and leaves a resolution already there', async () => {
     const resolved = () => Response.json({ ...decision, action: 'urgent', review: { status: 'resolved', final_action: 'reject', resolved_at: '2026-10-26T06:00:00.000Z' } });
-    for (const [status, written] of [['pending', true], ['resolved', false]] as const) {
+    // Resolved with no finalAction: a first try whose update a 207 cut short (#347).
+    for (const [status, written, finalAction] of [['pending', true, undefined], ['resolved', false, 'publish'], ['resolved', true, undefined]] as const) {
       const { notify, calls } = setup({
         pointsman: resolved, route: { decisionEntity: true, reviewActions: ['review'] },
         handler: (c) => {
           const body = c.body as { type?: string } | undefined;
           if (c.url === 'https://broker.test/ngsi-ld/v1/entities' && body?.type === 'Decision') return new Response(null, { status: 409 });
-          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: { type: 'Property', value: status } });
+          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: P(status), ...(finalAction && { finalAction: P(finalAction) }) });
           return undefined;
         },
       });
       expect((await notify([entity()])).status).toBe(200);
       const update = calls.find((c) => c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A'));
       if (written) expect(update?.body).toMatchObject({ reviewStatus: P('resolved'), finalAction: P('reject') });
-      else expect(update, status).toBeUndefined();
+      else expect(update, `${status} ${finalAction}`).toBeUndefined();
     }
   });
 
@@ -913,6 +914,13 @@ describe('Task entities', () => {
     store.tasks.get(id!)!.progress = P('completed');
     await t.notify([entity()]);
     expect(store.tasks.get(id!)!.progress).toEqual(P('completed'));
+    // Cancelled, with its statusLabel: stays. Without one, a cancel a 207 cut short (#347): finished.
+    Object.assign(store.tasks.get(id!)!, { progress: P('cancelled'), statusLabel: P('other') });
+    await t.notify([entity()]);
+    expect(store.tasks.get(id!)!.statusLabel).toEqual(P('other'));
+    delete store.tasks.get(id!)!.statusLabel;
+    await t.notify([entity()]);
+    expect(store.tasks.get(id!)).toMatchObject({ progress: P('cancelled'), statusLabel: P('publish') });
   });
 
   it('asks for a retry when it cannot read the Task to cancel it', async () => {
@@ -1177,8 +1185,10 @@ describe('work orders from other apps', () => {
   });
   const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string } = {}) {
+  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null } = {}) {
     let status = opts.decisionStatus ?? 'pending';
+    // A resolved Decision has a finalAction unless a test says not (null: an update a 207 cut short).
+    let finalAction = opts.finalAction === null ? undefined : opts.finalAction ?? (status === 'resolved' ? 'publish' : undefined);
     const t = setup({
       route: { decisionEntity: true, task: { actions: ['review', 'urgent'] }, reviewActions: ['review', 'urgent'] },
       handler: (c) => {
@@ -1187,10 +1197,13 @@ describe('work orders from other apps', () => {
         }
         if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           expect(c.headers.get('link')).toContain(DECISION_CONTEXT);
-          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status) });
+          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status), ...(finalAction && { finalAction: P(finalAction) }) });
         }
         if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
-          if ((opts.post ?? 204) < 300) status = 'resolved';
+          if ((opts.post ?? 204) < 300) {
+            status = 'resolved';
+            finalAction = (c.body as { finalAction: { value: string } }).finalAction.value;
+          }
           return new Response(null, { status: opts.post ?? 204 });
         }
         return undefined;
@@ -1313,6 +1326,9 @@ describe('work orders from other apps', () => {
     const other = orders({ decisionStatus: 'resolved' });
     expect(await (await other.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
     expect(other.calls.some((c) => c.method === 'POST')).toBe(false);
+    // Resolved with no finalAction: an update a 207 cut short (#347), finished now.
+    const half = orders({ decisionStatus: 'resolved', finalAction: null });
+    expect(await (await half.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
   });
 
   it('refuses a Task id too long to name who resolved it', async () => {
@@ -1876,7 +1892,11 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
 
 describe('a 207 on a write is tried again (#347)', () => {
   const ENTITY_ATTRS = `https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent('urn:ngsi-ld:RoadRestriction:1')}/attrs`;
-  /** The consumer's max_retries in bridge/wrangler.jsonc. */
+  /**
+   * The max_retries of the example in bridge/wrangler.jsonc (copied, not read).
+   * The fake queue moves a message to the dead-letter queue after it, as
+   * Cloudflare does: the test proves that every try calls retry with retryDelay.
+   */
   const MAX_RETRIES = 20;
 
   /**

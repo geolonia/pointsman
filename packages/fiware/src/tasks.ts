@@ -86,8 +86,10 @@ export async function cancelOpenTask(id: string, action: string, config: BridgeC
   const found = await brokerRequest('GET', id, config);
   if (found.status === 404) return null;
   if (!found.ok) return found;
-  const progress = (await found.json() as { progress?: { value?: unknown } }).progress?.value;
-  if (progress === 'completed' || progress === 'cancelled' || progress === 'failed') return null;
+  const known = await found.json() as { progress?: { value?: unknown }; statusLabel?: unknown };
+  const progress = known.progress?.value;
+  // Cancelled with no statusLabel is a write a 207 cut short (#347): finish it.
+  if (progress === 'completed' || progress === 'failed' || (progress === 'cancelled' && known.statusLabel !== undefined)) return null;
   const updated = await brokerRequest('POST', id, config, {
     '@context': [TASK_CONTEXT, CORE_CONTEXT],
     progress: P('cancelled'),
