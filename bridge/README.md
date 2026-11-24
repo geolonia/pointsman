@@ -275,8 +275,12 @@ reads their completed Tasks as the person's answer:
    `reviewStatus` `resolved`. The subscription below watches `reviewStatus`,
    so its notification comes only once the rest is stored; a broker may not
    notify when a retry writes the same value again (#347). A Decision that
-   an earlier bridge left `resolved` with attributes missing gets them, and
-   the bridge then runs step 4 itself, since `reviewStatus` does not change.
+   is `resolved` by this work order (or that an earlier bridge left
+   `resolved` with attributes missing) while the result still waits gets
+   what is missing, and the bridge then runs step 4 itself, since
+   `reviewStatus` does not change; a retry runs it again. If that step
+   writes the result and then fails on the bridge's Task, the Task stays
+   open: a work order finds no result waiting any more.
 4. The broker notifies `/reviews` about the Decision, and the steps above do
    the rest: Pointsman, the entity's result, the bridge's own Task.
 

@@ -125,31 +125,35 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
   // Decision since the entity's result was written. Read it, not the result.
   const seen = await brokerRequest('GET', decision, config, undefined, undefined, DECISION_CONTEXT);
   if (!seen.ok) return { id, error: `broker read failed: ${seen.status}`, retry: retryable(seen.status) };
-  // A write a 207 cut short (#347) is finished: resolved with no finalAction,
-  // or with this work order's finalAction (and reviewedBy, if stored) and
-  // reviewedBy or reviewedAt missing (from a bridge before this two-step write).
   const known = await seen.json() as Entity;
-  const ownHalf = valueOf(known.finalAction) === finalAction
-    && (known.reviewedBy === undefined || valueOf(known.reviewedBy) === by)
-    && (known.reviewedBy === undefined || known.reviewedAt === undefined);
-  if (valueOf(known.reviewStatus) === 'resolved' && known.finalAction !== undefined && !ownHalf) return { id, skipped: 'already resolved' };
+  const resolved = valueOf(known.reviewStatus) === 'resolved';
+  const ours = valueOf(known.finalAction) === finalAction && (known.reviewedBy === undefined || valueOf(known.reviewedBy) === by);
+  if (resolved && known.finalAction !== undefined && !ours) return { id, skipped: 'already resolved' };
+
+  const context = [DECISION_CONTEXT, CORE_CONTEXT];
+  const review = { finalAction: P(finalAction), reviewedBy: P(by), reviewedAt: P({ '@type': 'DateTime', '@value': modified }) };
+  if (resolved) {
+    // Resolved by this work order (or left without finalAction by an earlier
+    // bridge's write a 207 cut short), and the result still waits: the
+    // /reviews step did not finish. reviewStatus does not change, so no
+    // notification may come: fill in what is missing and run that step here.
+    // It is safe to repeat, also on the next retry if it fails (#347).
+    if (known.finalAction === undefined || known.reviewedBy === undefined || known.reviewedAt === undefined) {
+      const res = await brokerRequest('POST', decision, config, { '@context': context, ...review });
+      if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
+    }
+    const done = await handleReview({ ...known, id: decision, type: 'Decision', reviewStatus: P('resolved'), ...review }, config);
+    if ('error' in done) return { ...done, id };
+    return { id, resolves: decision, finalAction };
+  }
 
   // Two writes, reviewStatus last: the /reviews subscription watches it, and
   // a broker may not notify when a retry writes the same value again. So
   // "resolved" is stored only once the rest is, and its notification carries
   // a complete Decision (#347). A 207 on either leaves it pending for the retry.
-  const context = [DECISION_CONTEXT, CORE_CONTEXT];
-  const review = { finalAction: P(finalAction), reviewedBy: P(by), reviewedAt: P({ '@type': 'DateTime', '@value': modified }) };
   const res = await brokerRequest('POST', decision, config, { '@context': context, ...review });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
-  if (valueOf(known.reviewStatus) === 'resolved') {
-    // Finishing an earlier bridge's half write: reviewStatus does not change,
-    // so no notification may come. Run /reviews' step here (safe to repeat).
-    const done = await handleReview({ ...known, id: decision, type: 'Decision', reviewStatus: P('resolved'), ...review }, config);
-    if ('error' in done) return { ...done, id };
-    return { id, resolves: decision, finalAction };
-  }
-  const resolved = await brokerRequest('POST', decision, config, { '@context': context, reviewStatus: P('resolved') });
-  if (!updatedAll(resolved)) return { id, error: `broker refused the Decision update: ${resolved.status}`, retry: retryable(resolved.status) };
+  const stored = await brokerRequest('POST', decision, config, { '@context': context, reviewStatus: P('resolved') });
+  if (!updatedAll(stored)) return { id, error: `broker refused the Decision update: ${stored.status}`, retry: retryable(stored.status) };
   return { id, resolves: decision, finalAction };
 }

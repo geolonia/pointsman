@@ -1368,6 +1368,22 @@ describe('work orders from other apps', () => {
     expect(t.calls.find((c) => c.url.endsWith('/resolve'))?.body).toEqual({ action: 'publish', correct: {}, by: 'redmine:city-a#42' });
   });
 
+  it('a review step that failed after finishing a half write runs again on the retry (#347)', async () => {
+    let resolves = 0;
+    const t = orders({
+      decisionStatus: 'resolved', finalAction: null,
+      pointsman: (_b, url) => (url.endsWith('/resolve')
+        ? (++resolves === 1 ? new Response(null, { status: 503 }) : Response.json({}))
+        : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+    });
+    expect(await (await t.send([order()])).json()).toMatchObject({ handled: [{ id: W, retry: true }] });
+    // The attributes are stored now; the retry still sends the answer, and writes no Decision attribute again.
+    const posts = t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision')).length;
+    expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    expect(resolves).toBe(2);
+    expect(t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision'))).toHaveLength(posts);
+  });
+
   it('a 207 on either Decision write leaves it pending, and the retry writes both (#347)', async () => {
     for (const first of [{ post: 207 }, { postResolved: 207 }]) {
       const opts: { post?: number; postResolved?: number } = { ...first };
