@@ -207,7 +207,8 @@ export async function handleEntity(entity: Entity, route: Route, config: BridgeC
     const write = await writeAttribute(entity.id, route.attribute, property, config);
     // Without a successful write the input hash is not stored either, so the
     // next notification decides again: report it as a failure. A 207 from the
-    // first write (POST …/attrs) means the attribute was not appended.
+    // first write (POST …/attrs) means the attribute was not appended; it is
+    // tried again (see retryable), since no other notification may come (#347).
     if (!updatedAll(write)) {
       return { id: entity.id, decision: d.decision_id, error: `broker write failed: ${write.status}`, retry: retryable(write.status) };
     }

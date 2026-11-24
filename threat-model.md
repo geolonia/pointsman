@@ -518,6 +518,23 @@
   and the one `console.warn` in the GitHub facts), and states which engine
   version the maintainer's deployment runs (§1.2). Still open: the
   re-binding to a release and the backtest Q49 promised.
+  Amended 2026-11-24 a sixteenth time (still bound to `v0.18.0`) for
+  pointsman#347: a `207` on a write of the FIWARE bridge (a result, a
+  Decision entity, a Task, a review's result, a work order's Decision) is
+  tried again like a `5xx` (the queue's back-off, then the dead-letter
+  queue; 502 in direct mode), where it was acked and the result lost, since
+  no later notification comes when the inputs stay the same; a retry makes
+  no second decision (the same `Idempotency-Key`), and finishes a write the
+  `207` left half done (a Decision resolved without `finalAction`, or with
+  its own `finalAction` and another attribute missing; a Task cancelled
+  with another `statusLabel`) instead of taking it as done. A work order
+  writes the Decision's `reviewStatus: resolved` last, in a write of its
+  own, so the `/reviews` notification it starts carries a complete Decision;
+  when the Decision is already resolved by this work order (or left
+  resolved but incomplete by an earlier bridge) and the result still waits,
+  it runs the `/reviews` step itself, also on a retry. Changed: the bridge's
+  matrix row for its recursive topology (prose, YAML). No citation moved;
+  the validator was not run for this amendment. No new question.
   Amended 2026-11-24 a fifteenth time (still bound to `v0.18.0`) for the
   open CodeQL alerts on main (polynomial backtracking and string
   replacements, in pull-request lockfile lines, CodeRabbit comments, the
@@ -1645,7 +1662,7 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | engine-mcp | x-probabilistic-result | disclaimed | as for `engine-api` | §1.12 `D-MODEL-ACCURACY` | *(documented, docs/mcp.md "Tools": "typed answers with probabilities")* |
 | bridge | numeric domain | claimed | queue messages ≤ 120 KB, batches ≤ 100 messages / 250 KB; retries 30 s doubling to 1 h; `reviewedBy` ≤ 100 characters | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(documented, bridge/README.md "Reliable delivery (queue)"; "Work orders from other apps")* |
 | bridge | failure atomicity | disclaimed | NGSI-LD has no conditional update; between a read and a write another writer can get through; the Decision entity is created before the result property so a retry does not decide twice | §1.12 `D-BRIDGE-RACE-WINDOWS` | *(documented, bridge/README.md "Reviews resolved in the broker": "NGSI-LD has no conditional update, so there is a short window")* |
-| bridge | recursive/cyclic topology | claimed | the input hash and attribute-level PATCH keep the bridge's own writes from starting a new decision (since pointsman#323, not yet released: an input with several instances is hashed by all of them, sorted by `datasetId`, and a `207` to the first result write is a failure, so a result that was not stored is never taken as written) | §1.11 `P-BRIDGE-LOOP-GUARD` | *(documented, bridge/README.md "How it avoids loops")* |
+| bridge | recursive/cyclic topology | claimed | the input hash and attribute-level PATCH keep the bridge's own writes from starting a new decision (since pointsman#323, not yet released: an input with several instances is hashed by all of them, sorted by `datasetId`, and a `207` to the first result write is a failure, so a result that was not stored is never taken as written, and since pointsman#347 (not yet released) it is tried again (the queue's back-off, then the dead-letter queue; 502 in direct mode), as is a `207` on the bridge's other writes) | §1.11 `P-BRIDGE-LOOP-GUARD` | *(documented, bridge/README.md "How it avoids loops")* |
 | bridge | callback execution | N/A — the bridge runs no caller code; routes are operator configuration; inside the engine Worker it is the same code, with the engine in process in place of `POINTSMAN_URL` | — | — | *(documented, bridge/README.md "Configuration"; `packages/fiware/src/config.ts` header comment)* |
 | bridge | serialization/reconstruction | claimed | entities are plain JSON; attribute values are read by NGSI-LD kind (`value`, `object`, `languageMap`, `vocab`, `json`); dates are checked as RFC 3339; since pointsman#323 (not yet released) an input that is not a normalized attribute with an NGSI-LD `type` (keyValues: a bare value or an object such as a GeoJSON geometry) is refused, not retried, and `/notify?route=` with a name no route has answers 404 and logs | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(maintainer, 2026-10)* |
 | bridge | reference lifecycle | claimed | a Task's id is derived from entity id, attribute and input hash, so a retry finds the Task it made; the bridge's own Tasks are recognised by id | §1.11 `P-BRIDGE-SAFE-TO-REPEAT` | *(documented, bridge/README.md "Task entities")* |

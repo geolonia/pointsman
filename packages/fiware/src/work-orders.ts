@@ -4,7 +4,7 @@
 
 import { brokerRequest, readHeaders, updatedAll } from './broker.ts';
 import { DECISION_CONTEXT } from './decision-entity.ts';
-import { dateValue, isDateTime } from './reviews.ts';
+import { dateValue, handleReview, isDateTime } from './reviews.ts';
 import { retryable, send } from './send.ts';
 import { CORE_CONTEXT, type Entity, P, valueOf } from './shared.ts';
 import { OWN_TASK } from './tasks.ts';
@@ -125,15 +125,41 @@ export async function handleWorkOrder(task: Entity, mapping: Record<string, stri
   // Decision since the entity's result was written. Read it, not the result.
   const seen = await brokerRequest('GET', decision, config, undefined, undefined, DECISION_CONTEXT);
   if (!seen.ok) return { id, error: `broker read failed: ${seen.status}`, retry: retryable(seen.status) };
-  if (valueOf((await seen.json() as Entity).reviewStatus) === 'resolved') return { id, skipped: 'already resolved' };
+  const known = await seen.json() as Entity;
+  const resolved = valueOf(known.reviewStatus) === 'resolved';
+  // Another writer's resolution, also a partial one, stays: never this work
+  // order's action under someone else's reviewedBy.
+  const other = (known.finalAction !== undefined && valueOf(known.finalAction) !== finalAction)
+    || (known.reviewedBy !== undefined && valueOf(known.reviewedBy) !== by);
+  if (resolved && other) return { id, skipped: 'already resolved' };
 
-  const res = await brokerRequest('POST', decision, config, {
-    '@context': [DECISION_CONTEXT, CORE_CONTEXT],
-    reviewStatus: P('resolved'),
-    finalAction: P(finalAction),
-    reviewedBy: P(by),
-    reviewedAt: P({ '@type': 'DateTime', '@value': modified }),
-  });
+  const context = [DECISION_CONTEXT, CORE_CONTEXT];
+  const review = { finalAction: P(finalAction), reviewedBy: P(by), reviewedAt: P({ '@type': 'DateTime', '@value': modified }) };
+  if (resolved) {
+    // Resolved by this work order (or left without finalAction by an earlier
+    // bridge's write a 207 cut short), and the result still waits: the
+    // /reviews step did not finish. reviewStatus does not change, so no
+    // notification may come: fill in what is missing and run that step here.
+    // It is safe to repeat, also on the next retry if it fails (#347). What
+    // is stored stays (a later dateModified does not move reviewedAt), and
+    // the step gets the same values the Decision has.
+    const missing = Object.fromEntries(Object.entries(review).filter(([name]) => known[name] === undefined));
+    if (Object.keys(missing).length > 0) {
+      const res = await brokerRequest('POST', decision, config, { '@context': context, ...missing });
+      if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
+    }
+    const done = await handleReview({ ...known, ...missing, id: decision, type: 'Decision', reviewStatus: P('resolved') }, config);
+    if ('error' in done) return { ...done, id };
+    return { id, resolves: decision, finalAction };
+  }
+
+  // Two writes, reviewStatus last: the /reviews subscription watches it, and
+  // a broker may not notify when a retry writes the same value again. So
+  // "resolved" is stored only once the rest is, and its notification carries
+  // a complete Decision (#347). A 207 on either leaves it pending for the retry.
+  const res = await brokerRequest('POST', decision, config, { '@context': context, ...review });
   if (!updatedAll(res)) return { id, error: `broker refused the Decision update: ${res.status}`, retry: retryable(res.status) };
+  const stored = await brokerRequest('POST', decision, config, { '@context': context, reviewStatus: P('resolved') });
+  if (!updatedAll(stored)) return { id, error: `broker refused the Decision update: ${stored.status}`, retry: retryable(stored.status) };
   return { id, resolves: decision, finalAction };
 }

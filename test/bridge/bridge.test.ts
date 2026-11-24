@@ -321,7 +321,7 @@ describe('redirects (#97)', () => {
     }])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
 
     const calls = [...decide.calls, ...review.calls, ...order.calls];
-    expect(calls.length).toBe(5 + 6 + 3);
+    expect(calls.length).toBe(5 + 6 + 4);
     for (const c of calls) expect(c.redirect).toBe('manual');
   });
 
@@ -763,20 +763,26 @@ describe('Task entities', () => {
 
   it('a resolved retry marks a Decision entity left pending by the first try, and leaves a resolution already there', async () => {
     const resolved = () => Response.json({ ...decision, action: 'urgent', review: { status: 'resolved', final_action: 'reject', resolved_at: '2026-10-26T06:00:00.000Z' } });
-    for (const [status, written] of [['pending', true], ['resolved', false]] as const) {
+    // Resolved with no finalAction: a first try whose update a 207 cut short (#347).
+    // Or with this finalAction and reviewedAt missing; another writer's other finalAction stays.
+    const at = P({ '@type': 'DateTime', '@value': '2026-10-26T06:00:00.000Z' });
+    for (const [status, written, finalAction, reviewedAt] of [
+      ['pending', true, undefined, undefined], ['resolved', false, 'publish', undefined], ['resolved', true, undefined, undefined],
+      ['resolved', true, 'reject', undefined], ['resolved', false, 'reject', at],
+    ] as const) {
       const { notify, calls } = setup({
         pointsman: resolved, route: { decisionEntity: true, reviewActions: ['review'] },
         handler: (c) => {
           const body = c.body as { type?: string } | undefined;
           if (c.url === 'https://broker.test/ngsi-ld/v1/entities' && body?.type === 'Decision') return new Response(null, { status: 409 });
-          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: { type: 'Property', value: status } });
+          if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) return Response.json({ reviewStatus: P(status), ...(finalAction && { finalAction: P(finalAction) }), ...(reviewedAt && { reviewedAt }) });
           return undefined;
         },
       });
       expect((await notify([entity()])).status).toBe(200);
       const update = calls.find((c) => c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A'));
       if (written) expect(update?.body).toMatchObject({ reviewStatus: P('resolved'), finalAction: P('reject') });
-      else expect(update, status).toBeUndefined();
+      else expect(update, `${status} ${finalAction}`).toBeUndefined();
     }
   });
 
@@ -839,7 +845,8 @@ describe('Task entities', () => {
       return undefined;
     } });
     const res = await t.notify([entity()]);
-    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207', retry: true }] });
+    expect(res.status).toBe(502);
     expect(t.calls.some((c) => c.method === 'PATCH')).toBe(false);
     // The same when cancelling.
     const c2 = setup({ route: { task }, handler: (c) => {
@@ -847,7 +854,9 @@ describe('Task entities', () => {
       if (c.method === 'POST' && c.url.includes('Task')) return new Response('{}', { status: 207 });
       return undefined;
     } });
-    expect(await (await c2.notify([entity()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207' }] });
+    const cancelling = await c2.notify([entity()]);
+    expect(cancelling.status).toBe(502);
+    expect(await cancelling.json()).toMatchObject({ handled: [{ error: 'broker refused the Task entity: 207', retry: true }] });
   });
 
   it('takes only review status pending as a pending review: other review values do not open a Task, and cancel an open one', async () => {
@@ -910,6 +919,17 @@ describe('Task entities', () => {
     store.tasks.get(id!)!.progress = P('completed');
     await t.notify([entity()]);
     expect(store.tasks.get(id!)!.progress).toEqual(P('completed'));
+    // Cancelled with this label: nothing written. With the old label kept, or none, a cancel a 207 cut short (#347): finished.
+    Object.assign(store.tasks.get(id!)!, { progress: P('cancelled'), statusLabel: P('publish') });
+    const before = t.calls.length;
+    await t.notify([entity()]);
+    expect(t.calls.slice(before).some((c) => c.method === 'POST' && c.url.includes('Task'))).toBe(false);
+    for (const label of [P('urgent'), undefined]) {
+      Object.assign(store.tasks.get(id!)!, { progress: P('cancelled'), statusLabel: label });
+      if (!label) delete store.tasks.get(id!)!.statusLabel;
+      await t.notify([entity()]);
+      expect(store.tasks.get(id!)).toMatchObject({ progress: P('cancelled'), statusLabel: P('publish') });
+    }
   });
 
   it('asks for a retry when it cannot read the Task to cancel it', async () => {
@@ -1093,13 +1113,17 @@ describe('reviews resolved in the broker', () => {
     expect(refused.status).toBe(200);
     expect(await refused.json()).toMatchObject({ handled: [{ error: 'pointsman answered 400', retry: false }] });
     // A partial update (207) of the Task is not done.
-    expect(await (await reviews({ task: 207 }).send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Task update: 207' }] });
+    const task207 = await reviews({ task: 207 }).send([resolved()]);
+    expect(task207.status).toBe(502);
+    expect(await task207.json()).toMatchObject({ handled: [{ error: 'broker refused the Task update: 207', retry: true }] });
     // A partial update (207) of the result does not complete the Task.
     const partial = reviews({ entity: undefined });
     const fetchFn = partial.config.fetch!;
     partial.config.fetch = (async (input: RequestInfo | URL, init?: RequestInit) =>
       (init?.method === 'PATCH' ? new Response('{}', { status: 207 }) : fetchFn(input, init))) as typeof fetch;
-    expect(await (await partial.send([resolved()])).json()).toMatchObject({ handled: [{ error: 'broker write failed: 207' }] });
+    const result207 = await partial.send([resolved()]);
+    expect(result207.status).toBe(502);
+    expect(await result207.json()).toMatchObject({ handled: [{ error: 'broker write failed: 207', retry: true }] });
     expect(partial.calls.some((c) => c.url.includes('Task'))).toBe(false);
     // No Task (404) is fine.
     expect(await (await reviews({ task: 404 }).send([resolved()])).json()).toMatchObject({ handled: [{ written: true }] });
@@ -1170,21 +1194,34 @@ describe('work orders from other apps', () => {
   });
   const pending = { type: 'Property', value: 'review', inputHash: P('h-1'), decision: { type: 'Relationship', object: D } };
 
-  function orders(opts: { entity?: unknown; get?: number; post?: number; workOrders?: Record<string, string> | null; decisionStatus?: string } = {}) {
+  function orders(opts: { entity?: unknown; get?: number; post?: number; postResolved?: number; pointsman?: (body: unknown, url: string, method: string) => Response; workOrders?: Record<string, string> | null; decisionStatus?: string; finalAction?: string | null; halfFields?: Record<string, unknown> } = {}) {
     let status = opts.decisionStatus ?? 'pending';
+    // A resolved Decision is complete (another app's) unless a test says not
+    // (finalAction null: an update a 207 cut short); halfFields replaces it.
+    let fields: Record<string, unknown> = opts.halfFields ?? (status === 'resolved' && opts.finalAction !== null
+      ? { finalAction: P(opts.finalAction ?? 'publish'), reviewedBy: P('app:other'), reviewedAt: P('2026-10-09T00:00:00Z') }
+      : {});
     const t = setup({
       route: { decisionEntity: true, task: { actions: ['review', 'urgent'] }, reviewActions: ['review', 'urgent'] },
+      ...(opts.pointsman && { pointsman: opts.pointsman }),
       handler: (c) => {
         if (c.method === 'GET' && c.url.includes(encodeURIComponent(R))) {
           return opts.get ? new Response(null, { status: opts.get }) : Response.json(opts.entity ?? { id: R, type: 'RoadRestriction', check: pending });
         }
         if (c.method === 'GET' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
           expect(c.headers.get('link')).toContain(DECISION_CONTEXT);
-          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', reviewStatus: P(status) });
+          return Response.json({ id: decodeURIComponent(c.url.split('/entities/')[1]!), type: 'Decision', refersTo: { type: 'Relationship', object: R }, profile: P('road-restriction-check'), reviewStatus: P(status), ...fields });
         }
         if (c.method === 'POST' && c.url.includes('urn%3Angsi-ld%3ADecision%3A')) {
-          if ((opts.post ?? 204) < 300) status = 'resolved';
-          return new Response(null, { status: opts.post ?? 204 });
+          // Two writes: the review attributes, then reviewStatus (postResolved answers that one).
+          const { '@context': _, reviewStatus, ...written } = c.body as Record<string, unknown>;
+          const answer = reviewStatus ? opts.postResolved ?? opts.post ?? 204 : opts.post ?? 204;
+          // A 207 here stores nothing (reviewStatus stays pending either way).
+          if (answer < 300 && answer !== 207) {
+            if (reviewStatus) status = 'resolved';
+            else fields = { ...fields, ...written };
+          }
+          return new Response(null, { status: answer });
         }
         return undefined;
       },
@@ -1202,14 +1239,18 @@ describe('work orders from other apps', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
     expect(t.calls.find((c) => c.method === 'GET')!.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(R)}?attrs=check`);
-    const write = t.calls.find((c) => c.method === 'POST')!;
-    expect(write.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(D)}/attrs`);
-    expect(write.headers.get('content-type')).toBe('application/ld+json');
-    expect(write.body).toEqual({
-      '@context': [DECISION_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'],
-      reviewStatus: P('resolved'), finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'),
+    // reviewStatus last, in a write of its own: its notification then carries a complete Decision (#347).
+    const [write, resolve] = t.calls.filter((c) => c.method === 'POST');
+    for (const w of [write!, resolve!]) {
+      expect(w.url).toBe(`https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(D)}/attrs`);
+      expect(w.headers.get('content-type')).toBe('application/ld+json');
+    }
+    const context = [DECISION_CONTEXT, 'https://uri.etsi.org/ngsi-ld/v1/ngsi-ld-core-context-v1.8.jsonld'];
+    expect(write!.body).toEqual({
+      '@context': context, finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'),
       reviewedAt: P({ '@type': 'DateTime', '@value': '2026-10-09T05:00:00Z' }),
     });
+    expect(resolve!.body).toEqual({ '@context': context, reviewStatus: P('resolved') });
     // Nothing goes to Pointsman here: /reviews does that when the broker notifies the Decision.
     expect(t.calls.some((c) => c.url.startsWith('https://pm.test/'))).toBe(false);
   });
@@ -1301,11 +1342,81 @@ describe('work orders from other apps', () => {
       { id: W, resolves: D, finalAction: 'publish' },
       { id: 'urn:ngsi-ld:Issue:redmine:city-a:43', skipped: 'already resolved' },
     ] });
-    expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(2);
     // Resolved by another app before: left alone.
     const other = orders({ decisionStatus: 'resolved' });
     expect(await (await other.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
     expect(other.calls.some((c) => c.method === 'POST')).toBe(false);
+    // Resolved with no finalAction: an update a 207 cut short (#347), finished now.
+    const half = orders({ decisionStatus: 'resolved', finalAction: null });
+    expect(await (await half.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    // Or with this work order's finalAction (and reviewedBy) but reviewedAt missing; another app's same action stays.
+    const noAt = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('redmine:city-a#42') } });
+    expect(await (await noAt.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    const sameAction = orders({ decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('app:other') } });
+    expect(await (await sameAction.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+    // Another app's partial resolution: its reviewedBy, no finalAction. Not finished with this work order's action.
+    const otherHalf = orders({ decisionStatus: 'resolved', halfFields: { reviewedBy: P('app:other'), reviewedAt: P('2026-10-09T00:00:00Z') } });
+    expect(await (await otherHalf.send([order()])).json()).toEqual({ handled: [{ id: W, skipped: 'already resolved' }] });
+    expect(otherHalf.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('finishing an earlier bridge\u2019s half write runs the review itself: no notification may come (#347)', async () => {
+    const t = orders({
+      decisionStatus: 'resolved', finalAction: null,
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+    });
+    expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    // No second reviewStatus write; Pointsman gets the person's answer as /reviews would send it.
+    expect(t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision')).map((c) => Object.keys(c.body as object))).toEqual([['@context', 'finalAction', 'reviewedBy', 'reviewedAt']]);
+    expect(t.calls.find((c) => c.url.endsWith('/resolve'))?.body).toEqual({ action: 'publish', correct: {}, by: 'redmine:city-a#42' });
+  });
+
+  it('a review step that failed after finishing a half write runs again on the retry (#347)', async () => {
+    let resolves = 0;
+    const t = orders({
+      decisionStatus: 'resolved', finalAction: null,
+      pointsman: (_b, url) => (url.endsWith('/resolve')
+        ? (++resolves === 1 ? new Response(null, { status: 503 }) : Response.json({}))
+        : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+    });
+    expect(await (await t.send([order()])).json()).toMatchObject({ handled: [{ id: W, retry: true }] });
+    // The attributes are stored now; the retry still sends the answer, and writes no Decision attribute again.
+    const posts = t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision')).length;
+    expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    expect(resolves).toBe(2);
+    expect(t.calls.filter((c) => c.method === 'POST' && c.url.includes('Decision'))).toHaveLength(posts);
+    // And the result gets the person's answer.
+    const result = t.calls.filter((c) => c.method !== 'GET' && c.url.includes(encodeURIComponent(R))).at(-1);
+    expect(result?.body).toMatchObject({ check: { value: 'review', finalAction: P('publish'), reviewedAt: P('2026-10-09T05:00:00Z') } });
+  });
+
+  it('a retry keeps what the Decision has: a later dateModified does not move reviewedAt (#347)', async () => {
+    const at = P({ '@type': 'DateTime', '@value': '2026-10-09T04:00:00Z' });
+    const t = orders({
+      decisionStatus: 'resolved', halfFields: { finalAction: P('publish'), reviewedBy: P('redmine:city-a#42'), reviewedAt: at },
+      pointsman: (_b, url) => (url.endsWith('/resolve') ? Response.json({}) : Response.json({ decision_id: 'd-1', review: { status: 'pending' }, feedback: [] })),
+    });
+    expect(await (await t.send([order({ dateModified: P({ '@type': 'DateTime', '@value': '2026-10-09T06:00:00Z' }) })])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+    expect(t.calls.some((c) => c.method === 'POST' && c.url.includes('Decision'))).toBe(false);
+    const result = t.calls.filter((c) => c.method !== 'GET' && c.url.includes(encodeURIComponent(R))).at(-1);
+    expect(result?.body).toMatchObject({ check: { finalAction: P('publish'), reviewedAt: P('2026-10-09T04:00:00Z') } });
+  });
+
+  it('a 207 on either Decision write leaves it pending, and the retry writes both (#347)', async () => {
+    for (const first of [{ post: 207 }, { postResolved: 207 }]) {
+      const opts: { post?: number; postResolved?: number } = { ...first };
+      const t = orders(opts);
+      expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, error: 'broker refused the Decision update: 207', retry: true }] });
+      // A 207 on the first write sends no reviewStatus; on the second, "resolved" was not stored.
+      const posts = first.post ? 1 : 2;
+      expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(posts);
+      // The retry finds it pending and writes both.
+      delete opts.post;
+      delete opts.postResolved;
+      expect(await (await t.send([order()])).json()).toEqual({ handled: [{ id: W, resolves: D, finalAction: 'publish' }] });
+      expect(t.calls.filter((c) => c.method === 'POST')).toHaveLength(posts + 2);
+    }
   });
 
   it('refuses a Task id too long to name who resolved it', async () => {
@@ -1327,7 +1438,10 @@ describe('work orders from other apps', () => {
     const refused = await orders({ post: 400 }).send([order()]);
     expect(refused.status).toBe(200);
     expect(await refused.json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 400', retry: false }] });
-    expect(await (await orders({ post: 207 }).send([order()])).json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207' }] });
+    // A 207: the Decision is not resolved, and the completed work order notifies no more. Tried again.
+    const decision207 = await orders({ post: 207 }).send([order()]);
+    expect(decision207.status).toBe(502);
+    expect(await decision207.json()).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207', retry: true }] });
   });
 
   it('checks the mapping', () => {
@@ -1777,7 +1891,7 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
   it('a 207 on the first result write (POST …/attrs) is a failure: nothing was stored', async () => {
     const t = setup({ broker: { PATCH: 404, POST: 207 } });
     const result = await handleMessage({ path: '/notify', entity: entity() }, t.config);
-    expect(result).toMatchObject({ error: 'broker write failed: 207' });
+    expect(result).toMatchObject({ error: 'broker write failed: 207', retry: true });
     expect(result).not.toHaveProperty('write');
   });
 
@@ -1861,5 +1975,131 @@ describe('review findings of 2026-11 (#244, #245, #260)', () => {
       method: 'POST', headers: { 'x-bridge-secret': 'wrong' }, body: JSON.stringify({ type: 'Notification', data: [] }),
     }), config);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('a 207 on a write is tried again (#347)', () => {
+  const ENTITY_ATTRS = `https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent('urn:ngsi-ld:RoadRestriction:1')}/attrs`;
+  /**
+   * The max_retries of the example in bridge/wrangler.jsonc (copied, not read).
+   * The fake queue moves a message to the dead-letter queue after it, as
+   * Cloudflare does: the test proves that every try calls retry with retryDelay.
+   */
+  const MAX_RETRIES = 20;
+
+  /**
+   * Delivers one message as Cloudflare Queues does: again after each retry,
+   * and to the dead-letter queue once it was retried more than max_retries
+   * times. The move to the dead-letter queue is the runtime's, not the bridge's.
+   */
+  async function deliver(body: BridgeMessage, config: BridgeConfig) {
+    const delays: (number | undefined)[] = [];
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      for (let attempts = 1; ; attempts++) {
+        let outcome: 'ack' | 'retry' | undefined;
+        await handleQueueBatch({ messages: [{ body, attempts, ack: () => { outcome = 'ack'; }, retry: (o) => { outcome = 'retry'; delays.push(o?.delaySeconds); } }] }, config);
+        if (outcome !== 'retry') return { outcome, delays };
+        if (attempts > MAX_RETRIES) return { outcome: 'dead-letter queue' as const, delays };
+      }
+    } finally {
+      logged.mockRestore();
+    }
+  }
+
+  /** A broker whose first result write (POST …/attrs after a 404 on PATCH) answers `status`. */
+  const firstWrite = (status: number) => setup({ broker: { PATCH: 404, POST: status }, handler: (c) => (c.method === 'GET' ? Response.json(entity()) : undefined) });
+
+  it('queue: a 207 on the first result write is retried with the back-off, then sent to the dead-letter queue, as a 5xx', async () => {
+    const partial = await deliver({ path: '/notify', entity: entity() }, firstWrite(207).config);
+    expect(partial).toEqual({ outcome: 'dead-letter queue', delays: Array.from({ length: MAX_RETRIES + 1 }, (_, i) => retryDelay(i + 1)) });
+    expect(await deliver({ path: '/notify', entity: entity() }, firstWrite(503).config)).toEqual(partial);
+  });
+
+  it('direct: a 207 on the first result write answers the broker 502, as a 5xx, so it sends the notification again', async () => {
+    const res = await firstWrite(207).notify([entity()]);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ handled: [{ error: 'broker write failed: 207', retry: true, decision: 'd-1' }] });
+    expect((await firstWrite(503).notify([entity()])).status).toBe(502);
+  });
+
+  it('direct: a 207 on an update of the Decision entity, before the result, is tried again', async () => {
+    const D = (id: string) => `https://broker.test/ngsi-ld/v1/entities/${encodeURIComponent(`urn:ngsi-ld:Decision:${id}`)}`;
+    // Resolving the existing Decision entity (a retry after a person answered), and superseding the replaced one.
+    const cases = [
+      { answer: { ...decision, review: { status: 'resolved', final_action: 'publish', resolved_at: '2026-07-09T00:00:00Z' } }, entities: 409, update: D('d-1') },
+      { answer: { ...decision, replaces: 'd-0' }, entities: 201, update: D('d-0') },
+    ];
+    for (const { answer, entities, update } of cases) {
+      const t = setup({
+        route: { decisionEntity: true },
+        pointsman: () => Response.json(answer),
+        broker: { ENTITIES: entities },
+        handler: (c) => {
+          if (c.method === 'GET' && c.url === update) return Response.json({ id: 'x', reviewStatus: P('pending') });
+          if (c.method === 'POST' && c.url === `${update}/attrs`) return new Response('{}', { status: 207 });
+          return undefined;
+        },
+      });
+      const res = await t.notify([entity()]);
+      expect(await res.json(), update).toMatchObject({ handled: [{ error: 'broker refused the Decision update: 207', retry: true }] });
+      expect(res.status, update).toBe(502);
+      // Nothing on the entity: no input hash, so without a retry the result would be lost.
+      expect(t.calls.some((c) => c.url.startsWith(ENTITY_ATTRS)), update).toBe(false);
+    }
+  });
+
+  it('the retry decides with the same idempotency key and gets the logged decision back: no second decision', async () => {
+    for (const mode of ['queue', 'direct'] as const) {
+      // A fake Pointsman with a decision log by idempotency key.
+      const logged = new Map<string, string>();
+      let created = false;
+      let posts = 0;
+      const t = setup({
+        route: { decisionEntity: true },
+        pointsman: () => {
+          const key = t.calls.at(-1)!.headers.get('idempotency-key')!;
+          if (!logged.has(key)) logged.set(key, `d-${logged.size + 1}`);
+          return Response.json({ ...decision, decision_id: logged.get(key) });
+        },
+        handler: (c) => {
+          if (c.method === 'GET') return Response.json(entity());
+          // The Decision entity: there from the first try on.
+          if (c.method === 'POST' && c.url === 'https://broker.test/ngsi-ld/v1/entities') {
+            const status = created ? 409 : 201;
+            created = true;
+            return new Response(null, { status });
+          }
+          // The result: a 207 on the first try (not appended), stored on the second.
+          if (c.method === 'POST' && c.url === ENTITY_ATTRS) return posts++ === 0 ? new Response('{}', { status: 207 }) : new Response(null, { status: 204 });
+          return undefined;
+        },
+      });
+      const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+      if (mode === 'queue') {
+        const first = message(1);
+        await handleQueueBatch({ messages: [first] }, t.config);
+        expect(first.outcome, mode).toBe('retry');
+        const second = message(2);
+        await handleQueueBatch({ messages: [second] }, t.config);
+        expect(second.outcome, mode).toBe('ack');
+      } else {
+        expect((await t.notify([entity()])).status, mode).toBe(502);
+        expect((await t.notify([entity()])).status, mode).toBe(200);
+      }
+      quiet.mockRestore();
+      const keys = t.calls.filter((c) => c.url.startsWith('https://pm.test/')).map((c) => c.headers.get('idempotency-key'));
+      expect(keys, mode).toHaveLength(2);
+      expect(keys[0], mode).toBe(keys[1]);
+      expect([...logged.values()], mode).toEqual(['d-1']);
+      const written = t.calls.filter((c) => c.method === 'POST' && c.url === ENTITY_ATTRS).map((c) => (c.body as { check: { decisionId: unknown } }).check.decisionId);
+      expect(written, mode).toEqual([P('d-1'), P('d-1')]);
+    }
+
+    function message(attempts: number) {
+      const m = { body: { path: '/notify', entity: entity() } as BridgeMessage, attempts, outcome: undefined as 'ack' | 'retry' | undefined,
+        ack() { m.outcome = 'ack'; }, retry() { m.outcome = 'retry'; } };
+      return m;
+    }
   });
 });

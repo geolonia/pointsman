@@ -22,9 +22,22 @@ export function failure(id: string, err: unknown, decision?: string): EntityResu
   return { id, error, retry: !redirect && !(err instanceof Unsupported), ...(decision !== undefined && { decision }), ...(redirect && { redirect: true as const }) };
 }
 
-/** Rate limits and server errors may pass on a second try; other 4xx will not. */
+/**
+ * Rate limits and server errors may pass on a second try; other 4xx will not.
+ * So may a 207 (#347): only a broker write gives one, when it left attributes
+ * unwritten (see updatedAll), which can be transient. Every such write is one
+ * whose loss no later notification would repair (the result or its input
+ * hash, the Decision or Task beside it, a review's or a work order's update),
+ * so it is kept: a queued message is retried, then dead-lettered by the
+ * consumer's max_retries, and a direct notification gets 502. Safe to repeat:
+ * a retried decide request has the same Idempotency-Key and gets the decision
+ * Pointsman logged, and the other writes check what is there first, taking a
+ * write a 207 cut short (a resolved Decision without finalAction, or with its
+ * own finalAction and another attribute missing; a cancelled Task with
+ * another statusLabel) as not done.
+ */
 export function retryable(status: number): boolean {
-  return status === 429 || status >= 500;
+  return status === 429 || status === 207 || status >= 500;
 }
 
 /**

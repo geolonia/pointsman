@@ -269,9 +269,18 @@ reads their completed Tasks as the person's answer:
    (`BRIDGE_WORK_ORDERS`, for example `{"Published": "publish", "Rejected":
    "reject"}`). It then writes it to the Decision of the entity's result that
    waits for a person, on the type's main route (the one without a name;
-   later steps of a chain keep their own review path): `reviewStatus` `resolved`, `finalAction`, `reviewedBy`
+   later steps of a chain keep their own review path): `finalAction`, `reviewedBy`
    (`redmine:<instance>#<issue>` for GTT, otherwise the Task's id) and
-   `reviewedAt` (the Task's `dateModified`).
+   `reviewedAt` (the Task's `dateModified`), then, in a second write,
+   `reviewStatus` `resolved`. The subscription below watches `reviewStatus`,
+   so its notification comes only once the rest is stored; a broker may not
+   notify when a retry writes the same value again (#347). A Decision that
+   is `resolved` by this work order (or that an earlier bridge left
+   `resolved` with attributes missing) while the result still waits gets
+   what is missing, and the bridge then runs step 4 itself, since
+   `reviewStatus` does not change; a retry runs it again. If that step
+   writes the result and then fails on the bridge's Task, the Task stays
+   open: a work order finds no result waiting any more.
 4. The broker notifies `/reviews` about the Decision, and the steps above do
    the rest: Pointsman, the entity's result, the bridge's own Task.
 
@@ -419,7 +428,9 @@ from starting a new decision:
 - The result counts as written only when the broker stored it: a `207` to
   the first write (`POST …/attrs`, the attribute was not appended) is a
   failure, so the next notification decides again instead of finding no
-  result every time.
+  result every time. It is tried again like a 5xx (see
+  [Failures and retries](#failures-and-retries)): when the inputs do not
+  change, no next notification comes.
 
 Every call to the broker has 10 seconds, every decision by Pointsman 60
 seconds (`POINTSMAN_TIMEOUT_SECONDS`; it may wait for a model and its
@@ -501,7 +512,8 @@ attribute names in the notification match the ones in `BRIDGE_ROUTES`.
 ## Failures and retries
 
 The bridge answers `502` when an entity failed in a way a second try may fix
-(Pointsman or the broker not reachable, a 5xx or 429), and `200` otherwise,
+(Pointsman or the broker not reachable, a 5xx or 429, or a `207` to a write:
+the broker left attributes unwritten), and `200` otherwise,
 also when Pointsman refused the input (a retry would fail the same way). A
 redirect from the broker or Pointsman also answers `200`: the URL is wrong
 and a retry by the broker would fail the same way until the configuration
@@ -515,7 +527,22 @@ minutes apart), then keeps the notification in its own dead-letter queue.
 After an hour of failures it pauses the subscription (`inactive`), and every
 later notification is lost until someone activates it again (#88). Without
 retries, the next change of an input decides again, but a review or work
-order whose notification was lost stays open.
+order whose notification was lost stays open, and so does a result the
+broker did not store (a `207` to its write) while the inputs stay the same.
+A `207` to any of the bridge's writes (the result, the Decision or Task
+entity, a review's result or Task, a work order's Decision) is such a
+failure, answered `502` like a 5xx (#347; until 0.24.0 it was
+answered `200` and not tried again). A retry is safe: the decide request has
+the same `Idempotency-Key` and gets the decision Pointsman already logged,
+not a second one (see **Repeats** below). A retry also finishes a write that
+a `207` left half done, not taking it as done: a Decision entity resolved
+without `finalAction`, or with the same `finalAction` and `reviewedAt` (or a
+work order's `reviewedBy`) missing, is written again, and so is a Task
+cancelled with another `statusLabel` (the old one a `207` kept) or none.
+In direct mode, a `207` that comes back every time (a broker that always
+refuses one attribute) fails every notification, and GeonicDB then pauses
+the subscription after an hour. With the queue, such a message ends in the
+dead-letter queue instead, so use the queue where that matters.
 
 ### Reliable delivery (queue)
 
@@ -537,7 +564,8 @@ With a Cloudflare Queue (`BRIDGE_QUEUE`, see [wrangler.jsonc](wrangler.jsonc)):
   entity never run at the same moment.
 - **Retries:** a failure a second try may fix is retried after 30 seconds,
   then with the delay doubling up to an hour. With `max_retries` 20 that
-  covers about 14 hours. After the last try, the message goes to the
+  covers about 14 hours. A `207` to one of the bridge's writes counts as
+  such a failure (#347), like a 5xx. After the last try, the message goes to the
   dead-letter queue (`pointsman-bridge-dlq` in the example). Its messages
   hold the entity's id and type and can be sent to the queue again; the
   entity is then read as it is at that time. Failures a
