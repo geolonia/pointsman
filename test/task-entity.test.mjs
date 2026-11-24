@@ -1,4 +1,4 @@
-// The bridge's Task entities (packages/fiware/src/bridge.ts) against the Task model's
+// The bridge's Task entities (packages/fiware/src/tasks.ts) against the Task model's
 // JSON Schema and context (datamodels.jp, pinned copy in test/fixtures).
 
 import { test } from 'node:test';

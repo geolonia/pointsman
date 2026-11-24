@@ -509,6 +509,13 @@
   failure atomicity and concurrency; the code citations into
   `packages/github/src/snapshot.ts`, moved to their lines after this
   change (the validator was not run for this amendment). No new question.
+  The last of the large files of pointsman#265:
+  `packages/fiware/src/bridge.ts` keeps the request and queue entry points
+  and the public names; routes, types, sending, the broker client,
+  deciding, the decision entity, tasks, reviews and work orders moved to
+  files of their own beside it (moved, not changed); no claim changed; 14
+  code citations moved to their files and lines, checked against the old
+  text of each line, and `send` is named in `send.ts`.
   The third of the large files of pointsman#265:
   `packages/github/src/connector/pull-request.ts` keeps the
   `PullRequestWork` class whole; its storage records, check-run texts, the
@@ -1262,7 +1269,7 @@ modeled tree.
   "Missing GitHub facts": "a redirect (not followed: it would carry the token
   elsewhere)")*.
   The bridge's calls to the broker and to Pointsman do the same
-  (`packages/fiware/src/bridge.ts` `send`): a 3xx is an error, checked before the
+  (`packages/fiware/src/send.ts` `send`): a 3xx is an error, checked before the
   body is read, so the broker credentials, the Pointsman token and the
   entity never reach a redirect target *(documented, bridge/README.md "Configuration": "The
   bridge does not follow redirects")*.
@@ -2196,14 +2203,14 @@ what voids it.
   `x-authentication-bypass`. Tier: security-critical. *(documented,
   bridge/README.md "Configuration": "other notifications are refused")*.
   Voided by: nothing. Search: `grep -n "sameSecret\|pathname" packages/fiware/src/bridge.ts`
-  — the two routes at `packages/fiware/src/bridge.ts:369` and the secret check at `packages/fiware/src/bridge.ts:371`.
+  — the two routes at `packages/fiware/src/bridge.ts:61` and the secret check at `packages/fiware/src/bridge.ts:63`.
 - **`P-BRIDGE-LOOP-GUARD`** — the bridge stores a hash of the input attribute
   values with the result and skips a notification whose inputs already have
   that hash; it writes with attribute-level `PATCH` so its own write does not
   start a new decision; since pointsman#229 (`v0.17.1`) an answer named
   like a field of the result, such as `inputHash`, cannot replace the hash:
   such a decision is refused before anything is written
-  (`packages/fiware/src/bridge.ts:671`). For a route with `requires` the hash also covers each
+  (`packages/fiware/src/decide.ts:142`). For a route with `requires` the hash also covers each
   earlier decision's id (and, with `rerunOnReview`, the person's answer on
   it), so a final decision runs again only when an earlier one changes; routes
   that read each other's results in a circle are refused when the routes are
@@ -2221,20 +2228,20 @@ what voids it.
   final action is written and the Task completed only when Pointsman has
   the review resolved with the same action: a review still pending is
   tried again (not when its profile version is gone), and one closed as
-  superseded is reported (`packages/fiware/src/bridge.ts:1205`,
-  `packages/fiware/src/bridge.ts:1211`). Since pointsman#232 (`v0.17.2`)
+  superseded is reported (`packages/fiware/src/reviews.ts:126`,
+  `packages/fiware/src/reviews.ts:132`). Since pointsman#232 (`v0.17.2`)
   a decision whose review is pending gets its Task under the same derived
   id also when `task.actions` leaves its action out
-  (`packages/fiware/src/bridge.ts:719`), and a work order resolves only a
+  (`packages/fiware/src/decide.ts:190`), and a work order resolves only a
   result still waiting for a person (pending, or by the older action
   rules) and without a final action, whatever the
-  route's `reviewActions` (`packages/fiware/src/bridge.ts:1378`). Since
+  route's `reviewActions` (`packages/fiware/src/work-orders.ts:107`). Since
   pointsman#236 (`v0.18.0`) a retry that Pointsman answers with the
   review resolved by a person writes it as resolved with their action:
   the result, the Decision entity (also one the first try left pending,
-  `packages/fiware/src/bridge.ts:697`) and the Task, completed
-  (`packages/fiware/src/bridge.ts:721`); a retry of a superseded decision
-  writes nothing (`packages/fiware/src/bridge.ts:674`). Every decide request carries an `Idempotency-Key` from the route,
+  `packages/fiware/src/decide.ts:168`) and the Task, completed
+  (`packages/fiware/src/decide.ts:192`); a retry of a superseded decision
+  writes nothing (`packages/fiware/src/decide.ts:145`). Every decide request carries an `Idempotency-Key` from the route,
   the entity and the exact request, so a retry of the same request after
   Pointsman logged the decision gets the same decision; for a route with `requires`, which runs
   from the queue only, a result older than the one on the entity is not
@@ -2452,13 +2459,13 @@ the receivers must do for §1.5–§1.11 to hold.
   (`actions/deploy-watch/watch.mjs:190`); since pointsman#232
   (`v0.17.2`) the FIWARE bridge on every route: an answer with
   `review: {status: pending}` counts as checked by a person whatever the
-  route's `reviewActions` (`packages/fiware/src/bridge.ts:999`), which
-  only add actions to check (`packages/fiware/src/bridge.ts:1000`). The
+  route's `reviewActions` (`packages/fiware/src/decision-entity.ts:65`), which
+  only add actions to check (`packages/fiware/src/decision-entity.ts:66`). The
   bridge then marks the result and the Decision entity `reviewStatus`
   `pending`, on a route with `task` opens a Task even when `task.actions`
-  leaves the action out (`packages/fiware/src/bridge.ts:719`), and writes
+  leaves the action out (`packages/fiware/src/decide.ts:190`), and writes
   `finalAction` only after a person resolves the review, also when a
-  work order resolves it (`packages/fiware/src/bridge.ts:1378`). Up to `v0.17.1` a route whose
+  work order resolves it (`packages/fiware/src/work-orders.ts:107`). Up to `v0.17.1` a route whose
   `reviewActions` left out an action of `people_check` marked that action
   as taken. The result's `value` is the pending action in every case, so
   a broker consumer must read `reviewStatus` too. Since pointsman#236
