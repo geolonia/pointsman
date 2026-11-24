@@ -43,7 +43,6 @@ export async function readJsonUpTo(req: Request, max: number): Promise<unknown> 
 
 export { ConfigError, deliver, makeDecision, makeReplay, NO_MODEL, retryDueCallbacks, type DecisionResult, type Deps } from './decide';
 
-
 export function createApp(deps: (env: Env) => Deps) {
   type AppEnv = { Bindings: Env; Variables: { client: TokenRecord; deps: Deps } };
   const app = new Hono<AppEnv>();

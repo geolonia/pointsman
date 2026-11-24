@@ -30,7 +30,6 @@ export interface ApiAnswer {
   body: unknown;
 }
 
-
 /** An error answer; its body `{ error: { code, message } }` (openapi.yaml Error), the same for every error of the API. */
 export const apiError = (status: ContentfulStatusCode, code: string, message: string): ApiAnswer => ({ status, body: { error: { code, message } } });
 

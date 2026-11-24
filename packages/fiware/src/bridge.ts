@@ -846,14 +846,14 @@ export function toProperty(d: Decision, hash: string, now = new Date(), decision
   return property;
 }
 
+/** An NGSI-LD Property with this value. */
+const P = (value: unknown) => ({ type: 'Property', value });
+
 /**
  * Sent on every request. Some brokers sit behind firewalls that refuse
  * requests without one (GeonicDB's AWS WAF answers 403), and Workers send none
  * by default.
  */
-/** An NGSI-LD Property with this value. */
-const P = (value: unknown) => ({ type: 'Property', value });
-
 export const USER_AGENT = 'pointsman-bridge (+https://github.com/geolonia/pointsman)';
 
 /** A 3xx from the broker or Pointsman: the bridge does not follow redirects (#97). */

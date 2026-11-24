@@ -531,6 +531,13 @@ describe('settings and tokens', () => {
     });
   });
 
+  it('isObject (shared by the facts and the connector) takes plain objects only, never a list or null', async () => {
+    const { isObject } = await import('../../packages/github/src/github-http');
+    expect(isObject({})).toBe(true);
+    expect(isObject({ a: 1 })).toBe(true);
+    for (const v of [[], [1], null, undefined, 'x', 1, true]) expect(isObject(v)).toBe(false);
+  });
+
   describe('the app token is kept between runs (#263)', () => {
     /** A fake GitHub on the global fetch (connectorGitHub uses it): counts token requests; `pr` answers the pull request. */
     const github = (o: { expiresIn?: number; pr?: () => Response } = {}) => {

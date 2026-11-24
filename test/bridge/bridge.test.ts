@@ -49,7 +49,7 @@ function checkReadHeaders(c: Call, broker: BridgeConfig['broker']) {
   if (broker.apiKey) want['x-api-key'] = broker.apiKey;
   if (broker.tenant) want['ngsild-tenant'] = broker.tenant;
   const ok = JSON.stringify(Object.entries(rest).sort()) === JSON.stringify(Object.entries(want).sort())
-    && (agent ?? '').startsWith('pointsman-bridge') && (link === undefined || LINK.test(link));
+    && (agent ?? '').startsWith('pointsman-bridge') && link !== undefined && LINK.test(link);
   if (!ok) badReads.push(`${c.method} ${c.url}: ${JSON.stringify(got)}`);
 }
 afterEach(() => {

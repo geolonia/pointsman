@@ -135,7 +135,6 @@ export function textBefore(after: string, patch: string): string | null {
   return out.join('\n');
 }
 
-
 /** Deep equality of JSON values; the order of keys does not count. */
 function same(a: unknown, b: unknown): boolean {
   if (a === b) return true;

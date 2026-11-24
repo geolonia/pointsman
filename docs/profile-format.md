@@ -348,10 +348,11 @@ run (for example an answer for a question the profile does not have), or SKIP;
 one that cannot run, makes the exit code 1. Cases with a state are skipped
 without `--url`.
 
-With `--url` (https, or http on localhost; no user name, password, query or fragment), use a test token: its decisions
-are not logged. Any other token is refused after its first answer, but that
-one decision is logged, and may wait for a person in the review queue. Each
-case with a state is a model call.
+With `--url` (https, or http on localhost; no user name, password, query or
+fragment), use a test token: its decisions are not logged. Any other token
+is refused after its first answer, but that one decision is logged, and may
+wait for a person in the review queue. Each case with a state is a model
+call.
 
 The examples in this repository have cases in
 [examples/cases/](../examples/cases/), run by CI. A config repository made
