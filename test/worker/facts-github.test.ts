@@ -1,4 +1,4 @@
-// GitHub pull-request facts (packages/github/src/provider.ts) against a fake GitHub API:
+// GitHub pull-request facts (packages/github/src/provider.ts, snapshot.ts, auth.ts) against a fake GitHub API:
 // every field, the shared snapshot, each way a fact can be missing, the
 // settings, and that only GET requests are sent.
 
@@ -364,6 +364,18 @@ describe('who pushed (github_pr.pushed_by_author)', () => {
     expect(nextCursor('<https://api.github.com/x?before=a>; rel="prev"')).toBeNull();
     expect(nextCursor(null)).toBeNull();
     expect(nextCursor('<not a url>; rel="next"')).toBeNull();
+    // GitHub's full header: several links, next not first; spaces as GitHub writes them.
+    expect(nextCursor('<https://api.github.com/x?before=b>; rel="prev", <https://api.github.com/x?per_page=100&after=Q1>; rel="next"')).toBe('Q1');
+    expect(nextCursor('<https://api.github.com/x?after=Q2>;rel="next"')).toBe('Q2');
+    expect(nextCursor('<https://api.github.com/x?after=Q3>; rel="next"; title="more"')).toBe('Q3');
+    // Not a next link: another rel, no brackets, an empty header, no cursor.
+    expect(nextCursor('<https://api.github.com/x?after=Q4>; rel="next page"')).toBeNull();
+    expect(nextCursor('https://api.github.com/x?after=Q5; rel="next"')).toBeNull();
+    expect(nextCursor('')).toBeNull();
+    expect(nextCursor('<https://api.github.com/x>; rel="next"')).toBeNull();
+    expect(nextCursor(`<https://api.github.com/x?after=${'a'.repeat(501)}>; rel="next"`)).toBeNull();
+    // A long header with no next link is read in linear time.
+    expect(nextCursor('<'.repeat(100_000) + '; rel="nex')).toBeNull();
   });
 });
 

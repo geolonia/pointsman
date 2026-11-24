@@ -120,7 +120,7 @@ const github_pr: FactTypeDef = {
     open: { kind: 'boolean' }, merged: { kind: 'boolean' }, draft: { kind: 'boolean' }, wip_title: { kind: 'boolean' },
     files: { kind: 'number' }, changed_lines: { kind: 'number' }, base_is_default: { kind: 'boolean' },
     author_member: { kind: 'boolean' }, author_dependabot: { kind: 'boolean' }, fork: { kind: 'boolean' }, all_commits_verified: { kind: 'boolean' },
-    // "yes", "no" or "unavailable": who pushed the commits (provider.ts).
+    // "yes", "no" or "unavailable": who pushed the commits (answers.ts, pushedByAuthor).
     pushed_by_author: { kind: 'string' }, author_sole_code_owner: { kind: 'boolean' },
   },
   input: pullRequest,
@@ -143,7 +143,7 @@ const github_pr: FactTypeDef = {
         author_member: ['the author of % is a member of the owner', 'the author of % is not a member of the owner'],
         author_dependabot: ['% is by Dependabot', '% is not by Dependabot'],
         fork: ['% comes from a fork', '% does not come from a fork'],
-        // For a pull request by Dependabot, also Dependabot's own commits (provider.ts, allVerified).
+        // For a pull request by Dependabot, also Dependabot's own commits (answers.ts, allVerified).
         all_commits_verified: ['every commit of % has a verified signature', 'not every commit of % has a verified signature'],
         pushed_by_author: 'the answer to "did the author of % push every commit"',
         author_sole_code_owner: ['the author of % is the only code owner of every changed file', 'the author of % is not the only code owner of every changed file'],

@@ -1,5 +1,5 @@
 // What every request to GitHub's API has in common, for the facts
-// (provider.ts, with the facts' read-only token) and the connector
+// (requests.ts and auth.ts, with the facts' read-only token) and the connector
 // (connector/github.ts, with its own write app's token). Only the shared
 // form: each caller keeps its own token, user agent and its own reading of
 // a failed answer (FactError for facts, GitHubError for the connector).

@@ -1,4 +1,4 @@
-// The review side of a pull request, as the snapshot reads it (provider.ts):
+// The review side of a pull request, as the snapshot reads it (snapshot.ts):
 // reviews, conversation comments, commit statuses with their history,
 // review threads and review requests. Plain data with the author's login
 // and account id, so a fact can accept only a service's real account

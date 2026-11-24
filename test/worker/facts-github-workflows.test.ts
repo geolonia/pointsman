@@ -1,4 +1,4 @@
-// The github_workflows fact (packages/github/src/provider.ts, packages/github/src/workflows.ts) against a
+// The github_workflows fact (packages/github/src/snapshot.ts, packages/github/src/workflows.ts) against a
 // fake GitHub API: which files it reads, at head and at the base tip, the
 // limits, each way the fact can be missing, and that only GET requests are
 // sent. The counts themselves are tested in workflows.test.ts.

@@ -5,7 +5,8 @@
 // (Pointsman's own check run, never counted as a required check).
 
 import { ConfigError, mockProvider, type ConnectorEntry, type FactModuleEntry, type FactProvider } from '@pointsman/module-api';
-import { GitHubAppAuth, GitHubFactProvider, privateKeyDer, TokenAuth, type GitHubAuth } from './provider';
+import { GitHubAppAuth, privateKeyDer, TokenAuth, type GitHubAuth } from './auth';
+import { GitHubFactProvider } from './provider';
 import { definition } from './definition';
 import { githubConnector, settingsWithObjects } from './connector/index.ts';
 
@@ -83,6 +84,11 @@ export function githubAuthFrom(env: Record<string, unknown>): 'off' | 'mock' | {
 
 // The provider's parts, for tests and other modules.
 export * from './provider';
+export * from './auth';
+export * from './snapshot';
+export * from './rebase';
+export { allVerified, isWipTitle, pushedByAuthor, type PullRequest } from './answers';
+export { nextCursor } from './requests';
 export * from './definition';
 export * from './settings';
 export * from './workflows';
