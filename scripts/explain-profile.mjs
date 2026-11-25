@@ -14,11 +14,12 @@ import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { factModulesError, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile, explanationText } from '../src/explain.ts';
+import { exit } from './lib/exit.mjs';
 
 // A broken engine.json stops the script with one line, not a stack trace.
 if (factModulesError()) {
   console.error(factModulesError());
-  process.exit(2);
+  await exit(2);
 }
 
 let args;
@@ -29,12 +30,12 @@ try {
   });
 } catch (err) {
   console.error(err.message);
-  process.exit(2);
+  await exit(2);
 }
 const { positionals, values } = args;
 if (positionals.length !== 1 || !['en', 'ja'].includes(values.lang)) {
   console.error('Usage: explain-profile <file> [--lang en|ja] [--json] [--with <file-or-directory>]...');
-  process.exit(2);
+  await exit(2);
 }
 const [file] = positionals;
 
@@ -54,14 +55,14 @@ try {
   }
 } catch (err) {
   console.error(`${file}: ${err.message.split('\n')[0]}`);
-  process.exit(1);
+  await exit(1);
 }
 
 const errors = validateProfile(profile, { fileName: file, profiles: others });
 if (errors.length) {
   console.error(`${file} is not valid, so it is not explained:`);
   for (const e of errors) console.error(`  ${e}`);
-  process.exit(1);
+  await exit(1);
 }
 
 const explanation = explainProfile(profile, values.lang, Object.fromEntries(others));

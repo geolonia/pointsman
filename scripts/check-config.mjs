@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { chosenConnectors, chosenModules, loadDefinitions } from './lib/modules.mjs';
 import { strictlyPublicProblems } from './lib/strictly-public.mjs';
+import { exit } from './lib/exit.mjs';
 
 const problems = [];
 for (const file of ['wrangler.jsonc', 'engine.json']) {
@@ -46,6 +47,6 @@ try {
 }
 if (problems.length > 0) {
   console.error(`Config not ready:\n  ${problems.join('\n  ')}`);
-  process.exit(1);
+  await exit(1);
 }
 console.log('Config ready.');

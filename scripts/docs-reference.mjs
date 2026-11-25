@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { CAPABILITIES } from '@pointsman/module-api';
 import { CATALOG, loadDefinitions } from './lib/modules.mjs';
 import { CORE_REASONS } from '../src/modules/registry.ts';
+import { exit } from './lib/exit.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
@@ -316,5 +317,5 @@ for (const [slug, make] of Object.entries(PAGES)) {
 }
 if (stale) {
   console.error(`\n${stale} generated page(s) out of date: run pnpm docs:reference and commit the result.`);
-  process.exit(1);
+  await exit(1);
 }

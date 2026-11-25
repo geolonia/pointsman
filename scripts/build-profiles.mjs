@@ -15,6 +15,7 @@ import { dirname } from 'node:path';
 import { allModules, loadDefinitions } from './lib/modules.mjs';
 import { loadProfileSet, useModules, validateProfile } from './lib/profile.mjs';
 import { FactRegistry } from '../src/modules/registry.ts';
+import { exit } from './lib/exit.mjs';
 
 // A broken engine.json stops the script with one line, not a stack trace.
 let chosen;
@@ -23,7 +24,7 @@ try {
   await useModules(allModules());
 } catch (err) {
   console.error(`fact modules: ${err.message}`);
-  process.exit(2);
+  await exit(2);
 }
 
 const [out = 'generated/profiles.json', ...dirs] = process.argv.slice(2);
@@ -39,7 +40,7 @@ try {
   ({ entries: read, byId, duplicates } = loadProfileSet(sources));
 } catch (err) {
   console.error(err.message);
-  process.exit(2);
+  await exit(2);
 }
 const profiles = [];
 let failed = false;
@@ -56,7 +57,7 @@ for (const { path, profile, error } of read) {
   }
   profiles.push(profile);
 }
-if (failed) process.exit(1);
+if (failed) await exit(1);
 // Leave out profiles whose facts no chosen module answers, and the ones that require them.
 const skipped = new Set(profiles.filter((p) => (p.facts ?? []).some((f) => !chosen.type(f.type))).map((p) => p.id));
 for (let more = true; more;) {
@@ -72,7 +73,7 @@ for (const id of skipped) console.log(`Left out ${id}: no chosen fact module ans
 profiles.splice(0, profiles.length, ...profiles.filter((p) => !skipped.has(p.id)));
 if (profiles.length === 0) {
   console.error(`No profiles found in: ${sources.join(', ')}`);
-  process.exit(1);
+  await exit(1);
 }
 
 mkdirSync(dirname(out), { recursive: true });
