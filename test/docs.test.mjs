@@ -135,6 +135,80 @@ test('sitemap.xml skips assets/, keeps a page in one language without alternates
   assert.doesNotMatch(xml, /&(?!amp;|apos;)/, 'no bare & in the XML');
 });
 
+test('sitemap.xml gives a page the date dateOf has for its file, and none without one', async () => {
+  const { landingSitemap } = await import('../docs-site/scripts/landing-sitemap.mjs');
+  const dates = { 'index.html': '2026-11-20T12:00:00+09:00' };
+  const xml = landingSitemap(join(root, 'site'), (f) => dates[f]);
+  assert.ok(xml.includes('<loc>https://pointsman.net/</loc><lastmod>2026-11-20T12:00:00+09:00</lastmod><xhtml:link'));
+  assert.ok(xml.includes('<loc>https://pointsman.net/ja/</loc><xhtml:link'), 'no date, no <lastmod>');
+});
+
+test('addLastmod dates the URLs it has a date for, once', async () => {
+  const { addLastmod } = await import('../docs-site/scripts/lastmod.mjs');
+  const xml = '<url><loc>https://x.test/a/</loc></url><url><loc>https://x.test/b&amp;c/</loc></url><url><loc>https://x.test/none/</loc></url>';
+  const dates = { 'https://x.test/a/': '2026-01-01', 'https://x.test/b&c/': '2026-02-02' };
+  const once = addLastmod(xml, (u) => dates[u]);
+  assert.equal(once, '<url><loc>https://x.test/a/</loc><lastmod>2026-01-01</lastmod></url><url><loc>https://x.test/b&amp;c/</loc><lastmod>2026-02-02</lastmod></url><url><loc>https://x.test/none/</loc></url>');
+  assert.equal(addLastmod(once, (u) => dates[u]), once);
+});
+
+test('gitDates gives each file its last commit date (non-ASCII names, merges), fetches a shallow clone\'s history, and gives none when it cannot', async (t) => {
+  const { gitDates } = await import('../docs-site/scripts/lastmod.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'lastmod-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // No global or system git config (signing, hooks), and a fixed date only where one is given.
+  const git = (cwd, date, ...args) => {
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    if (date) Object.assign(env, { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'init.defaultBranch=main', '-c', 'commit.gpgsign=false', ...args], {
+      cwd, encoding: 'utf8', env,
+    });
+    assert.equal(r.status, 0, r.stderr);
+  };
+  const src = join(dir, 'src');
+  mkdirSync(join(src, 'site', '日本語'), { recursive: true });
+  git(src, '', 'init', '-q');
+  for (const f of ['a.html', 'b.html', 'c.html', 'd.html', '日本語/index.html']) writeFileSync(join(src, 'site', f), '1');
+  git(src, '2026-01-01T00:00:00+00:00', 'add', '.');
+  git(src, '2026-01-01T00:00:00+00:00', 'commit', '-q', '-m', 'one');
+  writeFileSync(join(src, 'site', 'b.html'), '2');
+  writeFileSync(join(src, 'other.txt'), '2');
+  git(src, '2026-02-01T00:00:00+00:00', 'commit', '-q', '-am', 'two');
+  git(src, '2026-02-01T00:00:00+00:00', 'add', '.');
+  git(src, '2026-02-01T00:00:00+00:00', 'commit', '-q', '-m', 'three');
+  // A merge that resolves c.html to something neither side had, and takes d.html from the branch.
+  git(src, '', 'checkout', '-q', '-b', 'x');
+  writeFileSync(join(src, 'site', 'c.html'), 'x');
+  writeFileSync(join(src, 'site', 'd.html'), 'x');
+  git(src, '2026-03-01T00:00:00+00:00', 'commit', '-q', '-am', 'x');
+  git(src, '', 'checkout', '-q', 'main');
+  writeFileSync(join(src, 'site', 'c.html'), 'm');
+  git(src, '2026-04-01T00:00:00+00:00', 'commit', '-q', '-am', 'm');
+  git(src, '', 'merge', '-q', '--no-commit', '-X', 'ours', 'x');
+  writeFileSync(join(src, 'site', 'c.html'), 'resolved');
+  git(src, '', 'add', '.');
+  git(src, '2026-05-01T00:00:00+00:00', 'commit', '-q', '-m', 'merge');
+  {
+    const want = new Map([
+      ['site/c.html', '2026-05-01T00:00:00Z'], ['site/d.html', '2026-03-01T00:00:00Z'],
+      ['site/b.html', '2026-02-01T00:00:00Z'], ['site/a.html', '2026-01-01T00:00:00Z'], ['site/日本語/index.html', '2026-01-01T00:00:00Z'],
+    ]);
+    const norm = (m) => new Map([...m].map(([f, d]) => [f, new Date(d).toISOString().replace('.000', '')]));
+    assert.deepEqual(norm(gitDates(src, ['site'])), want);
+    // A shallow clone: the history is fetched, so a.html keeps its own date.
+    const shallow = join(dir, 'shallow');
+    git(dir, '', 'clone', '-q', '--depth', '1', `file://${src}`, shallow);
+    assert.deepEqual(norm(gitDates(shallow, ['site'])), want);
+    // A shallow clone that cannot fetch: no dates rather than wrong ones.
+    const cut = join(dir, 'cut');
+    git(dir, '', 'clone', '-q', '--depth', '1', `file://${src}`, cut);
+    git(cut, '', 'remote', 'remove', 'origin');
+    t.mock.method(console, 'warn', () => {});
+    assert.equal(gitDates(cut, ['site']).size, 0);
+    assert.equal(gitDates(dir, ['site']).size, 0, 'not a repository');
+  }
+});
+
 test('a translated older page keeps the English section ids, table rows and code, and names its source commit', (t) => {
   const en = '# Writing\n\nText.\n\n## Commands\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```sh\nnode x\n```\n';
   const dir = repo(t, {

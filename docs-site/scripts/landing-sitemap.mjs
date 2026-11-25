@@ -22,8 +22,11 @@ export function landingPaths(dir) {
 const url = (path) => `${SITE}${path.split('/').map(encodeURIComponent).join('/')}`
   .replace(/&/g, '&amp;').replace(/'/g, '&apos;');
 
-/** The sitemap XML for the pages of site/. */
-export function landingSitemap(dir) {
+/**
+ * The sitemap XML for the pages of site/. `dateOf` gives the <lastmod> of a
+ * page from its file under `dir` ('ja/index.html'); none when it has no date.
+ */
+export function landingSitemap(dir, dateOf = () => undefined) {
   const paths = landingPaths(dir);
   const has = new Set(paths);
   const enOf = (p) => (p.startsWith('/ja/') ? p.slice(3) : p);
@@ -35,7 +38,8 @@ export function landingSitemap(dir) {
       ? [['en', en], ['ja', ja], ['x-default', en]]
         .map(([lang, href]) => `<xhtml:link rel="alternate" hreflang="${lang}" href="${url(href)}"/>`).join('')
       : '';
-    return `<url><loc>${url(p)}</loc>${alternates}</url>`;
+    const date = dateOf(`${p.slice(1)}index.html`);
+    return `<url><loc>${url(p)}</loc>${date ? `<lastmod>${date}</lastmod>` : ''}${alternates}</url>`;
   });
   return '<?xml version="1.0" encoding="UTF-8"?>\n'
     + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n'
