@@ -881,6 +881,79 @@ released pointsman#221 and #222, and amended for `v0.15.0` (pointsman#216,
   advisories that Q49 promised.
 - **Questions**: none.
 
+## Amendment for the FIWARE bridge's 207 (pointsman#347, #348, 2026-11-24)
+
+- **Why**: since pointsman#323 a `207` to the bridge's first result write
+  was a failure, but one a retry could not fix, so a queue message was
+  acked and direct mode answered `200`: the result was lost while the
+  inputs stayed the same (#347).
+- **Changed**: the matrix row for the bridge's recursive topology (prose,
+  YAML): a `207` to any of the bridge's attribute writes is tried again
+  (the queue's back-off, then the dead-letter queue; `502` in direct mode),
+  a retry finishes a write a `207` left half done, and a work order writes
+  the Decision's `reviewStatus` last.
+- **Not run**: the plugin's validator and the backtest (Q49 still waited).
+- **Questions**: none.
+
+## Re-binding to `v0.24.1` (2026-11-25)
+
+- **What it covers**: the amendments of 2026-11-07 to 2026-11-24 (images,
+  value facts, and the sixteen for the review of 2026-11), released in
+  `v0.20.0` to `v0.24.1`. Every claim marked "not yet released" or "after
+  `v0.18.0`" now names its release; where the marker named an issue, the
+  release is that of the pull request that closed it. A short script read
+  the release of each pull request from `git tag --contains` on its merge
+  commit.
+- **Citations**: all 223 resolve at `59ba61e`. Between `v0.18.0` and
+  `v0.24.1` every commit that changed a cited file also amended the model,
+  except the release commits (one version line each, no line moves) and
+  pointsman#298 (MCP tool annotations and structured results, which no
+  claim describes; the three `src/mcp.ts` citations were checked by hand).
+  The validator found two citations on comment lines; they now point at
+  the code.
+- **Backtest (Q49)**: the first run with a historical corpus: the seven
+  advisories, #228, and the review's issues #243 to #277 (34 issues;
+  #269 is a pull request) that report a defect (without #246 and #263 to #268, and without #270, fixed in
+  `v0.19.0`), plus #347: 35 items. Three fresh
+  subagents routed the 35 items in parallel against the model before each
+  fix and against the model now, with a written brief; I read their
+  tables and checked the disagreements against the model. Figures are in
+  §1.1 "Backtest note". What it found:
+  - precedence rule 5 ("control of a trusted input") lacked the
+    "attacker" that §1.17's table has, and the hand triage of
+    pointsman#228 had used that gap to close a real defect; read the same
+    way, it would have closed #255, #259 and #275;
+  - many fixes of the review were stated only in matrix rows or §1.7
+    cells, so a regression would have routed to `MODEL-GAP` or even a
+    close; three fixed defects (#259, #275, #276) still closed at
+    `v0.24.1` before Q53;
+  - `KNF-CALLBACK-DUPLICATE` could close a duplicate from an expired
+    lease, which `P-CALLBACK-SIGNED` claims never happens, and the callback
+    entries did not mention the client check of #271;
+  - #272's remainder (a score's value against its level) was neither
+    claimed nor disclaimed.
+- **Questions**: four, answered in one batch on 2026-11-25 as proposed
+  (Q52 to Q55, §1.18). Each changed the model: rule 5 and the #228 row;
+  nine properties and the new `P-MODEL-CALL-BOUNDED`; the two callback
+  entries and the known non-finding; `D-MODEL-ACCURACY`.
+- **Also fixed**: two provenance tags the validator could not read, the
+  confidence counts (they had drifted to 473 / 85 over the amendments of
+  2026-11, and are 477 / 84 after this re-binding), the MCP SDK version in
+  §1.9, a section number in an amendment note, and the provenance of two
+  bridge rows that gained 2026-11 clauses.
+- **Run**: the plugin's validator at `192fd60` (90 passed, the length
+  warning only) and its exporter. The JSON had not been regenerated since
+  `v0.18.0`; its hand completion was rebuilt (§1.19).
+- **Not done**: no recon or surface pass over areas no amendment touched;
+  the 16 synthesized backtest cases were not routed again; the re-routing
+  against this model after Q52 to Q55 was done by hand, not by a fresh
+  agent.
+- **Lesson for the question bank**: a backtest with a real corpus finds
+  what amendments written one fix at a time miss: claims placed in the
+  matrix instead of the property a triager reads, and a precedence rule
+  whose wording differs from its definition. Run it at each re-binding,
+  not only at the first draft.
+
 ## Files
 
 - `threat-model.md` — the prose model (canonical).

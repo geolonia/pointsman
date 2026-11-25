@@ -1,12 +1,12 @@
 {
   "spec_version": 1,
   "repository": "https://github.com/geolonia/pointsman",
-  "commit": "9dec36e67788c15d320152ac3e2be91d065a4822",
-  "date": "2026-10-26",
+  "commit": "59ba61eef7d02343e0392c282687957d4bbff644",
+  "date": "2026-11-25",
   "scope_subpath": null,
   "description": "Pointsman is a decision service on Cloudflare Workers. A client system sends a state (a resident's road report, a new issue, a deploy's stack events) to `POST /v1/decide/{profile}`; a language model answers the profile's typed questions; the profile's rules turn the answers into an action (`auto`, `review` or a custom one); every decision is logged with its profile version and model. One Worker per integrator, deployed from a private config repository that holds the profiles. Clients: the FIWARE bridge, the GitHub connector, two GitHub Actions and MCP agents. The state author is the untrusted surface; token holders are trusted for their profiles; the operator is trusted.",
   "confidence": {
-    "documented": 549,
+    "documented": 561,
     "inferred": 0
   },
   "components": [
@@ -178,63 +178,63 @@
   "trust_boundaries": [
     {
       "component": "engine-api",
-      "boundary": "`engine-api`: a finding matters if it is reachable from a request that carries a valid token, or from the `state`, `ref` or `callback_url` such a request carries, or from a model backend's response; the internal call (`InternalEngine.decide`) only from a Worker in the same Cloudflare account with a service binding, and only with `INTERNAL_CLIENT` set; since pointsman#221 (`v0.16.0`) also `InternalEngine.get`, `resolve` and `close`, and `POST /v1/reviews/{id}/close`; `/connectors/<id>/` from any request, under the connector's own authentication, its in-process engine only through `/v1/` with its own token, and the queue consumer from the Worker's queue. A finding that needs an invalid or missing token on an HTTP route is a finding against `P-AUTH-REQUIRED` (§1.11).",
+      "boundary": "`engine-api`: a finding matters if it is reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response; the internal call (InternalEngine) only from a Worker in the same Cloudflare account with a binding, and only with INTERNAL_CLIENT set; /connectors/<id>/ from any request, under the connector's own authentication, and the queue consumer from the Worker's queue; since pointsman#221 (v0.16.0) also InternalEngine get, resolve and close, and POST /v1/reviews/{id}/close. A finding that needs an invalid or missing token to succeed is a finding against `P-AUTH-REQUIRED` (§1.11).",
       "provenance": "documented",
       "reachability_precondition": "reachable from a request with a valid token, from the state, ref or callback_url it carries, or from a model backend response; the internal call (InternalEngine) only from a Worker in the same Cloudflare account with a binding, and only with INTERNAL_CLIENT set; /connectors/<id>/ from any request, under the connector's own authentication, and the queue consumer from the Worker's queue; since pointsman#221 (v0.16.0) also InternalEngine get, resolve and close, and POST /v1/reviews/{id}/close",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10; docs/adapters.md \"Internal calls\"; docs/connectors.md \"Where it runs\""
     },
     {
       "component": "engine-facts",
-      "boundary": "`engine-facts`: reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (`repo`, `number`, `head`) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including the workflow files, patches, comments, reviews and statuses those responses carry, the head statuses of other pull requests, and the asking client's own earlier decisions.",
+      "boundary": "`engine-facts`: a finding matters if it is reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (`v0.20.0`) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions.",
       "provenance": "documented",
-      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
+      "reachability_precondition": "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (`v0.20.0`) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions",
       "source": "threat-model.md §1.4; docs/profile-format.md \"Facts\", \"GitHub pull requests\", \"CodeRabbit reviews\"; docs/modules.md \"Facts from the decision log\""
     },
     {
       "component": "engine-callbacks",
-      "boundary": "`engine-callbacks`: reachable from `callback_url` and from the receiver's response.",
+      "boundary": "`engine-callbacks`: a finding matters if it is reachable from callback_url or from the receiver's response.",
       "provenance": "documented",
       "reachability_precondition": "reachable from callback_url or from the receiver's response",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "engine-mcp",
-      "boundary": "`engine-mcp`: reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login (consent page, client registration, GitHub callback).",
+      "boundary": "`engine-mcp`: a finding matters if it is reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login.",
       "provenance": "documented",
       "reachability_precondition": "reachable from an MCP tool call with a valid API token or OAuth access token, or from the OAuth routes before login",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "bridge",
-      "boundary": "`bridge`: reachable from a notification that carries the shared secret, from the entity bodies in it, from a queue message, or from a broker or Pointsman response, in its own Worker or under `/connectors/fiware/` inside the engine Worker.",
+      "boundary": "`bridge`: a finding matters if it is reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response, in its own Worker or under /connectors/fiware/ inside the engine Worker.",
       "provenance": "documented",
       "reachability_precondition": "reachable from a notification carrying the shared secret, from the entities in it, from a queue message, or from a broker or Pointsman response, in its own Worker or under /connectors/fiware/ inside the engine Worker",
       "source": "threat-model.md §1.4; bridge/README.md \"Configuration\"; docs/connectors.md \"Where it runs\""
     },
     {
       "component": "connector-github",
-      "boundary": "`connector-github`: reachable from a webhook that carries a valid `X-Hub-Signature-256` (pull-request, review and check-suite events; `closed` only with the decision comment or answers on), from the pull request the connector then reads from GitHub (its title, description and diff, written by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer. Since pointsman#221 and #222 (`v0.16.0`), also from a decision read back from the engine and, where answers are on, from signed `check_run` `requested_action` and (with the command) `issue_comment` `created` webhooks, their sender and the comment's text, and GitHub's answers about the person's permission and the head's newest push. A webhook without a valid signature is a finding against `P-CONNECTOR-WEBHOOK-SIGNED` (§1.11).",
+      "boundary": "`connector-github`: a finding matters if it is reachable from a webhook with a valid X-Hub-Signature-256 (pull-request, review and check-suite events; closed only with the decision comment or answers), from the pull request it then reads (title, description, diff by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer; since pointsman#221 (v0.16.0) from a decision read back; since pointsman#222 (v0.16.0), where answers are on, from check_run requested_action and (with the command) issue_comment created webhooks, their sender and the comment's text, and GitHub's answers about the person's permission and the head's newest push.",
       "provenance": "documented",
       "reachability_precondition": "reachable from a webhook with a valid X-Hub-Signature-256 (pull-request, review and check-suite events; closed only with the decision comment or answers), from the pull request it then reads (title, description, diff by the pull-request author), from a GitHub API response including the review decision, or from the engine's answer; since pointsman#221 (v0.16.0) from a decision read back; since pointsman#222 (v0.16.0), where answers are on, from check_run requested_action and (with the command) issue_comment created webhooks, their sender and the comment's text, and GitHub's answers about the person's permission and the head's newest push",
       "source": "threat-model.md §1.4; docs/github-connector.md \"Safety\", \"The decision comment\", \"Asking a person\", \"Answering in the pull request\""
     },
     {
       "component": "action-triage",
-      "boundary": "`action-triage`: reachable from the issue title and body in the event payload, or from Pointsman's response.",
+      "boundary": "`action-triage`: a finding matters if it is reachable from the issue title and body in the event payload, or from Pointsman's response.",
       "provenance": "documented",
       "reachability_precondition": "reachable from the issue title and body in the event payload, or from Pointsman's response",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "action-deploy-watch",
-      "boundary": "`action-deploy-watch`: reachable from CloudFormation stack events or from Pointsman's response. The `run` command and the stack names come from the workflow and are trusted.",
+      "boundary": "`action-deploy-watch`: a finding matters if it is reachable from CloudFormation stack events or from Pointsman's response; run and stacks are trusted workflow inputs.",
       "provenance": "documented",
       "reachability_precondition": "reachable from CloudFormation stack events or from Pointsman's response; run and stacks are trusted workflow inputs",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10"
     },
     {
       "component": "config-repo",
-      "boundary": "`config-repo`: reachable from a pull request to the config repository or from the operator's own command line; both are trusted authors (§1.7).",
+      "boundary": "`config-repo`: a finding matters if it is reachable from a pull request to the config repository or from the operator's command line; both are trusted authors.",
       "provenance": "documented",
       "reachability_precondition": "reachable from a pull request to the config repository or from the operator's command line; both are trusted authors",
       "source": "threat-model.md §1.4, maintainer ruling 2026-10"
@@ -1465,7 +1465,7 @@
       "property": "P-TOKEN-HASHED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "tokens created by scripts/tokens.mjs: 32 random bytes, SHA-256 stored, printed once",
+      "conditions": "tokens created by scripts/tokens.mjs: 32 random bytes, SHA-256 stored, printed once; since pointsman#326 (`v0.23.0`) revoke refuses a hash no token has",
       "provenance": "documented",
       "source": "README \"API tokens\": \"Only a SHA-256 hash of each token is stored\""
     },
@@ -1481,7 +1481,7 @@
       "property": "P-ANSWER-SHAPE",
       "violation_symptom": "bad-data-accepted",
       "severity_tier": "security",
-      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (not yet released) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members",
+      "conditions": "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (`v0.23.0`) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Engine answer format\": \"Answers that do not fit the profile ... are rejected with a model_error\""
     },
@@ -1497,7 +1497,7 @@
       "property": "P-CHAIN-INPUTS-FROM-LOG",
       "violation_symptom": "x-authorization-bypass, x-unauthorized-action, info-leak",
       "severity_tier": "security",
-      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (not yet released) also a probability option its answer lacks",
+      "conditions": "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (`v0.23.0`) also a probability option its answer lacks",
       "provenance": "documented",
       "source": "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""
     },
@@ -1513,7 +1513,7 @@
       "property": "P-FACTS-NEVER-GUESSED",
       "violation_symptom": "bad-data-accepted, wrong-output",
       "severity_tier": "security",
-      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read made the whole github_pr fact missing; since pointsman#307 (not yet released) they give only author_sole_code_owner no value, as a failed membership or activity read gives only author_member no value or pushed_by_author unavailable (values for not known, never a known value), the other github_pr fields stay, a team that does not exist is an owner who is not the author (false), at most 20 teams are read, and a 403 that says only in its message that it is a rate limit is error; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error (since pointsman#309, not yet released: any GSI geometry outside Japan's box is unavailable, a raster tile not 256 × 256 is error, a colour key is transparent), and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere; since pointsman#287 (not yet released) a value fact is missing as no_value without a value at its path and as wrong_kind for another kind or a text over 64 characters, never converted",
+      "conditions": "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read made the whole github_pr fact missing; since pointsman#307 (`v0.23.0`) they give only author_sole_code_owner no value, as a failed membership or activity read gives only author_member no value or pushed_by_author unavailable (values for not known, never a known value), the other github_pr fields stay, a team that does not exist is an owner who is not the author (false), at most 20 teams are read, and a 403 that says only in its message that it is a rate limit is error; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error (since pointsman#309, `v0.23.0`: any GSI geometry outside Japan's box is unavailable, a raster tile not 256 × 256 is error, a colour key is transparent), and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere; since pointsman#287 (`v0.20.0`) a value fact is missing as no_value without a value at its path and as wrong_kind for another kind or a text over 64 characters, never converted",
       "provenance": "documented",
       "source": "docs/profile-format.md \"A missing fact is never guessed\""
     },
@@ -1524,6 +1524,14 @@
       "conditions": "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout; since pointsman#235 (v0.18.0) github_release reads each changed package.json at the head (≤512 KB) only when the patches look version-only; since pointsman#236 (v0.18.0) rebase_only reads at most one more comparison and no file contents",
       "provenance": "documented",
       "source": "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"
+    },
+    {
+      "property": "P-MODEL-CALL-BOUNDED",
+      "violation_symptom": "hang",
+      "severity_tier": "correctness",
+      "conditions": "every model call has a time limit (10 s by default to a model server, MODEL_SERVER_TIMEOUT_MS 100 to 60000; 10 s to Workers AI, since pointsman#324 (`v0.23.0`) also without AI Gateway); a slower call is a model error and the next fallback model is tried; since pointsman#324 no fact lookup before the adapter check, and the 502 for failed models does not wait for facts",
+      "provenance": "documented",
+      "source": "docs/models.md \"Workers AI and AI Gateway\"; \"Model server (local or self-hosted models)\""
     },
     {
       "property": "P-DECISION-LOGGED-FIRST",
@@ -1545,7 +1553,7 @@
       "property": "P-STATE-NOT-STORED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50); since pointsman#289 (not yet released) images sent to the model are never stored and not logged by the AI Gateway",
+      "conditions": "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (`v0.20.0`), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50); since pointsman#289 (`v0.21.0`) images sent to the model are never stored and not logged by the AI Gateway",
       "provenance": "documented",
       "source": "docs/decision-log.md \"By default only the hash of the state is kept\""
     },
@@ -1553,7 +1561,7 @@
       "property": "P-SECRETS-NOT-LOGGED",
       "violation_symptom": "info-leak",
       "severity_tier": "security",
-      "conditions": "the engine's own logs, errors and responses, including the GitHub fact token, GitHub App key and installation tokens; outbound calls with keys or tokens refuse redirects",
+      "conditions": "the engine's own logs, errors and responses, including the GitHub fact token, GitHub App key and installation tokens; outbound calls with keys or tokens refuse redirects; since pointsman#324 (`v0.23.0`) an MCP tool's unexpected error is answered internal error without details",
       "provenance": "documented",
       "source": "docs/models.md \"Errors and logs never include ... the key\"; docs/profile-format.md \"Settings\": \"The token and the key are never logged\""
     },
@@ -1569,7 +1577,7 @@
       "property": "P-CALLBACK-SIGNED",
       "violation_symptom": "integrity-bypass",
       "severity_tier": "security",
-      "conditions": "CALLBACK_SECRET set; every attempt signed and timestamped right before its send; since pointsman#271 the signed body names client and callback_url; claimed before sending, each cron item at its own time (pointsman#243); at most 6 attempts",
+      "conditions": "CALLBACK_SECRET set; every attempt signed and timestamped right before its send; since pointsman#271 (`v0.23.0`) the signed body names client and callback_url; claimed before sending, each cron item at its own time (pointsman#243); at most 6 attempts",
       "provenance": "documented",
       "source": "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""
     },
@@ -1585,7 +1593,7 @@
       "property": "P-GITHUB-FACTS-FOR-HEAD",
       "violation_symptom": "x-toctou, wrong-output",
       "severity_tier": "security",
-      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 another base makes them stale when the request names base; a push, a new base, or a base branch moved to another commit while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
+      "conditions": "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 (`v0.19.0`) another base makes them stale when the request names base; a push or a new base while the file list is read, and since pointsman#339 (`v0.24.0`) a base branch moved to another commit then, makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent",
       "provenance": "documented",
       "source": "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""
     },
@@ -1601,7 +1609,7 @@
       "property": "P-INTERNAL-CLIENT-FROM-ENGINE",
       "violation_symptom": "x-authorization-bypass, x-unlogged-decision-acted-on",
       "severity_tier": "security",
-      "conditions": "internal calls through InternalEngine (decide; since pointsman#221 (v0.16.0) get, resolve, close); the client and profiles come from INTERNAL_CLIENT only; refused without it; profiles listed, wildcard refused; never a test token; the same checks as the HTTP routes after the token check; the body goes through JSON",
+      "conditions": "internal calls through InternalEngine (decide; since pointsman#221 (v0.16.0) get, resolve, close); the client and profiles come from INTERNAL_CLIENT only; refused without it; profiles listed, wildcard refused; never a test token; the same checks as the HTTP routes after the token check; the body goes through JSON; since pointsman#275 (`v0.24.0`) tokens.mjs create and rotate refuse the INTERNAL_CLIENT name and list marks a token that has it",
       "provenance": "documented",
       "source": "docs/adapters.md \"Internal calls\"; src/internal.ts header comment"
     },
@@ -1617,7 +1625,7 @@
       "property": "P-CONNECTOR-ACTIONS-MAPPED",
       "violation_symptom": "x-unauthorized-write, wrong-output",
       "severity_tier": "security",
-      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit; since pointsman#236 (v0.18.0) copilot_review on a pull request with more than 1,000 reviews asks nothing and is recorded as failed for that commit",
+      "conditions": "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit; since pointsman#236 (v0.18.0) copilot_review on a pull request with more than 1,000 reviews asks nothing and is recorded as failed for that commit; since pointsman#319 (`v0.23.0`) a pull request without a known state or draft, or a list answer that is not a list, is an error, never closed or empty, and a comment past the first 1,000 is not known, so nothing is written twice",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""
     },
@@ -1625,7 +1633,7 @@
       "property": "P-CONNECTOR-APPROVE-HEAD",
       "violation_symptom": "x-toctou, x-unauthorized-write",
       "severity_tier": "security",
-      "conditions": "approve only on the decided head, read again right before and named as commit_id; since pointsman#270 also only on the decided base branch: base sent with the request, compared right before, and the pull request read again right after, the approval dismissed at once when head or base changed; an approval given on another base dismissed on every run whatever the decision, like one of an older commit; an answer refused when the base changed since the question; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals",
+      "conditions": "approve only on the decided head, read again right before and named as commit_id; since pointsman#270 (`v0.19.0`) also only on the decided base branch: base sent with the request, compared right before, and the pull request read again right after, the approval dismissed at once when head or base changed; an approval given on another base dismissed on every run whatever the decision, like one of an older commit; an answer refused when the base changed since the question; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals",
       "provenance": "documented",
       "source": "docs/github-connector.md \"Actions\""
     },
@@ -1721,7 +1729,7 @@
       "property": "P-OAUTH-ORG-MEMBERSHIP",
       "violation_symptom": "x-authentication-bypass",
       "severity_tier": "security",
-      "conditions": "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request; since pointsman#236 (v0.18.0) the grant keeps the GitHub account id, people are recorded as github:<account id>, and a grant without it is refused at /mcp and cannot be refreshed",
+      "conditions": "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request; since pointsman#236 (v0.18.0) the grant keeps the GitHub account id, people are recorded as github:<account id>, and a grant without it is refused at /mcp and cannot be refreshed; since pointsman#324 (`v0.23.0`) a login GitHub cannot complete grants nothing and goes back as access_denied",
       "provenance": "documented",
       "source": "docs/mcp.md \"Only active members of the allowed GitHub organizations get in\""
     },
@@ -1737,7 +1745,7 @@
       "property": "P-BRIDGE-LOOP-GUARD",
       "violation_symptom": "x-decision-loop",
       "severity_tier": "correctness",
-      "conditions": "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused; since pointsman#229 (v0.17.1) an answer named like a field of the result (or its Probability) is refused before anything is written, so it cannot replace the hash",
+      "conditions": "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused; since pointsman#229 (v0.17.1) an answer named like a field of the result (or its Probability) is refused before anything is written, so it cannot replace the hash; since pointsman#323 (`v0.23.0`) a multi-instance input is hashed by every instance, sorted by datasetId",
       "provenance": "documented",
       "source": "bridge/README.md \"How it avoids loops\""
     },
@@ -1745,7 +1753,7 @@
       "property": "P-BRIDGE-SAFE-TO-REPEAT",
       "violation_symptom": "wrong-output",
       "severity_tier": "correctness",
-      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions; since pointsman#236 (v0.18.0) a retry that gets the review resolved writes it as resolved with the person's action (result, Decision entity also when left pending, Task completed), and a retry of a superseded decision writes nothing",
+      "conditions": "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions; since pointsman#236 (v0.18.0) a retry that gets the review resolved writes it as resolved with the person's action (result, Decision entity also when left pending, Task completed), and a retry of a superseded decision writes nothing; since pointsman#323 (`v0.23.0`) time limits on every call (10 s broker, 60 s Pointsman by default), a timeout tried again, keyValues inputs refused, an unknown ?route= answers 404; since pointsman#347 (`v0.24.1`) a 207 on any attribute write is tried again (queue back-off, dead-letter queue; 502 in direct mode), a retry finishes a half write, and a work order writes reviewStatus last",
       "provenance": "documented",
       "source": "bridge/README.md \"Safe to repeat\""
     },
@@ -1753,7 +1761,7 @@
       "property": "P-TRIAGE-ALLOWLIST",
       "violation_symptom": "x-command-injection, x-unlisted-label",
       "severity_tier": "security",
-      "conditions": "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary; since pointsman#235 (v0.18.0) not for an answer for a test token, and the action output is test",
+      "conditions": "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary; since pointsman#235 (v0.18.0) not for an answer for a test token, and the action output is test; since pointsman#325 (`v0.23.0`) the action output is error before the review label is tried, and both errors are logged when the label fails too",
       "provenance": "documented",
       "source": "actions/triage/README.md \"Only labels you list in labels are ever applied\""
     },
@@ -1761,7 +1769,7 @@
       "property": "P-WATCH-FAILSAFE",
       "violation_symptom": "x-unwarranted-cancel",
       "severity_tier": "correctness",
-      "conditions": "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels; since pointsman#235 (v0.18.0) a cancel for a test token does not count",
+      "conditions": "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels; since pointsman#235 (v0.18.0) a cancel for a test token does not count; since pointsman#325 (`v0.23.0`) an unreachable Pointsman starts the count again, nothing is asked before CloudFormation works on a watched stack, and a command that cannot be started fails the step",
       "provenance": "documented",
       "source": "actions/deploy-watch/README.md \"Cancel only when sure\""
     }
@@ -1769,14 +1777,14 @@
   "properties_not_provided": [
     {
       "property": "D-PROMPT-INJECTION",
-      "reason": "the answers only (since pointsman#289 also text in images sent to the model); the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)",
+      "reason": "the answers only (since pointsman#289 (`v0.21.0`) also text in images sent to the model); the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)",
       "false_friend": false,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-MODEL-ACCURACY",
-      "reason": "every family that acts on an answer; keep a margin from thresholds; re-check after model updates; basis: stated",
+      "reason": "every family that acts on an answer; keep a margin from thresholds; re-check after model updates; basis: stated; a score's value is not checked against the level it chose (Q55)",
       "false_friend": true,
       "provenance": "documented",
       "source": "docs/fiware-demo.md \"Lesson: keep a margin from the thresholds, and check the examples again after a model update\""
@@ -1797,14 +1805,14 @@
     },
     {
       "property": "D-CALLBACK-ANY-PUBLIC-HOST",
-      "reason": "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10)",
+      "reason": "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10); since pointsman#271 (`v0.23.0`) the signed payload names the client and the callback_url (P-CALLBACK-SIGNED); any receiver can still sign one with the shared secret (D-CALLBACK-SHARED-SECRET) (Q54)",
       "false_friend": true,
       "provenance": "documented",
       "source": "maintainer ruling, 2026-10"
     },
     {
       "property": "D-CALLBACK-SHARED-SECRET",
-      "reason": "one CALLBACK_SECRET signs the callbacks of every client; whoever holds it (every receiver) can sign a callback that names another client; since pointsman#271 the engine itself signs only the client that made the decision",
+      "reason": "one CALLBACK_SECRET signs the callbacks of every client; whoever holds it (every receiver) can sign a callback that names another client; since pointsman#271 (`v0.23.0`) the engine itself signs only the client that made the decision",
       "false_friend": true,
       "provenance": "documented",
       "source": "docs/reviews.md \"Every receiver of a deployment holds the same secret\""
@@ -1881,7 +1889,7 @@
     },
     {
       "property": "D-STATE-TO-BACKEND",
-      "reason": "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 images go to the backend as sent too, never into the gateway's log (maintainer 2026-11, Q51); basis: stated",
+      "reason": "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 (`v0.21.0`) images go to the backend as sent too, never into the gateway's log (maintainer 2026-11, Q51); basis: stated",
       "false_friend": false,
       "provenance": "documented",
       "source": "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""
@@ -2118,9 +2126,9 @@
     "route review decisions to people; choose thresholds with a margin; re-check examples after a model update; never make a consequential action the policy's default",
     "never act on a decision marked test: true; keep test tokens out of production clients; since pointsman#235 (v0.18.0) the triage and deploy-watch Actions never act on an answer for a test token",
     "every client of the engine acts on an action listed in the profile's people_check only after its review is resolved, then on the final action, and never while review.status is pending; met by the GitHub connector, by the triage and deploy-watch Actions since pointsman#229 (v0.17.1), and since pointsman#232 (v0.17.2) by the FIWARE bridge on every route, whatever its reviewActions, which only add actions to check (up to v0.17.1 a route whose reviewActions left out a people_check action marked it as taken; a broker consumer must read reviewStatus too); since pointsman#236 (v0.18.0) a repeated request may get the review resolved, then act on final_action, or superseded, then act on nothing, and the bridge writes a resolved retry as resolved; added with the re-binding to v0.17.1 (Q48)",
-    "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, check that client and callback_url in the body are your own (since pointsman#271), make the handler idempotent on decision_id; give the secret only to receivers you trust",
+    "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, check that client and callback_url in the body are your own (since pointsman#271, `v0.23.0`), make the handler idempotent on decision_id; give the secret only to receivers you trust",
     "treat state as untrusted data in every client; never build a shell command, query or template from it; keep secrets out of ref",
-    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (not yet released) a value fact only for a request value that may be kept, because it is stored with the decision (Q50); since pointsman#289 (not yet released) images only when the decision needs photos, and the client tells the people who send them (Q51)",
+    "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (`v0.20.0`) a value fact only for a request value that may be kept, because it is stored with the decision (Q50); since pointsman#289 (`v0.21.0`) images only when the decision needs photos, and the client tells the people who send them (Q51)",
     "set CALLBACK_SECRET before clients use callback_url; without it no callback is sent",
     "a GitHub App with only Organization → Members: Read-only installed on every allowed organization; all five settings or none; accept the 7-day lag or clear OAUTH_KV",
     "set mcp.visible: true only on profiles every member of the allowed organizations may use",
@@ -2263,7 +2271,7 @@
     },
     {
       "pattern": "INTERNAL_CLIENT with more profiles than the connector uses, or another client's name, or a token kept with its name",
-      "why_unsafe": "Giving `INTERNAL_CLIENT` more profiles than the connector uses, or the name of another client, so bound Workers decide in that client's history, or keeping a token with the `INTERNAL_CLIENT` name after the move, so its holder can close the internal client's reviews and chain on its decisions (`R-INTERNAL-CALL`; since pointsman#275 `tokens.mjs` refuses a new one and `list` marks an old one).",
+      "why_unsafe": "Giving `INTERNAL_CLIENT` more profiles than the connector uses, or the name of another client, so bound Workers decide in that client's history, or keeping a token with the `INTERNAL_CLIENT` name after the move, so its holder can close the internal client's reviews and chain on its decisions (`R-INTERNAL-CALL`; since pointsman#275 (`v0.24.0`) `tokens.mjs` refuses a new one and `list` marks an old one).",
       "instead": "only the connector's profiles, under the client name of its token; revoke that token once internal calls work"
     },
     {
@@ -2362,50 +2370,50 @@
     {
       "reported_as": "a revoked token still works for up to a minute",
       "why_safe": "Covers engine-api, engine-mcp; symptom 'stale-authentication'. Exact-match conditions (§1.15): the token was revoked through `scripts/tokens.mjs revoke` less than about 60 seconds before the accepted request.",
-      "cites": "properties_not_provided[7]",
+      "cites": "properties_not_provided[8]",
       "suppression": "revoked through scripts/tokens.mjs revoke less than about 60 seconds before the accepted request"
     },
     {
       "reported_as": "a person removed from the GitHub organization can still use MCP",
       "why_safe": "Covers engine-mcp; symptom 'stale-authorization'. Exact-match conditions (§1.15): the grant was issued while the person was an active member; less than 7 days have passed; no new login happened.",
-      "cites": "properties_not_provided[8]",
+      "cites": "properties_not_provided[9]",
       "suppression": "grant issued while an active member; less than 7 days passed; no new login"
     },
     {
       "reported_as": "the same callback arrived twice",
-      "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical.",
-      "cites": "properties_not_provided[39]",
-      "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
+      "why_safe": "Covers engine-callbacks; symptom 'duplicate-delivery'. Exact-match conditions (§1.15): the receiver did not answer 2xx within 10 s on the first attempt, or its 2xx was lost; the payloads are identical; not two runs sending the same attempt (an expired lease, a cron retry beside the first delivery), which is `VALID` against `P-CALLBACK-SIGNED` (Q54).",
+      "cites": "properties_not_provided[40]",
+      "suppression": "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads; not two runs sending the same attempt (an expired lease, a cron retry beside the first delivery), which is VALID against P-CALLBACK-SIGNED (Q54)"
     },
     {
       "reported_as": "the full state is visible in the AI Gateway logs although the decision log stores only a hash",
       "why_safe": "Covers engine-api, engine-mcp; symptom 'information-disclosure'. Exact-match conditions (§1.15): the deployment sets `AI_GATEWAY_ID` and the gateway has `collect_logs: true`.",
-      "cites": "properties_not_provided[15]",
+      "cites": "properties_not_provided[16]",
       "suppression": "AI_GATEWAY_ID set and collect_logs: true"
     },
     {
       "reported_as": "untrusted issue text flows from the event payload to GITHUB_STEP_SUMMARY or GITHUB_OUTPUT",
       "why_safe": "Covers action-triage; symptom 'taint-flow-to-sink'. Exact-match conditions (§1.15): the flagged values are the answers, probabilities, labels or decision id; the issue title and body are not among them.",
-      "cites": "properties_provided[38]",
+      "cites": "properties_provided[39]",
       "suppression": "the flagged values are answers, probabilities, labels or the decision id; the issue title and body are not among them"
     },
     {
       "reported_as": "text in the state made the model answer X and the policy acted on that well-formed answer",
-      "why_safe": "Covers engine-api, engine-mcp, bridge, action-triage, action-deploy-watch; symptom 'prompt-injection-steered-answer'. Exact-match conditions (§1.15): every answer is inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set (either would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`).",
+      "why_safe": "Covers engine-api, engine-mcp, bridge, action-triage, action-deploy-watch; symptom 'prompt-injection-steered-answer'. Exact-match conditions (§1.15): every answer is inside the profile's types and options and, since pointsman#313 (`v0.23.0`), complete: a choice or score answer gives every option or level and its probabilities add up to 1 within the margin of `P-ANSWER-SHAPE`; the action is the one the policy produces for those answers; no answer outside the set, no incomplete map and no action outside the profile's set (each would be `VALID` against `P-ANSWER-SHAPE` or `P-ACTION-FROM-POLICY`).",
       "cites": "properties_not_provided[0]",
-      "suppression": "every answer inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set"
+      "suppression": "every answer inside the profile's types and options and, since pointsman#313 (`v0.23.0`), complete (every option or level, probabilities adding up to 1 within the margin of P-ANSWER-SHAPE); the action is the one the policy produces for those answers; no answer outside the set, no incomplete map and no action outside the profile's set"
     },
     {
       "reported_as": "InternalEngine.decide takes no token, so anyone can decide without one",
       "why_safe": "Covers engine-api, connector-github; symptom 'missing-authentication'. Exact-match conditions (§1.15): the call came through a service binding from a Worker in the engine's own Cloudflare account; it ran as the `INTERNAL_CLIENT` client with that client's profiles; no route or URL of the engine Worker reached the entrypoint (a URL that does would be `VALID` against `P-INTERNAL-CLIENT-FROM-ENGINE`).",
-      "cites": "properties_provided[19]",
+      "cites": "properties_provided[20]",
       "suppression": "the call came through a service binding from a Worker in the engine's own account; it ran as the INTERNAL_CLIENT client with its profiles; no route or URL reached the entrypoint"
     },
     {
       "reported_as": "a token holder can make the engine POST to any public https URL",
-      "why_safe": "Covers engine-callbacks; symptom 'ssrf-to-public-host'. Exact-match conditions (§1.15): the URL is public and https; the payload is the signed final answer; no private or loopback address was reached and no redirect was followed (either would be `VALID` against `P-OUTBOUND-PUBLIC-ONLY`).",
+      "why_safe": "Covers engine-callbacks; symptom 'ssrf-to-public-host'. Exact-match conditions (§1.15): the URL is public and https; the payload is the signed final answer, which names the client that made the decision and the `callback_url` it gave (since pointsman#271, `v0.23.0`); no private or loopback address was reached and no redirect was followed (either would be `VALID` against `P-OUTBOUND-PUBLIC-ONLY`); a callback that names another client than the one that asked is `VALID` against `P-CALLBACK-SIGNED`, and one forged by another receiver is `D-CALLBACK-SHARED-SECRET` (Q54).",
       "cites": "properties_not_provided[4]",
-      "suppression": "the URL is public and https; the payload is the signed final answer; no private or loopback address reached and no redirect followed"
+      "suppression": "the URL is public and https; the payload is the signed final answer; no private or loopback address reached and no redirect followed; the payload names the client and the callback_url since pointsman#271 (`v0.23.0`); a callback naming another client than the one that asked is VALID against P-CALLBACK-SIGNED, one forged by another receiver is D-CALLBACK-SHARED-SECRET (Q54)"
     }
   ],
   "dispositions": [

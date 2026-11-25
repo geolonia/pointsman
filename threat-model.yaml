@@ -1,10 +1,10 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:55dc4667d203e3df8bbb5e78b016ff0523171e01e63139abf6f8576865f43e90"
+prose_version: "threat-model.md@sha256:f6969044e463f3921c71053b6c7cb4dd809850fc55e2b672505e46c1096ccca3"
 model_status: accepted
 triage_policy: strict
-confidence: {documented: 466, maintainer: 83, inferred: 0, assumption: 0}
+confidence: {documented: 477, maintainer: 84, inferred: 0, assumption: 0}
 
 generation:
   model: "Claude Fable 5.1 (claude-fable-5-1); GitHub-facts amendment, re-binding to v0.5.0, the amendment of 2026-10-23 with re-binding to v0.12.0, and the amendment of 2026-10-24 with re-binding to v0.14.2, the amendment of 2026-10-25 (pointsman#221 and #222, written before their release), and the re-binding to v0.16.0 with pointsman#216 and #217, the amendment for copilot_review (pointsman#220, written before its release), the re-binding to v0.17.0, the re-binding to v0.17.1 with pointsman#229 and R-PEOPLE-CHECK-PENDING (Q48), the re-binding to v0.17.2 with pointsman#232, and the re-binding to v0.18.0 with pointsman#235 and #236: Claude Opus 5.5 (claude-opus-5-5)"
@@ -28,7 +28,7 @@ components:
   # since the amendment of 2026-10-24 (prose §1.2, §1.16).
   - name: engine-facts
     scope: in
-    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (not yet released) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions"
+    reachability_precondition: "reachable from the geometry at a profile's `at` path in the client's state, since pointsman#287 (`v0.20.0`) from the value at a value fact's `at` path, from the pull request (repo, number, head) at a GitHub fact's `at` path, or from a tile, routing, GitHub API or npm registry response, including workflow files, patches, comments, reviews and statuses, other pull requests' head statuses, and the asking client's own earlier decisions"
     provenance: {kind: documented, source: "docs/profile-format.md \"Facts\", \"GitHub pull requests\""}
   - name: engine-callbacks
     scope: in
@@ -131,12 +131,12 @@ host_side_effects:
   - effect: global-state
     stance: conditional
     components: [engine-api, engine-facts, engine-mcp, connector-github]
-    conditions: "module-level caches (profile store, adapters, OAuth server map, and the providers each fact module keeps: GSI provider and tile memory cache, Valhalla routers, GitHub fact providers with a GitHub App's installation tokens, CodeRabbit providers; since pointsman#263 the GitHub connector's client per app with its installation tokens) shared within one isolate only; the pull-request snapshot is per decision"
+    conditions: "module-level caches (profile store, adapters, OAuth server map, and the providers each fact module keeps: GSI provider and tile memory cache, Valhalla routers, GitHub fact providers with a GitHub App's installation tokens, CodeRabbit providers; since pointsman#263 (`v0.24.0`) the GitHub connector's client per app with its installation tokens) shared within one isolate only; the pull-request snapshot is per decision"
     provenance: {kind: maintainer, date: "2026-10"}
   - effect: logging
     stance: present
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, bridge, connector-github]
-    conditions: "console.error (and two console.warn: the connector's leftover POINTSMAN_TOKEN and, since pointsman#307, a github_pr field the GitHub facts could not read) with reasons only; never the state, a token, a key or a model response; the AI Gateway keeps the state when collect_logs is on"
+    conditions: "console.error (and two console.warn: the connector's leftover POINTSMAN_TOKEN and, since pointsman#307 (`v0.23.0`), a github_pr field the GitHub facts could not read) with reasons only; never the state, a token, a key or a model response; the AI Gateway keeps the state when collect_logs is on"
     provenance: {kind: documented, source: "docs/models.md \"Errors and logs never include the request, the response body or the key\""}
 
 entry_points:
@@ -793,14 +793,14 @@ entry_points:
 
 contract_dimensions:
   # engine-api
-  - {component: engine-api, dimension: numeric-domain, status: claimed, conditions: "version 1–999999999, days 1–90, probabilities 0–1 (since pointsman#313, not yet released, one for every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1), score within range; else 400 or model_error", property_id: P-ANSWER-SHAPE, provenance: {kind: documented, source: "openapi.yaml; docs/profile-format.md \"Engine answer format\""}}
+  - {component: engine-api, dimension: numeric-domain, status: claimed, conditions: "version 1–999999999, days 1–90, probabilities 0–1 (since pointsman#313, `v0.23.0`, one for every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1), score within range; else 400 or model_error", property_id: P-ANSWER-SHAPE, provenance: {kind: documented, source: "openapi.yaml; docs/profile-format.md \"Engine answer format\""}}
   - {component: engine-api, dimension: failure-atomicity, status: claimed, conditions: "logged before returned; a failed log is 500 and no decision; a review resolves once", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/decision-log.md; docs/reviews.md"}}
   - {component: engine-api, dimension: recursive-cyclic-topology, status: disclaimed, conditions: "state may be arbitrarily nested; no depth limit promised", property_id: D-STATE-SIZE, provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}}
   - {component: engine-api, dimension: callback-execution, status: claimed, conditions: "policy conditions are parsed and evaluated as data; nothing runs as code", property_id: P-POLICY-NOT-CODE, provenance: {kind: documented, source: "docs/profile-format.md \"nothing is run as code\""}}
   - {component: engine-api, dimension: serialization-reconstruction, status: claimed, conditions: "plain JSON only; the HTTP model server's model field is not stored", property_id: P-ANSWER-SHAPE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: reference-lifecycle, status: not-applicable, conditions: "stateless per request; module-level caches hold profiles and adapters, not request data", provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: concurrency-reentrancy, status: claimed, conditions: "concurrent resolves of one review (since pointsman#221 (v0.16.0) also closes): exactly one succeeds", property_id: P-REVIEW-RESOLVED-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A second resolve, also at the same moment, answers 409\""}}
-  - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited (since pointsman#324, not yet released, the Workers AI call also without AI Gateway; no fact lookup before the adapter check; the 502 for failed models does not wait for facts); the maintainer chose to disclaim the bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited (since pointsman#324, `v0.23.0`, the Workers AI call also without AI Gateway; no fact lookup before the adapter check; the 502 for failed models does not wait for facts; the waits are claimed by P-MODEL-CALL-BOUNDED and P-FACT-LOOKUP-BOUNDED); the maintainer chose to disclaim the size bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
   # engine-facts
@@ -808,10 +808,10 @@ contract_dimensions:
   - {component: engine-facts, dimension: failure-atomicity, status: claimed, conditions: "a failed or slow lookup is missing with a reason; the decision completes; a missing fact never matches a rule; another head commit makes every GitHub fact stale; a push while the file list is read makes the facts that use it stale", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\"; \"Missing GitHub facts\""}}
   - {component: engine-facts, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "geometries are flat lists of positions (Point or LineString)", provenance: {kind: documented, source: "docs/profile-format.md \"Facts\" table, at"}}
   - {component: engine-facts, dimension: callback-execution, status: not-applicable, conditions: "no caller-supplied code; providers are operator-configured", provenance: {kind: documented, source: "docs/profile-format.md \"Fact providers\""}}
-  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced; since pointsman#309, not yet released, 256 × 256 tiles only, colour keys read) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, patterns or section headers it does not read make the fact missing (since pointsman#307, not yet released: author_sole_code_owner without a value); anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: serialization-reconstruction, status: claimed, conditions: "own PNG decoder (8-bit, non-interlaced; since pointsman#309, `v0.23.0`, 256 × 256 tiles only, colour keys read) and GeoJSON reduction; GitHub JSON checked field by field; CODEOWNERS read by the engine's own parser, patterns or section headers it does not read make the fact missing (since pointsman#307, `v0.23.0`: author_sole_code_owner without a value); anything else is error", property_id: P-FACTS-NEVER-GUESSED, provenance: {kind: documented, source: "docs/profile-format.md \"Missing GitHub facts\": \"an answer of the wrong shape\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: reference-lifecycle, status: claimed, conditions: "tiles cached a day in memory (64) and the Workers cache; failed loads not kept; GitHub App installation tokens kept in memory until 5 minutes before they expire, never stored", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"Tiles are cached for a day\"; \"Settings\""}}
   - {component: engine-facts, dimension: concurrency-reentrancy, status: claimed, conditions: "a tile load is shared within an isolate and not cancelled by one lookup's timeout; one GitHub snapshot per decision, each part read once, the pull request read again after its files", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
-  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, since pointsman#307 (not yet released) ≤20 teams for author_sole_code_owner, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher, ≤128 KiB file, ≤1024-character patterns, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
+  - {component: engine-facts, dimension: resource-complexity, status: claimed, conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, since pointsman#307 (`v0.23.0`) ≤20 teams for author_sole_code_owner, ≤100 globs per list matched in linear time; CODEOWNERS patterns through the same matcher, ≤128 KiB file, ≤1024-character patterns, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads", property_id: P-FACT-LOOKUP-BOUNDED, provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}}
   - {component: engine-facts, dimension: x-prompt-injection, status: not-applicable, conditions: "the model does not see the facts", provenance: {kind: documented, source: "docs/profile-format.md \"The model does not see the facts\""}}
   - {component: engine-facts, dimension: x-probabilistic-result, status: not-applicable, conditions: "facts are measured, not estimated", provenance: {kind: documented, source: "docs/profile-format.md \"Facts are computed by spatial operations instead\""}}
   # engine-callbacks
@@ -827,7 +827,7 @@ contract_dimensions:
   - {component: engine-callbacks, dimension: x-probabilistic-result, status: not-applicable, conditions: "the payload carries final answers, not probabilities", provenance: {kind: documented, source: "docs/reviews.md callback example"}}
   # engine-mcp
   - {component: engine-mcp, dimension: numeric-domain, status: claimed, conditions: "access tokens 1 h, grants 7 days", property_id: P-OAUTH-ORG-MEMBERSHIP, provenance: {kind: documented, source: "docs/mcp.md \"Pointsman access tokens last one hour\""}}
-  - {component: engine-mcp, dimension: failure-atomicity, status: claimed, conditions: "MCP decisions go through the same checks and log as REST; since pointsman#324 (not yet released) a tool's unexpected error is logged and answered internal error without details, and a login GitHub cannot complete goes back as access_denied", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/mcp.md \"Decisions through MCP\""}}
+  - {component: engine-mcp, dimension: failure-atomicity, status: claimed, conditions: "MCP decisions go through the same checks and log as REST; since pointsman#324 (`v0.23.0`) a tool's unexpected error is logged and answered internal error without details, and a login GitHub cannot complete goes back as access_denied", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/mcp.md \"Decisions through MCP\""}}
   - {component: engine-mcp, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "stateless Streamable HTTP; no sessions", provenance: {kind: documented, source: "docs/mcp.md \"Streamable HTTP, stateless\""}}
   - {component: engine-mcp, dimension: callback-execution, status: disclaimed, conditions: "the OAuth library fetches a client-ID metadata document from a client-named URL; dynamic client registration is open", property_id: D-OPEN-CLIENT-REGISTRATION, provenance: {kind: documented, source: "docs/mcp.md \"MCP clients register themselves\""}}
   - {component: engine-mcp, dimension: serialization-reconstruction, status: claimed, conditions: "tool inputs validated with zod; grant props stored encrypted by the library", property_id: P-MCP-VISIBILITY, provenance: {kind: maintainer, date: "2026-10"}}
@@ -839,17 +839,17 @@ contract_dimensions:
   # bridge
   - {component: bridge, dimension: numeric-domain, status: claimed, conditions: "queue messages ≤120 KB, batches ≤100/250 KB; retries 30 s doubling to 1 h; reviewedBy ≤100 characters", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Reliable delivery (queue)\"; \"Work orders from other apps\""}}
   - {component: bridge, dimension: failure-atomicity, status: disclaimed, conditions: "NGSI-LD has no conditional update; a writer can get through between a read and a write", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"NGSI-LD has no conditional update, so there is a short window\""}}
-  - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision; since pointsman#323 (not yet released) multi-instance inputs hashed by every instance (sorted by datasetId) and a 207 to the first result write is a failure; since pointsman#347 a 207 on any bridge write is tried again (queue back-off, then the dead-letter queue; 502 in direct mode)", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}}
+  - {component: bridge, dimension: recursive-cyclic-topology, status: claimed, conditions: "input hash and attribute-level PATCH keep own writes from starting a new decision; since pointsman#323 (`v0.23.0`) multi-instance inputs hashed by every instance (sorted by datasetId) and a 207 to the first result write is a failure; since pointsman#347 (`v0.24.1`) a 207 on any bridge attribute write is tried again (queue back-off, then the dead-letter queue; 502 in direct mode)", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\"; \"Failures and retries\""}}
   - {component: bridge, dimension: callback-execution, status: not-applicable, conditions: "the bridge runs no caller code; routes are operator configuration", provenance: {kind: documented, source: "bridge/README.md \"Configuration\""}}
-  - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339; since pointsman#323 (not yet released) an input without an NGSI-LD attribute type (keyValues) is refused and an unknown ?route= answers 404", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: bridge, dimension: serialization-reconstruction, status: claimed, conditions: "entities are plain JSON; values read by NGSI-LD kind; dates checked as RFC 3339; since pointsman#323 (`v0.23.0`) an input without an NGSI-LD attribute type (keyValues) is refused and an unknown ?route= answers 404", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"The subscription\", \"Chains of decisions\"; maintainer ruling 2026-10"}}
   - {component: bridge, dimension: reference-lifecycle, status: claimed, conditions: "Task ids derived from entity id, attribute and input hash; own Tasks recognised by id", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Task entities\""}}
   - {component: bridge, dimension: concurrency-reentrancy, status: disclaimed, conditions: "two simultaneous notifications for one Decision can both send the same feedback; max_concurrency 1 is the operator's job", property_id: D-BRIDGE-RACE-WINDOWS, provenance: {kind: documented, source: "bridge/README.md \"Two notifications for the same Decision at the same moment can both send the same corrections\""}}
-  - {component: bridge, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call and a bounded number of broker calls per entity; oversized entities handled inline; since pointsman#323 (not yet released) 10 s per broker call and 60 s per Pointsman call by default (POINTSMAN_TIMEOUT_SECONDS), raced against the call, a timeout tried again by the queue (without one, a 502 that only a broker resending the notification retries); in the engine Worker a decision whose caller stopped waiting is not logged", property_id: P-BRIDGE-LOOP-GUARD, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: bridge, dimension: resource-complexity, status: claimed, conditions: "one Pointsman call and a bounded number of broker calls per entity; oversized entities handled inline; since pointsman#323 (`v0.23.0`) 10 s per broker call and 60 s per Pointsman call by default (POINTSMAN_TIMEOUT_SECONDS), raced against the call, a timeout tried again by the queue (without one, a 502 that only a broker resending the notification retries); in the engine Worker a decision whose caller stopped waiting is not logged", property_id: P-BRIDGE-SAFE-TO-REPEAT, provenance: {kind: documented, source: "bridge/README.md \"Failures and retries\"; maintainer ruling 2026-10"}}
   - {component: bridge, dimension: x-prompt-injection, status: disclaimed, conditions: "the whole entity is the state; whoever writes an entity writes the prompt text", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: bridge, dimension: x-probabilistic-result, status: disclaimed, conditions: "probabilities are written to the broker as sub-properties; the action is the value", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "bridge/README.md \"The result on the entity\""}}
   # action-triage
   - {component: action-triage, dimension: numeric-domain, status: claimed, conditions: "label names 1–50 characters; mapping keys ≤100; 30 s timeout", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Inputs\""}}
-  - {component: action-triage, dimension: failure-atomicity, status: claimed, conditions: "on failure the review label is added and the step fails; since pointsman#325 (not yet released) outputs set before labels, both errors logged when the review label fails too", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Pointsman cannot be reached or fails\""}}
+  - {component: action-triage, dimension: failure-atomicity, status: claimed, conditions: "on failure the review label is added and the step fails; since pointsman#325 (`v0.23.0`) outputs set before labels, both errors logged when the review label fails too", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md \"Pointsman cannot be reached or fails\""}}
   - {component: action-triage, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "one event, one decision, one label call", provenance: {kind: documented, source: "actions/triage/README.md"}}
   - {component: action-triage, dimension: callback-execution, status: claimed, conditions: "issue text never reaches a shell or the step summary", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/README.md"}}
   - {component: action-triage, dimension: serialization-reconstruction, status: claimed, conditions: "event JSON parsed; only issues opened/reopened without pull_request handled", property_id: P-TRIAGE-ALLOWLIST, provenance: {kind: documented, source: "actions/triage/triage.mjs comment \"Only new (or reopened) issues\""}}
@@ -860,7 +860,7 @@ contract_dimensions:
   - {component: action-triage, dimension: x-probabilistic-result, status: disclaimed, conditions: "the job summary shows p; the policy threshold decides", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "actions/triage/README.md \"The job summary shows the answers, their probabilities\""}}
   # action-deploy-watch
   - {component: action-deploy-watch, dimension: numeric-domain, status: claimed, conditions: "consecutive ≥1, interval-seconds ≥0.05, kill-after-seconds ≥0; stack names bounded", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Inputs\""}}
-  - {component: action-deploy-watch, dimension: failure-atomicity, status: claimed, conditions: "unreachable Pointsman or unreadable stack never cancels; since pointsman#325 (not yet released) it resets the cancel count, nothing is asked until CloudFormation works on a watched stack in this run, and a command that cannot start fails the step", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"If Pointsman cannot be reached, nothing is cancelled\""}}
+  - {component: action-deploy-watch, dimension: failure-atomicity, status: claimed, conditions: "unreachable Pointsman or unreadable stack never cancels; since pointsman#325 (`v0.23.0`) it resets the cancel count, nothing is asked until CloudFormation works on a watched stack in this run, and a command that cannot start fails the step", property_id: P-WATCH-FAILSAFE, provenance: {kind: documented, source: "actions/deploy-watch/README.md \"If Pointsman cannot be reached, nothing is cancelled\""}}
   - {component: action-deploy-watch, dimension: recursive-cyclic-topology, status: not-applicable, conditions: "a polling loop bounded by the deploy command's lifetime", provenance: {kind: documented, source: "actions/deploy-watch/README.md \"How it decides\""}}
   - {component: action-deploy-watch, dimension: callback-execution, status: not-applicable, conditions: "run is executed with bash -c as written and is a trusted workflow-author input (§1.7)", provenance: {kind: documented, source: "actions/deploy-watch/action.yml run: \"Comes from the workflow, never from event data\""}}
   - {component: action-deploy-watch, dimension: serialization-reconstruction, status: claimed, conditions: "aws CLI JSON reduced to fixed fields; reasons truncated to 300 characters", property_id: P-WATCH-FAILSAFE, provenance: {kind: maintainer, date: "2026-10"}}
@@ -874,10 +874,10 @@ contract_dimensions:
   - {component: connector-github, dimension: failure-atomicity, status: claimed, conditions: "the record of a check run or action is written first; a stopped run is settled by its trace or redone after 10 minutes; refused actions not retried for that commit; since pointsman#222 (v0.16.0) an answer that fails a check resolves nothing", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
   - {component: connector-github, dimension: recursive-cyclic-topology, status: claimed, conditions: "its own check suites' events are ignored, so its check runs do not start the next run; since pointsman#216 (v0.15.0) so are events about its own reviews sent by its own bot, except one before the record, one about a review older than the newest 50, or one while its bot's login cannot be read (D-CONNECTOR-OWN-REVIEW-EVENTS)", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"Safety\", \"How it works\", 1"}}
   - {component: connector-github, dimension: callback-execution, status: not-applicable, conditions: "no caller code runs; the action kinds are a fixed list", provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"a deployment can switch actions on, never add one\""}}
-  - {component: connector-github, dimension: serialization-reconstruction, status: claimed, conditions: "webhook bodies parsed only after the signature check; GitHub answers checked field by field (since pointsman#319, not yet released: a pull request without a state of open or closed or a boolean draft, or a list that is not a list, is an error; a trace not among the first 1,000 with more after them is not known); every field of the engine's answer the connector reads is checked and test decisions are refused; the comment and check runs carry only checked names, cleaned reasons and known answer shapes", property_id: P-CONNECTOR-ANSWER-CHECKED, provenance: {kind: documented, source: "docs/github-connector.md \"Safety\""}}
+  - {component: connector-github, dimension: serialization-reconstruction, status: claimed, conditions: "webhook bodies parsed only after the signature check; GitHub answers checked field by field (since pointsman#319, `v0.23.0`: a pull request without a state of open or closed or a boolean draft, or a list that is not a list, is an error; a trace not among the first 1,000 with more after them is not known); every field of the engine's answer the connector reads is checked and test decisions are refused; the comment and check runs carry only checked names, cleaned reasons and known answer shapes", property_id: P-CONNECTOR-ANSWER-CHECKED, provenance: {kind: documented, source: "docs/github-connector.md \"Safety\""}}
   - {component: connector-github, dimension: reference-lifecycle, status: claimed, conditions: "its approvals stand only for the commit they were given on; dismissed after a push, withdrawn when a later decision on that commit neither approves nor keeps it, waits for a person, is a test decision or not valid; since pointsman#221 (v0.16.0) a question is kept per head and profile until answered or closed", property_id: P-CONNECTOR-APPROVE-HEAD, provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}}
   - {component: connector-github, dimension: concurrency-reentrancy, status: claimed, conditions: "one Durable Object per pull request, one run at a time; a burst of events becomes one run; since pointsman#222 (v0.16.0) answers are taken one at a time before the run, and the engine's first resolve wins", property_id: P-CONNECTOR-ACTIONS-MAPPED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\""}}
-  - {component: connector-github, dimension: resource-complexity, status: claimed, conditions: "2 MB per webhook; one run at a time per pull request, 20 s after the last event; lists up to 10 pages, and an 11th only to tell whether there are more (since pointsman#319, not yet released); recheck at most max times per commit", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\", \"Chains\""}}
+  - {component: connector-github, dimension: resource-complexity, status: claimed, conditions: "2 MB per webhook; one run at a time per pull request, 20 s after the last event; lists up to 10 pages, and an 11th only to tell whether there are more (since pointsman#319, `v0.23.0`); recheck at most max times per commit", property_id: P-CONNECTOR-WEBHOOK-SIGNED, provenance: {kind: documented, source: "docs/github-connector.md \"How it works\", \"Chains\""}}
   - {component: connector-github, dimension: x-prompt-injection, status: disclaimed, conditions: "the pull-request author writes the title, description and diff the profile's model reads; a steered answer gets any action the policy allows for those answers", property_id: D-APPROVAL-ON-FACTS, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: connector-github, dimension: x-probabilistic-result, status: not-applicable, conditions: "the connector maps the decision's action; the comment and check runs show answer values, not probabilities", provenance: {kind: documented, source: "docs/github-connector.md \"The decision comment\", Switch"}}
   # config-repo
@@ -1030,7 +1030,7 @@ outputs:
         property_id: P-CALLBACK-SIGNED
         provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
       - id: callback-names-client-and-url
-        statement: "since pointsman#271 the signed body names the client that made the decision and its callback_url"
+        statement: "since pointsman#271 (`v0.23.0`) the signed body names the client that made the decision and its callback_url"
         property_id: P-CALLBACK-SIGNED
         provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
     downstream_must_not_assume:
@@ -1720,7 +1720,7 @@ properties_claimed:
     kind: confidentiality
     components: [engine-api, engine-mcp, config-repo]
     tier: security-critical
-    conditions: "tokens created by scripts/tokens.mjs: 32 random bytes, SHA-256 stored, printed once"
+    conditions: "tokens created by scripts/tokens.mjs: 32 random bytes, SHA-256 stored, printed once; since pointsman#326 (`v0.23.0`) revoke refuses a hash no token has"
     violation_symptoms: [info-leak]
     provenance: {kind: documented, source: "README \"API tokens\": \"Only a SHA-256 hash of each token is stored\""}
   - id: P-TEST-TOKEN-ISOLATED
@@ -1734,7 +1734,7 @@ properties_claimed:
     kind: output-sanitization
     components: [engine-api, engine-mcp, bridge]
     tier: security-critical
-    conditions: "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (not yet released) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members"
+    conditions: "every model answer, every adapter; anything that does not fit the profile is model_error; since pointsman#313 (`v0.23.0`) a choice or score answer must give every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1, and names and option values cannot be Object.prototype members"
     violation_symptoms: [bad-data-accepted]
     provenance: {kind: documented, source: "docs/profile-format.md \"Engine answer format\": \"Answers that do not fit the profile ... are rejected with a model_error\""}
   - id: P-ACTION-FROM-POLICY
@@ -1748,7 +1748,7 @@ properties_claimed:
     kind: x-authorization
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (not yet released) also a probability option its answer lacks"
+    conditions: "a profile with requires; only decision ids are taken; each must be logged, of the named profile, in scope, with the same ref and client, not replaced; every other id gives the same 400; since pointsman#236 (v0.18.0) a person on MCP is the client github:<account id>, so a renamed login passed to another account does not carry its decisions; a value an earlier decision lacks, or of another type, is unknown, and since pointsman#313 (`v0.23.0`) also a probability option its answer lacks"
     violation_symptoms: [x-authorization-bypass, x-unauthorized-action, info-leak]
     provenance: {kind: documented, source: "docs/profile-format.md \"Decision chains\": \"Pointsman reads them from the decision log; the caller cannot claim a result\""}
   - id: P-POLICY-NOT-CODE
@@ -1762,7 +1762,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read made the whole github_pr fact missing; since pointsman#307 (not yet released) they give only author_sole_code_owner no value, as a failed membership or activity read gives only author_member no value or pushed_by_author unavailable (values for not known, never a known value), the other github_pr fields stay, a team that does not exist is an owner who is not the author (false), at most 20 teams are read, and a 403 that says only in its message that it is a rate limit is error; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error (since pointsman#309, not yet released: any GSI geometry outside Japan's box is unavailable, a raster tile not 256 × 256 is error, a colour key is transparent), and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere; since pointsman#287 (not yet released) a value fact is missing as no_value without a value at its path and as wrong_kind for another kind or a text over 64 characters, never converted"
+    conditions: "a failed lookup is missing with a reason; unknown comparisons never match; legend or shape errors fail closed; GitHub shape errors, redirects, rate limits and too many files or checks are error, another head is stale; unreadable CODEOWNERS or teams or patterns the engine does not read made the whole github_pr fact missing; since pointsman#307 (`v0.23.0`) they give only author_sole_code_owner no value, as a failed membership or activity read gives only author_member no value or pushed_by_author unavailable (values for not known, never a known value), the other github_pr fields stay, a team that does not exist is an owner who is not the author (false), at most 20 teams are read, and a 403 that says only in its message that it is a rate limit is error; unlisted pushes make pushed_by_author unavailable unless a known push by someone else makes it no; github_bump: an unreadable file, a cut-short tree, too many package.json files or bumped versions, or no publish time make the whole fact missing, and what it does not understand gives the stricter value; since pointsman#229 (v0.17.1) a changed lockfile line with a backslash gives registry_changed true, a GSI shelters box off the tile grid is error (since pointsman#309, `v0.23.0`: any GSI geometry outside Japan's box is unavailable, a raster tile not 256 × 256 is error, a colour key is transparent), and CodeRabbit editors read with other text than the comment make the fact missing; the model never sees facts; since pointsman#235 (v0.18.0) github_release gives version_only false when a changed package.json differs at the head in more than its top-level version, and github_checks is error for two required workflows with the same path from another repository or ref; since pointsman#236 (v0.18.0) rebase_only has no value for a hunk on lines the base changed and is false for a hunk that lands elsewhere; since pointsman#287 (`v0.20.0`) a value fact is missing as no_value without a value at its path and as wrong_kind for another kind or a text over 64 characters, never converted"
     violation_symptoms: [bad-data-accepted, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"A missing fact is never guessed\""}
   - id: P-FACT-LOOKUP-BOUNDED
@@ -1772,6 +1772,13 @@ properties_claimed:
     conditions: "≤1000 positions, ≤200 samples, ≤16 flood tiles, ≤9 shelter tiles (since pointsman#229, v0.17.1, a box off the tile grid refused before the count), ≤5 km detour, 3 s per fact (8 s and ≤ 6 routing calls per detour), 10 s per tile load; GitHub: 5 s per decision, ≤1000 files, ≤250 commits, ≤300 check runs, ≤100 statuses and workflow runs, ≤5 pages of 100 activity entries, globs without regular expressions; CODEOWNERS ≤128 KiB, patterns ≤1024 characters, comments removed in one pass, ≤50 million matching steps per decision; github_bump: package.json ≤512 KB, ≤50 in the tree, ≤30 bumped versions, pnpm peers stripped in one linear pass (since pointsman#229, v0.17.1), registry documents streamed ≤64 MB, 8 s for all registry reads; exceeding is error or timeout; since pointsman#235 (v0.18.0) github_release reads each changed package.json at the head (≤512 KB) only when the patches look version-only; since pointsman#236 (v0.18.0) rebase_only reads at most one more comparison and no file contents"
     violation_symptoms: [hang, unbounded-allocation]
     provenance: {kind: documented, source: "docs/profile-format.md \"One snapshot\"; maintainer ruling 2026-10"}
+  - id: P-MODEL-CALL-BOUNDED
+    kind: resource-bound
+    components: [engine-api, engine-mcp]
+    tier: correctness-only
+    conditions: "every model call has a time limit (10 s by default to a model server, MODEL_SERVER_TIMEOUT_MS 100 to 60000; 10 s to Workers AI, since pointsman#324 (`v0.23.0`) also without AI Gateway); a slower call is a model error and the next fallback model is tried; since pointsman#324 no fact lookup before the adapter check, and the 502 for failed models does not wait for facts"
+    violation_symptoms: [hang]
+    provenance: {kind: documented, source: "docs/models.md \"Workers AI and AI Gateway\"; \"Model server (local or self-hosted models)\""}
   - id: P-DECISION-LOGGED-FIRST
     kind: integrity
     components: [engine-api, engine-mcp]
@@ -1790,14 +1797,14 @@ properties_claimed:
     kind: confidentiality
     components: [engine-api, engine-mcp]
     tier: security-critical
-    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (not yet released), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50); since pointsman#289 (not yet released) images sent to the model are never stored and not logged by the AI Gateway"
+    conditions: "default profile settings; voided by log.store_state and AI Gateway collect_logs; narrowed by route: true on a detour fact (the place is kept) and, since pointsman#287 (`v0.20.0`), by a value fact field_number, field_text or field_flag (the request value it read is kept; maintainer 2026-11, Q50); since pointsman#289 (`v0.21.0`) images sent to the model are never stored and not logged by the AI Gateway"
     violation_symptoms: [info-leak]
     provenance: {kind: documented, source: "docs/decision-log.md \"By default only the hash of the state is kept\""}
   - id: P-SECRETS-NOT-LOGGED
     kind: confidentiality
     components: [engine-api, engine-facts, engine-callbacks, engine-mcp, connector-github]
     tier: security-critical
-    conditions: "the engine's own logs, errors and responses, including the GitHub fact token, GitHub App key and installation tokens; outbound calls with keys or tokens refuse redirects"
+    conditions: "the engine's own logs, errors and responses, including the GitHub fact token, GitHub App key and installation tokens; outbound calls with keys or tokens refuse redirects; since pointsman#324 (`v0.23.0`) an MCP tool's unexpected error is answered internal error without details"
     violation_symptoms: [info-leak]
     provenance: {kind: documented, source: "docs/models.md \"Errors and logs never include ... the key\"; docs/profile-format.md \"Settings\": \"The token and the key are never logged\""}
   - id: P-REVIEW-RESOLVED-ONCE
@@ -1811,7 +1818,7 @@ properties_claimed:
     kind: integrity
     components: [engine-callbacks]
     tier: security-critical
-    conditions: "CALLBACK_SECRET set; every attempt signed and timestamped right before its send; since pointsman#271 the signed body names client and callback_url; claimed before sending, each cron item at its own time (pointsman#243); at most 6 attempts"
+    conditions: "CALLBACK_SECRET set; every attempt signed and timestamped right before its send; since pointsman#271 (`v0.23.0`) the signed body names client and callback_url; claimed before sending, each cron item at its own time (pointsman#243); at most 6 attempts"
     violation_symptoms: [integrity-bypass]
     provenance: {kind: documented, source: "docs/reviews.md \"Every callback is signed with the Worker secret CALLBACK_SECRET\""}
   - id: P-GITHUB-READ-ONLY
@@ -1825,7 +1832,7 @@ properties_claimed:
     kind: integrity
     components: [engine-facts]
     tier: security-critical
-    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 another base makes them stale when the request names base; a push, a new base, or a base branch moved to another commit while the file list is read makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
+    conditions: "one snapshot per decision checked against the requested head; another head makes every GitHub fact stale; since pointsman#270 (`v0.19.0`) another base makes them stale when the request names base; a push or a new base while the file list is read, and since pointsman#339 (`v0.24.0`) a base branch moved to another commit then, makes the facts that use it stale (github_paths, github_bump, github_pr through author_sole_code_owner); github_bump reads package.json files and the tree at the requested head; github_checks is read by the head commit id; a malformed pull request reference is no_pr and nothing is sent"
     violation_symptoms: [x-toctou, wrong-output]
     provenance: {kind: documented, source: "docs/profile-format.md \"GitHub pull requests\"; \"One snapshot\""}
   - id: P-GITHUB-REQUIRED-CHECKS
@@ -1839,7 +1846,7 @@ properties_claimed:
     kind: x-authorization
     components: [engine-api, connector-github]
     tier: security-critical
-    conditions: "internal calls through InternalEngine (decide; since pointsman#221 (v0.16.0) get, resolve, close); the client and profiles come from INTERNAL_CLIENT only; refused without it; profiles listed, wildcard refused; never a test token; the same checks as the HTTP routes after the token check; the body goes through JSON"
+    conditions: "internal calls through InternalEngine (decide; since pointsman#221 (v0.16.0) get, resolve, close); the client and profiles come from INTERNAL_CLIENT only; refused without it; profiles listed, wildcard refused; never a test token; the same checks as the HTTP routes after the token check; the body goes through JSON; since pointsman#275 (`v0.24.0`) tokens.mjs create and rotate refuse the INTERNAL_CLIENT name and list marks a token that has it"
     violation_symptoms: [x-authorization-bypass, x-unlogged-decision-acted-on]
     provenance: {kind: documented, source: "docs/adapters.md \"Internal calls\"; src/internal.ts header comment"}
   - id: P-CONNECTOR-WEBHOOK-SIGNED
@@ -1853,14 +1860,14 @@ properties_claimed:
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit; since pointsman#236 (v0.18.0) copilot_review on a pull request with more than 1,000 reviews asks nothing and is recorded as failed for that commit"
+    conditions: "neutral check runs, the decision comment where set, dismissals of its own approvals, and only the actions a deployment maps from the fixed list comment, label, request_reviewer, approve, keep_approval, and since pointsman#220 (v0.17.0) copilot_review (the one fixed Copilot reviewer, no settings; skipped when Copilot is already requested or reviewed the head, by account id; done only when GitHub lists Copilot; nothing asked if the head moved since the decision; never for a fork or closed pull request); fixed comment text, never pull-request text; nothing for a test decision or an invalid answer; at most once per head, profile and kind with the record written first; nothing while a person checks the decision, and since pointsman#221 (v0.16.0) their answer is the action through the same table; refused actions not retried for that commit; since pointsman#236 (v0.18.0) copilot_review on a pull request with more than 1,000 reviews asks nothing and is recorded as failed for that commit; since pointsman#319 (`v0.23.0`) a pull request without a known state or draft, or a list answer that is not a list, is an error, never closed or empty, and a comment past the first 1,000 is not known, so nothing is written twice"
     violation_symptoms: [x-unauthorized-write, wrong-output]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\": \"This is the whole list: a deployment can switch actions on, never add one\""}
   - id: P-CONNECTOR-APPROVE-HEAD
     kind: integrity
     components: [connector-github]
     tier: security-critical
-    conditions: "approve only on the decided head, read again right before and named as commit_id; since pointsman#270 also only on the decided base branch: base sent with the request, compared right before, and the pull request read again right after, the approval dismissed at once when head or base changed; an approval given on another base dismissed on every run whatever the decision, like one of an older commit; an answer refused when the base changed since the question; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
+    conditions: "approve only on the decided head, read again right before and named as commit_id; since pointsman#270 (`v0.19.0`) also only on the decided base branch: base sent with the request, compared right before, and the pull request read again right after, the approval dismissed at once when head or base changed; an approval given on another base dismissed on every run whatever the decision, like one of an older commit; an answer refused when the base changed since the question; never drafts, closed pull requests or forks; own earlier approvals dismissed after a push on every run; withdrawn when a later decision on that commit no longer approves; since pointsman#229 (v0.17.1) a recorded approval not among the first 1,000 reviews listed is read by its id before it is taken as gone, and its record stays when that read fails; nothing approved in a run where an older approval cannot be dismissed; since pointsman#221 (v0.16.0) an approval from a person's answer only on the question's head; since pointsman#216 (v0.15.0) approve and keep_approval refused in a profile with once_per_head; voided for merging by a ruleset without dismissal of stale approvals"
     violation_symptoms: [x-toctou, x-unauthorized-write]
     provenance: {kind: documented, source: "docs/github-connector.md \"Actions\""}
   - id: P-CONNECTOR-TOKEN-SCOPED
@@ -1944,7 +1951,7 @@ properties_claimed:
     kind: authentication
     components: [engine-mcp]
     tier: security-critical
-    conditions: "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request; since pointsman#236 (v0.18.0) the grant keeps the GitHub account id, people are recorded as github:<account id>, and a grant without it is refused at /mcp and cannot be refreshed"
+    conditions: "GitHub login configured; active membership checked at login; 1 h access tokens, 7 day grants; partial configuration refuses every request; since pointsman#236 (v0.18.0) the grant keeps the GitHub account id, people are recorded as github:<account id>, and a grant without it is refused at /mcp and cannot be refreshed; since pointsman#324 (`v0.23.0`) a login GitHub cannot complete grants nothing and goes back as access_denied"
     violation_symptoms: [x-authentication-bypass]
     provenance: {kind: documented, source: "docs/mcp.md \"Only active members of the allowed GitHub organizations get in\""}
   - id: P-BRIDGE-NOTIFY-SECRET
@@ -1958,41 +1965,41 @@ properties_claimed:
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused; since pointsman#229 (v0.17.1) an answer named like a field of the result (or its Probability) is refused before anything is written, so it cannot replace the hash"
+    conditions: "the subscription delivers the result attribute; attribute-level PATCH; for routes with requires the hash covers the earlier decision ids; routes reading each other's results in a circle refused; since pointsman#229 (v0.17.1) an answer named like a field of the result (or its Probability) is refused before anything is written, so it cannot replace the hash; since pointsman#323 (`v0.23.0`) a multi-instance input is hashed by every instance, sorted by datasetId"
     violation_symptoms: [x-decision-loop]
     provenance: {kind: documented, source: "bridge/README.md \"How it avoids loops\""}
   - id: P-BRIDGE-SAFE-TO-REPEAT
     kind: correctness
     components: [bridge]
     tier: correctness-only
-    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions; since pointsman#236 (v0.18.0) a retry that gets the review resolved writes it as resolved with the person's action (result, Decision entity also when left pending, Task completed), and a retry of a superseded decision writes nothing"
+    conditions: "a notification handled twice; a review already resolved; feedback already sent; an Idempotency-Key per route, entity and request; routes with requires from the queue only, no older result written; since pointsman#229 (v0.17.1) after a 409 on resolve the final action is written only when Pointsman has the review resolved with the same action (pending: tried again unless its profile version is gone; superseded: reported); since pointsman#232 (v0.17.2) a pending review gets its Task under the same derived id also when task.actions leaves its action out, and a work order resolves only a result still waiting for a person (pending, or by the older action rules) with no final action, whatever reviewActions; since pointsman#236 (v0.18.0) a retry that gets the review resolved writes it as resolved with the person's action (result, Decision entity also when left pending, Task completed), and a retry of a superseded decision writes nothing; since pointsman#323 (`v0.23.0`) time limits on every call (10 s broker, 60 s Pointsman by default), a timeout tried again, keyValues inputs refused, an unknown ?route= answers 404; since pointsman#347 (`v0.24.1`) a 207 on any attribute write is tried again (queue back-off, dead-letter queue; 502 in direct mode), a retry finishes a half write, and a work order writes reviewStatus last"
     violation_symptoms: [wrong-output]
     provenance: {kind: documented, source: "bridge/README.md \"Safe to repeat\""}
   - id: P-TRIAGE-ALLOWLIST
     kind: output-sanitization
     components: [action-triage]
     tier: security-critical
-    conditions: "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary; since pointsman#235 (v0.18.0) not for an answer for a test token, and the action output is test"
+    conditions: "labels only from the allow-list and only for action auto, since pointsman#229 (v0.17.1) not while the review is pending (people_check); issue text never in a shell or the summary; since pointsman#235 (v0.18.0) not for an answer for a test token, and the action output is test; since pointsman#325 (`v0.23.0`) the action output is error before the review label is tried, and both errors are logged when the label fails too"
     violation_symptoms: [x-command-injection, x-unlisted-label]
     provenance: {kind: documented, source: "actions/triage/README.md \"Only labels you list in labels are ever applied\""}
   - id: P-WATCH-FAILSAFE
     kind: availability
     components: [action-deploy-watch]
     tier: correctness-only
-    conditions: "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels; since pointsman#235 (v0.18.0) a cancel for a test token does not count"
+    conditions: "consecutive cancel answers while quiet; since pointsman#229 (v0.17.1) a cancel whose review is pending (people_check) does not count; an unreachable Pointsman never cancels; since pointsman#235 (v0.18.0) a cancel for a test token does not count; since pointsman#325 (`v0.23.0`) an unreachable Pointsman starts the count again, nothing is asked before CloudFormation works on a watched stack, and a command that cannot be started fails the step"
     violation_symptoms: [x-unwarranted-cancel]
     provenance: {kind: documented, source: "actions/deploy-watch/README.md \"Cancel only when sure\""}
 
 properties_disclaimed:
   - id: D-PROMPT-INJECTION
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "the answers only (since pointsman#289 also text in images sent to the model); the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)"
+    conditions: "the answers only (since pointsman#289 (`v0.21.0`) also text in images sent to the model); the action stays what the policy produces, answers stay in the profile's set, review sends the case to a person; basis: a maintainer ruling (2026-10)"
     tier: security-critical
     false_friend: false
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-MODEL-ACCURACY
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "every family that acts on an answer; keep a margin from thresholds; re-check after model updates; basis: stated"
+    conditions: "every family that acts on an answer; keep a margin from thresholds; re-check after model updates; basis: stated; a score's value is not checked against the level it chose (Q55)"
     tier: correctness-only
     false_friend: true
     provenance: {kind: documented, source: "docs/fiware-demo.md \"Lesson: keep a margin from the thresholds, and check the examples again after a model update\""}
@@ -2010,13 +2017,13 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CALLBACK-ANY-PUBLIC-HOST
     components: [engine-callbacks]
-    conditions: "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10)"
+    conditions: "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10); since pointsman#271 (`v0.23.0`) the signed payload names the client and the callback_url (P-CALLBACK-SIGNED); any receiver can still sign one with the shared secret (D-CALLBACK-SHARED-SECRET) (Q54)"
     tier: security-critical
     false_friend: true
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-CALLBACK-SHARED-SECRET
     components: [engine-callbacks]
-    conditions: "one CALLBACK_SECRET signs the callbacks of every client; whoever holds it (every receiver) can sign a callback that names another client; since pointsman#271 the engine itself signs only the client that made the decision"
+    conditions: "one CALLBACK_SECRET signs the callbacks of every client; whoever holds it (every receiver) can sign a callback that names another client; since pointsman#271 (`v0.23.0`) the engine itself signs only the client that made the decision"
     tier: security-critical
     false_friend: true
     provenance: {kind: documented, source: "docs/reviews.md \"Every receiver of a deployment holds the same secret\""}
@@ -2082,7 +2089,7 @@ properties_disclaimed:
     provenance: {kind: maintainer, date: "2026-10"}
   - id: D-STATE-TO-BACKEND
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
-    conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 images go to the backend as sent too, never into the gateway's log (maintainer 2026-11, Q51); basis: stated"
+    conditions: "the state goes to the model backend as sent; the AI Gateway keeps it with collect_logs on; a model server's retention is its own; since pointsman#289 (`v0.21.0`) images go to the backend as sent too, never into the gateway's log (maintainer 2026-11, Q51); basis: stated"
     tier: security-critical
     false_friend: false
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state ... Set collect_logs: false when inputs must not be kept\""}
@@ -2282,7 +2289,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "docs/profile-format.md \"People: check and answers\""}
   - id: R-VERIFY-CALLBACK
     component: engine-callbacks
-    statement: "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, check that client and callback_url in the body are your own (since pointsman#271), make the handler idempotent on decision_id; give the secret only to receivers you trust"
+    statement: "verify x-pointsman-signature with CALLBACK_SECRET, reject old timestamps, check that client and callback_url in the body are your own (since pointsman#271, `v0.23.0`), make the handler idempotent on decision_id; give the secret only to receivers you trust"
     enforces: [callback-authentic-unchecked, callback-for-receiver-unchecked, callback-exactly-once]
     provenance: {kind: documented, source: "docs/reviews.md \"So check all of these\""}
   - id: R-STATE-IS-DATA
@@ -2292,7 +2299,7 @@ downstream_responsibilities:
     provenance: {kind: documented, source: "actions/triage/README.md; openapi.yaml ref"}
   - id: R-DATA-MINIMISATION
     component: engine-api
-    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (not yet released) a value fact only for a request value that may be kept, because it is stored with the decision (Q50); since pointsman#289 (not yet released) images only when the decision needs photos, and the client tells the people who send them (Q51)"
+    statement: "no secrets in state; personal data only when collect_logs and log.store_state are what you intend; set collect_logs: false when inputs must not be kept; route: true on a detour fact only where the place may be kept; since pointsman#287 (`v0.20.0`) a value fact only for a request value that may be kept, because it is stored with the decision (Q50); since pointsman#289 (`v0.21.0`) images only when the decision needs photos, and the client tells the people who send them (Q51)"
     enforces: [backend-keeps-nothing, P-STATE-NOT-STORED]
     provenance: {kind: documented, source: "docs/models.md \"Logs hold the state\""}
   - id: R-CALLBACK-SECRET
@@ -2644,7 +2651,7 @@ known_non_findings:
     components: [engine-callbacks]
     symptom: duplicate-delivery
     tool_pattern: "the same callback arrived twice"
-    conditions: "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads"
+    conditions: "no 2xx within 10 s on the first attempt or the 2xx was lost; identical payloads; not two runs sending the same attempt (an expired lease, a cron retry beside the first delivery), which is VALID against P-CALLBACK-SIGNED (Q54)"
     discharged_by: [D-EXACTLY-ONCE]
     provenance: {kind: documented, source: "docs/reviews.md \"A callback can arrive more than once if your 2xx answer is lost\""}
   - id: KNF-STATE-IN-GATEWAY-LOGS
@@ -2666,7 +2673,7 @@ known_non_findings:
     components: [engine-api, engine-mcp, bridge, action-triage, action-deploy-watch]
     symptom: prompt-injection-steered-answer
     tool_pattern: "text in the state made the model answer X and the policy acted on that well-formed answer"
-    conditions: "every answer inside the profile's types and options; the action is the one the policy produces for those answers; no answer outside the set and no action outside the profile's set"
+    conditions: "every answer inside the profile's types and options and, since pointsman#313 (`v0.23.0`), complete (every option or level, probabilities adding up to 1 within the margin of P-ANSWER-SHAPE); the action is the one the policy produces for those answers; no answer outside the set, no incomplete map and no action outside the profile's set"
     discharged_by: [D-PROMPT-INJECTION]
     provenance: {kind: maintainer, date: "2026-10"}
   - id: KNF-INTERNAL-CALL-NO-TOKEN
@@ -2680,7 +2687,7 @@ known_non_findings:
     components: [engine-callbacks]
     symptom: ssrf-to-public-host
     tool_pattern: "a token holder can make the engine POST to any public https URL"
-    conditions: "the URL is public and https; the payload is the signed final answer; no private or loopback address reached and no redirect followed"
+    conditions: "the URL is public and https; the payload is the signed final answer; no private or loopback address reached and no redirect followed; the payload names the client and the callback_url since pointsman#271 (`v0.23.0`); a callback naming another client than the one that asked is VALID against P-CALLBACK-SIGNED, one forged by another receiver is D-CALLBACK-SHARED-SECRET (Q54)"
     discharged_by: [D-CALLBACK-ANY-PUBLIC-HOST]
     provenance: {kind: maintainer, date: "2026-10"}
 
