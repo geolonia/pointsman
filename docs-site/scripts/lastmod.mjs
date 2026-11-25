@@ -28,10 +28,17 @@ export function gitDates(repo, dirs) {
     return new Map();
   }
   const dates = new Map();
-  // Newest first: the first date seen for a file is its last change.
-  for (const entry of git(repo, 'log', '--format=%x00%cI', '--name-only', '--no-renames', 'HEAD', '--', ...dirs).split('\0').slice(1)) {
-    const [date, ...files] = entry.trim().split('\n');
-    for (const f of files) if (f && !dates.has(f)) dates.set(f, date);
+  // -z: file names as they are (not quoted, also non-ASCII ones). A merge
+  // lists the files it changed itself (a resolved conflict), not those it
+  // only took from one side. Each date is marked "@@"; every file name
+  // starts with one of `dirs`. Newest first: the first date seen for a
+  // file is its last change.
+  const log = git(repo, 'log', '-z', '--format=@@%cI', '--name-only', '--no-renames', '--diff-merges=dense-combined', 'HEAD', '--', ...dirs);
+  let date;
+  for (const token of log.split('\0')) {
+    const t = token.replace(/^\n/, '');
+    if (t.startsWith('@@')) date = t.slice(2);
+    else if (t && date && !dates.has(t)) dates.set(t, date);
   }
   return dates;
 }

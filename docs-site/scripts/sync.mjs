@@ -158,7 +158,8 @@ for (const [file, slug] of pages) {
 
 // Which file each page comes from, for the dates in the docs sitemap (assemble.mjs).
 writeFileSync(SOURCES, `${JSON.stringify(Object.fromEntries(
-  [...pages].map(([file, slug]) => [`${BASE}${slug}${slug ? '/' : ''}`, file]),
+  // Keys as URL.pathname has them (percent-encoded), as assemble.mjs looks them up.
+  [...pages].map(([file, slug]) => [new URL(`${BASE}${slug}${slug ? '/' : ''}`, 'https://x').pathname, file]),
 ), null, 2)}\n`);
 
 console.log(`docs: ${pages.size} pages synced to ${relative(repo, out)}`);

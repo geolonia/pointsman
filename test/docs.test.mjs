@@ -152,7 +152,7 @@ test('addLastmod dates the URLs it has a date for, once', async () => {
   assert.equal(addLastmod(once, (u) => dates[u]), once);
 });
 
-test('gitDates gives each file its last commit date, fetches a shallow clone\'s history, and gives none when it cannot', async (t) => {
+test('gitDates gives each file its last commit date (non-ASCII names, merges), fetches a shallow clone\'s history, and gives none when it cannot', async (t) => {
   const { gitDates } = await import('../docs-site/scripts/lastmod.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'lastmod-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -166,10 +166,9 @@ test('gitDates gives each file its last commit date, fetches a shallow clone\'s 
     assert.equal(r.status, 0, r.stderr);
   };
   const src = join(dir, 'src');
-  mkdirSync(join(src, 'site'), { recursive: true });
+  mkdirSync(join(src, 'site', '日本語'), { recursive: true });
   git(src, '', 'init', '-q');
-  writeFileSync(join(src, 'site', 'a.html'), '1');
-  writeFileSync(join(src, 'site', 'b.html'), '1');
+  for (const f of ['a.html', 'b.html', 'c.html', 'd.html', '日本語/index.html']) writeFileSync(join(src, 'site', f), '1');
   git(src, '2026-01-01T00:00:00+00:00', 'add', '.');
   git(src, '2026-01-01T00:00:00+00:00', 'commit', '-q', '-m', 'one');
   writeFileSync(join(src, 'site', 'b.html'), '2');
@@ -177,8 +176,23 @@ test('gitDates gives each file its last commit date, fetches a shallow clone\'s 
   git(src, '2026-02-01T00:00:00+00:00', 'commit', '-q', '-am', 'two');
   git(src, '2026-02-01T00:00:00+00:00', 'add', '.');
   git(src, '2026-02-01T00:00:00+00:00', 'commit', '-q', '-m', 'three');
+  // A merge that resolves c.html to something neither side had, and takes d.html from the branch.
+  git(src, '', 'checkout', '-q', '-b', 'x');
+  writeFileSync(join(src, 'site', 'c.html'), 'x');
+  writeFileSync(join(src, 'site', 'd.html'), 'x');
+  git(src, '2026-03-01T00:00:00+00:00', 'commit', '-q', '-am', 'x');
+  git(src, '', 'checkout', '-q', 'main');
+  writeFileSync(join(src, 'site', 'c.html'), 'm');
+  git(src, '2026-04-01T00:00:00+00:00', 'commit', '-q', '-am', 'm');
+  git(src, '', 'merge', '-q', '--no-commit', '-X', 'ours', 'x');
+  writeFileSync(join(src, 'site', 'c.html'), 'resolved');
+  git(src, '', 'add', '.');
+  git(src, '2026-05-01T00:00:00+00:00', 'commit', '-q', '-m', 'merge');
   {
-    const want = new Map([['site/b.html', '2026-02-01T00:00:00Z'], ['site/a.html', '2026-01-01T00:00:00Z']]);
+    const want = new Map([
+      ['site/c.html', '2026-05-01T00:00:00Z'], ['site/d.html', '2026-03-01T00:00:00Z'],
+      ['site/b.html', '2026-02-01T00:00:00Z'], ['site/a.html', '2026-01-01T00:00:00Z'], ['site/日本語/index.html', '2026-01-01T00:00:00Z'],
+    ]);
     const norm = (m) => new Map([...m].map(([f, d]) => [f, new Date(d).toISOString().replace('.000', '')]));
     assert.deepEqual(norm(gitDates(src, ['site'])), want);
     // A shallow clone: the history is fetched, so a.html keeps its own date.
