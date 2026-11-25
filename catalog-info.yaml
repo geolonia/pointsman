@@ -10,7 +10,7 @@ metadata:
 spec:
   type: 'service'
   lifecycle: 'experimental'
-  owner: group:geolonia/geonicdb
+  owner: group:geolonia/pointsman
   system: system:geolonia/standards
   providesApis:
     - api:geolonia/pointsman-api
@@ -29,7 +29,7 @@ metadata:
 spec:
   type: openapi
   lifecycle: 'experimental'
-  owner: group:geolonia/geonicdb
+  owner: group:geolonia/pointsman
   system: system:geolonia/standards
   definition:
     $text: ./openapi.yaml
