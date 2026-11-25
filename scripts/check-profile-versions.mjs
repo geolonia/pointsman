@@ -134,4 +134,5 @@ for (const [id, was] of before) {
 }
 
 console.log(failed === 0 ? '\nVersions ok.' : `\n${failed} problem(s).`);
-process.exit(failed === 0 ? 0 : 1);
+// Exit once stdout has written everything (a queued pipe write would be lost).
+process.stdout.write('', () => process.exit(failed === 0 ? 0 : 1));
