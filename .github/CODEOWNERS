@@ -13,4 +13,4 @@
 # checks for it and skips the grant otherwise.
 
 /.github/CODEOWNERS @geolonia/operations
-/catalog-info.yaml @geolonia/geonicdb
+/catalog-info.yaml @geolonia/pointsman
