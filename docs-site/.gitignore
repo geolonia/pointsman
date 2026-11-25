@@ -2,3 +2,5 @@
 src/content/docs/
 dist/
 .astro/
+# Which file each page comes from, made by scripts/sync.mjs.
+src/content/sources.json

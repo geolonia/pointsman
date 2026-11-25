@@ -33,6 +33,9 @@ function fileFor(path) {
   return undefined;
 }
 
+// Files that assemble.mjs writes after this check, so not in site/ or dist/ yet.
+const ASSEMBLED = new Set(['/sitemap.xml', '/llms.txt', '/llms-full.txt']);
+
 const errors = [];
 let checked = 0;
 // The built docs, and the pages written by hand in site/ (landing, demos).
@@ -46,6 +49,7 @@ for (const [page, here] of pages) {
     if (/^([a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) continue;
     const resolved = new URL(url.replaceAll('&amp;', '&'), `https://x${here}`);
     checked++;
+    if (ASSEMBLED.has(resolved.pathname)) continue;
     const file = fileFor(resolved.pathname);
     if (!file) {
       errors.push(`${here}: ${url} does not exist`);
