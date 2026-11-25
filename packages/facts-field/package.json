@@ -1,6 +1,6 @@
 {
   "name": "@pointsman/facts-field",
-  "version": "0.24.1",
+  "version": "0.24.2",
   "private": true,
   "description": "Pointsman fact module: a number, text or yes-or-no value from the request itself, for rules.",
   "license": "MIT",
