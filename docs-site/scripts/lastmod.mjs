@@ -4,7 +4,11 @@
 // A shallow clone (GitHub Actions checks out one commit by default) knows only
 // its last commit, so every page would get that date. The full history is then
 // fetched first; when that fails, or the folder is not a git repository, the
-// sitemaps get no dates at all: no date is better than a wrong one.
+// sitemaps get no dates at all: no date is better than a wrong one. The fetch
+// changes the clone (it is no longer shallow); a full clone is not touched.
+//
+// The date is the committer date, when the change landed. A moved file counts
+// as changed (--no-renames), so it gets the date of the move.
 
 import { execFileSync } from 'node:child_process';
 
@@ -35,7 +39,8 @@ export function gitDates(repo, dirs) {
 /** The sitemap XML with a <lastmod> after each <loc> whose URL `dateOf` has a date for. */
 export function addLastmod(xml, dateOf) {
   return xml.replace(/<loc>([^<]+)<\/loc>(?!<lastmod>)/g, (m, loc) => {
-    const date = dateOf(loc.replace(/&amp;/g, '&').replace(/&apos;/g, "'"));
+    // One pass, so "&amp;apos;" stays "&apos;".
+    const date = dateOf(loc.replace(/&(amp|apos);/g, (_, e) => (e === 'amp' ? '&' : "'")));
     return date ? `${m}<lastmod>${date}</lastmod>` : m;
   });
 }

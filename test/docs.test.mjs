@@ -156,9 +156,12 @@ test('gitDates gives each file its last commit date, fetches a shallow clone\'s 
   const { gitDates } = await import('../docs-site/scripts/lastmod.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'lastmod-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // No global or system git config (signing, hooks), and a fixed date only where one is given.
   const git = (cwd, date, ...args) => {
-    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'init.defaultBranch=main', ...args], {
-      cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    if (date) Object.assign(env, { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'init.defaultBranch=main', '-c', 'commit.gpgsign=false', ...args], {
+      cwd, encoding: 'utf8', env,
     });
     assert.equal(r.status, 0, r.stderr);
   };
