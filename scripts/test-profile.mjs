@@ -195,4 +195,7 @@ if (values.json) {
   }
   console.log(`${count.pass} passed, ${count.fail} failed, ${count.error} could not run, ${count.skip} skipped`);
 }
-process.exit(failed ? 1 : 0);
+// Exit only once stdout has written everything: on a pipe a write can be
+// queued, and process.exit() would drop it (the summary line went missing on
+// CI). Writes complete in order, so this callback comes after the last line.
+process.stdout.write('', () => process.exit(failed ? 1 : 0));

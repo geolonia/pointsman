@@ -356,3 +356,10 @@ test('the same folder given twice, or by another spelling, is read once (#249)',
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.doesNotMatch(r.stdout, /duplicate profile id/);
 });
+
+test('the whole output is written before the exit, also when stdout writes are queued (a full pipe)', () => {
+  const slow = join(root, 'test', 'fixtures', 'slow-stdout.mjs');
+  const r = spawnSync(process.execPath, ['--import', slow, cli, examples], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\n\d+ valid, 0 invalid\n$/, `${r.stdout.length} characters`);
+});

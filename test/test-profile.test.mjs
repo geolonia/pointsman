@@ -191,6 +191,18 @@ test('the file shape is checked before any case runs', () => {
   ]);
 });
 
+test('the whole output is written before the exit, also when stdout writes are queued (a full pipe)', () => {
+  const slow = join(root, 'test', 'fixtures', 'slow-stdout.mjs');
+  for (const extra of [[], ['--json']]) {
+    const r = spawnSync(process.execPath, ['--import', slow, cli, join(examples, 'cases'), '--profiles', join(examples, 'profiles'), ...extra], {
+      encoding: 'utf8', env: { ...process.env, POINTSMAN_TOKEN: '' },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    if (extra.length) assert.doesNotThrow(() => JSON.parse(r.stdout), `--json: ${r.stdout.length} characters`);
+    else assert.match(r.stdout, /\n\d+ passed, 0 failed, 0 could not run, 1 skipped\n$/, `${r.stdout.length} characters`);
+  }
+});
+
 test('the examples pass, with the matching rule as a sentence; a state case is skipped without --url', () => {
   const r = run([join(examples, 'cases'), '--profiles', join(examples, 'profiles')]);
   assert.equal(r.status, 0, r.stdout + r.stderr);

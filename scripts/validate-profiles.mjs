@@ -60,4 +60,5 @@ for (const { path: file, profile, error: parseError } of set.entries) {
 }
 
 console.log(`\n${files.length - failed} valid, ${failed} invalid`);
-process.exit(failed === 0 ? 0 : 1);
+// Exit once stdout has written everything (a queued pipe write would be lost).
+process.stdout.write('', () => process.exit(failed === 0 ? 0 : 1));
