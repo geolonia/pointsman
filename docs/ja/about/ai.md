@@ -14,6 +14,7 @@ Pointsman のコードとこのドキュメントの多くは、AI の助けを�
 
 - **最初に読むもの:** [llms.txt](https://pointsman.net/llms.txt)。ドキュメントの全ページを 1 行ずつ説明した短い索引です(英語)。
 - **すべてを 1 つのファイルで:** [llms-full.txt](https://pointsman.net/llms-full.txt)。英語の全ページの本文です。
+- **1 ページを Markdown で:** 英語と日本語のどのページにも Markdown 版があります。URL の末尾のスラッシュを `.md` に置き換えます。たとえば [`/docs/ja/how-to/deploy.md`](https://pointsman.net/docs/ja/how-to/deploy.md) です。各言語のトップページは、そのフォルダーの `index.md` です([`/docs/index.md`](https://pointsman.net/docs/index.md)、[`/docs/ja/index.md`](https://pointsman.net/docs/ja/index.md))。各ページの `<head>` は、`<link rel="alternate" type="text/markdown">` で Markdown 版を示しています。
 - **API:** コードから生成した [HTTP API](../reference/http-api.md) と [MCP ツール](../reference/mcp-tools.md)。
 - このサイトの `robots.txt` では、検索、AI の回答、AI の学習のどれにも使ってよいとしています。
 

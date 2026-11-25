@@ -7,3 +7,8 @@
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=31536000
+# The Markdown version of each docs page (docs-site/scripts/page-markdown.mjs).
+# text/plain, not text/markdown: browsers show it instead of downloading it,
+# and the Japanese pages need the charset.
+/docs/*.md
+  Content-Type: text/plain; charset=utf-8

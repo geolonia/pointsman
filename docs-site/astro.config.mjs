@@ -7,11 +7,11 @@
 
 import { defineConfig, passthroughImageService } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import { BASE, sidebar } from './pages.mjs';
+import { BASE, SITE, sidebar } from './pages.mjs';
 import headingIds from './plugins/heading-ids.mjs';
 
 export default defineConfig({
-  site: 'https://pointsman.net',
+  site: SITE,
   base: BASE.replace(/\/$/, ''),
   trailingSlash: 'always',
   // No raster images to optimise; SVGs pass through.
@@ -40,6 +40,8 @@ export default defineConfig({
         './src/styles/custom.css',
       ],
       sidebar,
+      // Each page's head links its Markdown version (src/route-data.ts).
+      routeMiddleware: './src/route-data.ts',
       // A Home link in the header, and a credit in the footer.
       components: {
         SocialIcons: './src/components/SocialIcons.astro',

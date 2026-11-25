@@ -1,6 +1,7 @@
 // /llms.txt and /llms-full.txt (https://llmstxt.org) for AI tools: an index
 // of every English page with its one-line description, and the text of every
-// English page in one file. Written from the synced pages (src/content/docs,
+// English page in one file (each page as its Markdown version,
+// page-markdown.mjs). Written from the synced pages (src/content/docs,
 // see sync.mjs) when the site is put together, so they always match the site.
 //
 // Usage: node scripts/llms.mjs <output folder>   (after the docs build)
@@ -9,9 +10,9 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
-import { BASE, GROUPS } from '../pages.mjs';
+import { BASE, GROUPS, SITE } from '../pages.mjs';
+import { pageMarkdown } from './page-markdown.mjs';
 
-const SITE = 'https://pointsman.net';
 const content = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'content', 'docs');
 
 /** The English pages: slug, front matter and body, without the Japanese ones. */
@@ -26,7 +27,7 @@ export function englishPages(dir = content) {
       const data = parse(m[1]);
       if (!data.title || !data.description) throw new Error(`${file}: title and description are needed for llms.txt`);
       const slug = file.replace(/\.mdx?$/, '').replace(/(^|\/)index$/, '');
-      return { slug, url: `${SITE}${BASE}${slug}${slug ? '/' : ''}`, data, body: text.slice(m[0].length) };
+      return { slug, file, url: `${SITE}${BASE}${slug}${slug ? '/' : ''}`, data, body: text.slice(m[0].length), mdx: file.endsWith('.mdx'), firstLine: m[0].split('\n').length };
     });
 }
 
@@ -38,25 +39,6 @@ const inGroup = (pages, dir) => pages
   .filter((p) => p.slug === dir || p.slug.startsWith(`${dir}/`))
   .sort((a, b) => order(a) - order(b) || a.data.title.localeCompare(b.data.title));
 
-/** HTML comments removed, again until none is left: removing one can join the text around it into another. */
-function withoutComments(text) {
-  let before;
-  do {
-    before = text;
-    text = text.replace(/<!--[\s\S]*?-->\n?/g, '');
-  } while (text !== before);
-  return text;
-}
-
-/** Markdown of a page for an AI tool: site links absolute, diagrams as their title, no comments. */
-export function plain(body) {
-  return withoutComments(body)
-    .replace(/<svg[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<\/svg>/g, '(Diagram: $1)')
-    .replace(/\]\(\//g, `](${SITE}/`)
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 export function llms(pages) {
   const start = pages.find((p) => p.slug === '');
   const lines = [
@@ -65,6 +47,8 @@ export function llms(pages) {
     `> ${start?.data.description ?? 'Documentation for Pointsman, the open-source decision service.'}`,
     '',
     'Pointsman is an open-source decision service (MIT License): systems send it a case, an AI model answers fixed questions, facts are looked up in data, and rules written by people turn both into an action, or a person checks the case. Every decision is logged. Source: https://github.com/geolonia/pointsman. This file lists the English documentation; Japanese pages are under /docs/ja/.',
+    '',
+    `Every page is also available as Markdown: drop the trailing slash of the page URL and add .md (${SITE}${BASE}how-to/deploy/ → ${SITE}${BASE}how-to/deploy.md). The start page of each language is index.md in its folder (${SITE}${BASE}index.md, ${SITE}${BASE}ja/index.md). Each page's HTML links its Markdown version with <link rel="alternate" type="text/markdown">.`,
   ];
   if (start) lines.push('', `- [${start.data.title}](${start.url}): the start page, with links to every topic`);
   for (const g of GROUPS) {
@@ -81,7 +65,10 @@ export function llmsFull(pages) {
   const start = pages.find((p) => p.slug === '');
   for (const p of [...(start ? [start] : []), ...GROUPS.flatMap((g) => inGroup(pages, g.dir))]) {
     if (planned(p)) continue;
-    parts.push('', '---', '', `# ${p.data.title}`, '', `Source: ${p.url}`, '', plain(p.body));
+    parts.push('', '---', '', pageMarkdown({
+      title: p.data.title, description: p.data.description, body: p.body, url: p.url,
+      file: join(content, p.file), mdx: p.mdx, firstLine: p.firstLine,
+    }).trimEnd());
   }
   return `${parts.join('\n')}\n`;
 }

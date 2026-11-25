@@ -84,17 +84,10 @@ test('llms.txt lists every English page, and llms-full.txt has the text of every
   assert.doesNotMatch(index, /\(planned/, 'no planned pages on the site');
   assert.ok(full.includes('Source: https://pointsman.net/docs/explanation/decision-model/'));
   assert.ok(full.includes('Source: https://pointsman.net/docs/tutorials/first-profile/'));
-  assert.doesNotMatch(full, /<svg|<!--|\]\(\/docs\//);
-});
-
-test('llms-full.txt: HTML comments removed until none is left, also one that removing another makes', async () => {
-  const { plain } = await import('../docs-site/scripts/llms.mjs');
-  assert.equal(plain('a\n<!-- note -->\nb'), 'a\nb');
-  assert.equal(plain('a <!-- one --> b <!-- two\nlines --> c'), 'a  b  c');
-  assert.equal(plain('a <!<!-- x -->-- y --> b'), 'a  b');
-  // An opening with no end after it stays, as before (the docs test above checks the real pages have none).
-  assert.equal(plain('a <!<!---- -->--> b'), 'a <!--> b');
-  assert.equal(plain('a <!-- open'), 'a <!-- open');
+  // Outside code: code blocks and spans are never changed.
+  const { withoutCode } = await import('./page-markdown.test.mjs');
+  assert.doesNotMatch(withoutCode(full), /<svg|<details|<!--|\]\(\/docs\//);
+  assert.ok(index.includes('https://pointsman.net/docs/how-to/deploy.md'), 'llms.txt explains the .md URLs');
 });
 
 test('sitemap.xml lists every page of site/ with its other language, and robots.txt lists it', async () => {
