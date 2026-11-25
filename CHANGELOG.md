@@ -25,7 +25,7 @@ What changed:
 
 - **Scripts** (#351): `scripts/test-profile.mjs`, `scripts/validate-profiles.mjs` (the config repositories' Validate check) and `scripts/check-profile-versions.mjs` exit only after everything they printed is written. On a pipe, `process.exit()` right after printing could drop the end of a long output, such as the summary line; this made the test-profile test fail now and then on CI. `scripts/check-core.mjs` sets the exit code instead of exiting, and skips its second check after a failed compile. Scripts that print only a few lines before they exit are left as they are (#352).
 - **Website** (#354): every URL in `/sitemap.xml` and in the docs sitemap has a `<lastmod>`, the date of the last commit that changed the page's source. The landing pages link to their sitemap. A build from a shallow clone that cannot fetch the history writes no dates rather than wrong ones.
-- **Threat model** (#350): bound to `v0.24.1`; every claim that waited for a release names the release that shipped it, and the backtest with real reports promised in Q49 has run.
+- **Threat model** (#350): bound to `v0.24.1`; every claim that waited for a release names the release that shipped it, and the backtest with real reports promised in Q49 has run. It stays bound to `v0.24.1`: this release changes no code it cites.
 - **Development dependencies** (#353): wrangler 4.163.0, `@cloudflare/vitest-plugin` 1.8.3, oxlint 1.94.0, Starlight 0.43.1 and `@astrojs/markdown-remark` 7.3.9.
 - **Code owners** (#355): `catalog-info.yaml` is owned by the `@geolonia/pointsman` team.
 
