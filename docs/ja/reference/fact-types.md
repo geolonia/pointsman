@@ -255,8 +255,8 @@ Whether a GitHub App approved the pull request.
 
 | 設定 | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `app` | string | はい | For github_app_approval: the GitHub App's slug; its bot account is "<slug>[bot]". |
-| `bot_id` | integer | いいえ | For github_app_approval: the account id of the app's bot (GET /users/<slug>[bot]); when given, it must match too. |
+| `app` | string | はい | For github_app_approval: the GitHub App's slug; its bot account is "&lt;slug>[bot]". |
+| `bot_id` | integer | いいえ | For github_app_approval: the account id of the app's bot (GET /users/&lt;slug>[bot]); when given, it must match too. |
 
 `at` の位置に値がないときは `no_pr`(リクエストにプルリクエストがない)として欠けます。5 秒で調べるのをやめます。
 

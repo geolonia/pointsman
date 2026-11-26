@@ -26,8 +26,14 @@ const check = process.argv.includes('--check');
 
 // ---------------------------------------------------------------- helpers
 
-/** A table cell: one line, pipes escaped. */
-const cell = (value) => String(value ?? '').replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|').trim() || ' ';
+/**
+ * Text from the code (a description) as Markdown text: "<" outside code spans
+ * becomes "&lt;", so a placeholder such as "<slug>" shows on the page instead of
+ * being read as an HTML tag, which the browser hides.
+ */
+const text = (value) => String(value ?? '').split(/(`[^`]*`)/).map((part, i) => (i % 2 ? part : part.replaceAll('<', '&lt;'))).join('');
+/** A table cell: one line, pipes escaped, "<" as text. */
+const cell = (value) => text(value).replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|').trim() || ' ';
 const table = (head, rows) => [
   `| ${head.map(cell).join(' | ')} |`,
   `| ${head.map(() => '---').join(' | ')} |`,
@@ -39,8 +45,8 @@ const list = (items) => items.map(code).join(', ');
 const rel = (lang, path) => (lang === 'en' ? '../' : '../../') + path;
 /** A definition's one-line description ("type: what it is.") as a sentence. */
 const sentence = (d) => {
-  const text = d.replace(/^[a-z0-9_/-]+:\s*/, '').trim();
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  const plain = text(d.replace(/^[a-z0-9_/-]+:\s*/, '').trim());
+  return plain.charAt(0).toUpperCase() + plain.slice(1);
 };
 
 function page(lang, { title, description, intro, order }, sections) {
@@ -215,7 +221,7 @@ function httpApi(lang) {
     for (const method of methods.filter((m) => item[m])) {
       const op = item[method];
       sections.push(`## ${method.toUpperCase()} ${path}`, '', `${op.summary}.`, '');
-      if (op.description) sections.push(op.description.trim(), '');
+      if (op.description) sections.push(text(op.description.trim()), '');
       const params = (op.parameters ?? []).map(resolve);
       if (params.length) {
         sections.push(table([lang === 'en' ? 'Parameter' : 'パラメーター', lang === 'en' ? 'In' : '場所', w.type, w.required, w.description],
@@ -247,7 +253,7 @@ function httpApi(lang) {
   sections.push(lang === 'en' ? '## Schemas' : '## スキーマ', '');
   for (const [name, schema] of Object.entries(api.components.schemas)) {
     sections.push(`### ${name}`, '');
-    if (schema.description) sections.push(schema.description.trim(), '');
+    if (schema.description) sections.push(text(schema.description.trim()), '');
     const props = Object.entries(schema.properties ?? {});
     if (props.length) {
       sections.push(table([w.field, w.type, w.required, w.description], props.map(([k, p]) => [
@@ -272,7 +278,7 @@ async function mcpTools(lang) {
   const w = T[lang];
   const sections = [];
   for (const [name, tool] of Object.entries(TOOLS)) {
-    sections.push(`## ${code(name)}`, '', tool.description, '');
+    sections.push(`## ${code(name)}`, '', text(tool.description), '');
     if (PEOPLE_ONLY.has(name)) {
       sections.push(lang === 'en'
         ? 'Only for people logged in through OAuth, not for API tokens.'
