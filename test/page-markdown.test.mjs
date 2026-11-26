@@ -51,6 +51,8 @@ test('code blocks are never changed', () => {
   assert.equal(body('1. Step\n\n   - Nested\n\n   ```sh\n   echo ok\n    ```\n\nDone.'), '1. Step\n\n   - Nested\n\n   ```sh\n   echo ok\n    ```\n\nDone.\n');
   // A paragraph back in the parent item ends the nested one.
   assert.equal(body('1. Step\n\n   - Nested\n\n   Parent paragraph.\n\n     ```\n        ```\n     x\n     ```'), '1. Step\n\n   - Nested\n\n   Parent paragraph.\n\n     ```\n        ```\n     x\n     ```\n');
+  // A line that goes on with an item's paragraph, less indented, does not end the item.
+  assert.equal(body('1. Intro\n continuation\n\n   ```sh\n   echo ok\n    ```\n\nDone.'), '1. Intro\n continuation\n\n   ```sh\n   echo ok\n    ```\n\nDone.\n');
   // In a list item, from the column its text starts at.
   assert.equal(body('1. Step:\n\n   ```sh\n   x\n       ```\n   ```\n\n   Done.'), '1. Step:\n\n   ```sh\n   x\n       ```\n   ```\n\n   Done.\n');
   assert.ok(!closesFence('    ```', '```'));

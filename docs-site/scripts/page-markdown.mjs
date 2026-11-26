@@ -252,8 +252,9 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
           items = items.filter((col) => col <= item[1].length);
           items.push(item[0].length);
         } else {
-          // A line less indented than an item's text ends that item (back in its parent, or out of the list).
-          items = items.filter((col) => col <= indent);
+          // After a blank line, a line less indented than an item's text ends that item (back in
+          // its parent, or out of the list). Without one, it goes on with the item's paragraph.
+          if (prevBlank) items = items.filter((col) => col <= indent);
           if (indent >= 4 && prevBlank && !items.length) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
         }
       }
