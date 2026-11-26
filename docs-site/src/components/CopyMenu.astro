@@ -79,6 +79,15 @@ const items = [
       </li>
     ))}
   </ul>
+  <!-- Without JavaScript the buttons cannot work: the links are shown as they are instead. -->
+  <noscript>
+    <style>.copy-menu-buttons { display: none !important; }</style>
+    <ul class="copy-menu-noscript">
+      {items.map((item) => (
+        <li><a href={item.href} target="_blank" rel="noopener">{item.text[0]}<span class="sr-only">{t.newTab}</span></a></li>
+      ))}
+    </ul>
+  </noscript>
 </div>
 
 <script>
@@ -320,6 +329,18 @@ const items = [
   .hint {
     font-size: var(--sl-text-xs);
     color: var(--sl-color-gray-2);
+  }
+  .copy-menu-noscript {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--sl-text-sm);
+  }
+  .copy-menu-noscript li {
+    margin: 0;
   }
   @media print {
     .copy-menu {
