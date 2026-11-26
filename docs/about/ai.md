@@ -22,6 +22,13 @@ is wrong, please [open an issue](https://github.com/geolonia/pointsman/issues).
   every page of the documentation with one line about each, in English.
 - **Everything in one file:** [llms-full.txt](https://pointsman.net/llms-full.txt),
   the text of every English page.
+- **One page as Markdown:** every page, English and Japanese, is also
+  available as Markdown. Drop the trailing slash of its URL and add `.md`,
+  for example [`/docs/how-to/deploy.md`](https://pointsman.net/docs/how-to/deploy.md);
+  the start page of each language is `index.md` in its folder
+  ([`/docs/index.md`](https://pointsman.net/docs/index.md),
+  [`/docs/ja/index.md`](https://pointsman.net/docs/ja/index.md)). Each page's
+  `<head>` links it with `<link rel="alternate" type="text/markdown">`.
 - **The API:** the [HTTP API](../reference/http-api.md) and the
   [MCP tools](../reference/mcp-tools.md), generated from the code.
 - This site's `robots.txt` permits search, AI answers and AI training.

@@ -10,8 +10,24 @@
 // check-languages.mjs keeps in step with the English. Without one, the
 // Japanese site shows the English text with a notice.
 
+/** The website's address (astro.config.mjs `site`), for absolute URLs. */
+export const SITE = 'https://pointsman.net';
+
 /** Where the docs are published on https://pointsman.net (astro.config.mjs `base`, with a trailing slash). */
 export const BASE = '/docs/';
+
+/**
+ * The path of a page's Markdown version (scripts/page-markdown.mjs): the
+ * page path without its trailing slash, plus ".md" (/docs/how-to/deploy/ →
+ * /docs/how-to/deploy.md). The start page of each language is the index.md
+ * in its folder (/docs/index.md, /docs/ja/index.md), so that every file
+ * stays under /docs/.
+ */
+export function markdownPath(pagePath) {
+  if (!pagePath.startsWith(BASE) || !pagePath.endsWith('/')) throw new Error(`not a page path: ${pagePath}`);
+  const slug = pagePath.slice(BASE.length, -1);
+  return slug === '' || slug === 'ja' ? `${pagePath}index.md` : `${pagePath.slice(0, -1)}.md`;
+}
 
 /** The sidebar groups, in order. Each lists the pages of docs/<dir>/. */
 export const GROUPS = [
