@@ -29,9 +29,10 @@ const check = process.argv.includes('--check');
 /**
  * Text from the code (a description) as Markdown text: "<" outside code spans
  * becomes "&lt;", so a placeholder such as "<slug>" shows on the page instead of
- * being read as an HTML tag, which the browser hides.
+ * being read as an HTML tag, which the browser hides. Code spans of one or two
+ * backticks are left as they are.
  */
-const text = (value) => String(value ?? '').split(/(`[^`]*`)/).map((part, i) => (i % 2 ? part : part.replaceAll('<', '&lt;'))).join('');
+const text = (value) => String(value ?? '').split(/(``[^`]*``|`[^`]*`)/).map((part, i) => (i % 2 ? part : part.replaceAll('<', '&lt;'))).join('');
 /** A table cell: one line, pipes escaped, "<" as text. */
 const cell = (value) => text(value).replace(/\s*\n\s*/g, ' ').replaceAll('|', '\\|').trim() || ' ';
 const table = (head, rows) => [
@@ -220,7 +221,7 @@ function httpApi(lang) {
   for (const [path, item] of Object.entries(api.paths)) {
     for (const method of methods.filter((m) => item[m])) {
       const op = item[method];
-      sections.push(`## ${method.toUpperCase()} ${path}`, '', `${op.summary}.`, '');
+      sections.push(`## ${method.toUpperCase()} ${path}`, '', `${text(op.summary)}.`, '');
       if (op.description) sections.push(text(op.description.trim()), '');
       const params = (op.parameters ?? []).map(resolve);
       if (params.length) {
