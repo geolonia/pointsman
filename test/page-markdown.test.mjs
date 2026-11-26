@@ -1,23 +1,16 @@
 // The Markdown version of each docs page (docs-site/scripts/page-markdown.mjs):
-// each rule, code blocks never changed, every synced page converts, and the
-// build check fails on a page without a Markdown version or a head link.
+// each rule, code blocks never changed, and the build check fails on a page without a Markdown version or a head link.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parse } from 'yaml';
 import { markdownPath } from '../docs-site/pages.mjs';
 import { closesFence, openFence, pageMarkdown, splitLine, writePageMarkdown } from '../docs-site/scripts/page-markdown.mjs';
 
-const root = fileURLToPath(new URL('..', import.meta.url));
 const URL_ = 'https://pointsman.net/docs/how-to/x/';
 const md = (body, extra = {}) => pageMarkdown({ title: 'T', description: 'D.', body, url: URL_, ...extra });
 /** The converted body, without the title, description and source lines. */
-/** Text without its code blocks and code spans. */
-export const withoutCode = (text) => text.replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '').replace(/`[^`\n]*`/g, '');
 const body = (text, extra) => md(text, extra).split('\n').slice(6).join('\n');
 
 test('markdownPath: the page path without its slash, plus .md; index.md for the start pages', () => {
@@ -49,6 +42,10 @@ test('code fences follow CommonMark: same character, at least as long, only spac
 });
 
 test('code blocks are never changed', () => {
+  // A fence indented 4 spaces more than the opening one is a line of the code, not its end.
+  assert.equal(body('```\n    ```\nx\n```'), '```\n    ```\nx\n```\n');
+  assert.ok(closesFence('     ```', '```', 2));
+  assert.ok(!closesFence('    ```', '```'));
   const code = [
     '````markdown',
     '```',
@@ -122,6 +119,7 @@ test('links become absolute URLs; external links and code stay', () => {
   assert.equal(body('<a title="a>b" href="/docs/b/">B</a>'), '[B](https://pointsman.net/docs/b/)\n');
   assert.equal(body('[b](<../a b/>) and\n[c]: </y z/> "t"'), '[b](<https://pointsman.net/docs/how-to/a%20b/>) and\n[c]: <https://pointsman.net/y%20z/> "t"\n');
   // <code> becomes a code span, and its content stays as it is.
+  assert.equal(body('<code>&lt;div&gt;</code> text'), '`<div>` text\n');
   assert.equal(body('<code>[a](/y)</code> [b](/y)'), '`[a](/y)` [b](https://pointsman.net/y)\n');
 });
 
@@ -141,38 +139,15 @@ test('unknown HTML and MDX components fail the build; other words in angle brack
   assert.throws(() => md('<details open><summary>x</summary>'), /<details> is not known/);
   assert.throws(() => md('<details>'), /needs a <summary>/);
   assert.throws(() => md('import Card from "x";', { mdx: true }), /MDX import/);
+  assert.throws(() => md('Answer: {1 + 1}', { mdx: true }), /MDX expression/);
+  // Braces in code, in Markdown, and a heading id stay allowed.
+  assert.equal(body('`{x}` and\n## H {#h}', { mdx: true }), '`{x}` and\n## H\n');
+  assert.equal(body('Answer: {1 + 1}'), 'Answer: {1 + 1}\n');
   // A tag that removing another one makes is still found.
   assert.throws(() => md('<scr<script>x</script>ipt>alert(1)'), /<script> is not known/);
   assert.equal(body('answered by <login>, `<Card>`'), 'answered by <login>, `<Card>`\n');
   // Errors name the file and the line in it.
   assert.throws(() => md('a\n<table>', { file: 'p.md', firstLine: 5 }), /^Error: p\.md:6: /);
-});
-
-test('every synced page converts, and keeps every line of every code block', () => {
-  const sync = spawnSync(process.execPath, [join(root, 'docs-site/scripts/sync.mjs')], { cwd: root, encoding: 'utf8' });
-  assert.equal(sync.status, 0, sync.stderr);
-  const content = join(root, 'docs-site/src/content/docs');
-  const files = readdirSync(content, { recursive: true }).map(String).filter((f) => /\.mdx?$/.test(f));
-  assert.ok(files.length > 20);
-  for (const file of files) {
-    const text = readFileSync(join(content, file), 'utf8');
-    const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
-    const data = parse(m[1]);
-    const source = text.slice(m[0].length);
-    const out = pageMarkdown({ title: data.title, description: data.description, body: source, url: URL_, file, mdx: file.endsWith('.mdx') });
-    assert.doesNotMatch(withoutCode(out), /<svg|<details|<!--|\]\(\/docs\//, file);
-    // The code blocks of the source, line by line, in the output in the same order.
-    let fence = null;
-    let at = 0;
-    for (const line of source.split('\n')) {
-      const f = fence ? null : openFence(line);
-      if (!fence && !f) continue;
-      at = out.indexOf(`\n${line}\n`, at);
-      assert.ok(at >= 0, `${file}: code line ${JSON.stringify(line)} is missing or changed`);
-      if (f) fence = f;
-      else if (closesFence(line, fence)) fence = null;
-    }
-  }
 });
 
 test('the build check writes a .md for every page and fails without one or without the head link', (t) => {

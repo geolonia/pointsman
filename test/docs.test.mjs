@@ -9,8 +9,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { closesFence, openFence, pageMarkdown } from '../docs-site/scripts/page-markdown.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+/** Text without its code blocks and code spans. */
+const withoutCode = (text) => text.replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '').replace(/`[^`\n]*`/g, '');
 const run = (script, env = {}) => spawnSync(process.execPath, [join(root, script)], { cwd: root, encoding: 'utf8', env: { ...process.env, ...env } });
 
 test('the generated reference pages match the code', () => {
@@ -85,9 +88,38 @@ test('llms.txt lists every English page, and llms-full.txt has the text of every
   assert.ok(full.includes('Source: https://pointsman.net/docs/explanation/decision-model/'));
   assert.ok(full.includes('Source: https://pointsman.net/docs/tutorials/first-profile/'));
   // Outside code: code blocks and spans are never changed.
-  const { withoutCode } = await import('./page-markdown.test.mjs');
   assert.doesNotMatch(withoutCode(full), /<svg|<details|<!--|\]\(\/docs\//);
   assert.ok(index.includes('https://pointsman.net/docs/how-to/deploy.md'), 'llms.txt explains the .md URLs');
+});
+
+// In this file, not in page-markdown.test.mjs: test files run at the same time, and
+// sync.mjs empties its output first, so only one file may run it.
+test('every synced page converts, and keeps every line of every code block', () => {
+  const sync = run('docs-site/scripts/sync.mjs');
+  assert.equal(sync.status, 0, sync.stderr);
+  const content = join(root, 'docs-site/src/content/docs');
+  const files = readdirSync(content, { recursive: true }).map(String).filter((f) => /\.mdx?$/.test(f));
+  assert.ok(files.length > 20);
+  for (const file of files) {
+    const text = readFileSync(join(content, file), 'utf8');
+    const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
+    const data = parseYaml(m[1]);
+    const source = text.slice(m[0].length);
+    const out = pageMarkdown({ title: data.title, description: data.description, body: source, url: 'https://pointsman.net/docs/x/', file, mdx: file.endsWith('.mdx') });
+    assert.doesNotMatch(withoutCode(out), /<svg|<details|<!--|\]\(\/docs\//, file);
+    // The code blocks of the source, line by line, in the output in the same order.
+    let fence = null;
+    let indent = 0;
+    let at = 0;
+    for (const line of source.split('\n')) {
+      const f = fence ? null : openFence(line);
+      if (!fence && !f) continue;
+      at = out.indexOf(`\n${line}\n`, at);
+      assert.ok(at >= 0, `${file}: code line ${JSON.stringify(line)} is missing or changed`);
+      if (f) { fence = f; indent = /^ */.exec(line)[0].length; }
+      else if (closesFence(line, fence, indent)) fence = null;
+    }
+  }
 });
 
 test('sitemap.xml lists every page of site/ with its other language, and robots.txt lists it', async () => {

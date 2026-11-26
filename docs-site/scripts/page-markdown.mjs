@@ -39,8 +39,13 @@ export function openFence(line) {
   return m ? m[2] ?? m[4] : null;
 }
 
-// The line that closes it: the same character, at least as many, then only spaces.
-export const closesFence = (line, fence) => new RegExp(`^\\s*\\${fence[0]}{${fence.length},}[ \\t]*$`).test(line);
+// The line that closes it: the same character, at least as many, then only spaces,
+// indented at most 3 spaces more than the opening line (whose indent is the list item's,
+// if any). A fence indented further is a line of the code.
+export function closesFence(line, fence, indent = 0) {
+  const m = new RegExp(`^( *)\\${fence[0]}{${fence.length},}[ \\t]*$`).exec(line);
+  return m !== null && m[1].length <= indent + 3;
+}
 
 // Remove what a pattern matches until nothing is left, so that removing one
 // match cannot join the text around it into a new one (<scr<script>ipt>).
@@ -152,7 +157,7 @@ function inline(s, base) {
 }
 
 /** An HTML element or MDX component in prose that no rule converts, or undefined. */
-const unknownTag = (prose) => [...prose.matchAll(/<\/?([A-Za-z][\w.-]*)(?=[\s/>])/g)]
+const unknownTag = (prose) => [...prose.replace(/`+[^`]*`+/g, '').matchAll(/<\/?([A-Za-z][\w.-]*)(?=[\s/>])/g)]
   .map((m) => m[1]).find((name) => /^[A-Z]/.test(name) || HTML.has(name.toLowerCase()));
 
 /**
@@ -177,6 +182,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
   };
 
   let fence = null;            // the fence that opened the code block we are in
+  let fenceIndent = 0;         // the spaces before it
   let block = null;            // a multi-line HTML block we are in: { end, lines, start }
   let comment = false;         // inside an author comment (<!-- … -->)
   let ticks = null;            // the backticks of a code span that goes on to the next line
@@ -196,7 +202,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
     if (!line.trim()) ticks = null;     // a code span ends with its paragraph
     if (fence) {
       push(line, true);
-      if (closesFence(line, fence)) fence = null;
+      if (closesFence(line, fence, fenceIndent)) fence = null;
       continue;
     }
     if (comment) {
@@ -229,7 +235,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       }
       if (/^\s*>[\s>]*(?:`{3,}|~{3,})/.test(line)) fail(n, 'a code block in a blockquote is not supported: put it outside the quote');
       const f = openFence(line);
-      if (f) { fence = f; push(line, true); continue; }
+      if (f) { fence = f; fenceIndent = /^ */.exec(line)[0].length; push(line, true); continue; }
       const trimmed = line.trim();
       // A diagram becomes its description.
       if (/^<svg\b/i.test(trimmed)) {
@@ -273,6 +279,8 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       const prose = inline(text, url);
       // HTML or a component the rules above do not know: say what it becomes before it reaches a page.
       const unknown = unknownTag(prose);
+      // In MDX, {…} outside code is a JavaScript expression, which this converter cannot write as text.
+      if (mdx && /[{}]/.test(prose.replace(/`+[^`]*`+/g, ''))) fail(n, 'an MDX expression ({…}): write it as text, or say in scripts/page-markdown.mjs what it becomes');
       if (unknown) fail(n, `<${unknown}> is not known to scripts/page-markdown.mjs: add a rule for it`);
       return prose;
     }).join('');
