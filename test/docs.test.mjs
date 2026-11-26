@@ -67,10 +67,16 @@ test('no page has a placeholder in prose that the site would hide as an HTML tag
   for (const file of readdirSync(content, { recursive: true }).map(String).filter((f) => /\.mdx?$/.test(f))) {
     let text = readFileSync(join(content, file), 'utf8')
       .replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '');  // code blocks, also indented ones
-    // Comments and diagrams, until none is left: removing one can join the text around it into another.
+    // Comments go: only the text after each "-->" is kept (an unclosed comment hides the rest).
+    text = text.split('<!--').map((part, i) => {
+      if (i === 0) return part;
+      const end = part.indexOf('-->');
+      return end < 0 ? '' : part.slice(end + 3);
+    }).join('');
+    // Diagrams go, until none is left.
     for (let before; before !== text;) {
       before = text;
-      text = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, '');
+      text = text.replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, '');
     }
     const prose = text
       .split(/\n[ \t]*\n/)                                                  // per paragraph: a code span may wrap lines
