@@ -65,10 +65,14 @@ test('no page has a placeholder in prose that the site would hide as an HTML tag
   const content = join(root, 'docs-site/src/content/docs');
   const allowed = new Set(['details', 'summary', 'code', 'sub', 'br', 'a']);
   for (const file of readdirSync(content, { recursive: true }).map(String).filter((f) => /\.mdx?$/.test(f))) {
-    const prose = readFileSync(join(content, file), 'utf8')
-      .replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '')   // code blocks, also indented ones
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<svg\b[\s\S]*?<\/svg>/g, '')                               // diagrams
+    let text = readFileSync(join(content, file), 'utf8')
+      .replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '');  // code blocks, also indented ones
+    // Comments and diagrams, until none is left: removing one can join the text around it into another.
+    for (let before; before !== text;) {
+      before = text;
+      text = text.replace(/<!--[\s\S]*?-->/g, '').replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, '');
+    }
+    const prose = text
       .split(/\n[ \t]*\n/)                                                  // per paragraph: a code span may wrap lines
       .map((p) => p.replace(/(`+)[\s\S]*?\1/g, ''))
       .join('\n\n');
