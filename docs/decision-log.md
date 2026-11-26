@@ -119,6 +119,34 @@ Notes:
 - `noul` corrections are `true`/`false`; SQLite's JSON functions return them
   as 1/0, and the comparison above handles that the same way for answers.
 
+## Retention
+
+By default the log keeps every decision. A deployment that sets the Worker
+variable `DECISION_LOG_DAYS` (a whole number of days, at least 30) keeps them
+for that long. Then the cron trigger (every 5 minutes) deletes up to 500 older
+decisions per run, with their feedback.
+
+Exceptions and effects:
+
+- **Kept while pending:** a decision whose review is still pending, or whose
+  callback is still pending, stays until that is done. Its time starts from
+  when it was made, so it goes in the first run after that.
+- **Counts:** stats (`GET /v1/stats`) and replays read only what is left, so
+  keep at least as long as you count back.
+- **Chains:** a later chain step for a ref whose earlier step was deleted finds
+  no earlier decision.
+- **A bad value:** fails requests and the cron as a configuration error. Unset
+  or empty keeps everything.
+
+How long to keep decisions is the deployment's decision. They can hold
+personal data: references, answers, facts, and with `log.store_state` the state.
+For high-risk systems, the EU AI Act asks for at least six months (Art. 19, 26(6)).
+
+```jsonc
+// wrangler.jsonc of the deployment
+"vars": { "DECISION_LOG_DAYS": "365" }
+```
+
 ## Local development
 
 ```sh

@@ -16,6 +16,7 @@ import { checkServerUrl, DEFAULT_TIMEOUT_MS, ModelServerAdapter, parseModelList 
 import { MockAdapter } from './models/mock';
 import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
 import { MemoryProfileStore, type ProfileStore } from './profiles/store';
+import { purgeOldDecisions, retentionDays } from './retention';
 import { KvProfileStore } from './profiles/store-kv';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
@@ -46,6 +47,8 @@ interface PointsmanEnv {
   AI_GATEWAY_ID?: string | undefined;
   /** Worker secret for signing review callbacks. */
   CALLBACK_SECRET?: string | undefined;
+  /** Days to keep decisions (src/retention.ts); unset keeps them all. */
+  DECISION_LOG_DAYS?: string | undefined;
   // GitHub login for /mcp (src/oauth.ts): all of these, or none.
   PUBLIC_URL?: string | undefined;
   GITHUB_CLIENT_ID?: string | undefined;
@@ -181,6 +184,8 @@ function factsFor(env: PointsmanEnv): FactProvider | undefined {
 export function depsFor(env: PointsmanEnv): Deps {
   if (!env.TOKENS) throw new ConfigError('no TOKENS binding');
   if (!env.DB) throw new ConfigError('no DB binding');
+  // Checked with every request too, so a bad value shows at once, not only in the cron.
+  retentionDays(env.DECISION_LOG_DAYS);
   return {
     store: storeFor(env),
     tokens: new KvTokenStore(env.TOKENS),
@@ -343,13 +348,20 @@ export default {
   fetch: served.fetch,
   queue: served.queue,
   // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are
-  // due, and remove expired OAuth records. A broken config (for example half
-  // of the OAuth settings) fails here as it does for requests.
+  // due, remove expired OAuth records, and with DECISION_LOG_DAYS delete one
+  // batch of decisions older than that. A broken config (for example half of
+  // the OAuth settings) fails here as it does for requests.
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const deps = depsFor(env as PointsmanEnv);
     ctx.waitUntil(retryDueCallbacks(deps).then((n) => {
       if (n > 0) console.log(`retried ${n} callbacks`);
     }));
+    const days = retentionDays((env as PointsmanEnv).DECISION_LOG_DAYS);
+    if (days !== undefined) {
+      ctx.waitUntil(purgeOldDecisions(deps.log, days).then((n) => {
+        if (n > 0) console.log(`deleted ${n} decisions older than ${days} days`);
+      }));
+    }
     if (deps.oauth) ctx.waitUntil(purgeExpired(env as unknown as { OAUTH_KV: KVNamespace }, deps.oauth));
   },
 } satisfies ExportedHandler<Env, unknown>;

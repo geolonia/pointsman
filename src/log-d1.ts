@@ -323,6 +323,33 @@ export class D1DecisionLog implements DecisionLog {
     return (result.meta.changes ?? 0) === 1;
   }
 
+  async purge(before: string, limit: number): Promise<number> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id FROM decisions
+         WHERE created_at < ? AND review_status IS NOT 'pending' AND callback_status IS NOT 'pending'
+         ORDER BY created_at LIMIT ?`,
+      )
+      .bind(before, limit)
+      .all<{ id: string }>();
+    if (results.length === 0) return 0;
+    const ids = JSON.stringify(results.map((r) => r.id));
+    // One batch, so feedback never outlives its decision. The conditions are
+    // checked again: a review or callback may have started since the select.
+    const [, deleted] = await this.db.batch([
+      this.db.prepare(
+        `DELETE FROM feedback WHERE decision_id IN (
+           SELECT id FROM decisions WHERE id IN (SELECT value FROM json_each(?))
+             AND review_status IS NOT 'pending' AND callback_status IS NOT 'pending')`,
+      ).bind(ids),
+      this.db.prepare(
+        `DELETE FROM decisions WHERE id IN (SELECT value FROM json_each(?))
+           AND review_status IS NOT 'pending' AND callback_status IS NOT 'pending'`,
+      ).bind(ids),
+    ]);
+    return deleted!.meta.changes ?? 0;
+  }
+
   async recordCallback(decisionId: string, c: CallbackState, claimId: string): Promise<boolean> {
     const result = await this.db
       .prepare(

@@ -136,7 +136,7 @@ government systems. So the table separates two things:
 | Who reviewed | Record duty, biometrics only | AI Act Art. 12(3)(d); otherwise design choice for GDPR Art. 22(3) (human intervention) | yes, `reviewedBy` |
 | A person's correction | Design choice | AI Act Art. 14(4)(d) (ability to override); ガイドライン 3)② 人間の判断の介在 | yes, `corrections` |
 | Contest by the affected person | Design choice | GDPR Art. 22(3); Council of Europe Convention Art. 14 | no; out of scope for now (a review can record it) |
-| Retention | Duty, but not a field | AI Act Art. 19, 26(6): at least six months for high-risk systems; ガイドライン 6)①: each organisation decides | not a model field; a deployment setting |
+| Retention | Duty, but not a field | AI Act Art. 19, 26(6): at least six months for high-risk systems; ガイドライン 6)①: each organisation decides | not a model field; a deployment setting (`DECISION_LOG_DAYS`, docs/decision-log.md "Retention") |
 | Probability | Design choice | not named anywhere; helps a person interpret the output (AI Act Art. 14(4)(c)) | yes |
 
 Would a road restriction check be high-risk under the AI Act? Only if it acts

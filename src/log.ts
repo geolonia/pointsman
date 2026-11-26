@@ -161,6 +161,13 @@ export interface DecisionLog {
   claimCallback(decisionId: string, claim: { id: string; now: string; leaseUntil: string; attempts: number }): Promise<boolean>;
   /** Record the result of an attempt; ignored unless `claimId` still holds the claim. */
   recordCallback(decisionId: string, state: CallbackState, claimId: string): Promise<boolean>;
+  /**
+   * Retention (src/retention.ts): delete at most `limit` decisions made before
+   * `before` (ISO 8601), with their feedback. A decision whose review is still
+   * pending, or whose callback is still pending, stays until that is done.
+   * Returns how many decisions were deleted.
+   */
+  purge(before: string, limit: number): Promise<number>;
 }
 
 /** JSON with sorted object keys, so equal states hash equally. */
