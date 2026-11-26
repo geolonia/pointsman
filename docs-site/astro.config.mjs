@@ -42,11 +42,13 @@ export default defineConfig({
       sidebar,
       // Each page's head links its Markdown version (src/route-data.ts).
       routeMiddleware: './src/route-data.ts',
-      // A Home link in the header, and a credit in the footer.
+      // A Home link in the header, a credit in the footer, and the Copy menu.
       components: {
         SocialIcons: './src/components/SocialIcons.astro',
         Footer: './src/components/Footer.astro',
         SiteTitle: './src/components/SiteTitle.astro',
+        // The "Copy page" menu next to each page's title.
+        PageTitle: './src/components/PageTitle.astro',
       },
     }),
   ],

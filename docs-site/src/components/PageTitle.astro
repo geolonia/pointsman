@@ -1,0 +1,31 @@
+---
+// Starlight's page title, with the "Copy page" menu at its right (CopyMenu.astro).
+// On a narrow screen the menu goes under a long title. The 404 page has no
+// Markdown version, so no menu.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import CopyMenu from './CopyMenu.astro';
+
+const menu = Astro.locals.starlightRoute.entry.id !== '404';
+---
+
+<div class="page-title">
+  <Default />
+  {menu && <CopyMenu />}
+</div>
+
+<style>
+  .page-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  .page-title > :global(h1) {
+    flex: 1 1 20rem;
+    min-width: 0;
+  }
+  .page-title > :global(.copy-menu) {
+    margin-top: 1.25rem;
+  }
+</style>

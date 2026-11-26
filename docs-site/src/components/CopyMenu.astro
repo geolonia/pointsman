@@ -1,0 +1,295 @@
+---
+// The "Copy page" menu next to every page's title (#356): one click copies
+// the page as Markdown; the menu views the Markdown or opens the page in an
+// AI chat. The Markdown is the page's .md version, written by the build
+// (scripts/page-markdown.mjs; the path from markdownPath in pages.mjs).
+// It exists only in the built site, not in `astro dev`.
+//
+// A menu button (WAI-ARIA APG): Enter, Space or ArrowDown opens it, arrow
+// keys move and wrap, Home and End, Enter or Space chooses, Escape closes and
+// returns focus, Tab closes.
+import { SITE, markdownPath } from '../../pages.mjs';
+
+const TEXT = {
+  ja: {
+    copy: 'ページをコピー', copied: 'コピーしました', failed: 'コピーできませんでした', more: 'ほかの操作', newTab: '（新しいタブ）',
+    hint: 'このページを Markdown でコピー',
+    view: ['Markdown で表示', 'このページをテキストで開く'],
+    claude: ['Claude で開く', 'このページについて Claude に聞く'],
+    chatgpt: ['ChatGPT で開く', 'このページについて ChatGPT に聞く'],
+    prompt: (url: string) => `次のページを読んで、内容について私の質問に答えてください: ${url}`,
+  },
+  en: {
+    copy: 'Copy page', copied: 'Copied', failed: 'Could not copy', more: 'More actions', newTab: ' (new tab)',
+    hint: 'Copy this page as Markdown',
+    view: ['View as Markdown', 'Open this page as plain text'],
+    claude: ['Open in Claude', 'Ask Claude about this page'],
+    chatgpt: ['Open in ChatGPT', 'Ask ChatGPT about this page'],
+    prompt: (url: string) => `Read this page and answer my questions about it: ${url}`,
+  },
+};
+const t = Astro.locals.starlightRoute.locale === 'ja' ? TEXT.ja : TEXT.en;
+
+// The Markdown is fetched and viewed from this origin, so a local preview serves its own files.
+const mdPath = markdownPath(Astro.url.pathname);
+// An AI chat gets the public URL (the same as the head's rel="alternate" link): it cannot open localhost.
+const prompt = encodeURIComponent(t.prompt(new URL(mdPath, SITE).href));
+const items = [
+  { key: 'view', text: t.view, href: mdPath },
+  { key: 'claude', text: t.claude, href: `https://claude.ai/new?q=${prompt}` },
+  // hints=search: ChatGPT reads the page instead of answering from memory.
+  { key: 'chatgpt', text: t.chatgpt, href: `https://chatgpt.com/?hints=search&q=${prompt}` },
+];
+---
+
+<div class="copy-menu" data-md={mdPath}>
+  <div class="copy-menu-buttons">
+    <button type="button" class="copy-menu-main" aria-describedby="copy-menu-hint">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>
+      <!-- All three labels take the same place, so the button keeps the width of the longest. -->
+      <span class="copy-menu-labels">
+        <span data-state="" class="shown">{t.copy}</span>
+        <span data-state="copied" aria-hidden="true">{t.copied}</span>
+        <span data-state="failed" aria-hidden="true">{t.failed}</span>
+      </span>
+    </button>
+    <button
+      type="button" class="copy-menu-toggle" aria-haspopup="menu" aria-expanded="false"
+      aria-controls="copy-menu-list" aria-label={t.more} title={t.more}
+    >
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+  </div>
+  <span id="copy-menu-hint" class="sr-only">{t.hint}</span>
+  <span class="sr-only copy-menu-status" role="status"></span>
+  <ul id="copy-menu-list" class="copy-menu-list" role="menu" aria-label={t.more} hidden>
+    {items.map((item) => (
+      <li role="none">
+        <a role="menuitem" tabindex="-1" href={item.href} target="_blank" rel="noopener" aria-describedby={`copy-menu-hint-${item.key}`}>
+          <span class="label">{item.text[0]}<span class="ext" aria-hidden="true"> ↗</span><span class="sr-only">{t.newTab}</span></span>
+          <span id={`copy-menu-hint-${item.key}`} class="hint">{item.text[1]}</span>
+        </a>
+      </li>
+    ))}
+  </ul>
+</div>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('.copy-menu')) {
+    const main = root.querySelector<HTMLButtonElement>('.copy-menu-main')!;
+    const toggle = root.querySelector<HTMLButtonElement>('.copy-menu-toggle')!;
+    const list = root.querySelector<HTMLElement>('.copy-menu-list')!;
+    const status = root.querySelector<HTMLElement>('.copy-menu-status')!;
+    const entries = () => [...list.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+
+    // The button shows "Copied" or "Could not copy" for 2 seconds; a screen reader hears it once.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function show(state: '' | 'copied' | 'failed') {
+      for (const label of root.querySelectorAll<HTMLElement>('[data-state]')) {
+        const shown = label.dataset.state === state;
+        label.classList.toggle('shown', shown);
+        if (shown) label.removeAttribute('aria-hidden');
+        else label.setAttribute('aria-hidden', 'true');
+      }
+      status.textContent = state ? root.querySelector(`[data-state="${state}"]`)!.textContent : '';
+      clearTimeout(timer);
+      if (state) timer = setTimeout(() => show(''), 2000);
+    }
+
+    // The text is fetched after the click. Safari only lets a page write to the clipboard
+    // within the click, so the write starts at once and waits for the text (ClipboardItem).
+    // Browsers without ClipboardItem (Firefox before 127) write when the text has arrived.
+    async function copy() {
+      const text = fetch(root.dataset.md!).then((res) => {
+        if (!res.ok) throw new Error(`${root.dataset.md}: ${res.status}`);
+        return res.text();
+      });
+      text.catch(() => {}); // a failed fetch is reported below, never as an unhandled rejection
+      try {
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+          const blob = text.then((s) => new Blob([s], { type: 'text/plain' }));
+          blob.catch(() => {});
+          await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+        } else {
+          await navigator.clipboard.writeText(await text);
+        }
+        show('copied');
+      } catch {
+        show('failed');
+      }
+    }
+    main.addEventListener('click', copy);
+
+    const isOpen = () => !list.hidden;
+    function focusItem(i: number) {
+      const all = entries();
+      all[((i % all.length) + all.length) % all.length].focus();
+    }
+    function open(focus = 0) {
+      list.hidden = false;
+      // The list hangs from the button's right edge; when that runs off the left of the
+      // screen (the menu has wrapped under a long title), from its left edge instead.
+      root.classList.remove('start');
+      if (list.getBoundingClientRect().left < 8) root.classList.add('start');
+      toggle.setAttribute('aria-expanded', 'true');
+      document.addEventListener('pointerdown', onOutside);
+      document.addEventListener('focusin', onOutside);
+      focusItem(focus);
+    }
+    function close(returnFocus = true) {
+      list.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('pointerdown', onOutside);
+      document.removeEventListener('focusin', onOutside);
+      if (returnFocus) toggle.focus();
+    }
+    // A tap or click elsewhere, or focus moving out (Tab), closes it.
+    // pointerdown: iOS Safari sends no click to the document for a tap on plain text.
+    function onOutside(e: Event) {
+      if (!root.contains(e.target as Node)) close(false);
+    }
+
+    toggle.addEventListener('click', () => (isOpen() ? close() : open(0)));
+    toggle.addEventListener('keydown', (e) => {
+      // Enter and Space also click the button; handled here so a key opens on the first entry.
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (isOpen()) close();
+        else open(0);
+      }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); open(0); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); open(-1); }
+      else if (e.key === 'Escape' && isOpen()) { e.preventDefault(); close(); }
+    });
+    list.addEventListener('keydown', (e) => {
+      const i = entries().indexOf(document.activeElement as HTMLElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); focusItem(i + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); focusItem(i - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); focusItem(0); }
+      else if (e.key === 'End') { e.preventDefault(); focusItem(-1); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+      // Space chooses a link too (a link only answers Enter by itself); the click keeps target=_blank.
+      else if (e.key === ' ' && i >= 0) { e.preventDefault(); entries()[i].click(); }
+    });
+    // Every entry opens a new tab: the menu closes, and focus stays where the browser puts it.
+    list.addEventListener('click', (e) => {
+      if ((e.target as Element).closest('[role="menuitem"]')) close(false);
+    });
+  }
+</script>
+
+<style>
+  .copy-menu {
+    position: relative;
+    flex: none;
+  }
+  .copy-menu-buttons {
+    display: inline-flex;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: var(--sl-color-black);
+    overflow: hidden;
+  }
+  .copy-menu-buttons button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.625rem;
+    border: 0;
+    font: inherit;
+    font-size: var(--sl-text-sm);
+    font-weight: 500;
+    color: var(--sl-color-white);
+    background: transparent;
+    cursor: pointer;
+  }
+  .copy-menu-buttons button:hover {
+    background: var(--sl-color-gray-6);
+  }
+  .copy-menu-buttons .copy-menu-toggle {
+    padding: 0.25rem 0.5rem;
+    border-inline-start: 1px solid var(--sl-color-gray-5);
+  }
+  .copy-menu-labels {
+    display: grid;
+  }
+  .copy-menu-labels > span {
+    grid-area: 1 / 1;
+    visibility: hidden;
+  }
+  .copy-menu-labels > .shown {
+    visibility: visible;
+  }
+  .copy-menu-buttons button:focus-visible,
+  .copy-menu-list a:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: -2px;
+  }
+  .icon {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .copy-menu-list {
+    position: absolute;
+    inset-inline-end: 0;
+    top: calc(100% + 0.375rem);
+    z-index: 30;
+    width: max-content;
+    max-width: min(20rem, calc(100vw - 2rem));
+    margin: 0;
+    padding: 0.375rem;
+    list-style: none;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.625rem;
+    background: var(--sl-color-black);
+    box-shadow: var(--sl-shadow-md);
+  }
+  .copy-menu.start .copy-menu-list {
+    inset-inline-end: auto;
+    inset-inline-start: 0;
+  }
+  .copy-menu-list[hidden] {
+    display: none;
+  }
+  .copy-menu-list li {
+    margin: 0;
+  }
+  .copy-menu-list a {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.375rem;
+    text-decoration: none;
+    color: var(--sl-color-white);
+  }
+  /* Hover and keyboard focus are highlighted; the first entry focused after a mouse click is not. */
+  .copy-menu-list a:is(:hover, :focus-visible) {
+    background: var(--sl-color-gray-6);
+  }
+  .copy-menu-list a:focus:not(:focus-visible) {
+    outline: none;
+  }
+  .label {
+    font-size: var(--sl-text-sm);
+    font-weight: 500;
+  }
+  .ext {
+    color: var(--sl-color-gray-3);
+  }
+  .hint {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-2);
+  }
+  @media print {
+    .copy-menu {
+      display: none;
+    }
+  }
+</style>
