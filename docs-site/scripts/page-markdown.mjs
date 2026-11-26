@@ -40,11 +40,12 @@ export function openFence(line) {
 }
 
 // The line that closes it: the same character, at least as many, then only spaces,
-// indented at most 3 spaces more than the opening line (whose indent is the list item's,
-// if any). A fence indented further is a line of the code.
-export function closesFence(line, fence, indent = 0) {
+// indented at most 3 spaces more than its container: the list item the block is in
+// (the column its text starts at), or the page (0). A fence indented further is a
+// line of the code.
+export function closesFence(line, fence, container = 0) {
   const m = new RegExp(`^( *)\\${fence[0]}{${fence.length},}[ \\t]*$`).exec(line);
-  return m !== null && m[1].length <= indent + 3;
+  return m !== null && m[1].length >= container && m[1].length <= container + 3;
 }
 
 // Remove what a pattern matches until nothing is left, so that removing one
@@ -133,14 +134,18 @@ export function splitLine(line, ticks = null, after = '') {
 // An HTML tag's attributes: a quoted value may hold ">".
 const ATTRS = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';
 
-/** Prose outside code spans: links absolute, inline HTML as Markdown. */
-function inline(s, base) {
+/**
+ * Prose outside code spans: links absolute, inline HTML as Markdown.
+ * `check` sees each converted part that is not code (a <code> element
+ * becomes a code span, which it does not see).
+ */
+function inline(s, base, check = () => {}) {
   s = removeAll(s, new RegExp(`<script\\b${ATTRS}>[\\s\\S]*?</script\\b[^>]*>`, 'gi'));
   s = removeAll(s, new RegExp(`<style\\b${ATTRS}>[\\s\\S]*?</style\\b[^>]*>`, 'gi'));
   // <code> becomes a code span, which the link rules below leave alone.
   return s.split(/(<code>[^<]*<\/code>)/).map((part, i) => {
     if (i % 2 === 1) return `\`${decode(part.slice(6, -7))}\``;
-    return part
+    const text = part
       .replace(/<\/?(?:sub|sup|kbd|span)>/g, '')
       .replace(/<br\s*\/?>/g, ' ')
       .replace(new RegExp(`<a\\s${ATTRS}>([^<]*)</a>`, 'g'), (tag, text) => {
@@ -153,11 +158,13 @@ function inline(s, base) {
       .replace(/\]\(([^)\s<]+)((?:\s+"[^"]*")?)\)/g, (_, t, title) => `](${absolute(t, base)}${title})`)
       .replace(/^(\s*\[[^\]]+\]:\s+)<([^<>\n]+)>/, (_, def, t) => `${def}<${absolute(t, base)}>`)
       .replace(/^(\s*\[[^\]]+\]:\s+)([^\s<]+)/, (_, def, t) => def + absolute(t, base));
+    check(text);
+    return text;
   }).join('');
 }
 
 /** An HTML element or MDX component in prose that no rule converts, or undefined. */
-const unknownTag = (prose) => [...prose.replace(/`+[^`]*`+/g, '').matchAll(/<\/?([A-Za-z][\w.-]*)(?=[\s/>])/g)]
+const unknownTag = (prose) => [...prose.matchAll(/<\/?([A-Za-z][\w.-]*)(?=[\s/>])/g)]
   .map((m) => m[1]).find((name) => /^[A-Z]/.test(name) || HTML.has(name.toLowerCase()));
 
 /**
@@ -181,12 +188,21 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
     blank = false;
   };
 
+  // What the rules do not convert fails, on prose outside code, so it never reaches a page:
+  // HTML or a component, and in MDX a {…} expression (JavaScript, which has no text form).
+  const check = (n) => (prose) => {
+    const unknown = unknownTag(prose);
+    if (unknown) fail(n, `<${unknown}> is not known to scripts/page-markdown.mjs: add a rule for it`);
+    if (mdx && /[{}]/.test(prose)) fail(n, 'an MDX expression ({…}): write it as text, or say in scripts/page-markdown.mjs what it becomes');
+  };
+
   let fence = null;            // the fence that opened the code block we are in
-  let fenceIndent = 0;         // the spaces before it
+  let fenceContainer = 0;      // the indent of the list item it is in, or 0
   let block = null;            // a multi-line HTML block we are in: { end, lines, start }
   let comment = false;         // inside an author comment (<!-- … -->)
   let ticks = null;            // the backticks of a code span that goes on to the next line
   let inList = false;          // in a list, where an indented line is part of an item, not code
+  let itemIndent = 0;          // the column where the text of the last list item starts
   const lines = body.replace(/\r\n?/g, '\n').split('\n');
   // The lines after line n up to the end of its paragraph, where a code span ends at the latest.
   const after = (n) => {
@@ -202,7 +218,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
     if (!line.trim()) ticks = null;     // a code span ends with its paragraph
     if (fence) {
       push(line, true);
-      if (closesFence(line, fence, fenceIndent)) fence = null;
+      if (closesFence(line, fence, fenceContainer)) fence = null;
       continue;
     }
     if (comment) {
@@ -229,13 +245,19 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       const indent = /^[ \t]*/.exec(line)[0].replace(/\t/g, '    ').length;
       const prevBlank = n === 0 || !lines[n - 1].trim();
       if (line.trim()) {
-        if (/^\s*(?:[-*+]|\d+[.)])\s/.test(line)) inList = true;
+        const item = /^( *)([-*+]|\d+[.)])( +)/.exec(line);
+        if (item) { inList = true; itemIndent = item[0].length; }
         else if (indent === 0) inList = false;
         else if (indent >= 4 && prevBlank && !inList) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
       }
       if (/^\s*>[\s>]*(?:`{3,}|~{3,})/.test(line)) fail(n, 'a code block in a blockquote is not supported: put it outside the quote');
       const f = openFence(line);
-      if (f) { fence = f; fenceIndent = /^ */.exec(line)[0].length; push(line, true); continue; }
+      if (f) {
+        fence = f;
+        fenceContainer = inList && /^ */.exec(line)[0].length >= itemIndent ? itemIndent : 0;
+        push(line, true);
+        continue;
+      }
       const trimmed = line.trim();
       // A diagram becomes its description.
       if (/^<svg\b/i.test(trimmed)) {
@@ -262,7 +284,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       const details = /^<details>\s*(?:<summary>(.*?)<\/summary>)?\s*$/.exec(trimmed);
       if (details) {
         if (details[1] === undefined) fail(n, '<details> needs a <summary> on the same line');
-        push(''); push(`**${inline(details[1], url)}**`); push('');
+        push(''); push(`**${inline(details[1], url, check(n))}**`); push('');
         continue;
       }
       if (trimmed === '</details>') { push(''); continue; }
@@ -276,13 +298,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
     comment = split.comment;
     line = split.parts.map(([text, code]) => {
       if (code) return text;
-      const prose = inline(text, url);
-      // HTML or a component the rules above do not know: say what it becomes before it reaches a page.
-      const unknown = unknownTag(prose);
-      // In MDX, {…} outside code is a JavaScript expression, which this converter cannot write as text.
-      if (mdx && /[{}]/.test(prose.replace(/`+[^`]*`+/g, ''))) fail(n, 'an MDX expression ({…}): write it as text, or say in scripts/page-markdown.mjs what it becomes');
-      if (unknown) fail(n, `<${unknown}> is not known to scripts/page-markdown.mjs: add a rule for it`);
-      return prose;
+      return inline(text, url, check(n));
     }).join('');
     // A line that held only author comments is left out, not written as a blank line.
     if (!line.trim() && lines[n].trim()) continue;

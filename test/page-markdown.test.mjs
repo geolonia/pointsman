@@ -45,6 +45,10 @@ test('code blocks are never changed', () => {
   // A fence indented 4 spaces more than the opening one is a line of the code, not its end.
   assert.equal(body('```\n    ```\nx\n```'), '```\n    ```\nx\n```\n');
   assert.ok(closesFence('     ```', '```', 2));
+  // The limit counts from the container (the page here), not from an indented opening fence.
+  assert.equal(body('  ```\n    ```\nx\n  ```'), '  ```\n    ```\nx\n  ```\n');
+  // In a list item, from the column its text starts at.
+  assert.equal(body('1. Step:\n\n   ```sh\n   x\n       ```\n   ```\n\n   Done.'), '1. Step:\n\n   ```sh\n   x\n       ```\n   ```\n\n   Done.\n');
   assert.ok(!closesFence('    ```', '```'));
   const code = [
     '````markdown',
@@ -104,8 +108,8 @@ test('code the converter would not see as code fails the build', () => {
   assert.throws(() => md('Text.\n\n\tcode'), /indented code block/);
   assert.throws(() => md('> ```sh\n> x\n> ```'), /blockquote/);
   // In a list, an indented line belongs to the item.
-  assert.equal(body('1. Item\n\n    More of [it](/docs/a/).\n\n        ```sh\n        x\n        ```'),
-    '1. Item\n\n    More of [it](https://pointsman.net/docs/a/).\n\n        ```sh\n        x\n        ```\n');
+  assert.equal(body('1. Item\n\n    More of [it](/docs/a/).\n\n   ```sh\n   x\n   ```\n   - Nested\n\n     ```sh\n     y\n     ```'),
+    '1. Item\n\n    More of [it](https://pointsman.net/docs/a/).\n\n   ```sh\n   x\n   ```\n   - Nested\n\n     ```sh\n     y\n     ```\n');
   // Windows line ends are read as plain ones.
   assert.equal(body('```\r\nx\r\n```\r\n'), '```\nx\n```\n');
 });
@@ -120,6 +124,8 @@ test('links become absolute URLs; external links and code stay', () => {
   assert.equal(body('[b](<../a b/>) and\n[c]: </y z/> "t"'), '[b](<https://pointsman.net/docs/how-to/a%20b/>) and\n[c]: <https://pointsman.net/y%20z/> "t"\n');
   // <code> becomes a code span, and its content stays as it is.
   assert.equal(body('<code>&lt;div&gt;</code> text'), '`<div>` text\n');
+  // A backtick with no partner does not hide a tag after it from the check.
+  assert.throws(() => md('the ` key <div> <code>x</code>'), /<div> is not known/);
   assert.equal(body('<code>[a](/y)</code> [b](/y)'), '`[a](/y)` [b](https://pointsman.net/y)\n');
 });
 
@@ -140,6 +146,7 @@ test('unknown HTML and MDX components fail the build; other words in angle brack
   assert.throws(() => md('<details>'), /needs a <summary>/);
   assert.throws(() => md('import Card from "x";', { mdx: true }), /MDX import/);
   assert.throws(() => md('Answer: {1 + 1}', { mdx: true }), /MDX expression/);
+  assert.throws(() => md('<details><summary>Answer: {1 + 1}</summary>', { mdx: true }), /MDX expression/);
   // Braces in code, in Markdown, and a heading id stay allowed.
   assert.equal(body('`{x}` and\n## H {#h}', { mdx: true }), '`{x}` and\n## H\n');
   assert.equal(body('Answer: {1 + 1}'), 'Answer: {1 + 1}\n');

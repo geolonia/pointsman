@@ -116,6 +116,7 @@ test('every synced page converts, and keeps every line of every code block', () 
       if (!fence && !f) continue;
       at = out.indexOf(`\n${line}\n`, at);
       assert.ok(at >= 0, `${file}: code line ${JSON.stringify(line)} is missing or changed`);
+      // Every fence in the docs is in a list item at most, closed at the opening fence's indent.
       if (f) { fence = f; indent = /^ */.exec(line)[0].length; }
       else if (closesFence(line, fence, indent)) fence = null;
     }
