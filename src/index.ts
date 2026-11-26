@@ -16,7 +16,7 @@ import { checkServerUrl, DEFAULT_TIMEOUT_MS, ModelServerAdapter, parseModelList 
 import { MockAdapter } from './models/mock';
 import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
 import { MemoryProfileStore, type ProfileStore } from './profiles/store';
-import { purgeOldDecisions, retentionDays } from './retention';
+import { runRetention } from './retention';
 import { KvProfileStore } from './profiles/store-kv';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
@@ -184,8 +184,6 @@ function factsFor(env: PointsmanEnv): FactProvider | undefined {
 export function depsFor(env: PointsmanEnv): Deps {
   if (!env.TOKENS) throw new ConfigError('no TOKENS binding');
   if (!env.DB) throw new ConfigError('no DB binding');
-  // Checked with every request too, so a bad value shows at once, not only in the cron.
-  retentionDays(env.DECISION_LOG_DAYS);
   return {
     store: storeFor(env),
     tokens: new KvTokenStore(env.TOKENS),
@@ -350,18 +348,15 @@ export default {
   // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are
   // due, remove expired OAuth records, and with DECISION_LOG_DAYS delete one
   // batch of decisions older than that. A broken config (for example half of
-  // the OAuth settings) fails here as it does for requests.
+  // the OAuth settings) fails here as it does for requests; a bad
+  // DECISION_LOG_DAYS only stops the deletion (src/retention.ts).
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const deps = depsFor(env as PointsmanEnv);
     ctx.waitUntil(retryDueCallbacks(deps).then((n) => {
       if (n > 0) console.log(`retried ${n} callbacks`);
     }));
-    const days = retentionDays((env as PointsmanEnv).DECISION_LOG_DAYS);
-    if (days !== undefined) {
-      ctx.waitUntil(purgeOldDecisions(deps.log, days).then((n) => {
-        if (n > 0) console.log(`deleted ${n} decisions older than ${days} days`);
-      }));
-    }
+    // Only here: a bad value stops the deletion (logged), never the API.
+    ctx.waitUntil(runRetention(deps.log, (env as PointsmanEnv).DECISION_LOG_DAYS));
     if (deps.oauth) ctx.waitUntil(purgeExpired(env as unknown as { OAUTH_KV: KVNamespace }, deps.oauth));
   },
 } satisfies ExportedHandler<Env, unknown>;

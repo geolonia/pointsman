@@ -2642,8 +2642,9 @@ the receivers must do for §1.5–§1.11 to hold.
   docs/github-connector.md "Answering in the pull request", Personal data:
   "the operator decides how long")*; not yet released: set it with
   `DECISION_LOG_DAYS`, after which the cron deletes older decisions and
-  their feedback, except those whose review or callback is still pending
-  *(documented, docs/decision-log.md "Retention")*.
+  their feedback, except those whose review or callback is still pending;
+  close stale reviews so they go too *(documented, docs/decision-log.md
+  "Retention")*.
 - **`R-CALLBACK-SECRET`** — set `CALLBACK_SECRET` with `wrangler secret put`
   before clients use `callback_url`; without it no callback is sent
   *(documented, docs/deployment.md "Set the callback secret")*.
