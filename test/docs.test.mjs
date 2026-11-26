@@ -114,8 +114,10 @@ test('every synced page converts, and keeps every line of every code block', () 
     for (const line of source.split('\n')) {
       const f = fence ? null : openFence(line);
       if (!fence && !f) continue;
-      at = out.indexOf(`\n${line}\n`, at);
-      assert.ok(at >= 0, `${file}: code line ${JSON.stringify(line)} is missing or changed`);
+      const found = out.indexOf(`\n${line}\n`, at);
+      assert.ok(found >= 0, `${file}: code line ${JSON.stringify(line)} is missing or changed`);
+      // The next line is searched after this one, so a repeated line must be there twice.
+      at = found + line.length + 1;
       // Every fence in the docs is in a list item at most, closed at the opening fence's indent.
       if (f) { fence = f; indent = /^ */.exec(line)[0].length; }
       else if (closesFence(line, fence, indent)) fence = null;
