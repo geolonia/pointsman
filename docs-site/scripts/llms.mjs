@@ -21,7 +21,7 @@ export function englishPages(dir = content) {
     .map((f) => String(f).split('\\').join('/'))
     .filter((f) => /\.mdx?$/.test(f) && !f.startsWith('ja/'))
     .map((file) => {
-      const text = readFileSync(join(dir, file), 'utf8');
+      const text = readFileSync(join(dir, file), 'utf8').replace(/\r\n?/g, '\n');
       const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
       if (!m) throw new Error(`${file}: no front matter`);
       const data = parse(m[1]);

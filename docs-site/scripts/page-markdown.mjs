@@ -71,9 +71,11 @@ const HTML = new Set(('a abbr address article aside audio b bdi bdo blockquote b
  * inside a comment opens no code span, and a comment inside a code span is
  * code. `ticks` is the backtick run of a code span still open from the line
  * before; the result says whether one is still open, and whether a comment
- * goes on to the next line.
+ * goes on to the next line. `after` is the rest of the paragraph: a backtick
+ * run opens a code span only if the same run closes it there or in this
+ * line; otherwise it is a plain backtick.
  */
-export function splitLine(line, ticks = null) {
+export function splitLine(line, ticks = null, after = '') {
   const parts = [];      // [text, isCode]
   let prose = '';
   let i = 0;
@@ -105,10 +107,16 @@ export function splitLine(line, ticks = null) {
       continue;
     }
     if (tick < 0) { prose += line.slice(i); break; }
+    const run = /^`+/.exec(line.slice(tick))[0];
+    const rest = `${line.slice(tick + run.length)}\n${after}`;
+    if (![...rest.matchAll(/`+/g)].some((m) => m[0].length === run.length)) {
+      prose += line.slice(i, tick + run.length);
+      i = tick + run.length;
+      continue;
+    }
     prose += line.slice(i, tick);
     parts.push([prose, false]);
     prose = '';
-    const run = /^`+/.exec(line.slice(tick))[0];
     ticks = run.length;
     parts.push([run, true]);
     i = tick + run.length;
@@ -117,17 +125,30 @@ export function splitLine(line, ticks = null) {
   return { parts, ticks, comment: false };
 }
 
+// An HTML tag's attributes: a quoted value may hold ">".
+const ATTRS = '(?:[^>"\']|"[^"]*"|\'[^\']*\')*';
+
 /** Prose outside code spans: links absolute, inline HTML as Markdown. */
 function inline(s, base) {
-  s = removeAll(s, /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi);
-  s = removeAll(s, /<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi);
-  return s
-    .replace(/<code>([^<]*)<\/code>/g, (_, c) => `\`${decode(c)}\``)
-    .replace(/<\/?(?:sub|sup|kbd|span)>/g, '')
-    .replace(/<br\s*\/?>/g, ' ')
-    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([^<]*)<\/a>/g, (_, href, text) => `[${text}](${absolute(decode(href), base)})`)
-    .replace(/\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g, (_, t, title) => `](${absolute(t, base)}${title})`)
-    .replace(/^(\s*\[[^\]]+\]:\s+)(\S+)/, (_, def, t) => def + absolute(t, base));
+  s = removeAll(s, new RegExp(`<script\\b${ATTRS}>[\\s\\S]*?</script\\b[^>]*>`, 'gi'));
+  s = removeAll(s, new RegExp(`<style\\b${ATTRS}>[\\s\\S]*?</style\\b[^>]*>`, 'gi'));
+  // <code> becomes a code span, which the link rules below leave alone.
+  return s.split(/(<code>[^<]*<\/code>)/).map((part, i) => {
+    if (i % 2 === 1) return `\`${decode(part.slice(6, -7))}\``;
+    return part
+      .replace(/<\/?(?:sub|sup|kbd|span)>/g, '')
+      .replace(/<br\s*\/?>/g, ' ')
+      .replace(new RegExp(`<a\\s${ATTRS}>([^<]*)</a>`, 'g'), (tag, text) => {
+        const href = /\shref=(?:"([^"]*)"|'([^']*)')/.exec(tag);
+        if (!href) return tag;
+        return `[${text}](${absolute(decode(href[1] ?? href[2]), base)})`;
+      })
+      // Link destinations: [a](b "title"), [a](<b c>), and reference definitions.
+      .replace(/\]\(<([^<>\n]+)>/g, (_, t) => `](<${absolute(t, base)}>`)
+      .replace(/\]\(([^)\s<]+)((?:\s+"[^"]*")?)\)/g, (_, t, title) => `](${absolute(t, base)}${title})`)
+      .replace(/^(\s*\[[^\]]+\]:\s+)<([^<>\n]+)>/, (_, def, t) => `${def}<${absolute(t, base)}>`)
+      .replace(/^(\s*\[[^\]]+\]:\s+)([^\s<]+)/, (_, def, t) => def + absolute(t, base));
+  }).join('');
 }
 
 /** An HTML element or MDX component in prose that no rule converts, or undefined. */
@@ -159,7 +180,17 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
   let block = null;            // a multi-line HTML block we are in: { end, lines, start }
   let comment = false;         // inside an author comment (<!-- … -->)
   let ticks = null;            // the backticks of a code span that goes on to the next line
-  const lines = body.split('\n');
+  let inList = false;          // in a list, where an indented line is part of an item, not code
+  const lines = body.replace(/\r\n?/g, '\n').split('\n');
+  // The lines after line n up to the end of its paragraph, where a code span ends at the latest.
+  const after = (n) => {
+    const rest = [];
+    for (let k = n + 1; k < lines.length; k++) {
+      if (!lines[k].trim() || /^\s*(?:[-*+]\s|\d+[.)]\s|#{1,6}\s|\||>|`{3,}|~{3,})/.test(lines[k])) break;
+      rest.push(lines[k]);
+    }
+    return rest.join('\n');
+  };
   for (let n = 0; n < lines.length; n++) {
     let line = lines[n];
     if (!line.trim()) ticks = null;     // a code span ends with its paragraph
@@ -188,6 +219,15 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       continue;
     }
     if (ticks === null) {
+      // Code that this converter would not see as code fails, instead of being changed.
+      const indent = /^[ \t]*/.exec(line)[0].replace(/\t/g, '    ').length;
+      const prevBlank = n === 0 || !lines[n - 1].trim();
+      if (line.trim()) {
+        if (/^\s*(?:[-*+]|\d+[.)])\s/.test(line)) inList = true;
+        else if (indent === 0) inList = false;
+        else if (indent >= 4 && prevBlank && !inList) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
+      }
+      if (/^\s*>[\s>]*(?:`{3,}|~{3,})/.test(line)) fail(n, 'a code block in a blockquote is not supported: put it outside the quote');
       const f = openFence(line);
       if (f) { fence = f; push(line, true); continue; }
       const trimmed = line.trim();
@@ -225,7 +265,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       line = line.replace(/^(#{1,6}\s.*?)\s*\{#[^}\s]+\}\s*$/, '$1');
     }
 
-    const split = splitLine(line, ticks);
+    const split = splitLine(line, ticks, after(n));
     ticks = split.ticks;
     comment = split.comment;
     line = split.parts.map(([text, code]) => {
@@ -252,7 +292,7 @@ function source(content, slug) {
   const base = join(content, slug);
   for (const file of [`${base}.md`, `${base}.mdx`, join(base, 'index.md'), join(base, 'index.mdx')]) {
     if (!existsSync(file)) continue;
-    const text = readFileSync(file, 'utf8');
+    const text = readFileSync(file, 'utf8').replace(/\r\n?/g, '\n');
     const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
     if (!m) throw new Error(`${file}: no front matter`);
     return { file, data: parse(m[1]), body: text.slice(m[0].length), mdx: file.endsWith('.mdx'), firstLine: m[0].split('\n').length };
@@ -286,6 +326,7 @@ export function writePageMarkdown(dist = join(siteDir, 'dist'), content = join(s
     const md = markdownPath(path);
     const href = new URL(md, SITE).href;
     const html = readFileSync(join(dist, page), 'utf8');
+    // As Astro writes it; a change in how it writes tags shows here as a missing link.
     if (!html.includes(`<link rel="alternate" type="text/markdown" href="${href}"/>`)) errors.push(`${path}: the head does not link ${href} (src/route-data.ts)`);
     if (!src.data.title || !src.data.description) { errors.push(`${src.file}: a title and a description are needed`); continue; }
     try {

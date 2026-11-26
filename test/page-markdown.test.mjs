@@ -85,12 +85,32 @@ test('author comments are left out, also across lines and when removing one make
 
 test('code spans go on over lines, and stay as they are', () => {
   assert.deepEqual(splitLine('a `b` c').parts, [['a ', false], ['`', true], ['b`', true], [' c', false]]);
-  const r = splitLine('run `x --flag <id>');
-  assert.equal(r.ticks, 1);
+  assert.equal(splitLine('run `x --flag <id>', null, 'more` here').ticks, 1);
+  assert.equal(splitLine('run `x --flag <id>', null, 'no closer').ticks, null);
   assert.equal(body('run `x --flag\n<details> y` and [l](/docs/a/)'), 'run `x --flag\n<details> y` and [l](https://pointsman.net/docs/a/)\n');
   // A blank line ends the paragraph, and the code span with it.
   assert.equal(body('a `open\n\n[l](/docs/a/)'), 'a `open\n\n[l](https://pointsman.net/docs/a/)\n');
   assert.equal(body('``a ` b`` [l](#x)'), '``a ` b`` [l](https://pointsman.net/docs/how-to/x/#x)\n');
+});
+
+test('a backtick with no closing one in its paragraph is a plain backtick', () => {
+  // Without this the rest of the paragraph would be taken as code and left unconverted.
+  assert.equal(body('- the ` key\n- see [a](/docs/y/) <!-- c -->'), '- the ` key\n- see [a](https://pointsman.net/docs/y/)\n');
+  assert.throws(() => md('- the ` key\n- <Card>'), /<Card> is not known/);
+  assert.equal(body('a ` b\n\n[l](/docs/a/) `c`'), 'a ` b\n\n[l](https://pointsman.net/docs/a/) `c`\n');
+  // A run closes only with a run of the same length.
+  assert.equal(body('``a ` [l](/x)'), '``a ` [l](https://pointsman.net/x)\n');
+});
+
+test('code the converter would not see as code fails the build', () => {
+  assert.throws(() => md('Text.\n\n    [a](/docs/y/)'), /indented code block/);
+  assert.throws(() => md('Text.\n\n\tcode'), /indented code block/);
+  assert.throws(() => md('> ```sh\n> x\n> ```'), /blockquote/);
+  // In a list, an indented line belongs to the item.
+  assert.equal(body('1. Item\n\n    More of [it](/docs/a/).\n\n        ```sh\n        x\n        ```'),
+    '1. Item\n\n    More of [it](https://pointsman.net/docs/a/).\n\n        ```sh\n        x\n        ```\n');
+  // Windows line ends are read as plain ones.
+  assert.equal(body('```\r\nx\r\n```\r\n'), '```\nx\n```\n');
 });
 
 test('links become absolute URLs; external links and code stay', () => {
@@ -99,6 +119,10 @@ test('links become absolute URLs; external links and code stay', () => {
   assert.equal(body('[ref]: /docs/b/'), '[ref]: https://pointsman.net/docs/b/\n');
   assert.equal(body('<a href="/docs/b/">B</a>'), '[B](https://pointsman.net/docs/b/)\n');
   assert.equal(body('<https://x.org/>'), '<https://x.org/>\n');
+  assert.equal(body('<a title="a>b" href="/docs/b/">B</a>'), '[B](https://pointsman.net/docs/b/)\n');
+  assert.equal(body('[b](<../a b/>) and\n[c]: </y z/> "t"'), '[b](<https://pointsman.net/docs/how-to/a%20b/>) and\n[c]: <https://pointsman.net/y%20z/> "t"\n');
+  // <code> becomes a code span, and its content stays as it is.
+  assert.equal(body('<code>[a](/y)</code> [b](/y)'), '`[a](/y)` [b](https://pointsman.net/y)\n');
 });
 
 test('diagrams become their description; details a bold line; heading ids, scripts and styles go', () => {
