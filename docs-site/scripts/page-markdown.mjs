@@ -251,8 +251,11 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
           // A new item ends the items it is not inside of (its siblings and their children).
           items = items.filter((col) => col <= item[1].length);
           items.push(item[0].length);
-        } else if (indent === 0) items = [];
-        else if (indent >= 4 && prevBlank && !items.length) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
+        } else {
+          // A line less indented than an item's text ends that item (back in its parent, or out of the list).
+          items = items.filter((col) => col <= indent);
+          if (indent >= 4 && prevBlank && !items.length) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
+        }
       }
       if (/^\s*>[\s>]*(?:`{3,}|~{3,})/.test(line)) fail(n, 'a code block in a blockquote is not supported: put it outside the quote');
       const f = openFence(line);
@@ -272,6 +275,8 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
           const label = attr(svg, 'aria-label') ?? /<title>([\s\S]*?)<\/title>/.exec(svg)?.[1];
           if (!label) fail(at, 'a diagram (<svg>) needs an aria-label or a <title>');
           check(at)(label);
+          // In MDX, {…} anywhere in the diagram (a <title> next to an aria-label, an attribute) is an expression too.
+          if (mdx && /[{}]/.test(svg)) fail(at, 'an MDX expression ({…}) in a diagram: write it as text');
           push(''); push(`_${t.diagram}: ${decode(label.trim())}_`); push('');
         };
         block = { end: /<\/svg\s*>/i, lines: [], done };
