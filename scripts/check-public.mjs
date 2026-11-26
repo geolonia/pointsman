@@ -16,6 +16,7 @@ import { basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseJsonc, printParseErrorCode } from 'jsonc-parser';
 import { parse as parseYaml } from 'yaml';
+import { exit } from './lib/exit.mjs';
 
 /** Folders where profiles may live. */
 const PROFILE_FOLDERS = ['examples/profiles/', 'test/fixtures/', 'template/config-repo/profiles/'];
@@ -121,7 +122,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   if (problems.length > 0) {
     console.error(`Organization-specific data in a public repository:\n  ${problems.join('\n  ')}`);
-    process.exit(1);
+    await exit(1);
   }
   console.log(`check-public: ${files.length} files, nothing found.`);
 }

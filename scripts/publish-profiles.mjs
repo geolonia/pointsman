@@ -24,16 +24,17 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from '../src/log.ts';
 import { factModulesError, loadProfileSet, validateProfile } from './lib/profile.mjs';
 import { wrangler } from './lib/wrangler.mjs';
+import { exit } from './lib/exit.mjs';
 
 // A broken engine.json stops the script with one line, not a stack trace.
 if (factModulesError()) {
   console.error(factModulesError());
-  process.exit(2);
+  await exit(2);
 }
 
-function fail(message, code = 1) {
+async function fail(message, code = 1) {
   console.error(message);
-  process.exit(code);
+  return exit(code);
 }
 
 let values;
@@ -49,10 +50,10 @@ try {
     },
   }));
 } catch (err) {
-  fail(err.message, 2);
+  await fail(err.message, 2);
 }
-if (!values.dir) fail('Usage: publish-profiles.mjs --dir <profiles> (--local|--remote) [--config f] [--env e] [--dry-run]', 2);
-if (values.local === values.remote) fail('Give exactly one of --local or --remote.', 2);
+if (!values.dir) await fail('Usage: publish-profiles.mjs --dir <profiles> (--local|--remote) [--config f] [--env e] [--dry-run]', 2);
+if (values.local === values.remote) await fail('Give exactly one of --local or --remote.', 2);
 
 const where = [
   values.local ? '--local' : '--remote',
@@ -76,7 +77,7 @@ let set;
 try {
   set = loadProfileSet([values.dir]);
 } catch (err) {
-  fail(err.message, 2);
+  await fail(err.message, 2);
 }
 const byId = set.byId;
 for (const { path, profile, error } of set.entries) {
@@ -88,8 +89,8 @@ for (const { path, profile, error } of set.entries) {
   }
 }
 errors.push(...set.duplicates);
-if (errors.length > 0) fail(`Invalid profiles; nothing was published.\n${errors.join('\n')}`);
-if (profiles.length === 0) fail(`No profiles in ${values.dir}; nothing was published.`);
+if (errors.length > 0) await fail(`Invalid profiles; nothing was published.\n${errors.join('\n')}`);
+if (profiles.length === 0) await fail(`No profiles in ${values.dir}; nothing was published.`);
 
 // 2. Check every version against the record in D1, then register the new
 // ones. Ids match [a-z0-9-], versions are integers and hashes hex (validated
@@ -103,19 +104,19 @@ let registered;
 try {
   registered = readRegistered();
 } catch (err) {
-  fail(err.message);
+  await fail(err.message);
 }
 let byKey = new Map(registered.map((r) => [`${r.profile_id}:${r.version}`, r]));
 const conflicts = profiles.filter((p) => byKey.has(`${p.id}:${p.version}`) && byKey.get(`${p.id}:${p.version}`).content_hash !== hash(p));
 if (conflicts.length > 0) {
-  fail(`Already published with different content (increase "version"; nothing was published):\n  ${conflicts.map((p) => `${p.id} version ${p.version}`).join('\n  ')}`);
+  await fail(`Already published with different content (increase "version"; nothing was published):\n  ${conflicts.map((p) => `${p.id} version ${p.version}`).join('\n  ')}`);
 }
 // Versions only go up; checked before anything is registered.
 for (const p of profiles) {
   const published = registered.filter((r) => r.profile_id === p.id).map((r) => Number(r.version));
   const latest = Math.max(0, ...published);
   if (p.version < latest) {
-    fail(`${p.id}: the repository has version ${p.version}, but version ${latest} is already published; versions only go up. Nothing was published.`);
+    await fail(`${p.id}: the repository has version ${p.version}, but version ${latest} is already published; versions only go up. Nothing was published.`);
   }
 }
 const toWrite = profiles.filter((p) => !byKey.has(`${p.id}:${p.version}`));
@@ -128,7 +129,7 @@ if (toWrite.length > 0 && !values['dry-run']) {
     d1(toWrite.map((p) => `INSERT INTO profile_versions VALUES ('${p.id}', ${p.version}, '${hash(p)}', '${now}');`).join('\n'));
     registered = readRegistered();
   } catch (err) {
-    fail(`Registering the new versions failed; nothing was published (another deploy may have run at the same time):\n${err.message}`);
+    await fail(`Registering the new versions failed; nothing was published (another deploy may have run at the same time):\n${err.message}`);
   }
 }
 
@@ -160,7 +161,7 @@ for (const [id, set] of [...versions].sort(([a], [b]) => a.localeCompare(b))) {
 
 console.log(`New: ${toWrite.map((p) => `${p.id}@${p.version}`).join(', ') || '(none)'}`);
 console.log(`Index: ${index.map((s) => `${s.id}@${s.version}`).join(', ')}`);
-if (values['dry-run']) process.exit(0);
+if (values['dry-run']) await exit(0);
 
 // 4. Write profiles first, then the index.
 const dir = mkdtempSync(join(tmpdir(), 'pointsman-publish-'));
@@ -176,7 +177,7 @@ try {
   writeFileSync(indexFile, JSON.stringify(index));
   kv(['key', 'put', 'index', '--path', indexFile]);
 } catch (err) {
-  fail(err.message);
+  await fail(err.message);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

@@ -19,11 +19,12 @@ import { parseArgs } from 'node:util';
 import { checkServerUrl } from '@pointsman/module-api';
 import { factModulesError, loadProfileSet, parseProfile, validateProfile } from './lib/profile.mjs';
 import { explainProfile } from '../src/explain.ts';
+import { exit } from './lib/exit.mjs';
 
 // A broken engine.json stops the script with one line, not a stack trace.
 if (factModulesError()) {
   console.error(factModulesError());
-  process.exit(2);
+  await exit(2);
 }
 
 const USAGE = 'Usage: replay-profile <file> --url <url> [--limit N] [--version N] [--with <file-or-directory>]... [--lang en|ja] [--json]';
@@ -43,26 +44,26 @@ try {
   });
 } catch (err) {
   console.error(`${err.message}\n${USAGE}`);
-  process.exit(2);
+  await exit(2);
 }
 const { positionals, values } = args;
 const whole = (s) => /^[1-9][0-9]{0,8}$/.test(s ?? '');
 if (positionals.length !== 1 || !values.url || !['en', 'ja'].includes(values.lang) || !whole(values.limit) || Number(values.limit) > 500
   || (values.version !== undefined && !whole(values.version))) {
   console.error(USAGE);
-  process.exit(2);
+  await exit(2);
 }
 const token = process.env.POINTSMAN_TOKEN;
 if (!token) {
   console.error('POINTSMAN_TOKEN is needed: a token that may use the profile (not a test token)');
-  process.exit(2);
+  await exit(2);
 }
 // The token is sent with the request: https, or http only on this machine;
 // no credentials, query or fragment.
 const checked = checkServerUrl(values.url);
 if (!checked.ok) {
   console.error(`--url ${checked.error}`);
-  process.exit(2);
+  await exit(2);
 }
 // With a trailing slash, so the path below is relative to it (a path prefix, a proxy, is kept).
 const base = new URL(`${checked.value}/`);
@@ -83,13 +84,13 @@ try {
   }
 } catch (err) {
   console.error(`${file}: ${err.message.split('\n')[0]}`);
-  process.exit(1);
+  await exit(1);
 }
 const errors = validateProfile(profile, { fileName: file, profiles: others });
 if (errors.length) {
   console.error(`${file} is not valid, so it is not replayed:`);
   for (const e of errors) console.error(`  ${e}`);
-  process.exit(1);
+  await exit(1);
 }
 
 const body = {
@@ -113,19 +114,19 @@ try {
   result = await res.json().catch(() => null);
 } catch (err) {
   console.error(`The deployment could not be reached: ${err.message}`);
-  process.exit(1);
+  await exit(1);
 }
 if (!res.ok || result === null || typeof result !== 'object') {
   console.error(`The deployment answered ${res.status}${result?.error ? `: ${result.error.code}: ${result.error.message}` : ' (not JSON)'}`);
-  process.exit(1);
+  await exit(1);
 }
 if (!Array.isArray(result.transitions) || !Array.isArray(result.changes) || typeof result.people !== 'object' || result.people === null) {
   console.error('The deployment answered with something that is not a replay (an older Pointsman?)');
-  process.exit(1);
+  await exit(1);
 }
 if (values.json) {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  process.exit(0);
+  await exit(0);
 }
 
 const explained = explainProfile(profile, values.lang, Object.fromEntries(others));
