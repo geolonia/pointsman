@@ -57,6 +57,37 @@ test('the language check fails on different headings, code blocks or a missing p
   assert.match(r.stderr, /docs\/reference\/b\.md: no Japanese version/);
 });
 
+test('no page has a placeholder in prose that the site would hide as an HTML tag', () => {
+  // "answered by <login>" outside code is an unknown HTML element on the web page, which the
+  // browser hides. Every tag in prose must be HTML the docs really use; anything else goes in code.
+  const sync = run('docs-site/scripts/sync.mjs');
+  assert.equal(sync.status, 0, sync.stderr);
+  const content = join(root, 'docs-site/src/content/docs');
+  const allowed = new Set(['details', 'summary', 'code', 'sub', 'br', 'a']);
+  for (const file of readdirSync(content, { recursive: true }).map(String).filter((f) => /\.mdx?$/.test(f))) {
+    let text = readFileSync(join(content, file), 'utf8')
+      .replace(/^[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*\1[ \t]*$/gm, '');  // code blocks, also indented ones
+    // Comments go: only the text after each "-->" is kept (an unclosed comment hides the rest).
+    text = text.split('<!--').map((part, i) => {
+      if (i === 0) return part;
+      const end = part.indexOf('-->');
+      return end < 0 ? '' : part.slice(end + 3);
+    }).join('');
+    // Diagrams go, until none is left.
+    for (let before; before !== text;) {
+      before = text;
+      text = text.replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, '');
+    }
+    const prose = text
+      .split(/\n[ \t]*\n/)                                                  // per paragraph: a code span may wrap lines
+      .map((p) => p.replace(/(`+)[\s\S]*?\1/g, ''))
+      .join('\n\n');
+    for (const m of prose.matchAll(/<\/?([A-Za-z][^\s>/]*)/g)) {
+      assert.ok(allowed.has(m[1].toLowerCase()), `${file}: <${m[1]}…> in prose; write it in code (\`<${m[1]}>\`)`);
+    }
+  }
+});
+
 test('the committed reference pages do not name the engine version, so a release does not change them', () => {
   const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   for (const dir of ['docs/reference', 'docs/ja/reference']) {

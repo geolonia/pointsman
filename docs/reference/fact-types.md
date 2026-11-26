@@ -253,8 +253,8 @@ Settings in a profile, besides `name`, `type` and `at`:
 
 | Setting | Type | Required | Description |
 | --- | --- | --- | --- |
-| `app` | string | yes | For github_app_approval: the GitHub App's slug; its bot account is "<slug>[bot]". |
-| `bot_id` | integer | no | For github_app_approval: the account id of the app's bot (GET /users/<slug>[bot]); when given, it must match too. |
+| `app` | string | yes | For github_app_approval: the GitHub App's slug; its bot account is "&lt;slug>[bot]". |
+| `bot_id` | integer | no | For github_app_approval: the account id of the app's bot (GET /users/&lt;slug>[bot]); when given, it must match too. |
 
 Missing as `no_pr` when the request has no value at `at` (no pull request in the request). A lookup gives up after 5 s.
 
