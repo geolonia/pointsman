@@ -135,7 +135,8 @@ a day, so a large backlog takes several runs to clear the first time.
 How long to keep decisions is the deployment's decision. They can hold
 personal data: references, answers, facts, and with `log.store_state` the
 state. For a high-risk system, the EU AI Act asks for at least six months
-(Art. 19, 26(6)), so set at least `183`.
+(Art. 19, 26(6)). Six calendar months can be 184 days (1 July to 1 January),
+and the setting counts days, so set at least `185`.
 
 Exceptions and effects:
 
