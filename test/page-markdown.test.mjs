@@ -47,6 +47,8 @@ test('code blocks are never changed', () => {
   assert.ok(closesFence('     ```', '```', 2));
   // The limit counts from the container (the page here), not from an indented opening fence.
   assert.equal(body('  ```\n    ```\nx\n  ```'), '  ```\n    ```\nx\n  ```\n');
+  // Back from a nested list, the fence belongs to the parent item again.
+  assert.equal(body('1. Step\n\n   - Nested\n\n   ```sh\n   echo ok\n    ```\n\nDone.'), '1. Step\n\n   - Nested\n\n   ```sh\n   echo ok\n    ```\n\nDone.\n');
   // In a list item, from the column its text starts at.
   assert.equal(body('1. Step:\n\n   ```sh\n   x\n       ```\n   ```\n\n   Done.'), '1. Step:\n\n   ```sh\n   x\n       ```\n   ```\n\n   Done.\n');
   assert.ok(!closesFence('    ```', '```'));
@@ -147,6 +149,8 @@ test('unknown HTML and MDX components fail the build; other words in angle brack
   assert.throws(() => md('import Card from "x";', { mdx: true }), /MDX import/);
   assert.throws(() => md('Answer: {1 + 1}', { mdx: true }), /MDX expression/);
   assert.throws(() => md('<details><summary>Answer: {1 + 1}</summary>', { mdx: true }), /MDX expression/);
+  assert.equal(body('<details><summary>`{x}` and <code>{y}</code></summary>', { mdx: true }), '**`{x}` and `{y}`**\n');
+  assert.throws(() => md('<svg><title>{1 + 1}</title></svg>', { mdx: true }), /MDX expression/);
   // Braces in code, in Markdown, and a heading id stay allowed.
   assert.equal(body('`{x}` and\n## H {#h}', { mdx: true }), '`{x}` and\n## H\n');
   assert.equal(body('Answer: {1 + 1}'), 'Answer: {1 + 1}\n');

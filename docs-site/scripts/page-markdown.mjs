@@ -201,8 +201,9 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
   let block = null;            // a multi-line HTML block we are in: { end, lines, start }
   let comment = false;         // inside an author comment (<!-- … -->)
   let ticks = null;            // the backticks of a code span that goes on to the next line
-  let inList = false;          // in a list, where an indented line is part of an item, not code
-  let itemIndent = 0;          // the column where the text of the last list item starts
+  // The open list items, outermost first: the column where each one's text starts. In a
+  // list, an indented line is part of an item, not code.
+  let items = [];
   const lines = body.replace(/\r\n?/g, '\n').split('\n');
   // The lines after line n up to the end of its paragraph, where a code span ends at the latest.
   const after = (n) => {
@@ -246,15 +247,20 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       const prevBlank = n === 0 || !lines[n - 1].trim();
       if (line.trim()) {
         const item = /^( *)([-*+]|\d+[.)])( +)/.exec(line);
-        if (item) { inList = true; itemIndent = item[0].length; }
-        else if (indent === 0) inList = false;
-        else if (indent >= 4 && prevBlank && !inList) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
+        if (item) {
+          // A new item ends the items it is not inside of (its siblings and their children).
+          items = items.filter((col) => col <= item[1].length);
+          items.push(item[0].length);
+        } else if (indent === 0) items = [];
+        else if (indent >= 4 && prevBlank && !items.length) fail(n, 'an indented code block: use a fenced one (```), which stays as it is');
       }
       if (/^\s*>[\s>]*(?:`{3,}|~{3,})/.test(line)) fail(n, 'a code block in a blockquote is not supported: put it outside the quote');
       const f = openFence(line);
       if (f) {
         fence = f;
-        fenceContainer = inList && /^ */.exec(line)[0].length >= itemIndent ? itemIndent : 0;
+        // The innermost open item whose text column the fence is at or beyond.
+        const at = /^ */.exec(line)[0].length;
+        fenceContainer = items.findLast((col) => col <= at) ?? 0;
         push(line, true);
         continue;
       }
@@ -265,6 +271,7 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
         const done = (svg) => {
           const label = attr(svg, 'aria-label') ?? /<title>([\s\S]*?)<\/title>/.exec(svg)?.[1];
           if (!label) fail(at, 'a diagram (<svg>) needs an aria-label or a <title>');
+          check(at)(label);
           push(''); push(`_${t.diagram}: ${decode(label.trim())}_`); push('');
         };
         block = { end: /<\/svg\s*>/i, lines: [], done };
@@ -284,7 +291,9 @@ export function pageMarkdown({ title, description, body, url, lang = 'en', fallb
       const details = /^<details>\s*(?:<summary>(.*?)<\/summary>)?\s*$/.exec(trimmed);
       if (details) {
         if (details[1] === undefined) fail(n, '<details> needs a <summary> on the same line');
-        push(''); push(`**${inline(details[1], url, check(n))}**`); push('');
+        // Code spans in the summary stay as they are; the rest is converted and checked.
+        const summary = splitLine(details[1]).parts.map(([text, code]) => (code ? text : inline(text, url, check(n)))).join('');
+        push(''); push(`**${summary}**`); push('');
         continue;
       }
       if (trimmed === '</details>') { push(''); continue; }
