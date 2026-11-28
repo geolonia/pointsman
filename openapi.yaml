@@ -75,7 +75,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '413':
-          description: The request body is larger than 14 MiB (room for Clef's 13 MiB model request with images).
+          description: |
+            The request body is larger than 14 MiB (room for Clef's 13 MiB model request with images),
+            or the state is larger than 1 MiB: the state the model gets, as JSON in UTF-8, after the
+            profile's `input` mapping and without images.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -483,7 +486,10 @@ components:
           description: |
             What the model decides about: free text, or any JSON object or array.
             When the profile has an `input` mapping, this is the raw client
-            payload the mapping reads from.
+            payload the mapping reads from. At most 64 levels of nested
+            objects and arrays (deeper is a 400). The state the model gets
+            (after the mapping, without images) is at most 1 MiB as JSON in
+            UTF-8 (larger is a 413).
           oneOf:
             - { type: string, minLength: 1 }
             - { type: object }

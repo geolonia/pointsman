@@ -70,7 +70,7 @@ To write a profile with an AI assistant, and check it, see
 | `title`, `description` | yes | Text in English (`en`) and Japanese (`ja`), so that non-engineers can read the profile. |
 | `model` | yes | Model id, for example `clef-flash`. `none` for a profile with no questions (rules only, no model call). |
 | `fallback_models` | no | Models to try, in order, when the primary model fails. |
-| `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. |
+| `input` | no | List of `{ name, path }`. Builds the state from a raw client payload with a simple JSONPath (`$.issue.title`). Without it, the request state is sent as is. Either way the state the model gets is at most 1 MiB as JSON in UTF-8 (larger is refused with `413`), and the request state is nested at most 64 levels deep (deeper is a `400`). |
 | `images` | no | `{ path, max }`: photos for the model, read at `path` in the request; `max` 1 to 4 (default 4). Needs `input`. See [Images](#images). |
 | `questions` | yes | Up to 64 questions (see below). At least 1, unless the profile has `requires` or facts. |
 | `requires` | no | Up to 8 earlier decisions the rules read, as `{ name, profile, optional }` (see [Decision chains](#decision-chains)). |
@@ -135,7 +135,8 @@ images: { path: $.photos.value, max: 3 }
   cannot have images.
 - The whole model request (state, questions and images) may be at most 13
   MiB (Clef's limit): a larger one is refused with `400`, a request body
-  over 14 MiB with `413`. Clef also takes at most 16 megapixels per image;
+  over 14 MiB with `413`. The images do not count toward the state's 1 MiB
+  ([Fields](#fields), `input`). Clef also takes at most 16 megapixels per image;
   the engine does not read image sizes in pixels, so a larger image fails
   at the model service (`502 model_error`). Send smaller images (see
   below).

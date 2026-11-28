@@ -3,8 +3,9 @@
 // checked against openapi.yaml.
 
 import { env, exports } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
+import { nestedDeeperThan } from '../../src/decide';
 import * as contract from '../../generated/openapi-validators.mjs';
 import type { Validator } from '../../generated/openapi-validators.mjs';
 
@@ -111,6 +112,41 @@ describe('POST /v1/decide/{profile}', () => {
     expect((await json(res, contract.error)).error.code).toBe('invalid_request');
   });
 
+  // JSON arrays nested `n` levels deep.
+  const nested = (n: number): unknown => JSON.parse('['.repeat(n) + ']'.repeat(n));
+
+  it('accepts a state nested 64 levels deep and refuses 65 with 400', async () => {
+    expect((await post('/v1/decide/deploy-progress', { state: nested(64) })).status).toBe(200);
+    const res = await post('/v1/decide/deploy-progress', { state: nested(65) });
+    expect(res.status).toBe(400);
+    expect((await json(res, contract.error)).error.message).toBe('"state" must not be nested deeper than 64 levels');
+  });
+
+  it('refuses very deep nesting with 400, not a 500 from the hashing', async () => {
+    // 5,000 levels overflowed canonicalJson's recursion before the limit.
+    const res = await post('/v1/decide/deploy-progress', { state: nested(5000) }, false);
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a state of exactly 1 MiB as JSON and refuses one byte more with 413', async () => {
+    // A text state is a JSON string: its two quotes count.
+    const MiB = 1024 * 1024;
+    expect((await post('/v1/decide/deploy-progress', { state: 'x'.repeat(MiB - 2) })).status).toBe(200);
+    const res = await post('/v1/decide/deploy-progress', { state: 'x'.repeat(MiB - 1) });
+    expect(res.status).toBe(413);
+    const e = (await json(res, contract.error)).error;
+    expect(e).toEqual({ code: 'invalid_request', message: 'the state is larger than 1 MiB (without images)' });
+  });
+
+  it('counts the state after the input mapping, in UTF-8', async () => {
+    // Fields the mapping does not read do not count.
+    const big = { ...issue, attachment: 'x'.repeat(2 * 1024 * 1024) };
+    expect((await post('/v1/decide/issue-triage', { state: big })).status).toBe(200);
+    // 'あ' is 3 bytes in UTF-8: 400,000 of them are about 1.14 MiB.
+    const res = await post('/v1/decide/issue-triage', { state: { issue: { title: 'T', body: 'あ'.repeat(400_000) } } });
+    expect(res.status).toBe(413);
+  });
+
   it('accepts an https callback_url', async () => {
     const res = await post('/v1/decide/issue-triage', { state: issue, callback_url: 'https://example.com/cb' });
     expect(res.status).toBe(200);
@@ -137,5 +173,40 @@ describe('other routes', () => {
   it('answers 404 for GET on the decide endpoint', async () => {
     const res = await exports.default.fetch(`${BASE}/v1/decide/issue-triage`, { headers: auth });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('nestedDeeperThan', () => {
+  const nested = (n: number): unknown => JSON.parse('['.repeat(n) + ']'.repeat(n));
+
+  it('counts each object or array as a level; other values are none', () => {
+    for (const v of ['text', 3, null, true]) expect(nestedDeeperThan(v, 0)).toBe(false);
+    expect(nestedDeeperThan({}, 0)).toBe(true);
+    expect(nestedDeeperThan({}, 1)).toBe(false);
+    expect(nestedDeeperThan(nested(64), 64)).toBe(false);
+    expect(nestedDeeperThan(nested(65), 64)).toBe(true);
+  });
+
+  it('finds the deep branch among objects and arrays, after shallow ones', () => {
+    const deep = { a: 1, b: [{ c: 'x' }], d: { e: [[{ f: [] }]] } };
+    // Levels: the object, d, e, [ ], { f }, f: 6.
+    expect(nestedDeeperThan(deep, 6)).toBe(false);
+    expect(nestedDeeperThan(deep, 5)).toBe(true);
+  });
+
+  it('walks a wide input one child at a time', () => {
+    const wide = { attachment: Array.from({ length: 1_000_000 }, (_, i) => i), deep: nested(3) };
+    expect(nestedDeeperThan(wide, 4)).toBe(false);
+    expect(nestedDeeperThan(wide, 3)).toBe(true);
+  });
+
+  it('walks a wide object without copying its values', () => {
+    const wide: Record<string, unknown> = Object.fromEntries(Array.from({ length: 200_000 }, (_, i) => [`k${i}`, i]));
+    wide.deep = nested(3);
+    const values = vi.spyOn(Object, 'values');
+    expect(nestedDeeperThan(wide, 4)).toBe(false);
+    expect(nestedDeeperThan(wide, 3)).toBe(true);
+    expect(values).not.toHaveBeenCalled();
+    values.mockRestore();
   });
 });

@@ -155,6 +155,8 @@ describe('/mcp', () => {
     ['a raw payload instead of the input fields', ALL, { profile: 'issue-triage', state: { issue: { title: 't' } } }, 'at least one of: title, body'],
     ['a text state for a profile with input fields', ALL, { profile: 'issue-triage', state: 'just text' }, 'at least one of: title, body'],
     ['an empty text state', ALL, { profile: 'issue-triage', state: ' ' }, 'invalid_request'],
+    ['a state larger than 1 MiB', ALL, { profile: 'issue-triage', state: { title: 'T', body: 'x'.repeat(1024 * 1024) } }, 'larger than 1 MiB'],
+    ['a state nested deeper than 64 levels', ALL, { profile: 'issue-triage', state: { title: 'T', body: JSON.parse('['.repeat(64) + ']'.repeat(64)) } }, 'nested deeper than 64 levels'],
   ])('decide refuses %s', async (_, token, args, message) => {
     const r = await call('decide', args, token);
     expect(r.isError).toBe(true);

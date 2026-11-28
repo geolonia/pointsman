@@ -1534,6 +1534,14 @@
       "source": "docs/models.md \"Workers AI and AI Gateway\"; \"Model server (local or self-hosted models)\""
     },
     {
+      "property": "P-STATE-BOUNDED",
+      "violation_symptom": "unbounded-allocation",
+      "severity_tier": "correctness",
+      "conditions": "since pointsman#98 (not yet released) a decision request is refused before facts or a model call when state nests deeper than 64 levels (400) or the state after the input mapping, without images, is larger than 1 MiB as JSON in UTF-8 (413); HTTP, MCP and internal calls alike; the HTTP body is at most 14 MiB (413)",
+      "provenance": "documented",
+      "source": "openapi.yaml DecideRequest.state; docs/profile-format.md \"Fields\""
+    },
+    {
       "property": "P-DECISION-LOGGED-FIRST",
       "violation_symptom": "x-unlogged-decision, integrity-bypass",
       "severity_tier": "security",
@@ -1798,10 +1806,10 @@
     },
     {
       "property": "D-STATE-SIZE",
-      "reason": "size or nesting depth of state; platform and backend limits apply; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound",
+      "reason": "that a state within P-STATE-BOUNDED's limits fits the model's context (a larger one fails at the model, 502 model_error, after the facts); an MCP request body limit below the platform's; until pointsman#98 (not yet released) size and depth were not bounded, by a maintainer ruling (2026-10); basis: stated",
       "false_friend": false,
       "provenance": "documented",
-      "source": "maintainer ruling, 2026-10"
+      "source": "openapi.yaml DecideRequest.state"
     },
     {
       "property": "D-CALLBACK-ANY-PUBLIC-HOST",

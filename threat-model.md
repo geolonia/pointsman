@@ -563,6 +563,22 @@
   into `packages/github/src/connector/pull-request.ts` moved 13 lines,
   checked against the old text of each line (the validator was not run
   for this amendment). No new question.
+  Amended 2026-11-28 a second time (still bound to `v0.24.1`), before
+  the code is released, for pointsman#98: the engine bounds `state`. A
+  request whose `state` nests objects and arrays deeper than 64 levels is refused with
+  400, and one whose state after the input mapping (without images) is
+  larger than 1 MiB as JSON in UTF-8 with 413, over HTTP, MCP and internal
+  calls alike, before facts or a model call. Deep nesting gave a 500
+  before: the recursive hashing of the state overflowed at about 5,000
+  levels. Changed: the `state` line in §1.7 "Size, shape and rate", the
+  engine's matrix rows for recursive topology and resource complexity
+  (prose, YAML), the new `P-STATE-BOUNDED`, `P-MODEL-CALL-BOUNDED`'s
+  "Voided by", `D-STATE-SIZE` (narrowed to what stays unbounded: a state
+  within the limits that is still larger than the model's context, and
+  an MCP request body below the platform's limit) (prose, YAML, JSON),
+  the attack-class note on resource exhaustion (§1.12) and the worked
+  routing example for a 50 MB state. The citations name functions, not
+  lines; the validator was not run for this amendment. No new question.
   Amended 2026-11-24 a sixteenth time (still bound to `v0.18.0`) for
   pointsman#347: a `207` on a write of the FIWARE bridge (a result, a
   Decision entity, a Task, a review's result, a work order's Decision) is
@@ -1598,8 +1614,13 @@ they are security-relevant.
 
 ### Size, shape and rate
 
-- `state`: any JSON value or non-empty string; no size or depth limit in the
-  engine *(documented, openapi.yaml `DecideRequest.state`; maintainer, 2026-10)*.
+- `state`: any JSON object or array or non-empty string. Since
+  pointsman#98 (not yet released) it nests at most 64 levels (deeper is a
+  400), and the state the model gets (after the input mapping, without
+  images) is at most 1 MiB as JSON in UTF-8 (larger is a 413), over HTTP,
+  MCP and internal calls (`P-STATE-BOUNDED`). Over HTTP the whole request
+  body is at most 14 MiB (413) *(documented, openapi.yaml
+  `DecideRequest.state` and the decide endpoint's `413`)*.
 - `ref` ≤ 200, `by` ≤ 100, `note` ≤ 1000 characters; `days` 1–90; reviews
   listed 100 at a time *(documented, openapi.yaml)*.
 - Profiles: 1–64 questions, 2–255 choice options, 2–10 score levels, ≤ 16
@@ -1680,12 +1701,12 @@ to the answers) and `x-probabilistic-result` (what a probability means). A
 | --- | --- | --- | --- | --- | --- |
 | engine-api | numeric domain | claimed | `version` 1–999999999, `days` 1–90, probabilities 0–1 (since pointsman#313, `v0.23.0`, one for every option or level, adding up to 1 within a margin for rounding (0.02, or half a hundredth per option when that is more, at most 0.1)), score within the level range; anything else is 400 or `model_error` | §1.11 `P-ANSWER-SHAPE` | *(documented, openapi.yaml; docs/profile-format.md "Engine answer format")* |
 | engine-api | failure atomicity | claimed | a decision is logged before it is returned; a failed log is a 500 and no decision; a review resolves (or, since pointsman#221 (`v0.16.0`), is closed) once or not at all | §1.11 `P-DECISION-LOGGED-FIRST`, `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/decision-log.md; docs/reviews.md)* |
-| engine-api | recursive/cyclic topology | disclaimed | `state` may be arbitrarily nested; the engine neither limits depth nor promises a bound; JSON has no cycles | §1.12 `D-STATE-SIZE` | *(documented, openapi.yaml `DecideRequest.state`)* |
+| engine-api | recursive/cyclic topology | claimed | since pointsman#98 (not yet released) `state` nests at most 64 levels, measured without recursion; deeper is a 400, not a 500 from the hashing; JSON has no cycles | §1.11 `P-STATE-BOUNDED` | *(documented, openapi.yaml `DecideRequest.state`)* |
 | engine-api | callback execution | claimed | policy conditions are parsed and evaluated by the engine's own parser; nothing from a profile or a state runs as code | §1.11 `P-POLICY-NOT-CODE` | *(documented, docs/profile-format.md "The engine evaluates conditions with its own parser; nothing is run as code")* |
 | engine-api | serialization/reconstruction | claimed | profiles, tokens and decisions are plain JSON read with `JSON.parse`; no class reconstruction; the `model` field from an HTTP model server is not stored | §1.11 `P-ANSWER-SHAPE` | *(maintainer, 2026-10)* |
 | engine-api | reference lifecycle | N/A — stateless per request; the module-level caches hold profiles and adapters, not request data | — | — | *(maintainer, 2026-10)* |
 | engine-api | concurrency/reentrancy | claimed | concurrent resolves of one review (since pointsman#221 (`v0.16.0`) also closes): exactly one succeeds | §1.11 `P-REVIEW-RESOLVED-ONCE` | *(documented, docs/reviews.md "A second resolve, also at the same moment, answers 409")* |
-| engine-api | resource complexity | disclaimed | no engine-side limit on the size of `state`; policy evaluation is linear in rules × answers; the maintainer chose to disclaim the bound; the wait for model and fact calls is claimed: every call is time-limited (since pointsman#324, `v0.23.0`, the Workers AI call also without AI Gateway), no fact lookup starts before the adapter check, and when every model fails the 502 does not wait for the fact lookups | §1.12 `D-STATE-SIZE`; §1.11 `P-MODEL-CALL-BOUNDED`, `P-FACT-LOOKUP-BOUNDED` | *(maintainer, 2026-10)* |
+| engine-api | resource complexity | claimed | since pointsman#98 (not yet released) the state the model gets is at most 1 MiB as JSON in UTF-8 (413), checked before facts and the model; the HTTP body is at most 14 MiB; policy evaluation is linear in rules × answers; a state within the limits can still be larger than the model's context (`D-STATE-SIZE`); the wait for model and fact calls is claimed: every call is time-limited (since pointsman#324, `v0.23.0`, the Workers AI call also without AI Gateway), no fact lookup starts before the adapter check, and when every model fails the 502 does not wait for the fact lookups | §1.11 `P-STATE-BOUNDED`, `P-MODEL-CALL-BOUNDED`, `P-FACT-LOOKUP-BOUNDED`; §1.12 `D-STATE-SIZE` | *(documented, openapi.yaml `DecideRequest.state`; maintainer, 2026-10)* |
 | engine-api | x-prompt-injection | disclaimed | a state author can steer the answers (since pointsman#289 (`v0.21.0`) also with text in images); they cannot make the engine return an answer outside the profile's types and options, or an action the policy does not produce for those answers | §1.12 `D-PROMPT-INJECTION`; §1.11 `P-ANSWER-SHAPE`, `P-ACTION-FROM-POLICY` | *(maintainer, 2026-10)* |
 | engine-api | x-probabilistic-result | disclaimed | `p` is the model's probability of `value`, not a calibrated accuracy; answers move between model versions | §1.12 `D-MODEL-ACCURACY` | *(documented, docs/fiware-demo.md "Checked again (2026-10-15)")* |
 | engine-facts | numeric domain | claimed | positions within WGS 84 ranges; a third coordinate is dropped; non-finite numbers are refused; a pull request `number` is a whole number from 1 and `head` 40 hexadecimal characters, else `no_pr` | §1.11 `P-FACT-LOOKUP-BOUNDED`, `P-GITHUB-FACTS-FOR-HEAD` | *(documented, docs/profile-format.md "Missing GitHub facts"; maintainer, 2026-10)* |
@@ -2162,7 +2183,9 @@ what voids it.
   *(documented, docs/models.md "Workers AI and AI Gateway": "Either way a
   call that takes longer than 10 seconds is a model error"; "Model server
   (local or self-hosted models)")*. Voided by: nothing; the size of the
-  state is not bounded (`D-STATE-SIZE`), only the wait for the model.
+  state is bounded by `P-STATE-BOUNDED` since pointsman#98 (not yet
+  released), not by this property.
+- **`P-STATE-BOUNDED`** — since pointsman#98 (not yet released) the engine refuses a decision request before any fact lookup or model call when its `state` nests objects and arrays deeper than 64 levels (`400 invalid_request`), or when the state the model gets, after the profile's `input` mapping and without images, is larger than 1 MiB as JSON in UTF-8 (`413 invalid_request`); the same check runs for HTTP, MCP and internal calls (`makeDecision` in `src/decide.ts`, with `nestedDeeperThan` and `MAX_STATE_BYTES`); the depth is measured without recursion, so deep JSON cannot overflow the hashing of the state. Over HTTP the request body is at most 14 MiB (`413`), checked while it is read (`readJsonUpTo` in `src/app.ts`). Symptom: `unbounded-allocation`. Tier: correctness-only. *(documented, openapi.yaml `DecideRequest.state`; docs/profile-format.md "Fields")*. Voided by: nothing; a state within the limits can still be larger than the model's context, and an MCP request has no body limit below the platform's (`D-STATE-SIZE`).
 - **`P-DECISION-LOGGED-FIRST`** — every decision made with a normal token is
   stored in D1, with its profile version, model, answers, facts, rule, client
   name and state hash, before it is returned; if the log cannot be written
@@ -2435,7 +2458,7 @@ carries its status; `VALID` takes none.
 | --- | --- | --- | --- | --- | --- |
 | A crafted `state` makes the engine return an action that no rule of the profile names | `POST /v1/decide` body `state` | to be the state author | `x-unauthorized-action` | `VALID` | `P-ACTION-FROM-POLICY`, `P-ANSWER-SHAPE` |
 | A revoked token still works for about 40 seconds at another location | `Authorization` header | a token that was just revoked | `x-authentication-bypass` (stale) | `KNOWN-NON-FINDING` **(closed)** | `KNF-REVOKED-TOKEN-60S` |
-| A 50 MB `state` body makes the Worker exceed its limits | `POST /v1/decide` body size | a token | `unbounded-allocation` | `BY-DESIGN: property-disclaimed` **(closed)** | `D-STATE-SIZE`, a maintainer ruling (2026-10) to disclaim the bound rather than promise one |
+| A 50 MB `state` body makes the Worker exceed its limits | `POST /v1/decide` body size | a token | `unbounded-allocation` | `VALID` if it reproduces; it does not: the body is refused with 413 **(closed)** | `P-STATE-BOUNDED` (since pointsman#98, not yet released; at `v0.24.1`, the 14 MiB body limit and `D-STATE-SIZE`) |
 | The `run` input of deploy-watch is passed to `bash -c` unsanitised | `actions/deploy-watch` `run` | to write the workflow | `x-command-injection` | `OUT-OF-MODEL: trusted-input` **(closed)** | §1.7 row for `run`, *(documented, action.yml)* |
 
 ## 1.12 Security properties the project does *not* provide
@@ -2449,7 +2472,7 @@ statement. A disclaimer on absence never closes a security-critical report.
 | `D-PROMPT-INJECTION` | resistance to prompt injection: a state author can steer the model's answers with text aimed at the model (since pointsman#289 (`v0.21.0`) also text in images sent to the model) | the answers only, on `engine-api`, `engine-mcp`, `bridge`, `action-triage`, `action-deploy-watch` (for `connector-github`, where a steered answer can reach an approval, see `D-APPROVAL-ON-FACTS`, Q31); the action stays what the policy produces for those answers (`P-ACTION-FROM-POLICY`), the answers stay inside the profile's types and options (`P-ANSWER-SHAPE`), and `review` sends the case to a person. Basis: a maintainer ruling (2026-10) | security-critical | no | *(maintainer, 2026-10)* |
 | `D-MODEL-ACCURACY` | that a well-formed answer is right, that `p` is a calibrated accuracy, or that answers stay the same across model updates; a `score` answer's value is not checked against the level it chose, so a complete, normalised answer whose score and level disagree is the model's accuracy, not a shape error (Q55) | every family that acts on an answer; the project tells integrators to keep a margin from thresholds and to re-check examples after a model update. Basis: stated | correctness-only | yes: `p` looks like accuracy and is the model's probability | *(documented, docs/fiware-demo.md "Lesson: keep a margin from the thresholds, and check the examples again after a model update"; docs/models.md "The decider's probabilities run lower than Clef-flash's")* |
 | `D-STATE-CONTENT` | validation of the content of `state` beyond its JSON type and the profile's input mapping; no sanitisation, normalisation or schema check | `engine-api`, `engine-mcp`; the profile's `input` paths select fields, they do not validate them. Basis: stated | correctness-only | no | *(documented, openapi.yaml `DecideRequest.state`: "free text, or any JSON object or array")* |
-| `D-STATE-SIZE` | a limit on the size or nesting depth of `state`, or a bound on the work a large state causes in the model call | `engine-api`, `engine-mcp`, `bridge` (the entity is the state); the platform's request limit and the model backend's own limits apply. Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, openapi.yaml `DecideRequest.state` has no size constraint; maintainer, 2026-10)* |
+| `D-STATE-SIZE` | that a state within `P-STATE-BOUNDED`'s limits fits the model: one of up to 1 MiB can be larger than the model's context and fail there (`502 model_error`) after the facts were read; and a limit on an MCP request body below the platform's | `engine-api`, `engine-mcp`, `bridge` (the entity is the state); the model backend's own limits and the platform's request limit apply. Until pointsman#98 (not yet released) the size and depth of `state` were not bounded at all, by a maintainer ruling (2026-10). Basis: stated | correctness-only | no | *(documented, openapi.yaml `DecideRequest.state`; maintainer, 2026-10)* |
 | `D-CALLBACK-ANY-PUBLIC-HOST` | an allow-list of callback hosts or authentication of the receiver: a token holder can make the engine POST a signed decision payload to any public https URL | `engine-callbacks`; the payload is the final answer, never a token or secret, and since pointsman#271 (`v0.23.0`) it names the client and the `callback_url`, so a receiver can refuse a callback that is not for it (`P-CALLBACK-SIGNED`); every receiver can still sign one with the shared secret (`D-CALLBACK-SHARED-SECRET`); private addresses are refused (`P-OUTBOUND-PUBLIC-ONLY`); redirects are not followed. Basis: a maintainer ruling (2026-10; Q54, 2026-11) | security-critical | yes: https ≠ "the receiver is who the integrator meant" | *(maintainer, 2026-10)* |
 | `D-CALLBACK-SHARED-SECRET` | a key per client or per receiver for callbacks: one `CALLBACK_SECRET` signs the callbacks of every client of a deployment, so whoever holds it (every receiver) can sign a callback that names another client | `engine-callbacks`; since pointsman#271 (`v0.23.0`) the signed body names `client` and `callback_url`, so a token holder cannot make the engine sign a callback that names another client, but whoever runs a receiver can sign one with the secret. Basis: stated | security-critical | yes: "signed by Pointsman" ≠ "asked for by my client" | *(documented, docs/reviews.md "Every receiver of a deployment holds the same secret")* |
 | `D-RATE-LIMIT` | a per-token or per-client rate limit, quota or budget in the engine | every family; the AI Gateway's 600 calls/min is per deployment; edge rate limiting is the operator's (`R-RATE-LIMIT`). Basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound | security-critical | no | *(documented, docs/models.md "rate limit 600 calls per minute" is the only limit named; maintainer, 2026-10)* |
@@ -2503,9 +2526,14 @@ Well-known attack classes for a service of this kind, in one sentence each:
   (`P-TOKEN-HASHED`).
 - **Callback replay and forgery**: the engine signs and timestamps; the
   receiver must verify (`P-CALLBACK-SIGNED`, `R-VERIFY-CALLBACK`).
-- **Resource exhaustion through large or many requests**: no engine-side size
-  or rate limit (`D-STATE-SIZE`, `D-RATE-LIMIT`); fact lookups are bounded
-  (`P-FACT-LOOKUP-BOUNDED`).
+- **Resource exhaustion through large or many requests**: since
+  pointsman#98 (not yet released) the depth of the request's `state` (64
+  levels) and the size of the state after the input mapping, without
+  images (1 MiB), are bounded (`P-STATE-BOUNDED`); fields the mapping does
+  not read count only toward the HTTP body's 14 MiB, and an MCP request
+  has no body limit below the platform's; no engine-side rate limit (`D-RATE-LIMIT`), and a
+  state within the limits can still exceed the model's context
+  (`D-STATE-SIZE`); fact lookups are bounded (`P-FACT-LOOKUP-BOUNDED`).
 - **Injection into downstream systems through model output**: answer values
   come from the profile's closed set, so labels, broker properties and
   callbacks carry no free model text (`P-ANSWER-SHAPE`); free text that does

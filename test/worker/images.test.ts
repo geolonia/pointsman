@@ -158,12 +158,22 @@ describe('limits of the whole request', () => {
     return { status: res.status, body: await res.json<any>(), asked };
   }
 
-  it('refuses images and state that together pass the model\'s 13 MiB, before the model call', async () => {
+  it('refuses a state over 1 MiB beside images with 413, before the model call (#98)', async () => {
+    // With the state at most 1 MiB and the images at most 8 MiB (about 10.7 MiB
+    // as base64), a model request no longer reaches Clef's 13 MiB through the
+    // state; the 13 MiB check stays behind it.
     const three = dataUrl('image/jpeg', bytes(0xff, 0xd8, 0xff) + 'x'.repeat(2_600_000));
     const r = await post(JSON.stringify({ state: { description: { value: 'y'.repeat(3_600_000) }, photos: { value: [three, three, three] } } }));
-    expect(r.status).toBe(400);
-    expect(r.body.error.message).toMatch(/13 MiB/);
+    expect(r.status).toBe(413);
+    expect(r.body.error.message).toBe('the state is larger than 1 MiB (without images)');
     expect(r.asked).not.toHaveBeenCalled();
+  });
+
+  it('does not count the images toward the state\'s 1 MiB', async () => {
+    const three = dataUrl('image/jpeg', bytes(0xff, 0xd8, 0xff) + 'x'.repeat(2_600_000));
+    const r = await post(JSON.stringify({ state: { description: { value: 'y'.repeat(900_000) }, photos: { value: [three, three, three] } } }));
+    expect(r.status).toBe(200);
+    expect(r.asked).toHaveBeenCalledOnce();
   });
 
   it('refuses a body over 14 MiB by its length, before reading it', async () => {
@@ -181,12 +191,11 @@ describe('limits of the whole request', () => {
     expect(sent).toBeLessThan(16);
   });
 
-  it('counts the model request in UTF-8 bytes, so Japanese text cannot pass 13 MiB unseen', async () => {
+  it('counts the state in UTF-8 bytes, so Japanese text cannot pass 1 MiB unseen', async () => {
     const one = dataUrl('image/jpeg', bytes(0xff, 0xd8, 0xff) + 'x'.repeat(2_600_000));
-    // 2.4 M Japanese characters: 2.4 M UTF-16 units, but 7.2 MB in UTF-8.
-    const r = await post(JSON.stringify({ state: { description: { value: 'あ'.repeat(2_400_000) }, photos: { value: [one, one] } } }));
-    expect(r.status).toBe(400);
-    expect(r.body.error.message).toMatch(/13 MiB/);
+    // 400,000 Japanese characters: 400,000 UTF-16 units, but 1.2 MB in UTF-8.
+    const r = await post(JSON.stringify({ state: { description: { value: 'あ'.repeat(400_000) }, photos: { value: [one, one] } } }));
+    expect(r.status).toBe(413);
     expect(r.asked).not.toHaveBeenCalled();
   });
 });

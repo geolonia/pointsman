@@ -104,6 +104,12 @@ describe('InternalEngine (the Cloudflare entrypoint)', () => {
     expect(row?.client).toBe('github-connector');
   });
 
+  it('refuses a state larger than 1 MiB, as the HTTP route does', async () => {
+    const answer = await engineWith({ INTERNAL_CLIENT: CLIENT }).decide('deploy-progress', { state: 'x'.repeat(1024 * 1024) }, {});
+    expect(answer.status).toBe(413);
+    expect(answer.body.error.code).toBe('invalid_request');
+  });
+
   it('refuses a profile outside INTERNAL_CLIENT', async () => {
     const answer = await engineWith({ INTERNAL_CLIENT: CLIENT }).decide('issue-triage', body, {});
     expect(answer).toEqual({ status: 403, body: { error: { code: 'forbidden', message: 'this token may not use this profile' } } });

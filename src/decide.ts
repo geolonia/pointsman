@@ -22,10 +22,46 @@ import type { Decision } from './types';
 import { ENGINE_VERSION } from './version';
 
 const MAX_REF_LENGTH = 200;
+/**
+ * The state the model gets and the log may keep (after the input mapping,
+ * without images), as JSON in UTF-8. Larger state would fail late: at the
+ * model's context or D1's row limit (about 2 MB).
+ */
+export const MAX_STATE_BYTES = 1024 * 1024;
+/** Nesting of the client's state; deeper JSON overflows the recursive hashing (a 500). */
+export const MAX_STATE_DEPTH = 64;
 // Control characters, and the line separators and direction marks that can reorder or split a printed line.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]/;
 
 type Body = { state: unknown; ref?: string; callback_url?: string; decisions?: Record<string, string> };
+
+/**
+ * Whether `value` nests objects or arrays deeper than `max` levels. Without
+ * recursion, so it cannot overflow itself, and one child at a time: at most
+ * `max` levels are pending, however wide the input is.
+ */
+function* valuesOf(o: Record<string, unknown>): Generator<unknown> {
+  for (const key in o) if (Object.hasOwn(o, key)) yield o[key];
+}
+
+export function nestedDeeperThan(value: unknown, max: number): boolean {
+  const open: Iterator<unknown>[] = [];
+  // Opens a level; true when that would be one more than `max`. An object's
+  // values are taken one by one, never copied into a list first.
+  const enter = (v: object): boolean => {
+    if (open.length === max) return true;
+    open.push(Array.isArray(v) ? v[Symbol.iterator]() : valuesOf(v as Record<string, unknown>));
+    return false;
+  };
+  if (value === null || typeof value !== 'object') return false;
+  if (enter(value)) return true;
+  while (open.length > 0) {
+    const next = open[open.length - 1]!.next();
+    if (next.done) open.pop();
+    else if (next.value !== null && typeof next.value === 'object' && enter(next.value)) return true;
+  }
+  return false;
+}
 
 /** Returns the parsed body, or an error message. */
 function parseBody(body: unknown): Body | string {
@@ -41,6 +77,7 @@ function parseBody(body: unknown): Body | string {
     return '"state" must be an object, an array or a string';
   }
   if (typeof b.state === 'string' && b.state.trim() === '') return '"state" must not be empty';
+  if (nestedDeeperThan(b.state, MAX_STATE_DEPTH)) return `"state" must not be nested deeper than ${MAX_STATE_DEPTH} levels`;
   if (b.ref !== undefined && (typeof b.ref !== 'string' || b.ref.length === 0 || b.ref.length > MAX_REF_LENGTH)) {
     return `"ref" must be a string of 1 to ${MAX_REF_LENGTH} characters`;
   }
@@ -168,6 +205,10 @@ export async function makeDecision(
     return fail(400, 'invalid_request', stateIsMapped
       ? `"state" must be an object with at least one of: ${profile.input.map((i) => i.name).join(', ')}`
       : 'no field of the profile input mapping was found in "state"');
+  }
+  // Before facts and the model, so an oversized state costs neither.
+  if (new TextEncoder().encode(JSON.stringify(state)).length > MAX_STATE_BYTES) {
+    return fail(413, 'invalid_request', `the state is larger than ${MAX_STATE_BYTES / 1024 / 1024} MiB (without images)`);
   }
   // Images are read from the client's data (like facts), before any model call.
   const imagesRead = readImages(profile, body.state);
