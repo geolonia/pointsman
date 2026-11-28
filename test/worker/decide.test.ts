@@ -3,7 +3,7 @@
 // checked against openapi.yaml.
 
 import { env, exports } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
 import { nestedDeeperThan } from '../../src/decide';
 import * as contract from '../../generated/openapi-validators.mjs';
@@ -198,5 +198,15 @@ describe('nestedDeeperThan', () => {
     const wide = { attachment: Array.from({ length: 1_000_000 }, (_, i) => i), deep: nested(3) };
     expect(nestedDeeperThan(wide, 4)).toBe(false);
     expect(nestedDeeperThan(wide, 3)).toBe(true);
+  });
+
+  it('walks a wide object without copying its values', () => {
+    const wide: Record<string, unknown> = Object.fromEntries(Array.from({ length: 200_000 }, (_, i) => [`k${i}`, i]));
+    wide.deep = nested(3);
+    const values = vi.spyOn(Object, 'values');
+    expect(nestedDeeperThan(wide, 4)).toBe(false);
+    expect(nestedDeeperThan(wide, 3)).toBe(true);
+    expect(values).not.toHaveBeenCalled();
+    values.mockRestore();
   });
 });

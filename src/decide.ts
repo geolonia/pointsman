@@ -40,12 +40,17 @@ type Body = { state: unknown; ref?: string; callback_url?: string; decisions?: R
  * recursion, so it cannot overflow itself, and one child at a time: at most
  * `max` levels are pending, however wide the input is.
  */
+function* valuesOf(o: Record<string, unknown>): Generator<unknown> {
+  for (const key in o) if (Object.hasOwn(o, key)) yield o[key];
+}
+
 export function nestedDeeperThan(value: unknown, max: number): boolean {
   const open: Iterator<unknown>[] = [];
-  // Opens a level; true when that would be one more than `max`.
+  // Opens a level; true when that would be one more than `max`. An object's
+  // values are taken one by one, never copied into a list first.
   const enter = (v: object): boolean => {
     if (open.length === max) return true;
-    open.push((Array.isArray(v) ? v : Object.values(v))[Symbol.iterator]());
+    open.push(Array.isArray(v) ? v[Symbol.iterator]() : valuesOf(v as Record<string, unknown>));
     return false;
   };
   if (value === null || typeof value !== 'object') return false;
