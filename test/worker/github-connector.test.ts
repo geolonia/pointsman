@@ -1398,6 +1398,9 @@ describe('actions (switched on per profile action)', () => {
     expect((await gh.reviewSummary(REPO, 7)).complete).toBe(false);
     answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { nodes: [] } } } } };
     expect((await gh.reviewSummary(REPO, 7)).complete).toBe(false);
+    // A review GitHub gives without an id is left out, so the list is not complete.
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { totalCount: 1, nodes: [{ databaseId: null, state: 'CHANGES_REQUESTED', commit: { oid: HEAD }, author: { __typename: 'User', login: 'a' } }] } } } } };
+    expect(await gh.reviewSummary(REPO, 7)).toMatchObject({ reviews: [], complete: false });
     for (const bad of [{ errors: [{ type: 'RATE_LIMITED' }], data: null }, { data: { repository: { pullRequest: null } } }, { errors: [{ message: 'x' }], data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: 'APPROVED', reviews: { nodes: [] } } } } }]) {
       answer = bad;
       await expect(gh.reviewSummary(REPO, 7), JSON.stringify(bad)).rejects.toBeInstanceOf(GitHubError);

@@ -404,8 +404,9 @@ export class AppGitHub implements ConnectorGitHub {
         const commit = isObject(r.commit) && typeof r.commit.oid === 'string' ? r.commit.oid : '';
         return { id: r.databaseId as number, state: r.state as string, commit, login, own: isBot && login === bot };
       });
-    // All of them, or only the newest 100 (an older change request can be among the rest).
-    const complete = typeof pr.reviews.totalCount === 'number' && pr.reviews.totalCount <= pr.reviews.nodes.length;
+    // All of them, or only the newest 100 (an older change request can be among the rest);
+    // a review left out above (no id or state) makes it incomplete too.
+    const complete = typeof pr.reviews.totalCount === 'number' && pr.reviews.totalCount <= pr.reviews.nodes.length && reviews.length === pr.reviews.nodes.length;
     return { head: pr.headRefOid, decision, reviews, complete };
   }
 
