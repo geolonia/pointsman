@@ -34,7 +34,7 @@ Get a decision from a profile.
 | 403 | The token may not use this profile. | `Error` (application/json) |
 | 404 | Error | `Error` (application/json) |
 | 409 | `resolved_by_person`: the decision this one would replace was resolved by a person, and a person's answer stays (docs/decision-chains.md). `idempotency_conflict`: the Idempotency-Key was used for a different request. | `Error` (application/json) |
-| 413 | The request body is larger than 14 MiB (room for Clef's 13 MiB model request with images). | `Error` (application/json) |
+| 413 | The request body is larger than 14 MiB (room for Clef's 13 MiB model request with images), or the state is larger than 1 MiB: the state the model gets, as JSON in UTF-8, after the profile's `input` mapping and without images. | `Error` (application/json) |
 | 500 | Error | `Error` (application/json) |
 | 502 | Error | `Error` (application/json) |
 
@@ -353,7 +353,7 @@ the profile and every profile it requires. Not for test tokens.
 
 | フィールド | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
-| `state` | string \| object \| array | はい | What the model decides about: free text, or any JSON object or array. When the profile has an `input` mapping, this is the raw client payload the mapping reads from. |
+| `state` | string \| object \| array | はい | What the model decides about: free text, or any JSON object or array. When the profile has an `input` mapping, this is the raw client payload the mapping reads from. At most 64 levels of nested objects and arrays (deeper is a 400). The state the model gets (after the mapping, without images) is at most 1 MiB as JSON in UTF-8 (larger is a 413). |
 | `ref` | string | いいえ | The client's reference for this decision, for example an issue id. No control characters, line separators or direction marks. |
 | `callback_url` | string | いいえ | Where to send the final answer after a human review (https only). The signed callback names this URL and the client (`CallbackPayload`). |
 | `decisions` | object | いいえ | For a profile with `requires` (docs/decision-chains.md): the ids of the earlier decisions, by the names in `requires`. They are read from the decision log and must be of the named profile, in the token's scope, with this request's `ref` (then required) and from the same client; every other case gives the same 400. An optional one that was made for an older decision than one given here is left out (it is missing from `requires` in the answer). Not for test tokens. |

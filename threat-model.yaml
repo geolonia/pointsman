@@ -1,7 +1,7 @@
 # threat-model.yaml — derived index; the prose threat model (threat-model.md) is canonical.
 schema: threat-model-sidecar/v2
 project: pointsman
-prose_version: "threat-model.md@sha256:1877a45bddd4430fda5169bcdbac8ccdcf09590f159ca90bebdda7bacc7e5f5a"
+prose_version: "threat-model.md@sha256:4f3e692cb342375559dd31e993ba93294f02b2ab2d0fac23202ff5e38236f517"
 model_status: accepted
 triage_policy: strict
 confidence: {documented: 477, maintainer: 84, inferred: 0, assumption: 0}
@@ -795,12 +795,12 @@ contract_dimensions:
   # engine-api
   - {component: engine-api, dimension: numeric-domain, status: claimed, conditions: "version 1–999999999, days 1–90, probabilities 0–1 (since pointsman#313, `v0.23.0`, one for every option or level, adding up to 1 within 0.02, or 0.005 per option when that is more, at most 0.1), score within range; else 400 or model_error", property_id: P-ANSWER-SHAPE, provenance: {kind: documented, source: "openapi.yaml; docs/profile-format.md \"Engine answer format\""}}
   - {component: engine-api, dimension: failure-atomicity, status: claimed, conditions: "logged before returned; a failed log is 500 and no decision; a review resolves once", property_id: P-DECISION-LOGGED-FIRST, provenance: {kind: documented, source: "docs/decision-log.md; docs/reviews.md"}}
-  - {component: engine-api, dimension: recursive-cyclic-topology, status: disclaimed, conditions: "state may be arbitrarily nested; no depth limit promised", property_id: D-STATE-SIZE, provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}}
+  - {component: engine-api, dimension: recursive-cyclic-topology, status: claimed, conditions: "since pointsman#98 (not yet released) state nests at most 64 levels, measured without recursion; deeper is a 400, not a 500 from the hashing; JSON has no cycles", property_id: P-STATE-BOUNDED, provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}}
   - {component: engine-api, dimension: callback-execution, status: claimed, conditions: "policy conditions are parsed and evaluated as data; nothing runs as code", property_id: P-POLICY-NOT-CODE, provenance: {kind: documented, source: "docs/profile-format.md \"nothing is run as code\""}}
   - {component: engine-api, dimension: serialization-reconstruction, status: claimed, conditions: "plain JSON only; the HTTP model server's model field is not stored", property_id: P-ANSWER-SHAPE, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: reference-lifecycle, status: not-applicable, conditions: "stateless per request; module-level caches hold profiles and adapters, not request data", provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: concurrency-reentrancy, status: claimed, conditions: "concurrent resolves of one review (since pointsman#221 (v0.16.0) also closes): exactly one succeeds", property_id: P-REVIEW-RESOLVED-ONCE, provenance: {kind: documented, source: "docs/reviews.md \"A second resolve, also at the same moment, answers 409\""}}
-  - {component: engine-api, dimension: resource-complexity, status: disclaimed, conditions: "no engine-side limit on the size of state; model and fact calls are time-limited (since pointsman#324, `v0.23.0`, the Workers AI call also without AI Gateway; no fact lookup before the adapter check; the 502 for failed models does not wait for facts; the waits are claimed by P-MODEL-CALL-BOUNDED and P-FACT-LOOKUP-BOUNDED); the maintainer chose to disclaim the size bound", property_id: D-STATE-SIZE, provenance: {kind: maintainer, date: "2026-10"}}
+  - {component: engine-api, dimension: resource-complexity, status: claimed, conditions: "since pointsman#98 (not yet released) the state the model gets is at most 1 MiB as JSON in UTF-8 (413), checked before facts and the model; the HTTP body is at most 14 MiB; a state within the limits can still exceed the model's context (D-STATE-SIZE); model and fact calls are time-limited (since pointsman#324, `v0.23.0`, the Workers AI call also without AI Gateway; no fact lookup before the adapter check; the 502 for failed models does not wait for facts; the waits are claimed by P-MODEL-CALL-BOUNDED and P-FACT-LOOKUP-BOUNDED)", property_id: P-STATE-BOUNDED, provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}}
   - {component: engine-api, dimension: x-prompt-injection, status: disclaimed, conditions: "a state author can steer the answers but not the answer set or the action the policy produces", property_id: D-PROMPT-INJECTION, provenance: {kind: maintainer, date: "2026-10"}}
   - {component: engine-api, dimension: x-probabilistic-result, status: disclaimed, conditions: "p is the model's probability of value, not a calibrated accuracy", property_id: D-MODEL-ACCURACY, provenance: {kind: documented, source: "docs/fiware-demo.md \"Checked again (2026-10-15)\""}}
   # engine-facts
@@ -1779,6 +1779,13 @@ properties_claimed:
     conditions: "every model call has a time limit (10 s by default to a model server, MODEL_SERVER_TIMEOUT_MS 100 to 60000; 10 s to Workers AI, since pointsman#324 (`v0.23.0`) also without AI Gateway); a slower call is a model error and the next fallback model is tried; since pointsman#324 no fact lookup before the adapter check, and the 502 for failed models does not wait for facts"
     violation_symptoms: [hang]
     provenance: {kind: documented, source: "docs/models.md \"Workers AI and AI Gateway\"; \"Model server (local or self-hosted models)\""}
+  - id: P-STATE-BOUNDED
+    kind: resource-bound
+    components: [engine-api, engine-mcp]
+    tier: correctness-only
+    conditions: "since pointsman#98 (not yet released) a decision request is refused before facts or a model call when state nests deeper than 64 levels (400) or the state after the input mapping, without images, is larger than 1 MiB as JSON in UTF-8 (413); HTTP, MCP and internal calls alike; the HTTP body is at most 14 MiB (413)"
+    violation_symptoms: [unbounded-allocation]
+    provenance: {kind: documented, source: "openapi.yaml DecideRequest.state; docs/profile-format.md \"Fields\""}
   - id: P-DECISION-LOGGED-FIRST
     kind: integrity
     components: [engine-api, engine-mcp]
@@ -2011,10 +2018,10 @@ properties_disclaimed:
     provenance: {kind: documented, source: "openapi.yaml DecideRequest.state: \"free text, or any JSON object or array\""}
   - id: D-STATE-SIZE
     components: [engine-api, engine-mcp, bridge]
-    conditions: "size or nesting depth of state; platform and backend limits apply; basis: a maintainer ruling (2026-10) to disclaim rather than promise a bound"
-    tier: security-critical
+    conditions: "that a state within P-STATE-BOUNDED's limits fits the model's context (a larger one fails at the model, 502 model_error, after the facts); an MCP request body limit below the platform's; until pointsman#98 (not yet released) size and depth were not bounded, by a maintainer ruling (2026-10); basis: stated"
+    tier: correctness-only
     false_friend: false
-    provenance: {kind: maintainer, date: "2026-10"}
+    provenance: {kind: documented, source: "openapi.yaml DecideRequest.state"}
   - id: D-CALLBACK-ANY-PUBLIC-HOST
     components: [engine-callbacks]
     conditions: "any public https URL; payload holds no secret; private addresses refused; redirects not followed; basis: a maintainer ruling (2026-10); since pointsman#271 (`v0.23.0`) the signed payload names the client and the callback_url (P-CALLBACK-SIGNED); any receiver can still sign one with the shared secret (D-CALLBACK-SHARED-SECRET) (Q54)"

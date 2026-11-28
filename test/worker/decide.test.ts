@@ -111,6 +111,41 @@ describe('POST /v1/decide/{profile}', () => {
     expect((await json(res, contract.error)).error.code).toBe('invalid_request');
   });
 
+  // JSON arrays nested `n` levels deep.
+  const nested = (n: number): unknown => JSON.parse('['.repeat(n) + ']'.repeat(n));
+
+  it('accepts a state nested 64 levels deep and refuses 65 with 400', async () => {
+    expect((await post('/v1/decide/deploy-progress', { state: nested(64) })).status).toBe(200);
+    const res = await post('/v1/decide/deploy-progress', { state: nested(65) });
+    expect(res.status).toBe(400);
+    expect((await json(res, contract.error)).error.message).toBe('"state" must not be nested deeper than 64 levels');
+  });
+
+  it('refuses very deep nesting with 400, not a 500 from the hashing', async () => {
+    // 5,000 levels overflowed canonicalJson's recursion before the limit.
+    const res = await post('/v1/decide/deploy-progress', { state: nested(5000) }, false);
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a state of exactly 1 MiB as JSON and refuses one byte more with 413', async () => {
+    // A text state is a JSON string: its two quotes count.
+    const MiB = 1024 * 1024;
+    expect((await post('/v1/decide/deploy-progress', { state: 'x'.repeat(MiB - 2) })).status).toBe(200);
+    const res = await post('/v1/decide/deploy-progress', { state: 'x'.repeat(MiB - 1) });
+    expect(res.status).toBe(413);
+    const e = (await json(res, contract.error)).error;
+    expect(e).toEqual({ code: 'invalid_request', message: 'the state is larger than 1 MiB (without images)' });
+  });
+
+  it('counts the state after the input mapping, in UTF-8', async () => {
+    // Fields the mapping does not read do not count.
+    const big = { ...issue, attachment: 'x'.repeat(2 * 1024 * 1024) };
+    expect((await post('/v1/decide/issue-triage', { state: big })).status).toBe(200);
+    // 'あ' is 3 bytes in UTF-8: 400,000 of them are about 1.14 MiB.
+    const res = await post('/v1/decide/issue-triage', { state: { issue: { title: 'T', body: 'あ'.repeat(400_000) } } });
+    expect(res.status).toBe(413);
+  });
+
   it('accepts an https callback_url', async () => {
     const res = await post('/v1/decide/issue-triage', { state: issue, callback_url: 'https://example.com/cb' });
     expect(res.status).toBe(200);
