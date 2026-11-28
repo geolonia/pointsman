@@ -201,7 +201,7 @@ const REVIEW_SUMMARY_QUERY = `query($owner: String!, $name: String!, $number: In
     pullRequest(number: $number) {
       headRefOid
       reviewDecision
-      reviews(last: 100) { nodes { databaseId state commit { oid } author { __typename login } } }
+      reviews(last: 100) { totalCount nodes { databaseId state commit { oid } author { __typename login } } }
     }
   }
 }`;
@@ -404,7 +404,10 @@ export class AppGitHub implements ConnectorGitHub {
         const commit = isObject(r.commit) && typeof r.commit.oid === 'string' ? r.commit.oid : '';
         return { id: r.databaseId as number, state: r.state as string, commit, login, own: isBot && login === bot };
       });
-    return { head: pr.headRefOid, decision, reviews };
+    // All of them, or only the newest 100 (an older change request can be among the rest);
+    // a review left out above (no id or state) makes it incomplete too.
+    const complete = typeof pr.reviews.totalCount === 'number' && pr.reviews.totalCount <= pr.reviews.nodes.length && reviews.length === pr.reviews.nodes.length;
+    return { head: pr.headRefOid, decision, reviews, complete };
   }
 
   async ownApprovals(repo: string, number: number): Promise<OwnApprovals> {

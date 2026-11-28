@@ -109,6 +109,8 @@ export interface ReviewSummary {
   /** null: the repository requires no review, so GitHub decides nothing. */
   decision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
   reviews: ReviewRef[];
+  /** Every review of the pull request is in `reviews`; false when only the newest 100 are. */
+  complete: boolean;
 }
 
 /** What the reviews say about this head. */
@@ -151,6 +153,26 @@ export function reviewStateOf(summary: ReviewSummary, head: string, author: stri
     ownApproved: approved && onHead.some((r) => r.own),
     headApproved: approved && onHead.length > 0,
   };
+}
+
+/**
+ * Whether a change request stands, read right before an approval (#25 of the
+ * config repository's build notes). Under a review rule, GitHub's review
+ * decision says it: a change request that does not count there (from someone
+ * without write access) does not block. Without a rule GitHub decides nothing:
+ * someone other than the author and the app with a change request as their
+ * latest verdict; 'unknown' when only the newest 100 reviews were read, since
+ * an older change request may be among the rest.
+ */
+export function changesRequested(summary: ReviewSummary, author: string): boolean | 'unknown' {
+  if (summary.decision !== null) return summary.decision === 'CHANGES_REQUESTED';
+  const verdicts = new Map<string, ReviewRef>();
+  for (const r of [...summary.reviews].sort((a, b) => a.id - b.id)) {
+    if (r.own || r.login === '' || r.login === author.toLowerCase() || !VERDICT.has(r.state)) continue;
+    verdicts.set(r.login, r);
+  }
+  if ([...verdicts.values()].some((r) => r.state === 'CHANGES_REQUESTED')) return true;
+  return summary.complete ? false : 'unknown';
 }
 
 /**

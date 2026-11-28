@@ -24,7 +24,7 @@
 import { AnswerDesk, buttonsFor, type QueuedAnswer } from './answers.ts';
 import { actionOf, type CheckedAnswer, checkDecision, type Decision, type EngineAnswer, type EngineClient } from './engine.ts';
 import { checkName, type ActionSpec, type ConnectorSettings, type RunOptions } from './settings.ts';
-import { COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type HeadReviews, reviewStateOf } from './comment.ts';
+import { changesRequested, COMMENT_MARKER, commentBody, NO_REVIEWS, type Position, positionOf, type HeadReviews, reviewStateOf } from './comment.ts';
 import { type CheckRunOutput, type ConnectorGitHub, GitHubError, GitHubHistoryLimit, markerOf, type OwnApproval, type PullRequestInfo } from './github.ts';
 import type { BotReview, PullRequestTarget } from './webhook.ts';
 import { authorText, MAX_BODY, MAX_TITLE } from './description.ts';
@@ -911,6 +911,22 @@ export class PullRequestWork {
       // Only the commit and base that were decided on: read the pull request again right before.
       const now = await retrying(() => this.#github.pullRequest(target.repo, target.number));
       if (!now.open || (spec.do === 'approve' && now.draft) || !samePullRequest(now, pr)) return { kind: 'skipped', text: `${spec.do}: not done, the pull request changed` };
+    }
+    if (spec.do === 'approve') {
+      // A change request that came after the decision's facts were read: no approval.
+      // A failed read approves nothing either; the run is tried again.
+      let summary;
+      try {
+        summary = await retrying(() => this.#github.reviewSummary(target.repo, target.number));
+      } catch (err) {
+        if (err instanceof RetryError) throw err;
+        throw new RetryError(`${target.repo}#${target.number}: the reviews could not be read before approving: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (summary.head !== pr.head) return { kind: 'skipped', text: 'approve: not done, the pull request changed' };
+      const requested = changesRequested(summary, pr.author);
+      if (requested === true) return { kind: 'skipped', text: 'approve: not done, a change request stands' };
+      // Not tried again for this commit by the run itself: a later review event decides again.
+      if (requested === 'unknown') return { kind: 'skipped', text: 'approve: not done, more than 100 reviews and no review rule: whether a change request stands cannot be told' };
     }
     acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now(), base: pr.base };
     await this.#storage.put({ acts });
