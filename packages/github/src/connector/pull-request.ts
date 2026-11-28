@@ -923,7 +923,10 @@ export class PullRequestWork {
         throw new RetryError(`${target.repo}#${target.number}: the reviews could not be read before approving: ${err instanceof Error ? err.message : String(err)}`);
       }
       if (summary.head !== pr.head) return { kind: 'skipped', text: 'approve: not done, the pull request changed' };
-      if (changesRequested(summary, pr.author)) return { kind: 'skipped', text: 'approve: not done, a change request stands' };
+      const requested = changesRequested(summary, pr.author);
+      if (requested === true) return { kind: 'skipped', text: 'approve: not done, a change request stands' };
+      // Not tried again for this commit by the run itself: a later review event decides again.
+      if (requested === 'unknown') return { kind: 'skipped', text: 'approve: not done, more than 100 reviews and no review rule: whether a change request stands cannot be told' };
     }
     acts.done[key] = { decision: decision.decision_id, state: 'pending', at: this.now(), base: pr.base };
     await this.#storage.put({ acts });

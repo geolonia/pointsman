@@ -52,7 +52,7 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     state,
     copilot: { requested: false, reviewed: [], refuse: false },
     // head '': GitHub decided for the head the pull request has now (a test sets one to differ).
-    summary: { head: '', decision: null, reviews: [] },
+    summary: { head: '', decision: null, reviews: [], complete: true },
     diffText: 'diff --git a/README.md b/README.md\n+one line\n',
     approvals,
     comments,
@@ -788,9 +788,9 @@ describe('actions (switched on per profile action)', () => {
   it('does not approve when a change request came after the decision\'s facts', async () => {
     const changes = [
       // GitHub's review decision, under a review rule.
-      { head: HEAD, decision: 'CHANGES_REQUESTED' as const, reviews: [] },
+      { head: HEAD, decision: 'CHANGES_REQUESTED' as const, reviews: [], complete: true },
       // Without a review rule GitHub decides nothing: a person's latest verdict counts.
-      { head: HEAD, decision: null, reviews: [{ id: 5, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'reviewer', own: false }] },
+      { head: HEAD, decision: null, reviews: [{ id: 5, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'reviewer', own: false }], complete: true },
     ];
     for (const summary of changes) {
       const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
@@ -811,11 +811,30 @@ describe('actions (switched on per profile action)', () => {
       { id: 7, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'pointsman-test[bot]', own: true },
     ];
     const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
-      gh.github.summary = { head: HEAD, decision: null, reviews };
+      gh.github.summary = { head: HEAD, decision: null, reviews, complete: true };
       return Response.json(decision(p, { action: 'light' }));
     });
     await work.run();
     expect(ops(gh.calls)).toEqual(['approve']);
+  });
+
+  it('follows GitHub\'s review decision where there is one: a change request that does not count there does not block', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.summary = { head: HEAD, decision: 'APPROVED', reviews: [{ id: 5, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'reader', own: false }], complete: true };
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+  });
+
+  it('approves nothing without a review rule when only the newest 100 reviews were read', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.summary = { head: HEAD, decision: null, reviews: [], complete: false };
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(gh.github.approvals).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('whether a change request stands cannot be told');
   });
 
   it('approves nothing when the reviews cannot be read right before, and tries the run again', async () => {
@@ -828,7 +847,7 @@ describe('actions (switched on per profile action)', () => {
 
   it('does not approve when a push came between the pull request read and the review read', async () => {
     const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
-      gh.github.summary = { head: HEAD2, decision: null, reviews: [] };
+      gh.github.summary = { head: HEAD2, decision: null, reviews: [], complete: true };
       return Response.json(decision(p, { action: 'light' }));
     });
     await work.run();
@@ -1353,7 +1372,7 @@ describe('actions (switched on per profile action)', () => {
     }) as typeof fetch;
     const gh = new AppGitHub(APP_ID, KEY, fetchFn, true);
     const node = (databaseId: number, state: string, author: unknown, oid: string | null = HEAD) => ({ databaseId, state, commit: oid ? { oid } : null, author, body: 'Looks good @everyone' });
-    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: 'APPROVED', reviews: { nodes: [
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: 'APPROVED', reviews: { totalCount: 5, nodes: [
       node(1, 'APPROVED', { __typename: 'Bot', login: 'pointsman-checks' }),
       node(2, 'APPROVED', { __typename: 'Bot', login: 'coderabbitai' }),
       node(3, 'COMMENTED', { __typename: 'User', login: 'pointsman-checks' }),
@@ -1366,14 +1385,19 @@ describe('actions (switched on per profile action)', () => {
       { id: 3, state: 'COMMENTED', commit: HEAD, login: 'pointsman-checks', own: false },
       { id: 4, state: 'CHANGES_REQUESTED', commit: '', login: 'ghost:4', own: false },
       { id: 5, state: 'APPROVED', commit: HEAD, login: 'bob', own: false },
-    ] });
+    ], complete: true });
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ url: 'https://api.github.com/graphql', method: 'POST', body: { variables: { owner: 'example', name: 'repo', number: 7 } } });
     expect(sent[0]!.body.query).toMatch(/^query\b/);
     expect(sent[0]!.body.query).not.toMatch(/mutation|body/);
     // No review rule: GitHub decides nothing.
-    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { nodes: [] } } } } };
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { totalCount: 0, nodes: [] } } } } };
     expect((await gh.reviewSummary(REPO, 7)).decision).toBeNull();
+    // More reviews than the newest 100 read (or no count): not complete.
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { totalCount: 101, nodes: [] } } } } };
+    expect((await gh.reviewSummary(REPO, 7)).complete).toBe(false);
+    answer = { data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: null, reviews: { nodes: [] } } } } };
+    expect((await gh.reviewSummary(REPO, 7)).complete).toBe(false);
     for (const bad of [{ errors: [{ type: 'RATE_LIMITED' }], data: null }, { data: { repository: { pullRequest: null } } }, { errors: [{ message: 'x' }], data: { repository: { pullRequest: { headRefOid: HEAD, reviewDecision: 'APPROVED', reviews: { nodes: [] } } } } }]) {
       answer = bad;
       await expect(gh.reviewSummary(REPO, 7), JSON.stringify(bad)).rejects.toBeInstanceOf(GitHubError);

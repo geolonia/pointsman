@@ -102,7 +102,7 @@ function fakeGitHub() {
     botLogin: async () => 'pointsman-test[bot]',
     ownApprovals: async () => [],
     ownApproval: async () => null,
-    reviewSummary: async () => ({ head: github.state.head, decision: null, reviews: [] }),
+    reviewSummary: async () => ({ head: github.state.head, decision: null, reviews: [], complete: true }),
     diff: async () => ({ diff: '', truncated: false }),
     approve: async (_r, _n, head) => (calls.push({ op: 'approve', head }), nextId++),
     dismissReview: async () => {},

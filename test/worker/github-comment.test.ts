@@ -77,7 +77,7 @@ function fakeApi() {
         databaseId: r.id, state: r.state, commit: { oid: r.commit_id },
         author: r.user && { __typename: r.user.type === 'Bot' ? 'Bot' : 'User', login: r.user.type === 'Bot' ? r.user.login.replace(/\[bot\]$/, '') : r.user.login },
       }));
-      return Response.json({ data: { repository: { pullRequest: { headRefOid: pr.head, reviewDecision: api.decision, reviews: { nodes } } } } });
+      return Response.json({ data: { repository: { pullRequest: { headRefOid: pr.head, reviewDecision: api.decision, reviews: { totalCount: reviews.length, nodes } } } } });
     }
     if (path.startsWith(`/repos/${REPO}/commits/`) && path.endsWith('/check-runs')) {
       const name = url.searchParams.get('check_name');
