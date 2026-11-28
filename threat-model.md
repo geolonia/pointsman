@@ -2527,8 +2527,11 @@ Well-known attack classes for a service of this kind, in one sentence each:
 - **Callback replay and forgery**: the engine signs and timestamps; the
   receiver must verify (`P-CALLBACK-SIGNED`, `R-VERIFY-CALLBACK`).
 - **Resource exhaustion through large or many requests**: since
-  pointsman#98 (not yet released) the size and depth of `state` are bounded
-  (`P-STATE-BOUNDED`); no engine-side rate limit (`D-RATE-LIMIT`), and a
+  pointsman#98 (not yet released) the depth of the request's `state` (64
+  levels) and the size of the state after the input mapping, without
+  images (1 MiB), are bounded (`P-STATE-BOUNDED`); fields the mapping does
+  not read count only toward the HTTP body's 14 MiB, and an MCP request
+  has no body limit below the platform's; no engine-side rate limit (`D-RATE-LIMIT`), and a
   state within the limits can still exceed the model's context
   (`D-STATE-SIZE`); fact lookups are bounded (`P-FACT-LOOKUP-BOUNDED`).
 - **Injection into downstream systems through model output**: answer values
