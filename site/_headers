@@ -10,5 +10,15 @@
 # The Markdown version of each docs page (docs-site/scripts/page-markdown.mjs).
 # text/plain, not text/markdown: browsers show it instead of downloading it,
 # and the Japanese pages need the charset.
+# Kept out of search indexes (X-Robots-Tag: noindex): the HTML page is the
+# one to find, and a plain-text copy would compete with it as duplicate
+# content. Fetching is not blocked: AI tools and the Copy menu still read it.
 /docs/*.md
   Content-Type: text/plain; charset=utf-8
+  X-Robots-Tag: noindex
+# llms.txt and llms-full.txt (all docs in one file): for AI tools, not for
+# search results, for the same reason.
+/llms.txt
+  X-Robots-Tag: noindex
+/llms-full.txt
+  X-Robots-Tag: noindex

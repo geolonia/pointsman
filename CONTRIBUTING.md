@@ -69,7 +69,10 @@ from `docs/` with Astro Starlight (`docs-site/`):
   pointsman.net serves it, with `/sitemap.xml` for the pages of `site/`
   (the docs have their own sitemap under `/docs/`), and `/llms.txt` and
   `/llms-full.txt` for AI tools, made from the pages' titles and
-  descriptions.
+  descriptions. These files and the Markdown version of each docs page
+  (`/docs/<page>.md`) are sent with `X-Robots-Tag: noindex`
+  (`site/_headers`): search engines index only the HTML pages, and AI tools
+  can still fetch the text copies.
 
 A new example profile goes in `examples/profiles/` and is linked from one
 use-case topic, `examples/<topic>/README.md` (see
