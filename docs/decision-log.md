@@ -119,6 +119,50 @@ Notes:
 - `noul` corrections are `true`/`false`; SQLite's JSON functions return them
   as 1/0, and the comparison above handles that the same way for answers.
 
+## Retention
+
+By default the log keeps every decision. A deployment that sets the Worker
+variable `DECISION_LOG_DAYS` keeps them that long. The value is a whole number
+of days, from 30 to 36500. Then the cron trigger (every 5 minutes) deletes up
+to 500 older decisions per run, with their feedback. That is at most 144,000
+a day, so a large backlog takes several runs to clear the first time.
+
+```jsonc
+// wrangler.jsonc of the deployment
+"vars": { "DECISION_LOG_DAYS": "365" }
+```
+
+How long to keep decisions is the deployment's decision. They can hold
+personal data: references, answers, facts, and with `log.store_state` the
+state. For a high-risk system, the EU AI Act asks for at least six months
+(Art. 19, 26(6)). Six calendar months can be 184 days (1 July to 1 January),
+and the setting counts days, so set at least `185`.
+
+Exceptions and effects:
+
+- **Kept while pending:** a decision whose review is still pending, or whose
+  callback is still pending, stays until that is done. Then it goes in the
+  next run. A review nobody answers keeps its decision for ever, so close
+  stale reviews (`POST /v1/reviews/{id}/close`) to let them go.
+- **Counts:** stats (`GET /v1/stats`) and replays read only what is left, so
+  keep at least as long as you count back.
+- **Repeated requests:** an `Idempotency-Key` is remembered only as long as
+  its decision is kept. A retry after that makes a new decision.
+- **Chains:** once the earlier step of a ref is deleted, a later step that
+  requires it is refused as for any unusable required decision. A new decision
+  for that ref no longer meets a person's resolution of the old one, so it is
+  not refused with `resolved_by_person`.
+- **A bad value:** the engine logs `decision log retention: DECISION_LOG_DAYS
+  must be ...` and deletes nothing. Requests are not affected.
+  `scripts/check-config.mjs` refuses such a value in `wrangler.jsonc`, so the
+  validate workflow catches it before a deploy. Unset or empty keeps
+  everything.
+
+The deletion uses the index `decisions_created` (migration
+`0009_decisions_created.sql`). The deploy workflow applies migrations before
+it deploys the engine, so set the variable with that engine version or a
+later one.
+
 ## Local development
 
 ```sh

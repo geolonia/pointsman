@@ -16,6 +16,7 @@ import { checkServerUrl, DEFAULT_TIMEOUT_MS, ModelServerAdapter, parseModelList 
 import { MockAdapter } from './models/mock';
 import { WORKERS_AI_MODELS, WorkersAiAdapter, type AiRunner } from './models/workers-ai';
 import { MemoryProfileStore, type ProfileStore } from './profiles/store';
+import { runRetention } from './retention';
 import { KvProfileStore } from './profiles/store-kv';
 import type { Profile } from './types';
 // Built from examples/profiles by scripts/build-profiles.mjs.
@@ -46,6 +47,8 @@ interface PointsmanEnv {
   AI_GATEWAY_ID?: string | undefined;
   /** Worker secret for signing review callbacks. */
   CALLBACK_SECRET?: string | undefined;
+  /** Days to keep decisions (src/retention.ts); unset keeps them all. */
+  DECISION_LOG_DAYS?: string | undefined;
   // GitHub login for /mcp (src/oauth.ts): all of these, or none.
   PUBLIC_URL?: string | undefined;
   GITHUB_CLIENT_ID?: string | undefined;
@@ -343,13 +346,17 @@ export default {
   fetch: served.fetch,
   queue: served.queue,
   // Cron trigger (wrangler.jsonc "triggers"): retry review callbacks that are
-  // due, and remove expired OAuth records. A broken config (for example half
-  // of the OAuth settings) fails here as it does for requests.
+  // due, remove expired OAuth records, and with DECISION_LOG_DAYS delete one
+  // batch of decisions older than that. A broken config (for example half of
+  // the OAuth settings) fails here as it does for requests; a bad
+  // DECISION_LOG_DAYS only stops the deletion (src/retention.ts).
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const deps = depsFor(env as PointsmanEnv);
     ctx.waitUntil(retryDueCallbacks(deps).then((n) => {
       if (n > 0) console.log(`retried ${n} callbacks`);
     }));
+    // Only here: a bad value stops the deletion (logged), never the API.
+    ctx.waitUntil(runRetention(deps.log, (env as PointsmanEnv).DECISION_LOG_DAYS));
     if (deps.oauth) ctx.waitUntil(purgeExpired(env as unknown as { OAUTH_KV: KVNamespace }, deps.oauth));
   },
 } satisfies ExportedHandler<Env, unknown>;

@@ -51,6 +51,7 @@ An adapter must:
 - Resolve or close a review only while it is pending, close it only for the client that made the decision, and claim a callback for one caller only (`resolve`, `closeReview`, `claimCallback` are compare-and-set).
 - Keep decisions as they were written: only review, callback and discard fields change later.
 - Answer `recentFor(client, profiles, since, limit)` with that client's decisions of those profiles since a time, newest first, without discarded ones, and never more than `limit`. Facts read the log through it ([modules.md](modules.md#facts-from-the-decision-log)); the engine limits it to the profiles the client's token may use.
+- Delete in `purge(before, limit)` only decisions made before `before` whose review and callback are not pending, with their feedback, at most `limit`, oldest first, and atomically. Check the conditions again as it deletes, so a review or callback that started since the decisions were chosen keeps them ([decision-log.md](decision-log.md#retention)).
 
 ### Profile store
 

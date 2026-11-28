@@ -97,6 +97,32 @@ test('a config without global_fetch_strictly_public is refused (#276)', (t) => {
   assert.match(r.stderr, /must not include "global_fetch_private_origin"/);
 });
 
+test('a DECISION_LOG_DAYS the engine would not use is refused, also in an environment', (t) => {
+  const dir = makeRepo(t);
+  fill(dir);
+  const wrangler = join(dir, 'wrangler.jsonc');
+  const filled = readFileSync(wrangler, 'utf8');
+  // The value into the template's own "vars"; or an environment with its own.
+  const withDays = (days) => filled.replace('"vars": {', `"vars": {\n    "DECISION_LOG_DAYS": ${JSON.stringify(days)},`);
+  const withEnv = (env) => filled.replace(/\n\}\s*$/, `,\n  "env": ${JSON.stringify(env)}\n}\n`);
+  assert.notEqual(withDays('365'), filled, 'the template has "vars"');
+  writeFileSync(wrangler, withDays('365'));
+  let r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+  assert.equal(r.status, 0, r.stderr);
+
+  for (const bad of ['10', '36501', '1y']) {
+    writeFileSync(wrangler, withDays(bad));
+    r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+    assert.equal(r.status, 1, `${bad}: ${r.stdout}`);
+    assert.match(r.stderr, /wrangler.jsonc: DECISION_LOG_DAYS must be a whole number of days from 30 to 36500/);
+  }
+
+  writeFileSync(wrangler, withEnv({ staging: { vars: { DECISION_LOG_DAYS: '7' } } }));
+  r = run(dir, process.execPath, ['engine/scripts/check-config.mjs']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stderr, /wrangler.jsonc: env.staging: DECISION_LOG_DAYS must be/);
+});
+
 test('an environment that sets its own flags needs global_fetch_strictly_public too', () => {
   const config = { compatibility_flags: ['global_fetch_strictly_public'], env: { live: { compatibility_flags: ['nodejs_compat'] }, dev: { vars: {} } } };
   assert.deepEqual(strictlyPublicProblems(config, 'w.jsonc'), ['w.jsonc: env.live: "compatibility_flags" must include "global_fetch_strictly_public"']);

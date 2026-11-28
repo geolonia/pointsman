@@ -24,6 +24,7 @@ export function fakeLog(overrides: Partial<DecisionLog> = {}): DecisionLog {
     recentFor: async () => [],
     supersede: async () => [],
     discard: async () => {},
+    purge: async () => 0,
     ...overrides,
   };
 }
