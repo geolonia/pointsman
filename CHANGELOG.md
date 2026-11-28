@@ -12,6 +12,23 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.25.0 (2026-11-28)
+
+Decision log retention: a deployment can set how long the log keeps decisions, and the cron deletes older ones (#362, #71). Also: scripts that print only a few lines exit only after their output is written (#358), and the website has a Markdown version of every page with a Copy menu (#359, #360). Without the new setting, the engine's API, profiles, decisions and decision log are unchanged.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.25.0`, and change modules pinned with a version in `modules` to `@0.25.0` (for example `@pointsman/github@0.24.2` → `@pointsman/github@0.25.0`). No new secrets, no new GitHub App permission or event.
+- Apply the database migration `0009_decisions_created.sql` (an index on `decisions.created_at`). The deploy workflow applies migrations before it deploys the engine.
+- **Optional:** set the Worker variable `DECISION_LOG_DAYS` (a whole number of days, 30 to 36500) to keep decisions that long. Unset, the log keeps every decision, as before. See docs/decision-log.md "Retention".
+
+What changed:
+
+- **Decision log retention** (#362): with `DECISION_LOG_DAYS` set, the cron trigger (every 5 minutes) deletes up to 500 decisions older than that per run, with their feedback. A decision whose review or callback is still pending is kept until it is done; close stale reviews so they go too. Stats, replays, `Idempotency-Key` and chains see only what is left (docs/decision-log.md "Retention"). A bad value is logged and deletes nothing; `scripts/check-config.mjs` refuses it in `wrangler.jsonc`. The `DecisionLog` interface has a new method, `purge(before, limit)`; a log of your own must implement it (docs/adapters.md).
+- **Scripts** (#358): the remaining scripts that call `process.exit()` after printing wait until stdout and stderr have written everything (#352).
+- **Website** (#359, #360, #361): a Markdown version of every docs page (`/docs/how-to/deploy.md` for `/docs/how-to/deploy/`), a Copy menu at each page's title (copy as Markdown, view it, open it in Claude or ChatGPT), and placeholders such as `<login>` in prose shown instead of hidden.
+- **Threat model:** the retention note names `v0.25.0`. It stays bound to `v0.24.1`.
+
 ## 0.24.2 (2026-11-26)
 
 A maintenance release: newer development tools (wrangler 4.163 among them, which deploys use), scripts that no longer cut their own output short (#351), dates in the website's sitemaps (#354), and the threat model bound to `v0.24.1` (#350). The engine's API, profiles, decisions and decision log are unchanged.
