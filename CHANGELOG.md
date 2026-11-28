@@ -12,6 +12,21 @@ the engine by commit in its config repository: to use a release, set
 (`git rev-parse 'v<version>^{commit}'`, for example `v0.2.0`, which also
 works for annotated tags).
 
+## 0.26.0 (2026-11-28)
+
+Limits on `state` for every decide request (#365, #98), and the GitHub connector approves nothing while a change request stands (#366). A request within the new limits is answered as before.
+
+For deployments:
+
+- Move `ref` in `engine.json` to the commit of `v0.26.0`, and change modules pinned with a version in `modules` to `@0.26.0` (for example `@pointsman/github@0.25.0` → `@pointsman/github@0.26.0`). No migration, no new secrets, no new GitHub App permission or event, no configuration change.
+- **Clients:** a `state` nested deeper than 64 levels is now refused with `400 invalid_request`, and one whose state after the profile's `input` mapping (without images) is larger than 1 MiB as JSON in UTF-8 with `413 invalid_request`, over HTTP, MCP and internal calls alike. Check that no client sends larger state; the GitHub connector (at most about 300 KB with the largest `diff` setting) and the FIWARE bridge's demo entities stay well below.
+
+What changed:
+
+- **State limits** (#365): checked in the shared decide path, before any fact lookup or model call. Fields that the `input` mapping does not read do not count toward the 1 MiB; images are counted separately as before. The depth is measured without recursion and without copying the input: before, about 5,000 levels of nesting (a request of 10 KB) made the hashing of the state overflow and the engine answer `500`. Over HTTP the request body stays limited to 14 MiB. Documented in `openapi.yaml` (`DecideRequest.state`, the decide `413`) and docs/profile-format.md "Fields".
+- **GitHub connector** (#366): right before an approval it also reads the reviews, and approves nothing while a change request stands. Under a review rule, GitHub's review decision says whether one stands; without one, someone's latest verdict other than the author's and the app's counts, and with more than 100 reviews, or a review GitHub gives without an id, it approves nothing. When the reviews cannot be read, the run is tried again. CI is not read again: a required check that fails in between still blocks the merge under the ruleset, and the next decision withdraws the approval (docs/github-connector.md "Actions").
+- **Threat model:** the new property `P-STATE-BOUNDED`; `D-STATE-SIZE` narrowed to what stays unbounded (a state within the limits that is larger than the model's context, and an MCP body limit below the platform's); `P-CONNECTOR-APPROVE-HEAD` reads the reviews before approving. It stays bound to `v0.24.1`.
+
 ## 0.25.0 (2026-11-28)
 
 Decision log retention: a deployment can set how long the log keeps decisions, and the cron deletes older ones (#362). Also: scripts that print only a few lines exit only after their output is written (#358), and the website has a Markdown version of every page with a Copy menu (#359, #360). Without the new setting, the engine's API, profiles, decisions and decision log are unchanged.
