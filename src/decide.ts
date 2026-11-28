@@ -35,14 +35,25 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u20
 
 type Body = { state: unknown; ref?: string; callback_url?: string; decisions?: Record<string, string> };
 
-/** Whether `value` nests objects or arrays deeper than `max` levels; without recursion, so it cannot overflow itself. */
+/**
+ * Whether `value` nests objects or arrays deeper than `max` levels. Without
+ * recursion, so it cannot overflow itself, and one child at a time: at most
+ * `max` levels are pending, however wide the input is.
+ */
 export function nestedDeeperThan(value: unknown, max: number): boolean {
-  const stack: Array<[unknown, number]> = [[value, 0]];
-  while (stack.length > 0) {
-    const [v, depth] = stack.pop()!;
-    if (v === null || typeof v !== 'object') continue;
-    if (depth + 1 > max) return true;
-    for (const child of Array.isArray(v) ? v : Object.values(v)) stack.push([child, depth + 1]);
+  const open: Iterator<unknown>[] = [];
+  // Opens a level; true when that would be one more than `max`.
+  const enter = (v: object): boolean => {
+    if (open.length === max) return true;
+    open.push((Array.isArray(v) ? v : Object.values(v))[Symbol.iterator]());
+    return false;
+  };
+  if (value === null || typeof value !== 'object') return false;
+  if (enter(value)) return true;
+  while (open.length > 0) {
+    const next = open[open.length - 1]!.next();
+    if (next.done) open.pop();
+    else if (next.value !== null && typeof next.value === 'object' && enter(next.value)) return true;
   }
   return false;
 }

@@ -5,6 +5,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashToken, newToken, tokenKey } from '../../src/auth';
+import { nestedDeeperThan } from '../../src/decide';
 import * as contract from '../../generated/openapi-validators.mjs';
 import type { Validator } from '../../generated/openapi-validators.mjs';
 
@@ -172,5 +173,30 @@ describe('other routes', () => {
   it('answers 404 for GET on the decide endpoint', async () => {
     const res = await exports.default.fetch(`${BASE}/v1/decide/issue-triage`, { headers: auth });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('nestedDeeperThan', () => {
+  const nested = (n: number): unknown => JSON.parse('['.repeat(n) + ']'.repeat(n));
+
+  it('counts each object or array as a level; other values are none', () => {
+    for (const v of ['text', 3, null, true]) expect(nestedDeeperThan(v, 0)).toBe(false);
+    expect(nestedDeeperThan({}, 0)).toBe(true);
+    expect(nestedDeeperThan({}, 1)).toBe(false);
+    expect(nestedDeeperThan(nested(64), 64)).toBe(false);
+    expect(nestedDeeperThan(nested(65), 64)).toBe(true);
+  });
+
+  it('finds the deep branch among objects and arrays, after shallow ones', () => {
+    const deep = { a: 1, b: [{ c: 'x' }], d: { e: [[{ f: [] }]] } };
+    // Levels: the object, d, e, [ ], { f }, f: 6.
+    expect(nestedDeeperThan(deep, 6)).toBe(false);
+    expect(nestedDeeperThan(deep, 5)).toBe(true);
+  });
+
+  it('walks a wide input one child at a time', () => {
+    const wide = { attachment: Array.from({ length: 1_000_000 }, (_, i) => i), deep: nested(3) };
+    expect(nestedDeeperThan(wide, 4)).toBe(false);
+    expect(nestedDeeperThan(wide, 3)).toBe(true);
   });
 });
