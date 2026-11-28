@@ -14,7 +14,7 @@ works for annotated tags).
 
 ## 0.25.0 (2026-11-28)
 
-Decision log retention: a deployment can set how long the log keeps decisions, and the cron deletes older ones (#362, #71). Also: scripts that print only a few lines exit only after their output is written (#358), and the website has a Markdown version of every page with a Copy menu (#359, #360). Without the new setting, the engine's API, profiles, decisions and decision log are unchanged.
+Decision log retention: a deployment can set how long the log keeps decisions, and the cron deletes older ones (#362). Also: scripts that print only a few lines exit only after their output is written (#358), and the website has a Markdown version of every page with a Copy menu (#359, #360). Without the new setting, the engine's API, profiles, decisions and decision log are unchanged.
 
 For deployments:
 
