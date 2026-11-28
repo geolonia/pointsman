@@ -27,7 +27,6 @@ What changed:
 - **Decision log retention** (#362): with `DECISION_LOG_DAYS` set, the cron trigger (every 5 minutes) deletes up to 500 decisions older than that per run, with their feedback. A decision whose review or callback is still pending is kept until it is done; close stale reviews so they go too. Stats, replays, `Idempotency-Key` and chains see only what is left (docs/decision-log.md "Retention"). A bad value is logged and deletes nothing; `scripts/check-config.mjs` refuses it in `wrangler.jsonc`. The `DecisionLog` interface has a new method, `purge(before, limit)`; a log of your own must implement it (docs/adapters.md).
 - **Scripts** (#358): the remaining scripts that call `process.exit()` after printing wait until stdout and stderr have written everything (#352).
 - **Website** (#359, #360, #361): a Markdown version of every docs page (`/docs/how-to/deploy.md` for `/docs/how-to/deploy/`), a Copy menu at each page's title (copy as Markdown, view it, open it in Claude or ChatGPT), and placeholders such as `<login>` in prose shown instead of hidden.
-- **Threat model:** the retention note names `v0.25.0`. It stays bound to `v0.24.1`.
 
 ## 0.24.2 (2026-11-26)
 
