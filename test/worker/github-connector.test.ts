@@ -51,7 +51,8 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
   const github: ConnectorGitHub & { state: PullRequestInfo; existing?: number; approvals: OwnApproval[]; comments: string[]; diffText: string; summary: ReviewSummary; copilot: { requested: boolean; reviewed: string[]; refuse: boolean } } = {
     state,
     copilot: { requested: false, reviewed: [], refuse: false },
-    summary: { head: HEAD, decision: null, reviews: [] },
+    // head '': GitHub decided for the head the pull request has now (a test sets one to differ).
+    summary: { head: '', decision: null, reviews: [] },
     diffText: 'diff --git a/README.md b/README.md\n+one line\n',
     approvals,
     comments,
@@ -76,7 +77,7 @@ function fakeGitHub(pr: Partial<PullRequestInfo> = {}) {
     // By id: only when a recorded approval is not in the list. Not in `calls`.
     ownApproval: async (_r, _n, id) => { const a = approvals.find((x) => x.id === id); return a ? { ...a } : null; },
     // Read for the line on every run that draws it: not in `calls`, which follows what the connector decides and does.
-    reviewSummary: async () => structuredClone(github.summary),
+    reviewSummary: async () => ({ ...structuredClone(github.summary), head: github.summary.head || github.state.head }),
     diff: async (_r, _n, max) => (calls.push({ op: 'diff' }), { diff: github.diffText.slice(0, max), truncated: github.diffText.length > max }),
     approve: async (_r, _n, head, body) => { calls.push({ op: 'approve', head, body }); approvals.push({ id: nextId, commit: head, marker: body.split('\n')[0]! }); return nextId++; },
     dismissReview: async (_r, _n, id) => {
@@ -782,6 +783,57 @@ describe('actions (switched on per profile action)', () => {
     expect(ops(gh.calls)).toEqual([]);
     expect(gh.github.approvals).toEqual([]);
     expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('the pull request changed');
+  });
+
+  it('does not approve when a change request came after the decision\'s facts', async () => {
+    const changes = [
+      // GitHub's review decision, under a review rule.
+      { head: HEAD, decision: 'CHANGES_REQUESTED' as const, reviews: [] },
+      // Without a review rule GitHub decides nothing: a person's latest verdict counts.
+      { head: HEAD, decision: null, reviews: [{ id: 5, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'reviewer', own: false }] },
+    ];
+    for (const summary of changes) {
+      const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+        gh.github.summary = summary; // a change request while Pointsman decided
+        return Response.json(decision(p, { action: 'light' }));
+      });
+      await work.run();
+      expect(ops(gh.calls)).toEqual([]);
+      expect(gh.github.approvals).toEqual([]);
+      expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('approve: not done, a change request stands');
+    }
+  });
+
+  it('approves when the change request was followed by the same reviewer\'s approval, or was the author\'s or its own', async () => {
+    const reviews = [
+      { id: 5, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'reviewer', own: false },
+      { id: 6, state: 'APPROVED', commit: HEAD, login: 'reviewer', own: false },
+      { id: 7, state: 'CHANGES_REQUESTED', commit: HEAD, login: 'pointsman-test[bot]', own: true },
+    ];
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.summary = { head: HEAD, decision: null, reviews };
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(ops(gh.calls)).toEqual(['approve']);
+  });
+
+  it('approves nothing when the reviews cannot be read right before, and tries the run again', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => Response.json(decision(p, { action: 'light' })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    gh.github.reviewSummary = async () => { throw new GitHubError('GitHub review decision: unexpected answer', false); };
+    await expect(work.run()).rejects.toBeInstanceOf(RetryError);
+    expect(gh.github.approvals).toEqual([]);
+  });
+
+  it('does not approve when a push came between the pull request read and the review read', async () => {
+    const { work, gh } = await acting({ 'pr-docs-check': { light: { do: 'approve' } } }, (p) => {
+      gh.github.summary = { head: HEAD2, decision: null, reviews: [] };
+      return Response.json(decision(p, { action: 'light' }));
+    });
+    await work.run();
+    expect(gh.github.approvals).toEqual([]);
+    expect(gh.calls.find((c) => c.op === 'create')!.output!.summary).toContain('approve: not done, the pull request changed');
   });
 
   it('withdraws its approval at once when the head or base moved while it approved', async () => {

@@ -154,6 +154,22 @@ export function reviewStateOf(summary: ReviewSummary, head: string, author: stri
 }
 
 /**
+ * Whether a change request stands: GitHub's review decision says so, or
+ * someone other than the author and the app has a change request as their
+ * latest verdict (a repository without a review rule has no decision).
+ * Read right before an approval (#25 of the config repository's build notes).
+ */
+export function changesRequested(summary: ReviewSummary, author: string): boolean {
+  if (summary.decision === 'CHANGES_REQUESTED') return true;
+  const verdicts = new Map<string, ReviewRef>();
+  for (const r of [...summary.reviews].sort((a, b) => a.id - b.id)) {
+    if (r.own || r.login === '' || r.login === author.toLowerCase() || !VERDICT.has(r.state)) continue;
+    verdicts.set(r.login, r);
+  }
+  return [...verdicts.values()].some((r) => r.state === 'CHANGES_REQUESTED');
+}
+
+/**
  * Where the pull request is, from GitHub's state: merged, or closed without
  * merging; a draft; approved when GitHub's review decision is; reviewed once
  * someone other than the author reviewed this head; else ready.
